@@ -44,8 +44,8 @@ cannot be represented clearly in one row.
 
 | ID | Type | Status | Decision needed | Blocking point |
 |---|---|---|---|---|
-| D-015 | Technical | Open | Select the concrete persistence design for local and distributed modes | Architecture ADR |
-| D-016 | Technical | Open | Select concrete interfaces for inference, memory, knowledge, structure, tool adapters, events, scheduling, and workers | Architecture ADRs |
+| D-015 | Technical | Open | Accept, revise, or reject the SQLite/WAL local and PostgreSQL distributed persistence profile | `SYSTEM/ARCHITECTURE.md` ADR-002 |
+| D-016 | Technical | Open | Accept, revise, or reject the versioned control API, CrewAI integration boundary, and typed external adapter ports | `SYSTEM/ARCHITECTURE.md` ADR-003–005 |
 
 ## Review rules
 

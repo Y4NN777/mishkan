@@ -1,13 +1,13 @@
 # MISHKAN System Model
 
-**Status:** Draft — Sequence 05 behavior review
-**Version:** 0.1
+**Status:** Approved — Sequence 05 behavioral basis
+**Version:** 1.0
 **Derived from:** Approved PRD 1.2, SRS 1.3, System Contract 1.2, Responsibility Map 1.0
 
 ## 1. Purpose and modeling discipline
 
-This document models the system boundary and the behaviors that must shape architecture. It does
-not yet approve containers, components, protocols, tables, or Python modules.
+This document models the system boundary and the approved behaviors that shape architecture. It
+does not by itself approve containers, components, protocols, tables, or Python modules.
 
 The order follows `SWE-BASICS-BEFORE-CODE` Sequence 05:
 
