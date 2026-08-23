@@ -4,10 +4,10 @@ These instructions apply to the entire repository.
 
 ## Current stage
 
-MISHKAN has completed the framework's final pre-code stage, Sequence 05, and its implementation and
-acceptance plan is approved. Do not add application code, package manifests, containers, schemas,
-agent definitions, workflow definitions, migrations, or generated scaffolding until the engineer
-explicitly authorizes coding.
+MISHKAN has completed the framework's final pre-code stage, Sequence 05, and Implementation Plan
+1.0 is approved. Increment I00 has passed its local and remote acceptance gates. Increment I01 is
+not yet authorized; work outside I00 requires the owning increment to begin under the progressive
+delivery protocol in the approved plan.
 
 ## Mandatory method
 

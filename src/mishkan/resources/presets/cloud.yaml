@@ -1,0 +1,26 @@
+schema_version: "1.0"
+mode: cloud
+timezone: UTC
+project:
+  workspace: .
+providers:
+  cloud-primary:
+    kind: openai-compatible
+    endpoint: https://api.openai.com/v1
+    credential_pool:
+      - source: env
+        locator: OPENAI_API_KEY
+    probe_url: https://api.openai.com/v1/models
+model_routes:
+  planning:
+    candidates:
+      - provider: cloud-primary
+        model: gpt-5-mini
+  execution:
+    candidates:
+      - provider: cloud-primary
+        model: gpt-5-mini
+agent_routes: {}
+services: {}
+policy_sources:
+  - project:.mishkan/policy.yaml

@@ -1,0 +1,258 @@
+{
+  "$defs": {
+    "CredentialReference": {
+      "additionalProperties": false,
+      "description": "A late-resolution locator; never a credential value.",
+      "properties": {
+        "locator": {
+          "minLength": 1,
+          "title": "Locator",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/CredentialSource"
+        }
+      },
+      "required": [
+        "source",
+        "locator"
+      ],
+      "title": "CredentialReference",
+      "type": "object"
+    },
+    "CredentialSource": {
+      "enum": [
+        "env",
+        "file",
+        "keyring",
+        "command"
+      ],
+      "title": "CredentialSource",
+      "type": "string"
+    },
+    "ModelCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "provider": {
+          "minLength": 1,
+          "title": "Provider",
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider",
+        "model"
+      ],
+      "title": "ModelCandidate",
+      "type": "object"
+    },
+    "ModelRoute": {
+      "additionalProperties": false,
+      "properties": {
+        "candidates": {
+          "items": {
+            "$ref": "#/$defs/ModelCandidate"
+          },
+          "minItems": 1,
+          "title": "Candidates",
+          "type": "array"
+        }
+      },
+      "required": [
+        "candidates"
+      ],
+      "title": "ModelRoute",
+      "type": "object"
+    },
+    "OperatingMode": {
+      "enum": [
+        "local",
+        "cloud",
+        "hybrid",
+        "distributed"
+      ],
+      "title": "OperatingMode",
+      "type": "string"
+    },
+    "ProjectConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "workspace": {
+          "format": "path",
+          "title": "Workspace",
+          "type": "string"
+        }
+      },
+      "required": [
+        "workspace"
+      ],
+      "title": "ProjectConfig",
+      "type": "object"
+    },
+    "ProviderConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "credential_pool": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CredentialReference"
+          },
+          "title": "Credential Pool",
+          "type": "array"
+        },
+        "endpoint": {
+          "format": "uri",
+          "minLength": 1,
+          "title": "Endpoint",
+          "type": "string"
+        },
+        "kind": {
+          "minLength": 1,
+          "title": "Kind",
+          "type": "string"
+        },
+        "probe_url": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Probe Url"
+        }
+      },
+      "required": [
+        "kind",
+        "endpoint"
+      ],
+      "title": "ProviderConfig",
+      "type": "object"
+    },
+    "ServiceConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "credential_refs": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CredentialReference"
+          },
+          "title": "Credential Refs",
+          "type": "array"
+        },
+        "endpoint": {
+          "format": "uri",
+          "minLength": 1,
+          "title": "Endpoint",
+          "type": "string"
+        },
+        "kind": {
+          "minLength": 1,
+          "title": "Kind",
+          "type": "string"
+        },
+        "probe_url": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Probe Url"
+        },
+        "required": {
+          "default": false,
+          "title": "Required",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "endpoint"
+      ],
+      "title": "ServiceConfig",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Complete effective configuration required before a run can be accepted.",
+  "properties": {
+    "agent_routes": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Agent Routes",
+      "type": "object"
+    },
+    "mode": {
+      "$ref": "#/$defs/OperatingMode"
+    },
+    "model_routes": {
+      "additionalProperties": {
+        "$ref": "#/$defs/ModelRoute"
+      },
+      "minProperties": 1,
+      "title": "Model Routes",
+      "type": "object"
+    },
+    "policy_sources": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Policy Sources",
+      "type": "array"
+    },
+    "project": {
+      "$ref": "#/$defs/ProjectConfig"
+    },
+    "providers": {
+      "additionalProperties": {
+        "$ref": "#/$defs/ProviderConfig"
+      },
+      "minProperties": 1,
+      "title": "Providers",
+      "type": "object"
+    },
+    "schema_version": {
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "services": {
+      "additionalProperties": {
+        "$ref": "#/$defs/ServiceConfig"
+      },
+      "title": "Services",
+      "type": "object"
+    },
+    "timezone": {
+      "title": "Timezone",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "mode",
+    "timezone",
+    "project",
+    "providers",
+    "model_routes",
+    "policy_sources"
+  ],
+  "title": "MishkanConfig",
+  "type": "object"
+}

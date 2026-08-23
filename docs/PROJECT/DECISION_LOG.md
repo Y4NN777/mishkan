@@ -43,6 +43,7 @@ cannot be represented clearly in one row.
 | D-021 | Architecture | Accepted | Use a transactional modular control plane with relational authoritative state and an append-only event outbox written atomically with state | Model execution, external effects, projections, and delivery stay outside short state transactions; C4 structure may now be derived | Engineer validation following Sequence 05 behavior analysis and `codex-design` risk consultation, 2026-08-23 |
 | D-022 | Governance | Accepted | System Model 1.0 and Architecture 1.0 form the approved Sequence 05 baseline | Gate G5 is closed; post-architecture implementation and acceptance planning is authorized, but coding remains blocked | Engineer validation, 2026-08-23 |
 | D-023 | Delivery | Accepted | Deliver MISHKAN through the vertical increments, acceptance gates, repository baseline, and progressive Git protocol in `PROJECT/IMPLEMENTATION_PLAN.md` | The delivery baseline is approved; coding remains blocked until the engineer separately authorizes implementation | Engineer validation, 2026-08-23 |
+| D-024 | Delivery | Accepted | Begin implementation increment I00 on its dedicated branch under Implementation Plan 1.0 | Only the contract-bearing foundation is authorized; later increments retain their dependency and acceptance gates | Engineer authorization, 2026-08-23 |
 
 ## Open decisions
 

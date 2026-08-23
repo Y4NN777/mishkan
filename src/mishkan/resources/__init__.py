@@ -1,0 +1,1 @@
+"""Versioned packaged resources."""

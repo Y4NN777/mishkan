@@ -1,0 +1,8 @@
+schema_version: "99.0"
+mode: local
+timezone: UTC
+project:
+  workspace: .
+providers: {}
+model_routes: {}
+policy_sources: []

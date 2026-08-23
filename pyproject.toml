@@ -1,0 +1,72 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mishkan"
+version = "0.1.0"
+description = "A local-first, CrewAI-powered engineering organization and control plane"
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+license = { text = "Apache-2.0" }
+authors = [
+  { name = "Y4NN777", email = "axel.studiesmail@gmail.com" },
+]
+dependencies = [
+  "crewai>=1,<2",
+  "pydantic>=2.10,<3",
+  "pyyaml>=6,<7",
+  "typer>=0.16,<1",
+]
+
+[project.scripts]
+mishkan = "mishkan.cli.app:app"
+
+[dependency-groups]
+dev = [
+  "mypy>=1.15,<2",
+  "pytest>=8.3,<10",
+  "pytest-cov>=6,<8",
+  "ruff>=0.12,<1",
+  "types-pyyaml>=6.0.12.20250516",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mishkan"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "/src",
+  "/tests",
+  "/definitions",
+  "/README.md",
+  "/AGENTS.md",
+]
+
+[tool.pytest.ini_options]
+addopts = "--strict-config --strict-markers"
+testpaths = ["tests"]
+markers = [
+  "acceptance: runnable increment acceptance test",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["mishkan"]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+skip_covered = true
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+packages = ["mishkan"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]

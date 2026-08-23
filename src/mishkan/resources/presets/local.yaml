@@ -1,0 +1,23 @@
+schema_version: "1.0"
+mode: local
+timezone: UTC
+project:
+  workspace: .
+providers:
+  ollama-local:
+    kind: ollama
+    endpoint: http://127.0.0.1:11434
+    probe_url: http://127.0.0.1:11434/api/tags
+model_routes:
+  planning:
+    candidates:
+      - provider: ollama-local
+        model: qwen2.5-coder:7b
+  execution:
+    candidates:
+      - provider: ollama-local
+        model: qwen2.5-coder:7b
+agent_routes: {}
+services: {}
+policy_sources:
+  - project:.mishkan/policy.yaml

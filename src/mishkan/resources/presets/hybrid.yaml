@@ -1,0 +1,33 @@
+schema_version: "1.0"
+mode: hybrid
+timezone: UTC
+project:
+  workspace: .
+providers:
+  ollama-local:
+    kind: ollama
+    endpoint: http://127.0.0.1:11434
+    probe_url: http://127.0.0.1:11434/api/tags
+  cloud-fallback:
+    kind: anthropic
+    endpoint: https://api.anthropic.com
+    credential_pool:
+      - source: env
+        locator: ANTHROPIC_API_KEY
+model_routes:
+  planning:
+    candidates:
+      - provider: ollama-local
+        model: qwen2.5-coder:7b
+      - provider: cloud-fallback
+        model: claude-sonnet-4-5
+  execution:
+    candidates:
+      - provider: ollama-local
+        model: qwen2.5-coder:7b
+      - provider: cloud-fallback
+        model: claude-sonnet-4-5
+agent_routes: {}
+services: {}
+policy_sources:
+  - project:.mishkan/policy.yaml
