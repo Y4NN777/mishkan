@@ -414,11 +414,11 @@ Three directions were reviewed before drawing containers:
 | Fully event-sourced core | Strong history, weak present fit | Projection, migration, and non-replayable-effect complexity |
 | Service-first control plane | Strong isolation later | Premature distributed consistency and local operational burden |
 
-The proposed direction is a transactional modular control plane with relational authoritative state
+The accepted direction is a transactional modular control plane with relational authoritative state
 and an append-only event outbox written in the same short transaction. CrewAI execution, external
 effects, event delivery, JSONL export, and read projection occur outside that transaction. Process
 separation is initially limited to interfaces already required by the product, especially remote
 workers and the read-only monitor.
 
-This direction is not approved until the behavior and risks in this document are reviewed. C4
-container and component models must not be added before that review closes.
+D-021 records the engineer's approval of this direction. C4 container and component models may now
+derive structure from these behaviors without reopening the accepted runtime or policy boundaries.
