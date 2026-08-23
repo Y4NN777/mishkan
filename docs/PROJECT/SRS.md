@@ -1,9 +1,12 @@
 # MISHKAN Software Requirements Specification
 
 **Status:** Approved — Gate G2
-**Version:** 1.0
+**Version:** 1.1
 **Derived from:** Approved PRD 1.0
 **Normative vocabulary:** MUST, MUST NOT, SHOULD, MAY follow RFC 2119 meanings
+
+Version 1.1 namespaces error codes with `ERR-` to prevent collisions with requirement identifiers.
+No required behavior changed from the approved 1.0 baseline.
 
 ## 1. Purpose and scope
 
@@ -591,22 +594,23 @@ events, logs, snapshots, artifacts, reports, or diffs.
 
 | Code | Condition | Required result |
 |---|---|---|
-| CFG-001 | Effective configuration is absent, malformed, or incompatible | Refuse the requested operation; identify the invalid field or version |
-| PRJ-001 | Repository or revision cannot be established | Do not plan or run; report evidence failure |
-| PLN-001 | Plan violates schema, organization, or policy | Reject plan with every detected violation |
-| PLN-002 | Plan has no valid authorization decision, or required approval is absent | Remain awaiting decision or approval; do not execute |
-| POL-001 | Requested authority is not granted | Refuse before action and emit audit evidence |
-| ROL-001 | Production/evaluation or orchestration/reporting conflict | Reject task assignment |
-| OUT-001 | Result fails its output contract | Reject, retry within policy, then fail with evidence |
-| REV-001 | Repository revision differs from accepted plan | Block execution or completion and require reconciliation |
-| RUN-001 | Run is interrupted | Preserve accepted results and expose resumable state |
-| RUN-002 | Duplicate result is received | Preserve first accepted result; record and ignore duplicate |
-| DEP-001 | Optional context service is unavailable | Continue only permitted degraded work and expose limitation |
-| DEP-002 | Required inference or coordination dependency is unavailable | Do not start affected work; expose retryable failure |
-| SEC-001 | Secret-like content reaches a persistence boundary | Block persistence and emit non-secret security evidence |
-| SCH-001 | Schedule time or trigger is invalid | Reject schedule without partial creation |
-| WRK-001 | Worker identity, capability, revision, or lease is invalid | Reject claim or completion and preserve evidence |
-| VER-001 | Persisted schema version is unsupported | Refuse automatic mutation and identify required operator action |
+| ERR-CFG-001 | Effective configuration is absent, malformed, or incompatible | Refuse the requested operation; identify the invalid field or version |
+| ERR-PRJ-001 | Repository or revision cannot be established | Do not plan or run; report evidence failure |
+| ERR-PLN-001 | Plan violates schema, organization, or policy | Reject plan with every detected violation |
+| ERR-PLN-002 | Plan has no valid authorization decision, or required approval is absent | Remain awaiting decision or approval; do not execute |
+| ERR-POL-001 | Requested authority is not granted | Refuse before action and emit audit evidence |
+| ERR-POL-002 | Equally specific and prioritized policy rules conflict | Deny without selecting a rule; expose the conflict |
+| ERR-ROL-001 | Production/evaluation or orchestration/reporting conflict | Reject task assignment |
+| ERR-OUT-001 | Result fails its output contract | Reject, retry within policy, then fail with evidence |
+| ERR-REV-001 | Repository revision differs from accepted plan | Block execution or completion and require reconciliation |
+| ERR-RUN-001 | Run is interrupted | Preserve accepted results and expose resumable state |
+| ERR-RUN-002 | Duplicate result is received | Preserve first accepted result; record and ignore duplicate |
+| ERR-DEP-001 | Optional context service is unavailable | Continue only permitted degraded work and expose limitation |
+| ERR-DEP-002 | Required inference or coordination dependency is unavailable | Do not start affected work; expose retryable failure |
+| ERR-SEC-001 | Secret-like content reaches a persistence boundary | Block persistence and emit non-secret security evidence |
+| ERR-SCH-001 | Schedule time or trigger is invalid | Reject schedule without partial creation |
+| ERR-WRK-001 | Worker identity, capability, revision, or lease is invalid | Reject claim or completion and preserve evidence |
+| ERR-VER-001 | Persisted schema version is unsupported | Refuse automatic mutation and identify required operator action |
 
 ## 15. Approved and candidate technical constraints
 

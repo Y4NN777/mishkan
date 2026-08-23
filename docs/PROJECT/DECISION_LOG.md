@@ -31,7 +31,7 @@ cannot be represented clearly in one row.
 | D-009 | Organization | Accepted | Production, independent evaluation, orchestration, and reporting obey the declared role-separation rules | Self-evaluation and same-task orchestration/reporting conflicts are rejected | SRS ORG-004–008 |
 | D-010 | Delivery | Accepted | Distributed execution follows proof of local core operation | Distributed requirements are post-core release scope | PRD and SRS §12 |
 | D-011 | Scope | Accepted | Version 1 exposes CLI/SDK, a headless daemon, workers, and a read-only terminal monitor; no web dashboard or Windows target | Architecture and roadmap must remain inside this interface boundary | SRS TC-004, NFR-001 |
-| D-012 | Governance | Accepted | PRD 1.0 and SRS 1.0 are canonical; Sequence 03 contract work is authorized but not yet approved | Responsibility assignment and implementation remain blocked | Engineer validation, 2026-08-23 |
+| D-012 | Governance | Accepted | PRD 1.0 and SRS 1.1 are canonical; Sequence 03 contract work is authorized but not yet approved | Responsibility assignment and implementation remain blocked | Engineer validation, 2026-08-23 |
 | D-013 | Documentation | Accepted | Version only durable authority or factual evidence, organized by domain with this central decision registry | Working registers, self-reviews, per-gate approval files, and speculative checklists are not project documents | Aïobi ID documentation model review, 2026-08-23 |
 
 ## Open decisions

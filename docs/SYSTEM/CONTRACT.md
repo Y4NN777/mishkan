@@ -14,7 +14,7 @@ contract applies equally to interactive, headless, scheduled, and—when enabled
 The contract says what remains true regardless of storage, transport, process topology, provider,
 or user interface. It does not assign the guarantees to components; that occurs in Sequence 04.
 
-## 2. Policy is not an invariant
+## 2. Operational policy values are not invariants
 
 MISHKAN has two deliberately different kinds of rules:
 
@@ -310,7 +310,7 @@ the capability appears on a hardcoded forbidden list.
 1. Only rules whose typed selectors all match are candidates.
 2. A more specific scope takes precedence over a less specific scope.
 3. An explicit priority resolves candidates of different declared priority.
-4. Conflicting decisions at equal specificity and priority produce `deny` with `POL-CONFLICT`.
+4. Conflicting decisions at equal specificity and priority produce `deny` with `ERR-POL-002`.
 5. An approval is valid only for the request fingerprint and expiry or use bound it declares.
 6. The full candidate set, winning rule, and decision reason are recorded without secrets.
 
@@ -348,7 +348,7 @@ These are integrity failures, not a hardcoded list of business operations:
 | REF-001 | Required configuration or provenance is absent or incompatible | No run or partial configuration mutation |
 | REF-002 | No valid policy decision exists at an effect boundary | No effect; record the decision failure |
 | REF-003 | An actor attempts to authorize itself or enlarge its scope | No effect; emit security evidence |
-| REF-004 | Policy rules conflict without deterministic precedence | Deny with `POL-CONFLICT` |
+| REF-004 | Policy rules conflict without deterministic precedence | Deny with `ERR-POL-002` |
 | REF-005 | Plan, role, dependency, loop, or output contract is invalid | Reject the plan or result with every detected violation |
 | REF-006 | Repository revision or produced lineage cannot be established | Block affected execution or acceptance |
 | REF-007 | A resolved path or actual external target exceeds authorized scope | Refuse before access or effect |
@@ -384,6 +384,18 @@ These constraints shape later responsibilities but do not alter the contract:
 4. Persisted schemas are explicitly versioned and migrations are initiated through policy-governed
    operations rather than automatic mutation.
 5. Distributed execution is post-core and must preserve local acceptance semantics.
+6. Core support targets Linux and macOS; Windows is not a version 1 target.
+7. Configuration validation and readiness reporting complete within 10 seconds on the reference
+   local environment, excluding an explicitly requested model download or repository scan.
+8. The local control plane accepts at least 100 valid events per second for 60 seconds without an
+   undetected loss.
+9. Synchronous pre-operation advisory returns within 500 milliseconds at the 95th percentile on
+   the reference environment or applies its defined safe fallback and records a timeout event.
+10. Live monitoring uses bounded buffers and remains responsive above display capacity.
+11. Configuration, coordination, planning, execution, recovery, authorization, and safety modules
+    maintain at least 80 percent branch coverage.
+12. Release acceptance includes repeatable interruption and secret-containment tests required by
+    NFR-009 and NFR-010.
 
 ## 13. Abstract dependencies
 
