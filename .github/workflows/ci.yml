@@ -4,7 +4,13 @@ on:
   push:
     branches:
       - main
-      - "impl/**"
+      - develop
+      - "feat/**"
+      - "fix/**"
+      - "docs/**"
+      - "test/**"
+      - "refactor/**"
+      - "chore/**"
   pull_request:
 
 permissions:

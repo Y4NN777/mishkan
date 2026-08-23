@@ -2,7 +2,7 @@
 
 **Status:** Approved — delivery baseline
 
-**Version:** 1.0
+**Version:** 1.1
 
 **Derived from:** PRD 1.2, SRS 1.3, Contract 1.2, Responsibility Map 1.0,
 System Model 1.0, Architecture 1.0, and accepted decisions D-001–D-022
@@ -100,13 +100,17 @@ to duplicate domain rules between folders or split modules into services.
 
 ## 5. Progressive Git delivery protocol
 
-- Use one implementation branch per increment: `impl/i00-foundation` through
-  `impl/i10-release`.
+- `main` receives changes only from `develop`; feature, fix, documentation, test, refactor, and
+  maintenance branches never merge directly into `main`.
+- Branch from the current `develop` using the applicable prefix: `feat/`, `fix/`, `docs/`, `test/`,
+  `refactor/`, or `chore/`. An implementation increment normally uses `feat/iNN-description`.
 - Commit a coherent behavior plus its tests together. Avoid one giant phase commit and avoid
   mechanical commit noise.
 - Before each push, run the narrow affected test gate, Ruff, strict mypy, and `git diff --check`.
-- Push after every green checkpoint so work is recoverable and reviewable. Merge an increment only
-  after its full acceptance gate passes.
+- Push after every green checkpoint so work is recoverable and reviewable. Merge the topic branch
+  into `develop` only after its increment gate passes.
+- Promote `develop` to `main` only after the integrated `develop` gate passes. The promotion must
+  preserve the topic and integration history; it is never replaced by a direct topic-to-main merge.
 - Use `Y4NN777 <axel.studiesmail@gmail.com>` for every commit.
 - Do not rewrite or force-push shared implementation history except for an explicitly authorized
   history-repair operation with the exact target resolved first.
