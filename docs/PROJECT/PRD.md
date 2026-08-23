@@ -1,11 +1,10 @@
 # MISHKAN Product Requirements Document
 
-**Status:** Amendment proposed — Gate G1 reconfirmation required
-**Version:** 1.2 candidate
+**Status:** Approved — Gate G1
+**Version:** 1.2
 **Scope:** Product problem and outcomes only
 
-**Approved baseline:** 1.0, recorded 2026-08-23 by Y4NN777
-**Amendment opened:** 2026-08-23 to restore the first-class skills and tools systems
+**Approved:** 2026-08-23 by Y4NN777, including the skills and tools amendment
 
 ## 1. Problem
 

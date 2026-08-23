@@ -1,9 +1,9 @@
 # MISHKAN Requirement-to-Responsibility Map
 
-**Status:** Draft — Gate G4 review
-**Version:** 0.3
+**Status:** Approved — Gate G4
+**Version:** 1.0
 **Sequence:** SWE-BASICS-BEFORE-CODE 04
-**Derived from:** PRD 1.2 candidate, SRS 1.3 candidate, System Contract 1.2 candidate
+**Derived from:** Approved PRD 1.2, SRS 1.3, System Contract 1.2
 
 ## 1. Purpose
 

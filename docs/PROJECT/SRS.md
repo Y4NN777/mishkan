@@ -1,8 +1,8 @@
 # MISHKAN Software Requirements Specification
 
-**Status:** Amendment proposed — Gate G2 reconfirmation required
-**Version:** 1.3 candidate
-**Derived from:** PRD 1.2 candidate
+**Status:** Approved — Gate G2
+**Version:** 1.3
+**Derived from:** Approved PRD 1.2
 **Normative vocabulary:** MUST, MUST NOT, SHOULD, MAY follow RFC 2119 meanings
 
 Version 1.3 restores the first-class skills and tools systems omitted during consolidation. It

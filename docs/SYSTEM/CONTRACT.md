@@ -1,9 +1,9 @@
 # MISHKAN System Contract and Invariants
 
-**Status:** Amendment proposed — Gate G3 reconfirmation required
-**Version:** 1.2 candidate
+**Status:** Approved — Gate G3
+**Version:** 1.2
 **Sequence:** SWE-BASICS-BEFORE-CODE 03
-**Derived from:** SRS 1.3 candidate
+**Derived from:** Approved SRS 1.3
 
 ## 1. Contract boundary
 
