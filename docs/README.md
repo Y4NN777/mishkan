@@ -18,6 +18,7 @@ This index is the entry point for durable MISHKAN documentation.
 | [`PROJECT/PRD.md`](PROJECT/PRD.md) | Approved 1.2 | Product problem, scope, success criteria, skills, and controlled capabilities |
 | [`PROJECT/SRS.md`](PROJECT/SRS.md) | Approved 1.3 | Canonical verifiable requirements including first-class skills and tools |
 | [`PROJECT/DECISION_LOG.md`](PROJECT/DECISION_LOG.md) | Living | Central registry for accepted, open, and superseded decisions |
+| [`PROJECT/IMPLEMENTATION_PLAN.md`](PROJECT/IMPLEMENTATION_PLAN.md) | Draft 0.1 | Post-architecture vertical delivery and acceptance plan |
 | [`SYSTEM/CONTRACT.md`](SYSTEM/CONTRACT.md) | Approved 1.2 | Sequence 03 promises, invariants, refusals, and abstract dependencies |
 | [`SYSTEM/RESPONSIBILITIES.md`](SYSTEM/RESPONSIBILITIES.md) | Approved 1.0 | Sequence 04 primary responsibility ownership and handoffs |
 | [`SYSTEM/MODEL.md`](SYSTEM/MODEL.md) | Approved 1.0 | Sequence 05 context, lifecycle, and interaction behavior basis |
