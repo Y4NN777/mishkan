@@ -1,9 +1,9 @@
 # MISHKAN System Contract and Invariants
 
-**Status:** Draft — Gate G3 review
-**Version:** 0.1
+**Status:** Approved — Gate G3
+**Version:** 1.0
 **Sequence:** SWE-BASICS-BEFORE-CODE 03
-**Derived from:** Approved SRS 1.0
+**Derived from:** Approved SRS 1.1
 
 ## 1. Contract boundary
 

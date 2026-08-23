@@ -18,7 +18,7 @@ This index is the entry point for durable MISHKAN documentation.
 | [`PROJECT/PRD.md`](PROJECT/PRD.md) | Approved 1.0 | Product problem, scope, and success criteria |
 | [`PROJECT/SRS.md`](PROJECT/SRS.md) | Approved 1.1 | Canonical verifiable software requirements |
 | [`PROJECT/DECISION_LOG.md`](PROJECT/DECISION_LOG.md) | Living | Central registry for accepted, open, and superseded decisions |
-| [`SYSTEM/CONTRACT.md`](SYSTEM/CONTRACT.md) | Draft | Sequence 03 promises, invariants, refusals, and abstract dependencies |
+| [`SYSTEM/CONTRACT.md`](SYSTEM/CONTRACT.md) | Approved 1.0 | Sequence 03 promises, invariants, refusals, and abstract dependencies |
 
 ## Authority rules
 
