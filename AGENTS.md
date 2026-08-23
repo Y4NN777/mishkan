@@ -49,6 +49,9 @@ not silently turn them into approved architecture.
 - Treat skills as first-class portable procedural memory loaded progressively into authorized
   CrewAI work. Skills do not replace roles, repository-specific plans, CrewAI coordination, or
   deterministic capability enforcement, and skill mutations follow the public capability policy.
+- Treat tools as first-class typed atomic capabilities resolved from a public versioned registry.
+  Tool availability, grouping, and source do not grant authority; exact plan and policy scope is
+  enforced before dispatch, and production invocation remains integrated with CrewAI.
 
 ## Change discipline
 

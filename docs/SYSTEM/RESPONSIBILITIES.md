@@ -1,9 +1,9 @@
 # MISHKAN Requirement-to-Responsibility Map
 
 **Status:** Draft — Gate G4 review
-**Version:** 0.2
+**Version:** 0.3
 **Sequence:** SWE-BASICS-BEFORE-CODE 04
-**Derived from:** PRD 1.1 candidate, SRS 1.2 candidate, System Contract 1.1 candidate
+**Derived from:** PRD 1.2 candidate, SRS 1.3 candidate, System Contract 1.2 candidate
 
 ## 1. Purpose
 
@@ -119,9 +119,11 @@ completion effects.
 
 Mediate filesystem, command, network, credential, repository, deployment, migration, and future
 capabilities at deterministic boundaries. Resolve actual targets, apply exact granted scopes and
-isolation limits, and prevent actors from enlarging authority.
+isolation limits, validate tool calls and results, preserve uncertain effects, and prevent actors
+from enlarging authority.
 
-**Owns:** capability registry, typed request enforcement, resolved-target decision, effect outcome.
+**Owns:** typed invocation enforcement, resolved-target decision, late credential release, effect
+outcome, retry-safety decision, validated tool-result envelope.
 
 ### RSP-012 — Sanitize content and record security evidence
 
@@ -194,6 +196,17 @@ staged Research-team proposals.
 outcome, miss aggregation, learning request and proposal lineage. It does not activate its own
 proposal or grant the consuming task capabilities.
 
+### RSP-021 — Resolve and expose atomic tools
+
+Discover versioned tools from configured native and external sources; validate contracts,
+namespaces, availability, adapters, and external schema state; resolve nested toolsets into immutable
+registry snapshots; search metadata without eagerly loading every schema; bind exact eligible tools
+to authorized CrewAI agents without creating another tool-calling runtime.
+
+**Owns:** tool and toolset definitions, source and adapter provenance, registry snapshot, collision
+and drift decisions, availability result, task tool binding, CrewAI tool representation. It does not
+authorize or dispatch a call.
+
 ## 4. Requirement ownership matrix
 
 Each range is inclusive. No requirement appears in more than one row.
@@ -210,7 +223,7 @@ Each range is inclusive. No requirement appears in more than one row.
 | RSP-008 | ORG-009, RUN-001–005, RUN-007, RUN-009, RUN-011 |
 | RSP-009 | ORG-005–008 |
 | RSP-010 | RUN-006, RUN-008, RUN-010 |
-| RSP-011 | SAF-001–002, SAF-007, SAF-011, SAF-013 |
+| RSP-011 | SAF-001–002, SAF-007, SAF-011, SAF-013, TOL-012–022 |
 | RSP-012 | SAF-008–010, SAF-012, OBS-008 |
 | RSP-013 | KNW-001–005 |
 | RSP-014 | KNW-006, SKL-006–008, SKL-016–025 |
@@ -218,8 +231,9 @@ Each range is inclusive. No requirement appears in more than one row.
 | RSP-016 | AUT-001–007 |
 | RSP-017 | DST-001–010 |
 | RSP-018 | NFR-001–006, NFR-008–010 |
-| RSP-019 | TC-001–006 |
+| RSP-019 | TC-001–007 |
 | RSP-020 | SKL-001–005, SKL-009–015 |
+| RSP-021 | TOL-001–011, TOL-023–025 |
 
 ## 5. Error ownership matrix
 
@@ -236,6 +250,8 @@ Each range is inclusive. No requirement appears in more than one row.
 | RSP-012 | ERR-SEC-001 |
 | RSP-014 | ERR-SKL-001, ERR-SKL-002 |
 | RSP-020 | ERR-SKL-003 |
+| RSP-021 | ERR-TOL-001, ERR-TOL-002, ERR-TOL-005 |
+| RSP-011 | ERR-TOL-003, ERR-TOL-004 |
 | RSP-016 | ERR-SCH-001 |
 | RSP-017 | ERR-WRK-001 |
 | RSP-002 | ERR-VER-001 |
@@ -253,7 +269,7 @@ Each range is inclusive. No requirement appears in more than one row.
 | RSP-008 | CTR-006, INV-009–010, INV-018 |
 | RSP-009 | CTR-008, INV-014 |
 | RSP-010 | CTR-005, INV-011–013 |
-| RSP-011 | INV-003, INV-015, INV-017 |
+| RSP-011 | INV-003, INV-015, INV-017, INV-028–030 |
 | RSP-012 | CTR-007, INV-016 |
 | RSP-013 | CTR-010, INV-021 |
 | RSP-014 | INV-025–026 |
@@ -261,6 +277,7 @@ Each range is inclusive. No requirement appears in more than one row.
 | RSP-016 | INV-022 |
 | RSP-017 | CTR-012, INV-023 |
 | RSP-020 | CTR-013, INV-024 |
+| RSP-021 | CTR-014, INV-027 |
 
 `INV-003` is primarily enforced at the capability boundary by RSP-011; RSP-006 supplies the
 authorization decision but does not enforce its own decision.
@@ -269,11 +286,13 @@ authorization decision but does not enforce its own decision.
 
 | Producer | Consumer | Required handoff |
 |---|---|---|
-| RSP-001 | RSP-005–020 | Effective configuration identity and provenance |
+| RSP-001 | RSP-005–021 | Effective configuration identity and provenance |
 | RSP-004 | RSP-005, RSP-010, RSP-017 | Repository evidence, base revision, and lineage |
 | RSP-005 | RSP-006 | Exact normalized plan fingerprint and capability requests |
 | RSP-006 | RSP-008, RSP-011, RSP-016, RSP-017 | Durable authorization decision and exact scope |
 | RSP-007 | RSP-005, RSP-008, RSP-009 | Versioned roles, outcomes, tools, and separation metadata |
+| RSP-007 | RSP-021 | Role tool eligibility and declared toolset references |
+| RSP-021 | RSP-005, RSP-008, RSP-011 | Registry snapshot, exact task binding, and CrewAI tool representation |
 | RSP-008 | RSP-010 | CrewAI task result plus execution lineage |
 | RSP-011 | RSP-010, RSP-012 | Effect outcome and resolved target evidence |
 | RSP-009 | RSP-010 | Independent evaluation result |
@@ -296,7 +315,7 @@ These groupings are hypotheses to test with behavior and C4 models, not approved
 | Definition and context | RSP-001–004, RSP-007 | Configuration, schemas, organization, and repository evidence evolve |
 | Planning and authority | RSP-005–006 | Plan semantics and policy decisions evolve together but require an enforcement boundary |
 | CrewAI coordination and acceptance | RSP-008–010 | Runtime orchestration, independent evaluation, and accepted completion interact closely |
-| Effects and evidence | RSP-011–012, RSP-015 | Enforcement, sanitation, audit, and durable reconstruction protect every action |
+| Tools, effects, and evidence | RSP-011–012, RSP-015, RSP-021 | Tool resolution, enforcement, sanitation, audit, and durable reconstruction protect every action |
 | Context and skills | RSP-013–014, RSP-020 | Retrieval, procedural selection, and skill lifecycle share provenance but preserve activation separation |
 | Automation and distribution | RSP-016–017 | Scheduled and remote triggers extend execution without changing acceptance semantics |
 | Product conformance | RSP-018–019 | Release gates and fixed technical constraints change with supported product versions |

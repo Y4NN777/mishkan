@@ -1,19 +1,19 @@
 # MISHKAN Software Requirements Specification
 
 **Status:** Amendment proposed — Gate G2 reconfirmation required
-**Version:** 1.2 candidate
-**Derived from:** PRD 1.1 candidate
+**Version:** 1.3 candidate
+**Derived from:** PRD 1.2 candidate
 **Normative vocabulary:** MUST, MUST NOT, SHOULD, MAY follow RFC 2119 meanings
 
-Version 1.2 restores the first-class skills system omitted during consolidation. It preserves the
-1.1 error-code namespace and makes progressive skill discovery, learning, trust, mutation, and
-recovery explicit.
+Version 1.3 restores the first-class skills and tools systems omitted during consolidation. It
+preserves the 1.1 error-code namespace and makes their discovery, composition, trust, invocation,
+mutation, and recovery explicit.
 
 ## 1. Purpose and scope
 
 This SRS defines the observable behavior and constraints of MISHKAN product version 1. It does not
 assign responsibilities to components or prescribe an implementation except where an explicit
-engineer-selected technical constraint is recorded in §16.
+engineer-selected technical constraint is recorded in §17.
 
 Core release requirements cover local, interactive, and headless operation on one machine.
 Distributed requirements are identified as post-core and do not block acceptance of the core
@@ -220,8 +220,9 @@ the accepted plan or trigger replanning.
 
 ### ORG-010 — Explicit tool authority
 
-Every participating identity MUST receive an explicit allowlist of available tools. Wildcard tool
-authority MUST be rejected.
+Every participating identity MUST receive an exact resolved set of available tool identities and
+versions. A configured shorthand or toolset MAY expand before plan acceptance, but the expansion
+MUST be recorded in the plan fingerprint and MUST NOT include tools discovered later.
 
 ### ORG-011 — Catalogue outcomes
 
@@ -542,7 +543,152 @@ Core skill discovery, creation, review, activation, use, and restoration MUST op
 MISHKAN-hosted marketplace. Community acquisition MAY use configured repositories, URLs, or hubs
 but MUST pass the same provenance, inspection, and policy path as every other external source.
 
-## 11. Events, evidence, and retention
+## 11. Tools and atomic capabilities
+
+### TOL-001 — Distinct semantics
+
+The system MUST distinguish a tool from a skill, prompt, organizational role, workflow outcome,
+and task. A tool is one typed atomic capability; registering or selecting it MUST NOT grant
+authority or create a competing agent execution loop.
+
+### TOL-002 — Versioned tool contract
+
+Every tool MUST declare a namespaced identity, version, summary, input schema, result schema,
+effect class, source, availability conditions, timeout behavior, idempotency semantics, applicable
+target scopes, credential references without values, and provenance fingerprint.
+
+### TOL-003 — Configured sources
+
+The registry MUST discover tools only from versioned configured sources that MAY include bundled
+implementations, project definitions, operator-managed adapters, and external protocol servers.
+Source locations, enablement, and transports MUST NOT depend on private hardcoded values.
+
+### TOL-004 — Namespacing and collision
+
+Tool identities from different sources MUST remain unambiguous. An unresolved identity collision
+MUST prevent the conflicting tools from entering an accepted registry snapshot and MUST expose all
+claiming sources.
+
+### TOL-005 — Toolsets
+
+The system MUST support versioned named toolsets that compose exact tools or other toolsets.
+Toolset ordering, inclusion, exclusion, availability rules, and nesting bounds MUST be public
+configuration, and resolution cycles MUST be rejected.
+
+### TOL-006 — Deferred discovery
+
+The system MUST support listing and searching minimal tool metadata without loading every full
+schema into task context. The exact input and result schemas MUST be loaded before a tool is bound
+to a task or invoked.
+
+### TOL-007 — Availability
+
+The system MUST evaluate a tool's configured runtime, platform, credential-reference, service,
+resource, and dependency conditions before task binding. Unavailability MUST be visible and MUST
+NOT be represented as authorization denial or successful execution.
+
+### TOL-008 — Registry snapshot
+
+Every accepted plan MUST identify the immutable tool-registry snapshot used to resolve its tools.
+Registry changes MUST create a new snapshot and MUST NOT silently alter an accepted task.
+
+### TOL-009 — Task binding
+
+A task MAY use only exact tools present in its accepted plan, permitted for the assigned role,
+available in the bound registry snapshot, and supported by the assigned execution location.
+
+### TOL-010 — No implicit authority expansion
+
+Enabling a source, tool, toolset, adapter, credential, or external server MUST NOT grant its tools to
+an existing role, plan, task, run, or worker. Expansion MUST pass normal plan and policy decisions.
+
+### TOL-011 — CrewAI tool binding
+
+Every production tool selected for an agent MUST be exposed through a currently supported CrewAI
+tool interface. MISHKAN MUST NOT implement a competing production model tool-calling loop.
+
+### TOL-012 — Invocation envelope
+
+Every invocation MUST identify the run, task attempt, acting identity, tool and contract version,
+registry and plan fingerprints, normalized arguments, declared targets, applicable authorization,
+deadline, and unique call identifier.
+
+### TOL-013 — Input validation
+
+Arguments MUST validate against the exact bound input schema before credentials are resolved or the
+tool is dispatched. Invalid arguments MUST produce no tool effect.
+
+### TOL-014 — Authorization before dispatch
+
+The system MUST confirm exact task binding and an effective allow decision or required approval for
+the tool, effect class, targets, and scopes before dispatch. Tool source or availability MUST NOT
+serve as authorization evidence.
+
+### TOL-015 — Late credential resolution
+
+Credential values MUST be resolved only after validation and authorization, supplied only to the
+selected adapter fields that require them, and excluded from model-visible arguments and persisted
+evidence.
+
+### TOL-016 — Resolved targets
+
+Filesystem, network, repository, environment, remote, and external-resource scopes MUST be checked
+against the actual resolved effect targets at the deterministic invocation boundary.
+
+### TOL-017 — Execution constraints
+
+Each call MUST apply the plan- and policy-authorized timeout, resource, isolation, network, and
+concurrency constraints for its effect class. If a required constraint cannot be enforced, the call
+MUST be refused before dispatch.
+
+### TOL-018 — Result envelope
+
+Every completed, failed, cancelled, or uncertain tool call MUST return a versioned envelope with
+call identity, status, timing, non-secret output or artifact references, actual external-state
+references where applicable, retryability, and attributable adapter evidence.
+
+### TOL-019 — Result validation
+
+The result envelope and declared result schema MUST validate before tool output enters task context
+or accepted evidence. Invalid output MUST be contained and reported as a tool-contract failure.
+
+### TOL-020 — Retry and idempotency
+
+Automatic retry MUST occur only within accepted bounds and when the tool contract establishes
+idempotency, a deduplication key, or an authorized compensation rule. An uncertain state-changing
+effect MUST NOT be repeated automatically.
+
+### TOL-021 — Timeout and cancellation
+
+A timeout or cancellation MUST stop local work where possible and record whether the external
+effect is absent, completed, or uncertain. Uncertainty MUST block dependent acceptance until
+reconciled.
+
+### TOL-022 — Invocation evidence
+
+Selection, binding, authorization, start, completion, refusal, retry, timeout, schema failure, and
+uncertain effect MUST produce typed non-secret evidence attributable to the exact tool version and
+task attempt.
+
+### TOL-023 — External protocol discovery
+
+For each configured external tool server, the system MUST discover only capabilities supported by
+the negotiated session, namespace them by server identity, apply configured filtering, and adapt
+their schemas through the supported CrewAI integration boundary.
+
+### TOL-024 — External lifecycle and drift
+
+Connection start, readiness, reconnect, shutdown, authentication change, and schema drift for an
+external tool source MUST be observable. Drift from a bound registry snapshot MUST block new calls
+through that binding until it is reconciled or replanned.
+
+### TOL-025 — Policy-governed lifecycle
+
+Adding, enabling, disabling, updating, removing, or changing the precedence of a tool source,
+adapter, tool, or toolset MUST be a typed stateful capability. Changes MUST be validated and become
+effective atomically under policy without rewriting prior registry snapshots or call evidence.
+
+## 12. Events, evidence, and retention
 
 ### OBS-001 — Typed events
 
@@ -583,7 +729,7 @@ an active hold or incomplete run.
 Event and snapshot serialization MUST apply the same secret-handling guarantees as other persisted
 outputs.
 
-## 12. Headless operation and scheduling
+## 13. Headless operation and scheduling
 
 ### AUT-001 — Headless equivalence
 
@@ -619,7 +765,7 @@ schedule, and inspect its run history.
 
 An external scheduler MUST be able to invoke the same idempotent run interface used internally.
 
-## 13. Distributed execution — post-core
+## 14. Distributed execution — post-core
 
 ### DST-001 — Explicit distributed mode
 
@@ -671,7 +817,7 @@ and the effective policy decision permits it.
 The coordinator MUST accept at most one valid completion for a task attempt despite retries,
 duplicate delivery, worker loss, or partial network failure.
 
-## 14. Non-functional requirements
+## 15. Non-functional requirements
 
 ### NFR-001 — Supported core platforms
 
@@ -721,7 +867,7 @@ loss, event-transport loss, and—when distributed mode is released—worker and
 Automated tests MUST verify that representative credentials cannot enter configuration output,
 events, logs, snapshots, artifacts, reports, or diffs.
 
-## 15. Error behavior
+## 16. Error behavior
 
 | Code | Condition | Required result |
 |---|---|---|
@@ -742,11 +888,16 @@ events, logs, snapshots, artifacts, reports, or diffs.
 | ERR-SKL-001 | Skill package, manifest, reference, dependency, or mutation contract is invalid | Keep the skill inactive; report every detected validation failure |
 | ERR-SKL-002 | Skill provenance, trust, inspection, quarantine, or activation decision is insufficient | Keep the skill inactive or preserve the prior active version; emit non-secret evidence |
 | ERR-SKL-003 | Skill selection is ambiguous or incompatible with the task context | Do not apply the skill; identify the conflicting source or unmet condition |
+| ERR-TOL-001 | Tool definition, schema, adapter, toolset, or registry entry is invalid | Exclude it from the accepted registry snapshot and report every detected failure |
+| ERR-TOL-002 | A required tool or source is unavailable | Do not bind or dispatch it; expose the missing condition and permitted fallback if any |
+| ERR-TOL-003 | Tool arguments, result envelope, or result schema is invalid | Produce no effect for invalid input; contain invalid output and fail the call contract |
+| ERR-TOL-004 | Tool call failed, timed out, was cancelled, or has uncertain effect | Preserve attributable evidence; retry only when the contract and policy permit it |
+| ERR-TOL-005 | Tool identity collides or a bound external schema drifted | Block the conflicting or stale binding until registry reconciliation or replanning |
 | ERR-SCH-001 | Schedule time or trigger is invalid | Reject schedule without partial creation |
 | ERR-WRK-001 | Worker identity, capability, revision, or lease is invalid | Reject claim or completion and preserve evidence |
 | ERR-VER-001 | Persisted schema version is unsupported | Refuse automatic mutation and identify required operator action |
 
-## 16. Approved and candidate technical constraints
+## 17. Approved and candidate technical constraints
 
 This section records implementation constraints separately from behavioral requirements. It does
 not assign component responsibilities.
@@ -782,6 +933,12 @@ for distributed operation. This becomes binding only after the persistence ADR i
 The system may prepare, verify, or apply schema migrations according to explicit environment-scoped
 capability policy. Migration application MUST support approval gates and MUST emit durable evidence;
 it is not universally forbidden or universally enabled.
+
+### TC-007 — CrewAI and external tool integration
+
+Native tools use CrewAI's supported tool contract, and configured external protocol tools use its
+supported integration boundary. MISHKAN may wrap these interfaces to enforce product contracts but
+MUST NOT replace CrewAI's production agent tool-calling runtime.
 
 ## Appendix A — Organization version 1 roster
 
@@ -842,6 +999,7 @@ the specific objective and repository revision and are not fixed universal chain
 | UC-07 Preserve knowledge and grow skills | KNW-001–006, SKL-001–025 |
 | UC-08 Operate headlessly | AUT-001–007 |
 | UC-09 Use remote capacity | DST-001–010 |
+| UC-10 Extend controlled capabilities | TOL-001–025 |
 | SC-01 Repository adaptation | PRJ-003–007, ORG-012 |
 | SC-02 End-to-end delegation | PLN, ORG, and RUN sections |
 | SC-03 Human control | SAF-003–013 |
@@ -852,3 +1010,4 @@ the specific objective and repository revision and are not fixed universal chain
 | SC-08 Distributed recovery | DST-001–010, post-core |
 | SC-09 Local operation | NFR-001–003 |
 | SC-10 Skill learning loop | SKL-011–024 |
+| SC-11 Controlled tool extension | TOL-003–025 |

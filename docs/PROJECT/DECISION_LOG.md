@@ -29,21 +29,22 @@ cannot be represented clearly in one row.
 | D-007 | Product | Accepted | A run targets one repository and records one immutable base revision; produced revisions retain task and run lineage | Multi-repository runs are outside version 1 | SRS PRJ-001–002 |
 | D-008 | Organization | Accepted | Organization version 1 contains the SRS roster of 32 roles and catalogue of 15 outcomes | A later roster requires a new versioned organization definition | SRS ORG-001–012, appendices A–B |
 | D-009 | Organization | Accepted | Production, independent evaluation, orchestration, and reporting obey the declared role-separation rules | Self-evaluation and same-task orchestration/reporting conflicts are rejected | SRS ORG-004–008 |
-| D-010 | Delivery | Accepted | Distributed execution follows proof of local core operation | Distributed requirements are post-core release scope | PRD and SRS §13 |
+| D-010 | Delivery | Accepted | Distributed execution follows proof of local core operation | Distributed requirements are post-core release scope | PRD and SRS §14 |
 | D-011 | Scope | Accepted | Version 1 exposes CLI/SDK, a headless daemon, workers, and a read-only terminal monitor; no web dashboard or Windows target | Architecture and roadmap must remain inside this interface boundary | SRS TC-004, NFR-001 |
-| D-012 | Governance | Accepted | PRD 1.0, SRS 1.1, and System Contract 1.0 remain the last fully approved baseline until their skills amendments are reconfirmed | Sequence 04 responsibility assignment is authorized; architecture and implementation remain blocked | Engineer validation, 2026-08-23 |
+| D-012 | Governance | Accepted | PRD 1.0, SRS 1.1, and System Contract 1.0 remain the last fully approved baseline until their skills and tools amendments are reconfirmed | Sequence 04 responsibility assignment is authorized; architecture and implementation remain blocked | Engineer validation, 2026-08-23 |
 | D-013 | Documentation | Accepted | Version only durable authority or factual evidence, organized by domain with this central decision registry | Working registers, self-reviews, per-gate approval files, and speculative checklists are not project documents | Aïobi ID documentation model review, 2026-08-23 |
 | D-014 | System | Accepted | Authority is closed-world; equal-precedence policy conflict denies; plans evolve through linked versions; action names are not universal prohibitions; evidence meaning is append-only | These five laws govern the responsibility and architecture stages | Engineer validation, 2026-08-23 |
 | D-018 | Product | Accepted | MISHKAN has a first-class Hermes-inspired skills system for portable procedural memory, progressive disclosure, learning from reviewed experience, provenance, and recoverable evolution | Skills enrich authorized CrewAI tasks; they are not tools, static workflows, a competing runtime, or a MISHKAN-hosted marketplace | Engineer correction; official [Hermes Agent](https://github.com/NousResearch/hermes-agent) and [skills guide](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/skills.md), 2026-08-23 |
+| D-020 | System | Accepted | MISHKAN has a first-class versioned tool registry and toolset model for native and configured external atomic capabilities | Tool availability never grants authority; exact tools bind to accepted tasks and execute through CrewAI plus MISHKAN validation and policy enforcement | Engineer correction; official [CrewAI tools](https://github.com/crewAIInc/crewAI/blob/main/lib/crewai-tools/README.md), [Hermes tools](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/tools.md), and [Hermes toolsets](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/reference/toolsets-reference.md), 2026-08-23 |
 
 ## Open decisions
 
 | ID | Type | Status | Decision needed | Blocking point |
 |---|---|---|---|---|
 | D-015 | Technical | Open | Select the concrete persistence design for local and distributed modes | Architecture ADR |
-| D-016 | Technical | Open | Select concrete interfaces for inference, memory, knowledge, structure, events, scheduling, and workers | Architecture ADRs |
+| D-016 | Technical | Open | Select concrete interfaces for inference, memory, knowledge, structure, tool adapters, events, scheduling, and workers | Architecture ADRs |
 | D-017 | System | Open | Approve or amend the requirement-to-responsibility map, CrewAI runtime boundary, and restored skill responsibility boundary | Sequence 05 behavior and C4 models |
-| D-019 | Governance | Open | Reconfirm PRD 1.1, SRS 1.2, and System Contract 1.1 skills amendments | Gate G4 approval and Sequence 05 behavior models |
+| D-019 | Governance | Open | Reconfirm PRD 1.2, SRS 1.3, and System Contract 1.2 skills and tools amendments | Gate G4 approval and Sequence 05 behavior models |
 
 ## Review rules
 

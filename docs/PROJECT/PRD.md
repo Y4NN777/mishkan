@@ -1,11 +1,11 @@
 # MISHKAN Product Requirements Document
 
 **Status:** Amendment proposed — Gate G1 reconfirmation required
-**Version:** 1.1 candidate
+**Version:** 1.2 candidate
 **Scope:** Product problem and outcomes only
 
 **Approved baseline:** 1.0, recorded 2026-08-23 by Y4NN777
-**Amendment opened:** 2026-08-23 to restore the first-class skills system
+**Amendment opened:** 2026-08-23 to restore the first-class skills and tools systems
 
 ## 1. Problem
 
@@ -109,6 +109,13 @@ The operator can run the organization on one machine or distribute eligible work
 machines while preserving identity, authorization, revision consistency, and accepted-result
 semantics.
 
+### UC-10 — Extend controlled capabilities
+
+The operator can register, inspect, group, enable, disable, and update atomic capabilities supplied
+by MISHKAN or configured external sources. The engineer can see exactly which capability versions
+a role and task may use. Availability never implies authorization, and a newly discovered
+capability never silently expands an accepted plan.
+
 ## 4. Out of scope
 
 MISHKAN will not:
@@ -172,6 +179,12 @@ A skill is a portable, inspectable procedure that helps an organizational role p
 work. Skills enrich authorized CrewAI work; they do not replace the organization, the
 repository-specific plan, the coordination runtime, or deterministic capability enforcement.
 
+### PP-10 — Tools are typed capabilities
+
+A tool is one inspectable atomic capability with declared inputs, outputs, effects, dependencies,
+and provenance. Tools are exposed to organizational roles only through the effective organization,
+plan, and policy; their implementation source does not grant additional authority.
+
 ## 6. Success criteria
 
 The product succeeds when all of the following outcomes can be demonstrated:
@@ -232,6 +245,13 @@ organization can produce a staged skill proposal, obtain the policy-required rev
 accepted version with provenance, use it through progressive disclosure, improve it from reviewed
 evidence, and restore a prior version after a rejected update.
 
+### SC-11 — Controlled tool extension
+
+After a configured tool source is added or changed, the operator can inspect the discovered
+catalogue and differences, compose an exact toolset, and make it available to an eligible task.
+Calls outside the resolved set or policy scope are refused, while an accepted call has validated
+input, attributable effects, a validated result, and durable non-secret evidence.
+
 ## 7. Product boundaries requiring later specification
 
 The PRD intentionally does not decide:
@@ -260,3 +280,6 @@ Those decisions follow only after this product problem and scope are approved.
    progressive disclosure, learning from experience, reviewed evolution, provenance, and
    recoverable lifecycle management. It does not operate a hosted marketplace or treat skills as a
    competing plugin runtime.
+7. MISHKAN provides a first-class tool system for native and externally supplied atomic
+   capabilities. Its registry, toolsets, discovery, lifecycle, schemas, and runtime availability
+   are versioned and inspectable; effective access remains plan- and policy-bound.

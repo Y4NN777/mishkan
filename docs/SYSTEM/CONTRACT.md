@@ -1,9 +1,9 @@
 # MISHKAN System Contract and Invariants
 
 **Status:** Amendment proposed — Gate G3 reconfirmation required
-**Version:** 1.1 candidate
+**Version:** 1.2 candidate
 **Sequence:** SWE-BASICS-BEFORE-CODE 03
-**Derived from:** SRS 1.2 candidate
+**Derived from:** SRS 1.3 candidate
 
 ## 1. Contract boundary
 
@@ -51,11 +51,12 @@ The system contract recognizes these input classes:
 1. effective configuration and its provenance;
 2. repository identity, base revision, discovery evidence, and declared project policy;
 3. objective, named outcome, constraints, and completion conditions;
-4. organization, role, plan, task, output, report, event, and policy definitions;
+4. organization, role, plan, task, output, report, event, policy, tool, toolset, and registry definitions;
 5. policy authorization or interactive approval decisions;
 6. task results, artifacts, diffs, external state references, and evaluations;
 7. schedule definitions and idempotent trigger occurrences;
-8. knowledge, structural, episodic, literal, skill, skill-provenance, and skill-mutation records;
+8. knowledge, structural, episodic, literal, skill, skill-provenance, tool-registry, tool-call, and
+   lifecycle records;
 9. worker identity, capability, lease, heartbeat, and completion records;
 10. cancellation, retry, resume, retention, hold, and revocation requests.
 
@@ -72,7 +73,7 @@ For an accepted interaction, MISHKAN produces one or more of:
 - a validated task result, independent evaluation, or structured report;
 - an attributable workspace or external state change with review evidence;
 - a versioned event, snapshot, security decision, or degraded-mode notice;
-- a durable schedule, worker, knowledge, skill, or retention record;
+- a durable schedule, worker, knowledge, skill, tool-registry, tool-call, or retention record;
 - a stable machine-readable refusal or failure.
 
 The system never represents a rejected, incomplete, unpersisted, or incompatible result as
@@ -150,6 +151,13 @@ MISHKAN can discover and progressively load portable procedural skills, record w
 succeeded, learn staged improvements from teaching or reviewed experience, and activate or restore
 versions through visible policy and provenance. A skill never grants authority or replaces the
 repository-specific plan, CrewAI coordination, or deterministic effect enforcement.
+
+### CTR-014 — Controlled tool extension and invocation
+
+MISHKAN can discover, inspect, compose, and lifecycle-manage typed atomic tools from configured
+sources without silently expanding authority. CrewAI agents receive only exact tools bound to the
+accepted plan, and every call crosses validation and policy enforcement before producing an
+attributable validated result or stable refusal.
 
 ## 7. Integrity invariants
 
@@ -300,6 +308,30 @@ Failure preserves the prior active version. Supersession, rejection, archival, o
 erases accepted lineage, and eligible prior versions can re-enter the same validation and policy
 path for restoration.
 
+### INV-027 — Immutable tool resolution
+
+Every accepted task binds exact tool identities, versions, schemas, source fingerprints, and
+registry snapshot. Shorthand and toolsets are fully resolved before acceptance. Later discovery,
+enablement, update, collision, or drift never changes that binding silently.
+
+### INV-028 — Validated authorized dispatch
+
+No tool is dispatched until its call envelope and input validate, the exact tool is bound to the
+task and role, required runtime constraints are enforceable, and policy allows or has approved the
+actual capability, targets, and scopes.
+
+### INV-029 — Secret-safe attributable result
+
+Credential values are resolved only after authorization and never enter model-visible arguments or
+persisted evidence. Every call reaches a recorded completed, failed, cancelled, refused, or
+uncertain state, and output enters task context only after envelope and result-schema validation.
+
+### INV-030 — Stateful retry integrity
+
+An uncertain state-changing effect is never repeated automatically. Retry requires accepted finite
+bounds plus declared idempotency, a deduplication key, or an authorized compensation rule, and it
+never erases the prior attempt or external-state evidence.
+
 ## 8. Policy decision contract
 
 ### 8.1 Capability request
@@ -383,7 +415,40 @@ pinning, and configured staleness rules may propose recoverable archival; they n
 destroy history. MISHKAN does not require or operate a hosted marketplace, and every external
 source follows the same validation path.
 
-## 10. Plan-revision contract
+## 10. Tool contract
+
+### 10.1 Registry and discovery
+
+A registry snapshot contains versioned tool contracts from configured native or external sources.
+Each contract declares identity, schemas, effect class, availability, scopes, credentials by
+reference, timeout, idempotency, and provenance. Minimal metadata may be searched before full
+schemas are loaded. Collisions, dependency failure, and external schema drift remain explicit and
+cannot mutate a bound snapshot.
+
+### 10.2 Toolsets and assignment
+
+Toolsets are configured named compositions, not authority records. They resolve recursively within
+configured bounds to exact tools before plan acceptance. The organization constrains role
+eligibility, the plan selects the task set, policy decides effects, and the execution location must
+advertise support. No source, server, credential, toolset, or availability state grants access by
+itself.
+
+### 10.3 CrewAI binding and dispatch
+
+Production tools are represented through supported CrewAI tool interfaces. A MISHKAN enforcement
+wrapper validates the typed call envelope and arguments, resolves actual targets, applies the
+authorization and runtime limits, resolves only required credentials, dispatches the configured
+adapter, and validates the result. This boundary does not implement another agent tool-calling
+loop.
+
+### 10.4 External tools and lifecycle
+
+Configured external protocol sessions expose only negotiated, filtered, namespaced capabilities.
+Connection state and schema drift are observable. Adding, enabling, disabling, updating, removing,
+or reprioritizing sources and toolsets is an atomic policy-governed capability that creates a new
+registry snapshot and preserves previous evidence.
+
+## 11. Plan-revision contract
 
 A plan revision is acceptable only when:
 
@@ -398,7 +463,7 @@ A plan revision is acceptable only when:
 The planner may adapt task shape autonomously inside policy. Immutability applies to each recorded
 plan version and issued task envelope, not to the run's ability to evolve.
 
-## 11. Strict refusals
+## 12. Strict refusals
 
 These are integrity failures, not a hardcoded list of business operations:
 
@@ -419,8 +484,12 @@ These are integrity failures, not a hardcoded list of business operations:
 | REF-013 | Worker identity, envelope, revision, capability, deadline, or lease is invalid | Reject claim or completion |
 | REF-014 | A skill package, reference, dependency, composition, or mutation contract is invalid | Keep the candidate inactive and report all detected failures |
 | REF-015 | Skill provenance, inspection, trust, quarantine, or activation evidence is incomplete | Keep the candidate inactive or preserve the prior active version |
+| REF-016 | Tool definition, schema, adapter, composition, namespace, or registry snapshot is invalid | Exclude the invalid entry and do not bind it to a task |
+| REF-017 | A tool is absent from the exact role, plan, registry, location, or policy scope | Do not expose or dispatch it |
+| REF-018 | A tool call has invalid arguments, unresolved targets, unavailable required constraints, or missing authorization | Produce no tool effect and record the refusal |
+| REF-019 | Tool output is invalid or a state-changing effect is uncertain | Contain the output, block dependent acceptance, and require contract-safe retry or reconciliation |
 
-## 12. Permitted exceptions
+## 13. Permitted exceptions
 
 The following are valid behavior and do not weaken the invariants:
 
@@ -434,8 +503,10 @@ The following are valid behavior and do not weaken the invariants:
 - configured schedule overlap when an exact policy rule allows it.
 - policy-authorized unattended skill creation, update, installation, archival, or restoration after
   all integrity preconditions hold.
+- policy-authorized unattended tool-source or toolset lifecycle changes that create a new registry
+  snapshot without changing accepted task bindings.
 
-## 13. Technical constraints carried into design
+## 14. Technical constraints carried into design
 
 These constraints shape later responsibilities but do not alter the contract:
 
@@ -462,8 +533,11 @@ These constraints shape later responsibilities but do not alter the contract:
 13. Skills use a portable `SKILL.md` package compatible in direction with the Agent Skills
     convention; selected skill instructions enrich authorized CrewAI task context and do not form a
     competing runtime.
+14. Native and configured external protocol tools use supported CrewAI tool interfaces. Enforcement
+    wrappers may narrow and validate those calls but do not replace CrewAI's production tool-calling
+    runtime.
 
-## 14. Abstract dependencies
+## 15. Abstract dependencies
 
 Dependencies describe required capabilities, not component ownership or topology.
 
@@ -486,12 +560,13 @@ Dependencies describe required capabilities, not component ownership or topology
 | DEP-015 | Shared worker coordination | Post-core distributed only | Local mode remains valid; distributed tasks block or recover by lease | DST-001–010 |
 | DEP-016 | Current-state monitoring projection | Optional for execution | Execution continues; monitor reconnects from durable state | RUN-012, OBS-004–006 |
 | DEP-017 | External effect surface | Required only by a requested capability | Apply the policy decision; never bypass external protection | SAF-003–008 |
+| DEP-018 | Tool registry, discovery, and adapters | Required per tool-using task | Do not bind or dispatch the unavailable tool; expose configured fallback eligibility | TOL-001–025 |
 
 Every plan identifies its required dependencies. Required dependencies cannot silently become
 optional; optional failures remain visible. Concrete products, protocols, processes, and topology
 are assigned only after the responsibility and architecture stages.
 
-## 15. SRS traceability
+## 16. SRS traceability
 
 | Contract area | Principal SRS source |
 |---|---|
@@ -502,8 +577,9 @@ are assigned only after the responsibility and architecture stages.
 | Enforcement and evidence | SAF-001–013, OBS-001–008 |
 | Knowledge | KNW-001–006 |
 | Skills and procedural memory | SKL-001–025 |
+| Tools and atomic capabilities | TOL-001–025 |
 | Headless scheduling | AUT-001–007 |
 | Distributed preservation | DST-001–010 |
 | Performance and compatibility | NFR-001–010 |
-| Stable refusals | SRS §15 |
-| Production runtime | TC-001–003 |
+| Stable refusals | SRS §16 |
+| Production runtime | TC-001–003, TC-007 |

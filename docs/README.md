@@ -15,11 +15,11 @@ This index is the entry point for durable MISHKAN documentation.
 
 | Document | Status | Role |
 |---|---|---|
-| [`PROJECT/PRD.md`](PROJECT/PRD.md) | 1.1 candidate | Product problem, scope, success criteria, and restored skills outcome |
-| [`PROJECT/SRS.md`](PROJECT/SRS.md) | 1.2 candidate | Canonical verifiable software requirements including first-class skills |
+| [`PROJECT/PRD.md`](PROJECT/PRD.md) | 1.2 candidate | Product problem, scope, success criteria, skills, and controlled capabilities |
+| [`PROJECT/SRS.md`](PROJECT/SRS.md) | 1.3 candidate | Canonical verifiable requirements including first-class skills and tools |
 | [`PROJECT/DECISION_LOG.md`](PROJECT/DECISION_LOG.md) | Living | Central registry for accepted, open, and superseded decisions |
-| [`SYSTEM/CONTRACT.md`](SYSTEM/CONTRACT.md) | 1.1 candidate | Sequence 03 promises, invariants, refusals, and abstract dependencies |
-| [`SYSTEM/RESPONSIBILITIES.md`](SYSTEM/RESPONSIBILITIES.md) | Draft 0.2 | Sequence 04 primary responsibility ownership and handoffs |
+| [`SYSTEM/CONTRACT.md`](SYSTEM/CONTRACT.md) | 1.2 candidate | Sequence 03 promises, invariants, refusals, and abstract dependencies |
+| [`SYSTEM/RESPONSIBILITIES.md`](SYSTEM/RESPONSIBILITIES.md) | Draft 0.3 | Sequence 04 primary responsibility ownership and handoffs |
 
 ## Authority rules
 
