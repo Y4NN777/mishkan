@@ -1,18 +1,19 @@
 # MISHKAN Software Requirements Specification
 
-**Status:** Approved — Gate G2
-**Version:** 1.1
-**Derived from:** Approved PRD 1.0
+**Status:** Amendment proposed — Gate G2 reconfirmation required
+**Version:** 1.2 candidate
+**Derived from:** PRD 1.1 candidate
 **Normative vocabulary:** MUST, MUST NOT, SHOULD, MAY follow RFC 2119 meanings
 
-Version 1.1 namespaces error codes with `ERR-` to prevent collisions with requirement identifiers.
-No required behavior changed from the approved 1.0 baseline.
+Version 1.2 restores the first-class skills system omitted during consolidation. It preserves the
+1.1 error-code namespace and makes progressive skill discovery, learning, trust, mutation, and
+recovery explicit.
 
 ## 1. Purpose and scope
 
 This SRS defines the observable behavior and constraints of MISHKAN product version 1. It does not
 assign responsibilities to components or prescribe an implementation except where an explicit
-engineer-selected technical constraint is recorded in §15.
+engineer-selected technical constraint is recorded in §16.
 
 Core release requirements cover local, interactive, and headless operation on one machine.
 Distributed requirements are identified as post-core and do not block acceptance of the core
@@ -360,7 +361,7 @@ identity, attempted capability, policy decision, and non-secret reason.
 A safety invariant MUST be enforced by a deterministic boundary. An instruction to an AI actor is
 not sufficient enforcement.
 
-## 9. Knowledge and reusable procedures
+## 9. Knowledge
 
 ### KNW-001 — Context classes
 
@@ -391,27 +392,157 @@ system MUST expose the unavailable source and resulting limitation.
 
 Knowledge MUST NOT become permanent cross-project guidance without engineer approval and provenance.
 
-### KNW-007 — Reusable procedure discovery
+## 10. Skills and procedural memory
 
-The system MUST record when no applicable reusable procedure exists or when an available procedure
-is only partially applicable.
+### SKL-001 — Skill contract
 
-### KNW-008 — Staged procedure changes
+A skill MUST be a versioned portable package with one `SKILL.md` containing machine-readable
+identity and discovery metadata plus human-readable operating instructions. A skill MAY include
+scripts, references, templates, examples, and tests addressed from that manifest.
 
-AI-authored procedure creation, modification, or deletion MUST be staged and MUST NOT become active
-until approved under the effective policy.
+### SKL-002 — Distinct semantics
 
-### KNW-009 — Procedure provenance
+The system MUST distinguish a skill from a tool, prompt, organizational role, workflow outcome,
+and repository-specific plan. Selecting a skill MUST NOT grant capabilities or replace CrewAI
+coordination, plan authorization, or deterministic enforcement.
 
-Every active reusable procedure MUST expose its source, content fingerprint, trust state, scan
-findings, and activation decision.
+### SKL-003 — Level 0 catalogue
 
-### KNW-010 — Progressive loading
+The system MUST be able to list, search, and inspect applicable skill identity, summary, version,
+source, trust state, and activation status without loading the skill instructions or supporting
+content.
 
-The system MUST allow procedure discovery without loading full procedure content and MUST load
-supporting references only when selected.
+### SKL-004 — Level 1 instructions
 
-## 10. Events, evidence, and retention
+After selecting a skill, the system MUST load its `SKILL.md` completely before applying the skill.
+Selection and load MUST be recorded against the consuming task.
+
+### SKL-005 — Level 2 on-demand content
+
+Supporting skill content MUST be loaded only when referenced by the selected instructions and
+needed for the current task. The record MUST identify each loaded item and its content fingerprint.
+
+### SKL-006 — Configured sources
+
+The system MUST discover skills from versioned configured sources that MAY include bundled,
+project, operator-managed external, community, URL, or source-control locations. Source locations
+and enablement MUST NOT depend on private hardcoded filesystem paths.
+
+### SKL-007 — Deterministic precedence
+
+Skill source precedence MUST be public, versioned, and configurable. Two applicable skills with
+the same identity and unresolved equal precedence MUST cause an explicit ambiguity failure rather
+than nondeterministic selection.
+
+### SKL-008 — Compatibility and dependencies
+
+Before selection, the system MUST evaluate declared platform, required tools, fallback tools,
+environment constraints, organization version, and other declared dependencies. An unmet required
+condition MUST prevent activation for the task and identify the condition.
+
+### SKL-009 — Explicit and automatic invocation
+
+The engineer MUST be able to invoke an active skill explicitly through a documented slash form and
+an equivalent programmatic interface. The system MAY select an active skill automatically only
+when its declared applicability matches the task and the selection is visible in the plan or task
+evidence.
+
+### SKL-010 — Composable bundles
+
+The system MUST support versioned named bundles of skills and MUST validate the configured maximum
+stack size, order, compatibility, and conflicts before applying a bundle. Bundles enrich a task;
+they MUST NOT become hidden static workflow definitions.
+
+### SKL-011 — Usage outcomes
+
+Every attempted skill use MUST emit a typed `hit`, `partial`, or `miss` outcome with skill version,
+task class, consuming identity, and non-secret reason.
+
+### SKL-012 — Durable miss evidence
+
+The system MUST retain policy-scoped miss and partial-use evidence across restarts and MUST expose
+aggregates by task class without silently turning a configured threshold into an activation grant.
+
+### SKL-013 — Explicit learning request
+
+The engineer MUST be able to request learning through a documented `/learn <source>` interaction
+and an equivalent programmatic interface using supplied text, files, URLs, repository evidence, or
+execution evidence. The result MUST be a staged proposal or an attributable refusal, never an
+immediately trusted active skill.
+
+### SKL-014 — Evidence-triggered proposal
+
+When a configured miss or correction rule is satisfied, the system MAY initiate an authorized
+Research-team proposal using the canonical research roles. The triggering evidence and resulting
+proposal lineage MUST be recorded.
+
+### SKL-015 — Knowledge-base skills
+
+When supplied source material cannot be safely or usefully embedded in a skill package, the system
+MUST allow the skill to retain attributed retrieval instructions and references instead of copying
+the entire source.
+
+### SKL-016 — Staged mutations
+
+Create, patch, edit, delete, archive, restore, and supporting-file changes MUST execute as typed
+stateful capabilities under effective policy. A proposed mutation MUST remain staged and durable
+across restart until allowed, approved, denied, rejected, superseded, or expired.
+
+### SKL-017 — Patch-first evolution
+
+An AI-authored update SHOULD express the smallest reviewable patch against an identified base
+version. A full replacement MUST identify why a patch is insufficient and MUST preserve recoverable
+lineage.
+
+### SKL-018 — Atomic activation
+
+A skill version and all content it references MUST become active atomically after required
+validation, inspection, and policy decision. Failure MUST leave the previously active version
+unchanged.
+
+### SKL-019 — Provenance lock
+
+Every installed or active skill version MUST expose source, resolved revision where applicable,
+content fingerprints, dependency fingerprints, author claims, acquisition time, trust state, scan
+result, and activation decision in a durable provenance record.
+
+### SKL-020 — Mandatory inspection
+
+Before activation, acquired or changed skill content MUST be inspected for configured security,
+privacy, Unicode, credential, prompt-injection, and destructive-action findings. Inspection rules
+and severity policy MUST be versioned and inspectable rather than hidden in a private list.
+
+### SKL-021 — Quarantine
+
+A skill with an unresolved finding at or above the configured quarantine threshold MUST remain
+inactive. Quarantine, override eligibility, and any authorized override MUST be explicit policy
+decisions with non-secret evidence.
+
+### SKL-022 — Update and reset
+
+The system MUST detect available updates for configured sources without activating them
+automatically, show their provenance and difference, and support a policy-governed reset to a known
+source version.
+
+### SKL-023 — Restoration
+
+Rejecting, archiving, deleting, or superseding a skill MUST NOT erase its accepted history. The
+engineer MUST be able to restore an eligible prior version through the same validation and policy
+path as activation.
+
+### SKL-024 — Lifecycle curation
+
+The system MUST maintain last-use and usage-outcome evidence, MAY propose archival of stale skills
+under configured rules, MUST protect pinned skills from automated archival, and MUST NOT
+automatically destroy archived skill history.
+
+### SKL-025 — No hosted marketplace dependency
+
+Core skill discovery, creation, review, activation, use, and restoration MUST operate without a
+MISHKAN-hosted marketplace. Community acquisition MAY use configured repositories, URLs, or hubs
+but MUST pass the same provenance, inspection, and policy path as every other external source.
+
+## 11. Events, evidence, and retention
 
 ### OBS-001 — Typed events
 
@@ -452,7 +583,7 @@ an active hold or incomplete run.
 Event and snapshot serialization MUST apply the same secret-handling guarantees as other persisted
 outputs.
 
-## 11. Headless operation and scheduling
+## 12. Headless operation and scheduling
 
 ### AUT-001 — Headless equivalence
 
@@ -488,7 +619,7 @@ schedule, and inspect its run history.
 
 An external scheduler MUST be able to invoke the same idempotent run interface used internally.
 
-## 12. Distributed execution — post-core
+## 13. Distributed execution — post-core
 
 ### DST-001 — Explicit distributed mode
 
@@ -540,7 +671,7 @@ and the effective policy decision permits it.
 The coordinator MUST accept at most one valid completion for a task attempt despite retries,
 duplicate delivery, worker loss, or partial network failure.
 
-## 13. Non-functional requirements
+## 14. Non-functional requirements
 
 ### NFR-001 — Supported core platforms
 
@@ -590,7 +721,7 @@ loss, event-transport loss, and—when distributed mode is released—worker and
 Automated tests MUST verify that representative credentials cannot enter configuration output,
 events, logs, snapshots, artifacts, reports, or diffs.
 
-## 14. Error behavior
+## 15. Error behavior
 
 | Code | Condition | Required result |
 |---|---|---|
@@ -608,11 +739,14 @@ events, logs, snapshots, artifacts, reports, or diffs.
 | ERR-DEP-001 | Optional context service is unavailable | Continue only permitted degraded work and expose limitation |
 | ERR-DEP-002 | Required inference or coordination dependency is unavailable | Do not start affected work; expose retryable failure |
 | ERR-SEC-001 | Secret-like content reaches a persistence boundary | Block persistence and emit non-secret security evidence |
+| ERR-SKL-001 | Skill package, manifest, reference, dependency, or mutation contract is invalid | Keep the skill inactive; report every detected validation failure |
+| ERR-SKL-002 | Skill provenance, trust, inspection, quarantine, or activation decision is insufficient | Keep the skill inactive or preserve the prior active version; emit non-secret evidence |
+| ERR-SKL-003 | Skill selection is ambiguous or incompatible with the task context | Do not apply the skill; identify the conflicting source or unmet condition |
 | ERR-SCH-001 | Schedule time or trigger is invalid | Reject schedule without partial creation |
 | ERR-WRK-001 | Worker identity, capability, revision, or lease is invalid | Reject claim or completion and preserve evidence |
 | ERR-VER-001 | Persisted schema version is unsupported | Refuse automatic mutation and identify required operator action |
 
-## 15. Approved and candidate technical constraints
+## 16. Approved and candidate technical constraints
 
 This section records implementation constraints separately from behavioral requirements. It does
 not assign component responsibilities.
@@ -705,15 +839,16 @@ the specific objective and repository revision and are not fixed universal chain
 | UC-04 Enforce authority | SAF-001–013 |
 | UC-05 Review evidence | OBS-001–008, RUN-012 |
 | UC-06 Survive interruption | RUN-008–011, OBS-003 |
-| UC-07 Preserve knowledge | KNW-001–010 |
+| UC-07 Preserve knowledge and grow skills | KNW-001–006, SKL-001–025 |
 | UC-08 Operate headlessly | AUT-001–007 |
 | UC-09 Use remote capacity | DST-001–010 |
 | SC-01 Repository adaptation | PRJ-003–007, ORG-012 |
 | SC-02 End-to-end delegation | PLN, ORG, and RUN sections |
 | SC-03 Human control | SAF-003–013 |
 | SC-04 Recovery | RUN-008–010 |
-| SC-05 Degraded usefulness | KNW-005, DEP-001 |
+| SC-05 Degraded usefulness | KNW-005, ERR-DEP-001 |
 | SC-06 Auditability | PLN-008–011, OBS-001–008 |
 | SC-07 Headless continuity | AUT-001–007 |
 | SC-08 Distributed recovery | DST-001–010, post-core |
 | SC-09 Local operation | NFR-001–003 |
+| SC-10 Skill learning loop | SKL-011–024 |

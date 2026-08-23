@@ -1,9 +1,9 @@
 # MISHKAN System Contract and Invariants
 
-**Status:** Approved — Gate G3
-**Version:** 1.0
+**Status:** Amendment proposed — Gate G3 reconfirmation required
+**Version:** 1.1 candidate
 **Sequence:** SWE-BASICS-BEFORE-CODE 03
-**Derived from:** Approved SRS 1.1
+**Derived from:** SRS 1.2 candidate
 
 ## 1. Contract boundary
 
@@ -55,7 +55,7 @@ The system contract recognizes these input classes:
 5. policy authorization or interactive approval decisions;
 6. task results, artifacts, diffs, external state references, and evaluations;
 7. schedule definitions and idempotent trigger occurrences;
-8. knowledge, structural, episodic, literal, and reusable-procedure records;
+8. knowledge, structural, episodic, literal, skill, skill-provenance, and skill-mutation records;
 9. worker identity, capability, lease, heartbeat, and completion records;
 10. cancellation, retry, resume, retention, hold, and revocation requests.
 
@@ -72,7 +72,7 @@ For an accepted interaction, MISHKAN produces one or more of:
 - a validated task result, independent evaluation, or structured report;
 - an attributable workspace or external state change with review evidence;
 - a versioned event, snapshot, security decision, or degraded-mode notice;
-- a durable schedule, worker, knowledge, procedure, or retention record;
+- a durable schedule, worker, knowledge, skill, or retention record;
 - a stable machine-readable refusal or failure.
 
 The system never represents a rejected, incomplete, unpersisted, or incompatible result as
@@ -143,6 +143,13 @@ Headless execution does not receive hidden additional authority.
 
 When distributed mode is enabled, worker loss, retry, or duplicate delivery does not change task
 acceptance semantics. A remote worker receives only bounded coordinator-issued authority.
+
+### CTR-013 — Inspectable skill learning loop
+
+MISHKAN can discover and progressively load portable procedural skills, record whether their use
+succeeded, learn staged improvements from teaching or reviewed experience, and activate or restore
+versions through visible policy and provenance. A skill never grants authority or replaces the
+repository-specific plan, CrewAI coordination, or deterministic effect enforcement.
 
 ## 7. Integrity invariants
 
@@ -260,8 +267,8 @@ are never mutated automatically.
 ### INV-021 — Knowledge provenance
 
 Knowledge used as evidence identifies source, scope, retrieval time, and repository revision or
-staleness. Reusable procedures do not become active or cross-project guidance without a recorded
-policy decision and provenance.
+staleness. Knowledge does not become cross-project guidance without a recorded policy decision and
+provenance.
 
 ### INV-022 — Schedule uniqueness
 
@@ -273,6 +280,25 @@ occurs only under an explicit matching allow decision.
 A remote assignment is immutable after issuance and bound to worker identity, task attempt,
 repository revision, plan and policy fingerprints, capabilities, resources, deadline, and lease.
 Invalid or expired authority cannot produce an accepted completion.
+
+### INV-024 — Progressive skill disclosure
+
+Skill discovery exposes catalogue metadata without loading instructions. Selection loads the
+complete identified `SKILL.md`; supporting content loads only when referenced and needed. Every
+loaded layer remains attributable to the consuming task and exact content fingerprint.
+
+### INV-025 — Skill provenance and trust
+
+No acquired or changed skill becomes active without a durable source and content lock, completed
+inspection, compatibility result, trust state, and policy decision. Source precedence, inspection
+policy, and quarantine thresholds are public versioned configuration, not private hardcoded lists.
+
+### INV-026 — Atomic and recoverable skill evolution
+
+A skill mutation is durable while staged and activates one complete validated version atomically.
+Failure preserves the prior active version. Supersession, rejection, archival, or deletion never
+erases accepted lineage, and eligible prior versions can re-enter the same validation and policy
+path for restoration.
 
 ## 8. Policy decision contract
 
@@ -324,7 +350,40 @@ requests use the effective version at their enforcement boundary. Previously com
 never rewritten. Revocation may cancel or block outstanding work only through an explicit scoped
 revocation record, and the consequence is auditable.
 
-## 9. Plan-revision contract
+## 9. Skill contract
+
+### 9.1 Package and disclosure
+
+A skill package has one versioned `SKILL.md` identity and may reference scripts, references,
+templates, examples, or tests. Catalogue metadata is Level 0, the complete manifest and operating
+instructions are Level 1, and specifically required supporting content is Level 2. A selected
+skill's exact version and loaded content are part of task evidence.
+
+### 9.2 Sources, selection, and composition
+
+Bundled, project, external, community, URL, source-control, or hub sources exist only when the
+effective configuration declares them. The same public configuration defines precedence and stack
+bounds. An unresolved identity conflict is refused. Explicit invocation and policy-permitted
+automatic selection use the same compatibility, provenance, and evidence rules. A bundle is an
+ordered procedural overlay for a task, never a hidden universal plan.
+
+### 9.3 Learning and mutation
+
+An explicit teaching request, correction, miss rule, or reviewed execution result may produce a
+skill proposal. Research-team generation and real-time improvement both create staged versions;
+neither path activates its own output. Create, patch, edit, delete, archive, restore, install,
+update, and reset are typed stateful capabilities decided by policy. `allow` may make routine work
+unattended, `require_approval` pauses it, and `deny` refuses it.
+
+### 9.4 Trust and lifecycle
+
+Acquisition or mutation creates a provenance lock and runs the configured content inspections.
+Unresolved findings at or above the configured threshold quarantine the candidate. Usage outcomes,
+pinning, and configured staleness rules may propose recoverable archival; they never silently
+destroy history. MISHKAN does not require or operate a hosted marketplace, and every external
+source follows the same validation path.
+
+## 10. Plan-revision contract
 
 A plan revision is acceptable only when:
 
@@ -339,7 +398,7 @@ A plan revision is acceptable only when:
 The planner may adapt task shape autonomously inside policy. Immutability applies to each recorded
 plan version and issued task envelope, not to the run's ability to evolve.
 
-## 10. Strict refusals
+## 11. Strict refusals
 
 These are integrity failures, not a hardcoded list of business operations:
 
@@ -358,8 +417,10 @@ These are integrity failures, not a hardcoded list of business operations:
 | REF-011 | Cancellation is active | Do not make new tasks eligible |
 | REF-012 | Persisted schema is unsupported | Refuse automatic mutation; identify the required operator action |
 | REF-013 | Worker identity, envelope, revision, capability, deadline, or lease is invalid | Reject claim or completion |
+| REF-014 | A skill package, reference, dependency, composition, or mutation contract is invalid | Keep the candidate inactive and report all detected failures |
+| REF-015 | Skill provenance, inspection, trust, quarantine, or activation evidence is incomplete | Keep the candidate inactive or preserve the prior active version |
 
-## 11. Permitted exceptions
+## 12. Permitted exceptions
 
 The following are valid behavior and do not weaken the invariants:
 
@@ -371,8 +432,10 @@ The following are valid behavior and do not weaken the invariants:
 - duplicate event delivery when consumers can identify it and reconstruct the same state;
 - worker reassignment after lease expiry when only one completion can be accepted;
 - configured schedule overlap when an exact policy rule allows it.
+- policy-authorized unattended skill creation, update, installation, archival, or restoration after
+  all integrity preconditions hold.
 
-## 12. Technical constraints carried into design
+## 13. Technical constraints carried into design
 
 These constraints shape later responsibilities but do not alter the contract:
 
@@ -396,8 +459,11 @@ These constraints shape later responsibilities but do not alter the contract:
     maintain at least 80 percent branch coverage.
 12. Release acceptance includes repeatable interruption and secret-containment tests required by
     NFR-009 and NFR-010.
+13. Skills use a portable `SKILL.md` package compatible in direction with the Agent Skills
+    convention; selected skill instructions enrich authorized CrewAI task context and do not form a
+    competing runtime.
 
-## 13. Abstract dependencies
+## 14. Abstract dependencies
 
 Dependencies describe required capabilities, not component ownership or topology.
 
@@ -415,7 +481,7 @@ Dependencies describe required capabilities, not component ownership or topology
 | DEP-010 | Live event delivery | Optional for task correctness | Buffer within bounds, expose gaps, preserve durable work | OBS-004–006, NFR-006 |
 | DEP-011 | Episodic, semantic, and structural context | Optional | Continue safe work in declared degraded mode | KNW-001–005 |
 | DEP-012 | Literal scoped repository reading | Required when no other source can establish a needed fact | Block affected reasoning instead of inventing evidence | PRJ-004–005, KNW-002 |
-| DEP-013 | Reusable procedure catalogue | Optional | Record miss or partial applicability and continue | KNW-007–010 |
+| DEP-013 | Skill catalogue, provenance, and lifecycle store | Optional for ordinary task execution; required for skill use or learning | Record miss and continue without the skill, or preserve the staged mutation until available | SKL-001–025 |
 | DEP-014 | Persistent scheduling | Required only for scheduled mode | Interactive and direct headless runs remain available | AUT-001–007 |
 | DEP-015 | Shared worker coordination | Post-core distributed only | Local mode remains valid; distributed tasks block or recover by lease | DST-001–010 |
 | DEP-016 | Current-state monitoring projection | Optional for execution | Execution continues; monitor reconnects from durable state | RUN-012, OBS-004–006 |
@@ -425,7 +491,7 @@ Every plan identifies its required dependencies. Required dependencies cannot si
 optional; optional failures remain visible. Concrete products, protocols, processes, and topology
 are assigned only after the responsibility and architecture stages.
 
-## 14. SRS traceability
+## 15. SRS traceability
 
 | Contract area | Principal SRS source |
 |---|---|
@@ -434,9 +500,10 @@ are assigned only after the responsibility and architecture stages.
 | Organization and separation | ORG-001–012 |
 | Execution and recovery | RUN-001–012 |
 | Enforcement and evidence | SAF-001–013, OBS-001–008 |
-| Knowledge and procedures | KNW-001–010 |
+| Knowledge | KNW-001–006 |
+| Skills and procedural memory | SKL-001–025 |
 | Headless scheduling | AUT-001–007 |
 | Distributed preservation | DST-001–010 |
 | Performance and compatibility | NFR-001–010 |
-| Stable refusals | SRS §14 |
+| Stable refusals | SRS §15 |
 | Production runtime | TC-001–003 |

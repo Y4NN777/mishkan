@@ -1,11 +1,11 @@
 # MISHKAN Product Requirements Document
 
-**Status:** Approved — Gate G1
-**Version:** 1.0
+**Status:** Amendment proposed — Gate G1 reconfirmation required
+**Version:** 1.1 candidate
 **Scope:** Product problem and outcomes only
 
-**Approval recorded:** 2026-08-23
-**Approved by:** Y4NN777
+**Approved baseline:** 1.0, recorded 2026-08-23 by Y4NN777
+**Amendment opened:** 2026-08-23 to restore the first-class skills system
 
 ## 1. Problem
 
@@ -90,11 +90,13 @@ and completed outputs. The system provides enough evidence to understand what ha
 Work can continue after a process, machine, service, or network interruption without discarding
 already accepted results or silently accepting the same completion more than once.
 
-### UC-07 — Preserve and reuse knowledge
+### UC-07 — Preserve knowledge and grow reusable skills
 
 The organization can recall recent context, retrieve project knowledge, understand repository
-structure, and propose reusable procedures. Permanent cross-project promotion remains subject to
-engineer approval.
+structure, and discover portable procedural skills without loading irrelevant instructions. It can
+learn skill improvements from explicit teaching, repeated misses, and reviewed execution evidence.
+Creation, activation, sharing, mutation, archival, and restoration remain visible, attributable,
+recoverable, and governed by effective policy.
 
 ### UC-08 — Operate headlessly
 
@@ -117,7 +119,8 @@ MISHKAN will not:
    deployment, release, or data platform.
 3. Become a hosted software-as-a-service product or require a vendor-hosted control plane.
 4. Provide a web dashboard.
-5. Operate an unrestricted marketplace for procedures or extensions.
+5. Operate a hosted marketplace or treat third-party skills as trusted merely because they are
+   publicly available.
 6. Guarantee correctness solely because an AI actor declared its own output correct.
 7. Hide failed, degraded, retried, rejected, or security-relevant actions from the engineer.
 8. Treat every repository as having the same teams, technologies, paths, or task sequence.
@@ -162,6 +165,12 @@ AI actor.
 
 The organization uses the least expensive adequate source of context and promotes reusable
 knowledge only through visible provenance and approval.
+
+### PP-09 — Skills are procedural memory
+
+A skill is a portable, inspectable procedure that helps an organizational role perform a class of
+work. Skills enrich authorized CrewAI work; they do not replace the organization, the
+repository-specific plan, the coordination runtime, or deterministic capability enforcement.
 
 ## 6. Success criteria
 
@@ -216,6 +225,13 @@ usable.
 The core organizational workflow can complete on one supported local machine without requiring a
 paid external inference or hosted data service.
 
+### SC-10 — Skill learning loop
+
+After an explicit teaching request or repeated recorded inability to perform a task class, the
+organization can produce a staged skill proposal, obtain the policy-required review, activate the
+accepted version with provenance, use it through progressive disclosure, improve it from reviewed
+evidence, and restore a prior version after a rejected update.
+
 ## 7. Product boundaries requiring later specification
 
 The PRD intentionally does not decide:
@@ -240,3 +256,7 @@ Those decisions follow only after this product problem and scope are approved.
 4. Distributed execution follows proof of local operation and is not a first-slice acceptance gate.
 5. The 32-agent organization is canonical for product version 1 and may evolve only through a new
    versioned organization definition.
+6. MISHKAN provides a first-class, Hermes-inspired skills system for portable procedural memory,
+   progressive disclosure, learning from experience, reviewed evolution, provenance, and
+   recoverable lifecycle management. It does not operate a hosted marketplace or treat skills as a
+   competing plugin runtime.

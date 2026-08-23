@@ -46,6 +46,9 @@ not silently turn them into approved architecture.
   requirement without a measurable threshold.
 - Every guarantee receives one primary responsibility owner before components are designed.
 - Model behavior before structure. Draw only diagrams that answer a concrete design question.
+- Treat skills as first-class portable procedural memory loaded progressively into authorized
+  CrewAI work. Skills do not replace roles, repository-specific plans, CrewAI coordination, or
+  deterministic capability enforcement, and skill mutations follow the public capability policy.
 
 ## Change discipline
 

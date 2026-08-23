@@ -1,9 +1,9 @@
 # MISHKAN Requirement-to-Responsibility Map
 
 **Status:** Draft — Gate G4 review
-**Version:** 0.1
+**Version:** 0.2
 **Sequence:** SWE-BASICS-BEFORE-CODE 04
-**Derived from:** PRD 1.0, SRS 1.1, System Contract 1.0
+**Derived from:** PRD 1.1 candidate, SRS 1.2 candidate, System Contract 1.1 candidate
 
 ## 1. Purpose
 
@@ -137,12 +137,14 @@ provenance and staleness; and declare safe degraded operation when optional sour
 
 **Owns:** retrieval intent, source selection, context attribution, degraded-context limitation.
 
-### RSP-014 — Govern reusable procedure lifecycle
+### RSP-014 — Govern skill sources, trust, and lifecycle
 
-Discover applicable procedures without loading unnecessary content; record misses; stage generated
-changes; validate provenance, trust, and scan findings; and activate or promote only through policy.
+Resolve configured skill sources and precedence; validate compatibility, provenance locks, trust,
+inspection and quarantine decisions; stage and atomically activate policy-authorized mutations;
+preserve update, archival, reset, and restoration lineage.
 
-**Owns:** procedure catalogue metadata, staged change, activation and promotion record.
+**Owns:** skill-source catalogue, provenance lock, inspection and quarantine record, staged mutation,
+active-version pointer, pin and archival state, recoverable lineage.
 
 ### RSP-015 — Persist and project events and evidence
 
@@ -181,6 +183,17 @@ preserved while concrete persistence awaits its ADR.
 
 **Owns:** production runtime conformance and technical-constraint compliance evidence.
 
+### RSP-020 — Discover, apply, and learn procedural skills
+
+Validate the portable skill contract; expose Level 0 catalogue metadata; load Level 1 instructions
+and Level 2 content progressively; select explicit or applicable skills and bundles for authorized
+CrewAI tasks; record hit, partial, and miss outcomes; turn teaching or configured evidence into
+staged Research-team proposals.
+
+**Owns:** skill package semantics, selection and composition evidence, loaded-content record, usage
+outcome, miss aggregation, learning request and proposal lineage. It does not activate its own
+proposal or grant the consuming task capabilities.
+
 ## 4. Requirement ownership matrix
 
 Each range is inclusive. No requirement appears in more than one row.
@@ -200,12 +213,13 @@ Each range is inclusive. No requirement appears in more than one row.
 | RSP-011 | SAF-001–002, SAF-007, SAF-011, SAF-013 |
 | RSP-012 | SAF-008–010, SAF-012, OBS-008 |
 | RSP-013 | KNW-001–005 |
-| RSP-014 | KNW-006–010 |
+| RSP-014 | KNW-006, SKL-006–008, SKL-016–025 |
 | RSP-015 | RUN-012, OBS-001–007 |
 | RSP-016 | AUT-001–007 |
 | RSP-017 | DST-001–010 |
 | RSP-018 | NFR-001–006, NFR-008–010 |
 | RSP-019 | TC-001–006 |
+| RSP-020 | SKL-001–005, SKL-009–015 |
 
 ## 5. Error ownership matrix
 
@@ -220,6 +234,8 @@ Each range is inclusive. No requirement appears in more than one row.
 | RSP-013 | ERR-DEP-001 |
 | RSP-008 | ERR-RUN-001, ERR-DEP-002 |
 | RSP-012 | ERR-SEC-001 |
+| RSP-014 | ERR-SKL-001, ERR-SKL-002 |
+| RSP-020 | ERR-SKL-003 |
 | RSP-016 | ERR-SCH-001 |
 | RSP-017 | ERR-WRK-001 |
 | RSP-002 | ERR-VER-001 |
@@ -239,11 +255,12 @@ Each range is inclusive. No requirement appears in more than one row.
 | RSP-010 | CTR-005, INV-011–013 |
 | RSP-011 | INV-003, INV-015, INV-017 |
 | RSP-012 | CTR-007, INV-016 |
-| RSP-013 | CTR-010 |
-| RSP-014 | INV-021 |
+| RSP-013 | CTR-010, INV-021 |
+| RSP-014 | INV-025–026 |
 | RSP-015 | CTR-009, INV-019 |
 | RSP-016 | INV-022 |
 | RSP-017 | CTR-012, INV-023 |
+| RSP-020 | CTR-013, INV-024 |
 
 `INV-003` is primarily enforced at the capability boundary by RSP-011; RSP-006 supplies the
 authorization decision but does not enforce its own decision.
@@ -252,7 +269,7 @@ authorization decision but does not enforce its own decision.
 
 | Producer | Consumer | Required handoff |
 |---|---|---|
-| RSP-001 | RSP-005–019 | Effective configuration identity and provenance |
+| RSP-001 | RSP-005–020 | Effective configuration identity and provenance |
 | RSP-004 | RSP-005, RSP-010, RSP-017 | Repository evidence, base revision, and lineage |
 | RSP-005 | RSP-006 | Exact normalized plan fingerprint and capability requests |
 | RSP-006 | RSP-008, RSP-011, RSP-016, RSP-017 | Durable authorization decision and exact scope |
@@ -261,7 +278,10 @@ authorization decision but does not enforce its own decision.
 | RSP-011 | RSP-010, RSP-012 | Effect outcome and resolved target evidence |
 | RSP-009 | RSP-010 | Independent evaluation result |
 | RSP-010 | RSP-008, RSP-015 | Durable acceptance or rejection evidence |
-| RSP-013–014 | RSP-005, RSP-008 | Attributed context or selected procedure |
+| RSP-013 | RSP-005, RSP-008 | Attributed project context |
+| RSP-014 | RSP-020 | Eligible skill catalogue, trust state, and active version |
+| RSP-020 | RSP-005, RSP-008 | Selected skill content, composition, and usage evidence |
+| RSP-020 | RSP-014 | Staged skill proposal or lifecycle request; never self-activation |
 | RSP-015 | Every responsibility | Durable event acknowledgement and current-state projection |
 | RSP-016 | RSP-005, RSP-008 | Idempotent run trigger and schedule context |
 | RSP-017 | RSP-008, RSP-010 | Remote execution and completion-delivery evidence |
@@ -277,7 +297,7 @@ These groupings are hypotheses to test with behavior and C4 models, not approved
 | Planning and authority | RSP-005–006 | Plan semantics and policy decisions evolve together but require an enforcement boundary |
 | CrewAI coordination and acceptance | RSP-008–010 | Runtime orchestration, independent evaluation, and accepted completion interact closely |
 | Effects and evidence | RSP-011–012, RSP-015 | Enforcement, sanitation, audit, and durable reconstruction protect every action |
-| Context and procedures | RSP-013–014 | Retrieval and reusable knowledge lifecycle share provenance concerns |
+| Context and skills | RSP-013–014, RSP-020 | Retrieval, procedural selection, and skill lifecycle share provenance but preserve activation separation |
 | Automation and distribution | RSP-016–017 | Scheduled and remote triggers extend execution without changing acceptance semantics |
 | Product conformance | RSP-018–019 | Release gates and fixed technical constraints change with supported product versions |
 
