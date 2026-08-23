@@ -5,8 +5,9 @@ These instructions apply to the entire repository.
 ## Current stage
 
 MISHKAN has completed the framework's final pre-code stage, Sequence 05, and Implementation Plan
-1.0 is approved. The engineer has authorized increment I00 only. Work outside I00 requires the
-owning increment to begin under the progressive delivery protocol in the approved plan.
+1.0 is approved. Increment I00 has passed its local and remote acceptance gates. Increment I01 is
+not yet authorized; work outside I00 requires the owning increment to begin under the progressive
+delivery protocol in the approved plan.
 
 ## Mandatory method
 

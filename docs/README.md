@@ -23,6 +23,7 @@ This index is the entry point for durable MISHKAN documentation.
 | [`SYSTEM/RESPONSIBILITIES.md`](SYSTEM/RESPONSIBILITIES.md) | Approved 1.0 | Sequence 04 primary responsibility ownership and handoffs |
 | [`SYSTEM/MODEL.md`](SYSTEM/MODEL.md) | Approved 1.0 | Sequence 05 context, lifecycle, and interaction behavior basis |
 | [`SYSTEM/ARCHITECTURE.md`](SYSTEM/ARCHITECTURE.md) | Approved 1.0 | Sequence 05 C4 structure and compact architecture decisions |
+| [`VALIDATION/I00.md`](VALIDATION/I00.md) | Passed | Observed local and remote acceptance evidence for the I00 foundation |
 
 ## Authority rules
 
