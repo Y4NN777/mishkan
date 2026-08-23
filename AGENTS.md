@@ -5,7 +5,7 @@ These instructions apply to the entire repository.
 ## Current stage
 
 MISHKAN has completed the framework's final pre-code stage, Sequence 05, and Implementation Plan
-1.0 is approved. Increment I00 has passed its local and remote acceptance gates. Increment I01 is
+1.1 is approved. Increment I00 has passed its local and remote acceptance gates. Increment I01 is
 not yet authorized; work outside I00 requires the owning increment to begin under the progressive
 delivery protocol in the approved plan.
 
@@ -58,6 +58,9 @@ not silently turn them into approved architecture.
 ## Change discipline
 
 - Keep planning commits small and reviewable.
+- Branch from `develop` using `feat/*`, `fix/*`, `docs/*`, `test/*`, `refactor/*`, or `chore/*`.
+- Merge topic branches into `develop` after their gate; promote only `develop` into `main` after the
+  integrated gate. Never merge a topic branch directly into `main`.
 - Record assumptions and unresolved questions explicitly.
 - Do not modify or erase historical source attachments.
 - Do not force-push or rewrite repository history without explicit engineer authorization.
