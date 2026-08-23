@@ -21,7 +21,7 @@ This index is the entry point for durable MISHKAN documentation.
 | [`SYSTEM/CONTRACT.md`](SYSTEM/CONTRACT.md) | Approved 1.2 | Sequence 03 promises, invariants, refusals, and abstract dependencies |
 | [`SYSTEM/RESPONSIBILITIES.md`](SYSTEM/RESPONSIBILITIES.md) | Approved 1.0 | Sequence 04 primary responsibility ownership and handoffs |
 | [`SYSTEM/MODEL.md`](SYSTEM/MODEL.md) | Approved 1.0 | Sequence 05 context, lifecycle, and interaction behavior basis |
-| [`SYSTEM/ARCHITECTURE.md`](SYSTEM/ARCHITECTURE.md) | Draft 0.1 | Sequence 05 C4 structure and compact architecture decisions |
+| [`SYSTEM/ARCHITECTURE.md`](SYSTEM/ARCHITECTURE.md) | Approved 1.0 | Sequence 05 C4 structure and compact architecture decisions |
 
 ## Authority rules
 

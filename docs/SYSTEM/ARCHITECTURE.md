@@ -1,8 +1,8 @@
 # MISHKAN Architecture
 
-**Status:** Draft — Sequence 05 structural and ADR review
+**Status:** Approved — Gate G5
 
-**Version:** 0.1
+**Version:** 1.0
 
 **Derived from:** Approved System Model 1.0, Responsibility Map 1.0, and D-021
 
@@ -173,7 +173,7 @@ mutable internals; transaction-duration and SQLite-contention measurements are r
 
 ### ADR-002 — Persistence profiles
 
-**Status:** Proposed; resolves D-015 when accepted
+**Status:** Accepted by D-015
 
 **Decision:** Use SQLite in WAL mode for local, cloud, and hybrid metadata, and require PostgreSQL
 for distributed mode. Both implement the same repository, transaction, lease, and outbox semantics.
@@ -186,7 +186,7 @@ does not require a database service.
 
 ### ADR-003 — One control API and resumable observation
 
-**Status:** Proposed; partially resolves D-016 when accepted
+**Status:** Accepted by D-016
 
 **Decision:** `mishkand` exposes one versioned `/v1` HTTP control API. CLI, SDK, external scheduler,
 and TUI call the same application commands and queries. The TUI obtains a bounded snapshot and then
@@ -197,7 +197,7 @@ validation, authorization, and error contracts.
 
 ### ADR-004 — CrewAI production boundary
 
-**Status:** Proposed structural realization of D-002
+**Status:** Accepted by D-016 as the structural realization of D-002
 
 **Decision:** A narrow CrewAI integration materializes accepted MISHKAN organization and plan
 versions as supported CrewAI agents, tasks, crews, processes, and flows. MISHKAN does not expose an
@@ -209,7 +209,7 @@ capability dispatch, durable evidence, and acceptance remain MISHKAN responsibil
 
 ### ADR-005 — Versioned external adapter ports
 
-**Status:** Proposed; completes the initial D-016 boundary when accepted
+**Status:** Accepted by D-016
 
 **Decision:** Inference, memory, knowledge, structure, external tools, credentials, isolation,
 scheduling, and worker transport connect through typed versioned ports selected by effective
@@ -219,13 +219,13 @@ frozen in the accepted task binding before CrewAI receives them.
 **Consequence:** Concrete providers and operational limits may evolve without rewriting core
 policy or plan semantics, while schema drift produces an explicit blocked or replan state.
 
-## 6. Review gate
+## 6. Approval
 
-Sequence 05 structural review must decide the two remaining entries in the decision log:
+The engineer accepted the structural baseline on 2026-08-23:
 
-- D-015: accept, revise, or reject ADR-002 persistence profiles;
-- D-016: accept, revise, or reject ADR-003 through ADR-005 interface boundaries.
+- D-015 accepts ADR-002 persistence profiles;
+- D-016 accepts ADR-003 through ADR-005 interface boundaries;
+- D-022 closes Gate G5 with System Model 1.0 and Architecture 1.0.
 
-Only after those decisions are accepted may the architecture baseline close and Sequence 06 turn
-the approved responsibilities, behaviors, and boundaries into an implementation and acceptance
-plan.
+Sequence 06 may now turn the approved responsibilities, behaviors, and boundaries into an
+implementation and acceptance plan. This approval does not itself authorize coding.

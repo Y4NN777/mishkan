@@ -4,10 +4,10 @@ These instructions apply to the entire repository.
 
 ## Current stage
 
-MISHKAN is in Sequence 05 architecture modeling after Gate G4 approval. Do not add application code, package manifests,
-containers, schemas, agent definitions, workflow definitions, migrations, or generated scaffolding
-until behavior, C4 structure, architecture decisions, and the implementation plan are approved in
-the remaining sequence.
+MISHKAN is in Sequence 06 implementation and acceptance planning after Gate G5 approval. Do not add
+application code, package manifests, containers, schemas, agent definitions, workflow definitions,
+migrations, or generated scaffolding until the Sequence 06 plan is approved and the engineer
+explicitly authorizes coding.
 
 ## Mandatory method
 
