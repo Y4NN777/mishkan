@@ -41,6 +41,7 @@ cannot be represented clearly in one row.
 |---|---|---|---|---|
 | D-015 | Technical | Open | Select the concrete persistence design for local and distributed modes | Architecture ADR |
 | D-016 | Technical | Open | Select concrete interfaces for inference, memory, knowledge, structure, events, scheduling, and workers | Architecture ADRs |
+| D-017 | System | Open | Approve or amend the requirement-to-responsibility map and CrewAI runtime boundary | Sequence 05 behavior and C4 models |
 
 ## Review rules
 

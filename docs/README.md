@@ -19,6 +19,7 @@ This index is the entry point for durable MISHKAN documentation.
 | [`PROJECT/SRS.md`](PROJECT/SRS.md) | Approved 1.1 | Canonical verifiable software requirements |
 | [`PROJECT/DECISION_LOG.md`](PROJECT/DECISION_LOG.md) | Living | Central registry for accepted, open, and superseded decisions |
 | [`SYSTEM/CONTRACT.md`](SYSTEM/CONTRACT.md) | Approved 1.0 | Sequence 03 promises, invariants, refusals, and abstract dependencies |
+| [`SYSTEM/RESPONSIBILITIES.md`](SYSTEM/RESPONSIBILITIES.md) | Draft | Sequence 04 primary responsibility ownership and handoffs |
 
 ## Authority rules
 
