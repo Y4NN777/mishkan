@@ -1,0 +1,18 @@
+schema_version: "1.0"
+mode: local
+timezone: UTC
+project:
+  workspace: .
+providers:
+  local-models:
+    kind: ollama
+    endpoint: http://127.0.0.1:11434
+model_routes:
+  planning:
+    candidates:
+      - provider: local-models
+        model: fixture-model
+agent_routes: {}
+services: {}
+policy_sources:
+  - fixture:policy
