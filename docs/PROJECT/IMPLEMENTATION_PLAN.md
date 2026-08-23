@@ -1,8 +1,8 @@
 # MISHKAN Implementation and Acceptance Plan
 
-**Status:** Draft — delivery-plan review
+**Status:** Approved — delivery baseline
 
-**Version:** 0.1
+**Version:** 1.0
 
 **Derived from:** PRD 1.2, SRS 1.3, Contract 1.2, Responsibility Map 1.0,
 System Model 1.0, Architecture 1.0, and accepted decisions D-001–D-022
@@ -535,11 +535,11 @@ Official compatibility baselines are rechecked when their increment begins:
 
 ## 10. Plan approval gate
 
-Approval of this document will:
+The engineer approved this document on 2026-08-23. The approval:
 
-1. accept the implementation baseline, repository shape, increments, and Git delivery protocol;
-2. close delivery-planning decision D-023;
-3. permit implementation only after a separate explicit instruction to begin coding.
+1. accepts the implementation baseline, repository shape, increments, and Git delivery protocol;
+2. closes delivery-planning decision D-023;
+3. permits implementation only after a separate explicit instruction to begin coding.
 
 Any material change to CrewAI's role, persistence authority, public policy semantics, repository-
 specific planning, or responsibility ownership requires an updated accepted decision before code

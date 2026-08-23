@@ -4,10 +4,10 @@ These instructions apply to the entire repository.
 
 ## Current stage
 
-MISHKAN has completed the framework's final pre-code stage, Sequence 05, and is preparing its
-implementation and acceptance plan. Do not add application code, package manifests, containers,
-schemas, agent definitions, workflow definitions, migrations, or generated scaffolding until that
-delivery plan is approved and the engineer explicitly authorizes coding.
+MISHKAN has completed the framework's final pre-code stage, Sequence 05, and its implementation and
+acceptance plan is approved. Do not add application code, package manifests, containers, schemas,
+agent definitions, workflow definitions, migrations, or generated scaffolding until the engineer
+explicitly authorizes coding.
 
 ## Mandatory method
 
