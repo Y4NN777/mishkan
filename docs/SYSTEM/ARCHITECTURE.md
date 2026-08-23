@@ -227,5 +227,7 @@ The engineer accepted the structural baseline on 2026-08-23:
 - D-016 accepts ADR-003 through ADR-005 interface boundaries;
 - D-022 closes Gate G5 with System Model 1.0 and Architecture 1.0.
 
-Sequence 06 may now turn the approved responsibilities, behaviors, and boundaries into an
-implementation and acceptance plan. This approval does not itself authorize coding.
+The post-architecture implementation and acceptance plan may now turn the approved
+responsibilities, behaviors, and boundaries into delivery slices. The cited framework ends at
+Sequence 05; this planning step is not a fabricated Sequence 06. Architecture approval does not
+itself authorize coding.

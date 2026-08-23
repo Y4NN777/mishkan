@@ -4,10 +4,10 @@ These instructions apply to the entire repository.
 
 ## Current stage
 
-MISHKAN is in Sequence 06 implementation and acceptance planning after Gate G5 approval. Do not add
-application code, package manifests, containers, schemas, agent definitions, workflow definitions,
-migrations, or generated scaffolding until the Sequence 06 plan is approved and the engineer
-explicitly authorizes coding.
+MISHKAN has completed the framework's final pre-code stage, Sequence 05, and is preparing its
+implementation and acceptance plan. Do not add application code, package manifests, containers,
+schemas, agent definitions, workflow definitions, migrations, or generated scaffolding until that
+delivery plan is approved and the engineer explicitly authorizes coding.
 
 ## Mandatory method
 
@@ -19,8 +19,9 @@ Follow the numbered `SWE-BASICS-BEFORE-CODE` chain without skipping or reorderin
 3. Design: contract and invariants
 4. Transition: requirements to architecture through explicit responsibilities
 5. Modeling: behavioral UML, structural C4, and reviewed architecture decisions
-6. Implementation and acceptance plan
-7. Code
+
+The cited framework ends at Sequence 05. Implementation planning and coding follow the approved
+architecture but are not additional numbered stages of that framework.
 
 The active stage may use later concepts only as explicitly labeled candidate constraints. It must
 not silently turn them into approved architecture.
