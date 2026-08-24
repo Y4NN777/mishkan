@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field, PrivateAttr, create_model
 
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.policy import ApprovalEvidence
-from mishkan.tools.gateway import CapabilityGateway
+from mishkan.tools.gateway import CapabilityGateway, declared_targets_for
 from mishkan.tools.gateway_models import CallStatus, DeclaredTargets, InvocationContext
 from mishkan.tools.models import ToolContract
 
@@ -66,15 +66,15 @@ class GatewayCrewAITool(BaseTool):
     _gateway: CapabilityGateway = PrivateAttr()
     _context: InvocationContext = PrivateAttr()
     _targets: TargetBuilder = PrivateAttr()
-    _approval: ApprovalEvidence | None = PrivateAttr()
+    _approval: ApprovalEvidence | tuple[ApprovalEvidence, ...] | None = PrivateAttr()
 
     def __init__(
         self,
         contract: ToolContract,
         gateway: CapabilityGateway,
         context: InvocationContext,
-        target_builder: TargetBuilder,
-        approval: ApprovalEvidence | None = None,
+        target_builder: TargetBuilder | None = None,
+        approval: ApprovalEvidence | tuple[ApprovalEvidence, ...] | None = None,
     ) -> None:
         super().__init__(
             name=contract.crewai_name,
@@ -83,7 +83,9 @@ class GatewayCrewAITool(BaseTool):
         )
         self._gateway = gateway
         self._context = context
-        self._targets = target_builder
+        self._targets = target_builder or (
+            lambda arguments: declared_targets_for(contract, arguments)
+        )
         self._approval = approval
 
     def _run(self, **kwargs: Any) -> str:

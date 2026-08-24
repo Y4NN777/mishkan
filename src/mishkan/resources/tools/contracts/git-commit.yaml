@@ -30,3 +30,5 @@ result_schema:
 timeout_behavior: effect_may_be_uncertain
 idempotency: deduplication_key
 target_scopes: [repository, branch, path]
+target_arguments: {repository: [repository], branch: [branch], path: [paths]}
+resources: {timeout_seconds: 30, memory_mb: 128, network: false, concurrency: 1}

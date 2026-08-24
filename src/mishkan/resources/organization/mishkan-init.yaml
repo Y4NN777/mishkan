@@ -1,5 +1,6 @@
 schema_version: "1.0"
 outcome_id: mishkan.init
+objective_class: repository-initialization
 intent: Produce a repository-specific, evidence-cited initialization report without modifying the repository.
 allowed_roles: [Repository_Investigator, Repository_Reviewer]
 task_roles: [Repository_Investigator]

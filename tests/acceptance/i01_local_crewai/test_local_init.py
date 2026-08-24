@@ -53,7 +53,7 @@ def _repository(root: Path) -> Path:
 def _config(workspace: Path) -> MishkanConfig:
     return MishkanConfig.model_validate(
         {
-            "schema_version": "1.0",
+            "schema_version": "1.1",
             "mode": "local",
             "timezone": "UTC",
             "project": {"workspace": str(workspace)},
@@ -75,7 +75,16 @@ def _config(workspace: Path) -> MishkanConfig:
                     ]
                 },
             },
-            "policy_sources": ["fixture:read-only"],
+            "policy_sources": [
+                "package://mishkan.resources.policies/i02-local.yaml",
+            ],
+            "tool_sources": [
+                "package://mishkan.resources.tools/i02-catalog.yaml",
+            ],
+            "inspection_profile": ("package://mishkan.resources.inspection/i02-default.yaml"),
+            "isolation_profiles": [
+                "package://mishkan.resources.isolation/local-no-network.yaml",
+            ],
             "crewai": {
                 "tracing": False,
                 "telemetry": False,

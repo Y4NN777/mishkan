@@ -13,6 +13,7 @@ from pydantic import ValidationError
 
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.schema import SchemaRegistry
+from mishkan.domain.sources import resolve_source_path
 from mishkan.policy.models import EffectivePolicy, PolicyDocument
 
 
@@ -97,14 +98,9 @@ class PolicyLoader:
                     "package policy source cannot be read",
                     details={"source": uri, "reason": type(exc).__name__},
                 ) from exc
-        if uri.startswith("project:"):
-            path = project_root / uri.removeprefix("project:")
-        else:
-            path = Path(uri)
-            if not path.is_absolute():
-                path = project_root / path
+        path = resolve_source_path(uri, project_root, "policy source")
         try:
-            return path.resolve().read_bytes()
+            return path.read_bytes()
         except OSError as exc:
             raise MishkanError(
                 ErrorCode.CONFIGURATION,

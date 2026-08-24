@@ -2,7 +2,10 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from mishkan.policy.models import ApprovalEvidence, AuthorizationDecision
+from mishkan.tools.models import RegistrySnapshot, ToolBinding
 
 
 class PlanModel(BaseModel):
@@ -35,8 +38,35 @@ class PlanCandidate(PlanModel):
 
 
 class AcceptedPlan(PlanCandidate):
+    schema_version: str = "1.0"
     fingerprint: str = Field(min_length=64, max_length=64)
     discovery_fingerprint: str = Field(min_length=64, max_length=64)
+    registry: RegistrySnapshot | None = None
+    tool_bindings: tuple[ToolBinding, ...] = ()
+    policy_fingerprint: str | None = None
+    approvals: tuple[ApprovalEvidence, ...] = ()
+    authorizations: tuple[AuthorizationDecision, ...] = ()
+
+    @model_validator(mode="after")
+    def governed_plan_has_complete_lineage(self) -> "AcceptedPlan":
+        if self.schema_version == "1.1" and (
+            self.registry is None
+            or not self.tool_bindings
+            or self.policy_fingerprint is None
+            or not self.authorizations
+        ):
+            raise ValueError("accepted plan 1.1 requires complete policy and tool lineage")
+        return self
+
+    def binding_for(self, task_id: str, role: str, tool_id: str) -> ToolBinding:
+        matches = [
+            binding
+            for binding in self.tool_bindings
+            if binding.task_id == task_id and binding.role == role and binding.tool_id == tool_id
+        ]
+        if len(matches) != 1:
+            raise ValueError("accepted plan does not contain one exact tool binding")
+        return matches[0]
 
 
 class InitializationResult(PlanModel):

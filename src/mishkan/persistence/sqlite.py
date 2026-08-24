@@ -17,6 +17,7 @@ from mishkan.domain.identity import new_id
 from mishkan.domain.time import utc_now
 from mishkan.planning.models import AcceptedPlan, InitializationResult, ReviewDecision
 from mishkan.repository.models import DiscoverySnapshot
+from mishkan.tools.gateway_models import AuditEvent
 
 
 class Base(DeclarativeBase):
@@ -304,6 +305,21 @@ class LocalRunRepository:
                     "occurred_at": row.occurred_at,
                 }
                 for row in rows
+            )
+
+    def record(self, audit: AuditEvent) -> None:
+        """Persist already-inspected capability evidence in the authoritative outbox."""
+        with Session(self._engine) as session, session.begin():
+            self._require_run(session, audit.run_id)
+            session.add(
+                OutboxRow(
+                    id=str(audit.id),
+                    aggregate_id=audit.run_id,
+                    event_type=audit.event_type,
+                    payload=audit.model_dump_json(),
+                    occurred_at=audit.created_at.isoformat(),
+                    published_at=None,
+                )
             )
 
     @staticmethod

@@ -24,4 +24,6 @@ result_schema:
     stderr: {type: string}
 timeout_behavior: effect_may_be_uncertain
 idempotency: none
-target_scopes: [path, executable, network]
+target_scopes: [path, executable]
+target_arguments: {path: [workspace], executable: [argv.0]}
+resources: {timeout_seconds: 30, memory_mb: 512, network: false, concurrency: 1}

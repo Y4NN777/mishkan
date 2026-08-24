@@ -4,10 +4,11 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from support.i02 import plan_validator
 
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.organization import load_initialization_definitions
-from mishkan.planning import PlanCandidate, PlanTask, PlanValidator
+from mishkan.planning import PlanCandidate, PlanTask
 from mishkan.repository import RepositoryInspector
 
 
@@ -67,7 +68,7 @@ def test_plan_acceptance_binds_discovery_and_authority(tmp_path: Path) -> None:
     discovery = RepositoryInspector().inspect(_repository(tmp_path))
     organization, outcome = load_initialization_definitions()
 
-    accepted = PlanValidator().accept(
+    accepted = plan_validator(discovery.binding.root).accept(
         _candidate(discovery.binding.base_revision),
         discovery,
         organization,
@@ -95,7 +96,7 @@ def test_plan_acceptance_refuses_lineage_changes(
     candidate = _candidate(discovery.binding.base_revision).model_copy(update=candidate_change)
 
     with pytest.raises(MishkanError, match="refused") as caught:
-        PlanValidator().accept(candidate, discovery, organization, outcome)
+        plan_validator(discovery.binding.root).accept(candidate, discovery, organization, outcome)
     assert violation in str(caught.value.envelope.details["violations"])
 
 
@@ -104,7 +105,7 @@ def test_plan_acceptance_refuses_dependency_cycles(tmp_path: Path) -> None:
     organization, outcome = load_initialization_definitions()
 
     with pytest.raises(MishkanError) as caught:
-        PlanValidator().accept(
+        plan_validator(discovery.binding.root).accept(
             _candidate(discovery.binding.base_revision, dependency=("inspect-python",)),
             discovery,
             organization,

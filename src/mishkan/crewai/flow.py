@@ -47,6 +47,7 @@ class CrewAIInitializationFlow(Flow[InitializationFlowState]):
         repository: LocalRunRepository,
         organization: OrganizationDefinition,
         outcome: OutcomeDefinition,
+        plan_validator: PlanValidator | None = None,
         *,
         tracing: bool,
     ) -> None:
@@ -59,12 +60,14 @@ class CrewAIInitializationFlow(Flow[InitializationFlowState]):
         self._repository = repository
         self._organization = organization
         self._outcome = outcome
-        self._plan_validator = PlanValidator()
+        self._plan_validator = plan_validator
         self._result_validator = ResultValidator()
 
     @start()
     def establish_plan(self) -> AcceptedPlan:
         if self.state.accepted_plan is None:
+            if self._plan_validator is None:
+                raise RuntimeError("a plan validator is required before plan proposal")
             validation_feedback: tuple[str, ...] = ()
             last_error: MishkanError | None = None
             attempts = self._coordinator.plan_validation_retries + 1
@@ -116,6 +119,8 @@ class CrewAIInitializationFlow(Flow[InitializationFlowState]):
                 attempts = self._coordinator.review_retries + 1
                 for _attempt in range(attempts):
                     proposed = self._coordinator.execute_task(
+                        self.state.run_id,
+                        plan,
                         self.state.discovery,
                         task,
                         review_feedback,
@@ -126,6 +131,8 @@ class CrewAIInitializationFlow(Flow[InitializationFlowState]):
                         self.state.discovery,
                     )
                     proposed_review = self._coordinator.review_task(
+                        self.state.run_id,
+                        plan,
                         self.state.discovery,
                         task,
                         verified,

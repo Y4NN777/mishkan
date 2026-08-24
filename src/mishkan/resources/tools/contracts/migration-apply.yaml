@@ -27,4 +27,9 @@ result_schema:
 timeout_behavior: effect_may_be_uncertain
 idempotency: none
 target_scopes: [environment, external_resource, network]
+target_arguments:
+  environment: [environment]
+  external_resource: [migration_id]
+  network: [destination]
 credential_refs: [migration.target]
+resources: {timeout_seconds: 600, memory_mb: 512, network: true, concurrency: 1}

@@ -14,6 +14,7 @@ from pydantic import ValidationError
 
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.schema import SchemaRegistry
+from mishkan.domain.sources import resolve_source_path
 from mishkan.tools.models import (
     AvailabilityResult,
     AvailabilityState,
@@ -314,14 +315,9 @@ class ToolCatalog:
                     "package tool source cannot be read",
                     details={"source": uri, "reason": type(exc).__name__},
                 ) from exc
-        if uri.startswith("project:"):
-            path = self._project_root / uri.removeprefix("project:")
-        else:
-            path = Path(uri)
-            if not path.is_absolute():
-                path = self._project_root / path
+        path = resolve_source_path(uri, self._project_root, "tool source")
         try:
-            return path.resolve().read_bytes()
+            return path.read_bytes()
         except OSError as exc:
             raise MishkanError(
                 ErrorCode.TOOL_CONTRACT,

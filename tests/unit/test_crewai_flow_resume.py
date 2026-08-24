@@ -30,11 +30,6 @@ def _discovery(tmp_path: Path) -> DiscoverySnapshot:
 
 
 def _plan() -> AcceptedPlan:
-    common = {
-        "assigned_role": "Repository_Investigator",
-        "tools": ("repository.read_file",),
-        "evidence_paths": ("README.md",),
-    }
     return AcceptedPlan(
         objective="Initialize after a forced crash",
         outcome_id="mishkan.init",
@@ -44,14 +39,18 @@ def _plan() -> AcceptedPlan:
                 task_id="inspect-overview",
                 title="Inspect project overview",
                 purpose="Ground the first finding in project evidence.",
-                **common,
+                assigned_role="Repository_Investigator",
+                tools=("repository.read_file",),
+                evidence_paths=("README.md",),
             ),
             PlanTask(
                 task_id="inspect-details",
                 title="Inspect project details",
                 purpose="Ground the second finding after the first.",
                 depends_on=("inspect-overview",),
-                **common,
+                assigned_role="Repository_Investigator",
+                tools=("repository.read_file",),
+                evidence_paths=("README.md",),
             ),
         ),
         fingerprint="d" * 64,
@@ -69,6 +68,8 @@ class FakeCoordinator:
 
     def execute_task(
         self,
+        _run_id: str,
+        _plan: AcceptedPlan,
         discovery: DiscoverySnapshot,
         task: PlanTask,
         review_feedback: ReviewDecision | None = None,
@@ -87,6 +88,8 @@ class FakeCoordinator:
 
     def review_task(
         self,
+        _run_id: str,
+        _plan: AcceptedPlan,
         _discovery: DiscoverySnapshot,
         task: PlanTask,
         _result: InitializationResult,

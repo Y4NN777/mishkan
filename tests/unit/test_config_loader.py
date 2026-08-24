@@ -21,7 +21,7 @@ def test_later_layer_wins_and_records_field_source(tmp_path: Path) -> None:
     base.write_text((FIXTURES / "local-valid.yaml").read_text(encoding="utf-8"), encoding="utf-8")
     overlay = tmp_path / "overlay.yaml"
     overlay.write_text(
-        'schema_version: "1.0"\ntimezone: Africa/Ouagadougou\n',
+        'schema_version: "1.1"\ntimezone: Africa/Ouagadougou\n',
         encoding="utf-8",
     )
 

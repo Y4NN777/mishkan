@@ -7,7 +7,13 @@ from support.i02 import RecordingAdapter, context_for, inspector, policy_for
 from mishkan.policy import Decision, PolicyAuthority
 from mishkan.tools.adapters import WriteFileAdapter
 from mishkan.tools.gateway import CapabilityGateway, MappingCredentialResolver, MemoryEvidenceSink
-from mishkan.tools.gateway_models import AdapterResult, CallStatus, DeclaredTargets, ResolvedTargets
+from mishkan.tools.gateway_models import (
+    AdapterResult,
+    CallStatus,
+    DeclaredTargets,
+    ResolvedPath,
+    ResolvedTargets,
+)
 
 
 def test_authorized_write_uses_exact_binding_and_returns_reviewable_diff(tmp_path: Path) -> None:
@@ -159,7 +165,18 @@ def test_invalid_adapter_output_is_contained_after_dispatch(tmp_path: Path) -> N
     )
     context = context_for(tmp_path, "repository.write_file", policy, ("README.md",))
     adapter = RecordingAdapter(
-        AdapterResult(output={"unexpected": True}, actual_targets=ResolvedTargets())
+        AdapterResult(
+            output={"unexpected": True},
+            actual_targets=ResolvedTargets(
+                paths=(
+                    ResolvedPath(
+                        requested="README.md",
+                        relative="README.md",
+                        absolute=tmp_path / "README.md",
+                    ),
+                ),
+            ),
+        )
     )
     gateway = CapabilityGateway(
         tmp_path,
@@ -180,3 +197,40 @@ def test_invalid_adapter_output_is_contained_after_dispatch(tmp_path: Path) -> N
     assert result.status is CallStatus.FAILED
     assert result.error_code == "ERR-TOL-003"
     assert result.output is None
+
+
+def test_requested_cancellation_stops_before_adapter_dispatch(tmp_path: Path) -> None:
+    class RequestedCancellation:
+        def requested(self, run_id: str, task_attempt_id: str) -> bool:
+            assert (run_id, task_attempt_id) == ("run-1", "task:1")
+            return True
+
+    policy = policy_for(
+        "repository.write_file",
+        Decision.ALLOW,
+        effect_class="filesystem_write",
+        paths=("README.md",),
+    )
+    context = context_for(tmp_path, "repository.write_file", policy, ("README.md",))
+    adapter = RecordingAdapter(AdapterResult(output={}, actual_targets=ResolvedTargets()))
+    evidence = MemoryEvidenceSink()
+    gateway = CapabilityGateway(
+        tmp_path,
+        PolicyAuthority(),
+        MappingCredentialResolver({}),
+        inspector(tmp_path),
+        {"native.repository.write_file": adapter},
+        evidence,
+        RequestedCancellation(),
+    )
+
+    result = gateway.invoke(
+        context,
+        {"path": "README.md", "content": "not written"},
+        DeclaredTargets(paths=("README.md",)),
+    )
+
+    assert result.status is CallStatus.CANCELLED
+    assert result.retryable is False
+    assert adapter.calls == 0
+    assert evidence.events[-1].event_type == "tool.call_cancelled"

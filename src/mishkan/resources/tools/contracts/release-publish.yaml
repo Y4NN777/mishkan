@@ -27,4 +27,6 @@ result_schema:
 timeout_behavior: effect_may_be_uncertain
 idempotency: deduplication_key
 target_scopes: [external_resource, network]
+target_arguments: {external_resource: [target, artifact], network: [destination]}
 credential_refs: [release.target]
+resources: {timeout_seconds: 300, memory_mb: 256, network: true, concurrency: 1}

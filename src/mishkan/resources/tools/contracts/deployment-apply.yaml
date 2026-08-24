@@ -26,5 +26,10 @@ result_schema:
     external_reference: {type: string}
 timeout_behavior: effect_may_be_uncertain
 idempotency: none
-target_scopes: [environment, network]
+target_scopes: [environment, external_resource, network]
+target_arguments:
+  environment: [environment]
+  external_resource: [artifact]
+  network: [destination]
 credential_refs: [deployment.target]
+resources: {timeout_seconds: 600, memory_mb: 512, network: true, concurrency: 1}

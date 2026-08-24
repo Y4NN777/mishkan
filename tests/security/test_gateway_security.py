@@ -7,8 +7,10 @@ from pathlib import Path
 import pytest
 from support.i02 import RecordingAdapter, context_for, inspector, policy_for
 
+from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.policy import Decision, PolicyAuthority
 from mishkan.tools.adapters import ContainerCommandAdapter
+from mishkan.tools.catalog import ToolCatalog
 from mishkan.tools.gateway import CapabilityGateway, MappingCredentialResolver, MemoryEvidenceSink
 from mishkan.tools.gateway_models import AdapterResult, CallStatus, DeclaredTargets, ResolvedTargets
 from mishkan.tools.isolation import ContainerCommand, IsolationProfileLoader
@@ -75,6 +77,18 @@ def test_symlink_escape_is_refused_before_dispatch(tmp_path: Path) -> None:
     assert result.status is CallStatus.REFUSED
     assert adapter.calls == 0
     assert outside.read_text(encoding="utf-8") == "outside"
+
+
+@pytest.mark.symlinks
+def test_project_scoped_tool_source_cannot_escape_through_a_symlink(tmp_path: Path) -> None:
+    outside = tmp_path.parent / f"{tmp_path.name}-outside-catalog.yaml"
+    outside.write_text("schema_version: '1.0'\n", encoding="utf-8")
+    (tmp_path / "catalog.yaml").symlink_to(outside)
+
+    with pytest.raises(MishkanError) as caught:
+        ToolCatalog(("project:catalog.yaml",), tmp_path)
+
+    assert caught.value.envelope.code is ErrorCode.AUTHORITY_NOT_GRANTED
 
 
 @pytest.mark.secrets

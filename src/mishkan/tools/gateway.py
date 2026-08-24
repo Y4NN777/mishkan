@@ -28,6 +28,62 @@ from mishkan.tools.gateway_models import (
     ToolResultEnvelope,
 )
 from mishkan.tools.inspection import ContentInspector
+from mishkan.tools.models import ToolContract
+
+_TARGET_FIELDS = {
+    "path": "paths",
+    "executable": "executables",
+    "network": "network_destinations",
+    "repository": "repositories",
+    "remote": "remotes",
+    "branch": "branches",
+    "environment": "environments",
+    "external_resource": "external_resources",
+}
+
+
+def declared_targets_for(
+    contract: ToolContract,
+    arguments: dict[str, Any],
+) -> DeclaredTargets:
+    """Extract targets only through the selectors declared by the versioned tool contract."""
+    values: dict[str, tuple[str, ...]] = {}
+    for scope, selectors in contract.target_arguments.items():
+        field = _TARGET_FIELDS.get(scope)
+        if field is None:
+            raise MishkanError(
+                ErrorCode.TOOL_CONTRACT,
+                "tool contract declares an unsupported target scope",
+                details={"scope": scope},
+            )
+        extracted = tuple(
+            dict.fromkeys(
+                value
+                for selector in selectors
+                for value in _select_argument_values(arguments, selector)
+            )
+        )
+        values[field] = extracted
+    return DeclaredTargets(**values)
+
+
+def _select_argument_values(arguments: dict[str, Any], selector: str) -> tuple[str, ...]:
+    current: Any = arguments
+    for part in selector.split("."):
+        if isinstance(current, dict):
+            current = current.get(part)
+        elif isinstance(current, list) and part.isdigit():
+            index = int(part)
+            current = current[index] if index < len(current) else None
+        else:
+            current = None
+        if current is None:
+            return ()
+    if isinstance(current, str):
+        return (current,)
+    if isinstance(current, list) and all(isinstance(item, str) for item in current):
+        return tuple(current)
+    return ()
 
 
 class CredentialResolver(Protocol):
@@ -36,6 +92,20 @@ class CredentialResolver(Protocol):
 
 class EvidenceSink(Protocol):
     def record(self, event: AuditEvent) -> None: ...
+
+
+class CancellationSignal(Protocol):
+    def requested(self, run_id: str, task_attempt_id: str) -> bool: ...
+
+
+class NeverCancelled:
+    def requested(self, run_id: str, task_attempt_id: str) -> bool:
+        del run_id, task_attempt_id
+        return False
+
+
+class CapabilityCancelled(Exception):
+    """Raised by an adapter when an observed cancellation stops its work."""
 
 
 class MemoryEvidenceSink:
@@ -74,6 +144,7 @@ class CapabilityGateway:
         inspector: ContentInspector,
         adapters: Mapping[str, CapabilityAdapter],
         evidence: EvidenceSink,
+        cancellation: CancellationSignal | None = None,
     ) -> None:
         self._root = Path(repository_root).resolve()
         self._policy = policy_authority
@@ -81,13 +152,14 @@ class CapabilityGateway:
         self._inspector = inspector
         self._adapters = dict(adapters)
         self._evidence = evidence
+        self._cancellation = cancellation or NeverCancelled()
 
     def invoke(
         self,
         context: InvocationContext,
         arguments: dict[str, Any],
         declared_targets: DeclaredTargets,
-        approval: ApprovalEvidence | None = None,
+        approval: ApprovalEvidence | tuple[ApprovalEvidence, ...] | None = None,
     ) -> ToolResultEnvelope:
         started = utc_now()
         call_id: str | None = None
@@ -96,7 +168,7 @@ class CapabilityGateway:
             self._validate_binding(context, contract.provenance_fingerprint)
             self._validate_schema(contract.input_schema, arguments, "input")
             resolved = self._resolve_targets(declared_targets)
-            self._validate_declared_arguments(contract.target_scopes, arguments, resolved)
+            self._validate_declared_arguments(contract, arguments, resolved)
             self._validate_bound_targets(context.binding.allowed_targets, resolved)
             request = AuthorizationRequest(
                 plan_fingerprint=context.plan_fingerprint,
@@ -118,7 +190,16 @@ class CapabilityGateway:
                 isolation_profile=context.isolation_profile,
                 resources=context.resources,
             )
-            authorization = self._policy.evaluate(request, context.policy, approval)
+            approval_candidates = approval if isinstance(approval, tuple) else (approval,)
+            exact_approval = next(
+                (
+                    evidence
+                    for evidence in approval_candidates
+                    if evidence is not None and evidence.request_fingerprint == request.fingerprint
+                ),
+                None,
+            )
+            authorization = self._policy.evaluate(request, context.policy, exact_approval)
             if authorization.decision is Decision.REQUIRE_APPROVAL:
                 raise MishkanError(
                     ErrorCode.AUTHORIZATION_MISSING,
@@ -148,6 +229,8 @@ class CapabilityGateway:
             )
             call_id = str(envelope.id)
             self._audit(context, call_id, "tool.call_authorized", "allow", authorization.reason)
+            if self._cancellation.requested(context.run_id, context.task_attempt_id):
+                raise CapabilityCancelled("cancellation requested before dispatch")
             credentials = self._credentials.resolve(contract.credential_refs)
             adapter = self._adapters.get(contract.adapter)
             if adapter is None:
@@ -157,13 +240,41 @@ class CapabilityGateway:
                     details={"adapter": contract.adapter},
                 )
             adapter_result = adapter.invoke(AdapterCall(arguments, resolved, credentials))
+            if adapter_result.actual_targets != resolved:
+                raise MishkanError(
+                    ErrorCode.TOOL_EFFECT,
+                    "adapter-reported actual targets differ from the authorized targets",
+                )
             secret_values = tuple(credentials.values())
             inspected = self._inspector.inspect(
-                json.dumps(adapter_result.output, sort_keys=True, default=str), secret_values
+                json.dumps(
+                    {
+                        "output": adapter_result.output,
+                        "external_references": adapter_result.external_references,
+                        "evidence": adapter_result.evidence,
+                    },
+                    sort_keys=True,
+                    default=str,
+                ),
+                secret_values,
             )
-            inspected_output = json.loads(inspected)
+            inspected_result = json.loads(inspected)
+            if not isinstance(inspected_result, dict):
+                raise MishkanError(ErrorCode.TOOL_SCHEMA, "inspected tool result is not an object")
+            inspected_output = inspected_result.get("output")
             if not isinstance(inspected_output, dict):
                 raise MishkanError(ErrorCode.TOOL_SCHEMA, "inspected tool output is not an object")
+            external_references = inspected_result.get("external_references")
+            adapter_evidence = inspected_result.get("evidence")
+            if not isinstance(external_references, list) or not all(
+                isinstance(item, str) for item in external_references
+            ):
+                raise MishkanError(
+                    ErrorCode.TOOL_SCHEMA,
+                    "inspected external references are not a string list",
+                )
+            if not isinstance(adapter_evidence, dict):
+                raise MishkanError(ErrorCode.TOOL_SCHEMA, "inspected adapter evidence is invalid")
             self._validate_schema(contract.result_schema, inspected_output, "result")
             completed = ToolResultEnvelope(
                 call_id=call_id,
@@ -176,13 +287,30 @@ class CapabilityGateway:
                 completed_at=utc_now(),
                 output=inspected_output,
                 actual_targets=adapter_result.actual_targets,
-                external_references=adapter_result.external_references,
+                external_references=tuple(external_references),
                 retryable=False,
-                adapter_evidence=adapter_result.evidence,
+                adapter_evidence=adapter_evidence,
                 reason="validated authorized tool result",
             )
             self._audit(context, call_id, "tool.call_completed", "allow", completed.reason)
             return completed
+        except CapabilityCancelled:
+            terminal_result = self._terminal(
+                context,
+                call_id,
+                started,
+                CallStatus.CANCELLED,
+                ErrorCode.TOOL_EFFECT,
+                "tool call was cancelled",
+            )
+            self._audit(
+                context,
+                terminal_result.call_id,
+                "tool.call_cancelled",
+                "cancelled",
+                terminal_result.reason,
+            )
+            return terminal_result
         except TimeoutError:
             terminal_result = self._terminal(
                 context,
@@ -304,7 +432,7 @@ class CapabilityGateway:
 
     @staticmethod
     def _validate_declared_arguments(
-        target_scopes: tuple[str, ...],
+        contract: ToolContract,
         arguments: dict[str, Any],
         targets: ResolvedTargets,
     ) -> None:
@@ -319,7 +447,9 @@ class CapabilityGateway:
             "external_resource": targets.external_resources,
         }
         unsupported = [
-            scope for scope, values in declared.items() if values and scope not in target_scopes
+            scope
+            for scope, values in declared.items()
+            if values and scope not in contract.target_scopes
         ]
         if unsupported:
             raise MishkanError(
@@ -327,46 +457,26 @@ class CapabilityGateway:
                 "tool invocation declared unsupported target scopes",
                 details={"scopes": unsupported},
             )
-        extracted = CapabilityGateway._argument_targets(arguments)
+        extracted_model = declared_targets_for(contract, arguments)
+        extracted = {
+            "path": extracted_model.paths,
+            "executable": extracted_model.executables,
+            "network": extracted_model.network_destinations,
+            "repository": extracted_model.repositories,
+            "remote": extracted_model.remotes,
+            "branch": extracted_model.branches,
+            "environment": extracted_model.environments,
+            "external_resource": extracted_model.external_resources,
+        }
         mismatched = [
-            value
-            for scope in target_scopes
-            for value in declared[scope]
-            if value not in extracted[scope]
+            scope for scope in contract.target_scopes if declared[scope] != extracted[scope]
         ]
         if mismatched:
             raise MishkanError(
                 ErrorCode.TOOL_SCHEMA,
                 "declared targets do not match tool arguments",
-                details={"count": len(mismatched)},
+                details={"scopes": mismatched},
             )
-
-    @staticmethod
-    def _argument_targets(arguments: dict[str, Any]) -> dict[str, tuple[str, ...]]:
-        def strings(*keys: str) -> tuple[str, ...]:
-            values: list[str] = []
-            for key in keys:
-                value = arguments.get(key)
-                if isinstance(value, str):
-                    values.append(value)
-                elif isinstance(value, list):
-                    values.extend(item for item in value if isinstance(item, str))
-            return tuple(values)
-
-        argv = arguments.get("argv")
-        executables = (
-            (argv[0],) if isinstance(argv, list) and argv and isinstance(argv[0], str) else ()
-        )
-        return {
-            "path": strings("path", "paths", "workspace"),
-            "executable": executables,
-            "network": strings("network_destination", "network_destinations", "destination"),
-            "repository": strings("repository"),
-            "remote": strings("remote"),
-            "branch": strings("branch", "local_branch", "remote_branch"),
-            "environment": strings("environment"),
-            "external_resource": strings("external_resource", "target", "artifact"),
-        }
 
     @staticmethod
     def _validate_bound_targets(allowed: tuple[str, ...], targets: ResolvedTargets) -> None:

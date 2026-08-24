@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.schema import SchemaRegistry
+from mishkan.domain.sources import resolve_source_path
 
 
 class InspectionModel(BaseModel):
@@ -111,13 +112,9 @@ class InspectionProfileLoader:
                     details={"source": uri},
                 )
             return files(module).joinpath(resource).read_bytes()
-        path = (
-            project_root / uri.removeprefix("project:") if uri.startswith("project:") else Path(uri)
-        )
-        if not path.is_absolute():
-            path = project_root / path
+        path = resolve_source_path(uri, project_root, "inspection profile")
         try:
-            return path.resolve().read_bytes()
+            return path.read_bytes()
         except OSError as exc:
             raise MishkanError(
                 ErrorCode.CONFIGURATION,

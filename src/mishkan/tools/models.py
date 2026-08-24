@@ -9,7 +9,7 @@ from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from mishkan.policy.models import security_identifier
+from mishkan.policy.models import ResourceRequest, security_identifier
 
 
 class ToolModel(BaseModel):
@@ -88,14 +88,20 @@ class ToolContract(ToolModel):
     timeout_behavior: str = Field(min_length=1)
     idempotency: Idempotency
     target_scopes: tuple[str, ...] = Field(min_length=1)
+    target_arguments: dict[str, tuple[str, ...]]
     credential_refs: tuple[str, ...] = ()
     availability: AvailabilityConditions = Field(default_factory=AvailabilityConditions)
+    resources: ResourceRequest
     adapter_config: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def schemas_are_objects(self) -> Self:
         if self.input_schema.get("type") != "object" or self.result_schema.get("type") != "object":
             raise ValueError("tool input and result schemas must be JSON object schemas")
+        if set(self.target_arguments) != set(self.target_scopes):
+            raise ValueError("tool target argument declarations must match its target scopes")
+        if any(not selectors for selectors in self.target_arguments.values()):
+            raise ValueError("each tool target scope must declare an argument selector")
         return self
 
     @property

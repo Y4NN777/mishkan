@@ -30,4 +30,10 @@ result_schema:
 timeout_behavior: effect_may_be_uncertain
 idempotency: none
 target_scopes: [repository, remote, branch, network]
+target_arguments:
+  repository: [repository]
+  remote: [remote]
+  branch: [local_branch, remote_branch]
+  network: [destination]
 credential_refs: [git.remote]
+resources: {timeout_seconds: 120, memory_mb: 128, network: true, concurrency: 1}

@@ -85,6 +85,9 @@ class MishkanConfig(StrictConfigModel):
     agent_routes: dict[str, str] = Field(default_factory=dict)
     services: dict[str, ServiceConfig] = Field(default_factory=dict)
     policy_sources: tuple[str, ...] = Field(min_length=1)
+    tool_sources: tuple[str, ...] = ()
+    inspection_profile: str | None = None
+    isolation_profiles: tuple[str, ...] = ()
     crewai: CrewAIRuntimeConfig = Field(default_factory=CrewAIRuntimeConfig)
 
     @field_validator("timezone")
@@ -94,6 +97,21 @@ class MishkanConfig(StrictConfigModel):
 
     @model_validator(mode="after")
     def references_exist(self) -> Self:
+        if self.schema_version == "1.1":
+            missing = [
+                field
+                for field, value in (
+                    ("tool_sources", self.tool_sources),
+                    ("inspection_profile", self.inspection_profile),
+                    ("isolation_profiles", self.isolation_profiles),
+                )
+                if not value
+            ]
+            if missing:
+                raise ValueError(
+                    f"configuration 1.1 requires governed capability fields: {missing}"
+                )
+
         missing_providers = sorted(
             {
                 candidate.provider

@@ -15,10 +15,18 @@ from mishkan.config.models import MishkanConfig
 from mishkan.crewai.routing import CrewAIModelRouter
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.organization.models import OrganizationDefinition, OutcomeDefinition, RoleDefinition
-from mishkan.planning.models import InitializationResult, PlanCandidate, PlanTask, ReviewDecision
+from mishkan.planning.models import (
+    AcceptedPlan,
+    InitializationResult,
+    PlanCandidate,
+    PlanTask,
+    ReviewDecision,
+)
+from mishkan.policy import EffectivePolicy
 from mishkan.repository.models import DiscoverySnapshot
-from mishkan.tools.crewai_tools import ReadRepositoryFileTool
-from mishkan.tools.registry import ToolRegistry
+from mishkan.tools.crewai_gateway import GatewayCrewAITool
+from mishkan.tools.gateway import CapabilityGateway
+from mishkan.tools.gateway_models import InvocationContext
 
 OutputT = TypeVar("OutputT", bound=BaseModel)
 
@@ -31,12 +39,14 @@ class CrewAIInitializationCoordinator:
         config: MishkanConfig,
         organization: OrganizationDefinition,
         outcome: OutcomeDefinition,
-        tool_registry: ToolRegistry,
+        gateway: CapabilityGateway | None = None,
+        policy: EffectivePolicy | None = None,
     ) -> None:
         self._config = config
         self._organization = organization
         self._outcome = outcome
-        self._tools = tool_registry
+        self._gateway = gateway
+        self._policy = policy
         self._models = CrewAIModelRouter(config)
 
     @property
@@ -98,20 +108,21 @@ Rules:
 
     def execute_task(
         self,
+        run_id: str,
+        plan: AcceptedPlan,
         discovery: DiscoverySnapshot,
         task_contract: PlanTask,
         review_feedback: ReviewDecision | None = None,
     ) -> InitializationResult:
         role = self._role(task_contract.assigned_role)
-        tools: list[BaseTool] = []
-        if "repository.read_file" in task_contract.tools:
-            tools.append(
-                ReadRepositoryFileTool(
-                    self._tools.require("repository.read_file"),
-                    discovery.binding.root,
-                    task_contract.evidence_paths,
-                )
-            )
+        tools = self._governed_tools(
+            run_id,
+            plan,
+            discovery,
+            task_contract.task_id,
+            role.name,
+            task_contract.tools,
+        )
         feedback = ""
         if review_feedback is not None:
             feedback = f"""
@@ -143,19 +154,22 @@ concrete finding grounded in the file content. Do not modify anything.
 
     def review_task(
         self,
+        run_id: str,
+        plan: AcceptedPlan,
         discovery: DiscoverySnapshot,
         task_contract: PlanTask,
         result: InitializationResult,
     ) -> ReviewDecision:
         role_name = self._outcome.review_roles[0]
         role = self._role(role_name)
-        tools: list[BaseTool] = [
-            ReadRepositoryFileTool(
-                self._tools.require("repository.read_file"),
-                discovery.binding.root,
-                task_contract.evidence_paths,
-            )
-        ]
+        tools = self._governed_tools(
+            run_id,
+            plan,
+            discovery,
+            f"review-{task_contract.task_id}",
+            role.name,
+            task_contract.tools,
+        )
         description = f"""
 Independently review this result against its accepted task and repository evidence.
 
@@ -175,6 +189,54 @@ otherwise set verdict to rejected and list concrete issues. You are reviewing an
             output_model=ReviewDecision,
             tools=tools,
         )
+
+    def _governed_tools(
+        self,
+        run_id: str,
+        plan: AcceptedPlan,
+        discovery: DiscoverySnapshot,
+        binding_task_id: str,
+        role: str,
+        tool_ids: tuple[str, ...],
+    ) -> list[BaseTool]:
+        registry = plan.registry
+        if (
+            self._gateway is None
+            or self._policy is None
+            or registry is None
+            or plan.policy_fingerprint != self._policy.fingerprint
+        ):
+            raise MishkanError(
+                ErrorCode.TOOL_DRIFT,
+                "accepted plan does not match the active policy and registry lineage",
+            )
+        tools: list[BaseTool] = []
+        for tool_id in tool_ids:
+            contract = registry.require(tool_id)
+            binding = plan.binding_for(binding_task_id, role, tool_id)
+            context = InvocationContext(
+                run_id=run_id,
+                task_attempt_id=f"{binding_task_id}:1",
+                identity=f"role:{role}",
+                objective_class=self._outcome.objective_class,
+                repository=discovery.binding.repository_id,
+                outcome=self._outcome.outcome_id,
+                role=role,
+                plan_fingerprint=plan.fingerprint,
+                registry=registry,
+                binding=binding,
+                policy=self._policy,
+                resources=contract.resources,
+            )
+            tools.append(
+                GatewayCrewAITool(
+                    contract,
+                    self._gateway,
+                    context,
+                    approval=plan.approvals,
+                )
+            )
+        return tools
 
     def _kickoff_structured(
         self,

@@ -260,6 +260,26 @@
     "crewai": {
       "$ref": "#/$defs/CrewAIRuntimeConfig"
     },
+    "inspection_profile": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Inspection Profile"
+    },
+    "isolation_profiles": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Isolation Profiles",
+      "type": "array"
+    },
     "mode": {
       "$ref": "#/$defs/OperatingMode"
     },
@@ -304,6 +324,14 @@
     "timezone": {
       "title": "Timezone",
       "type": "string"
+    },
+    "tool_sources": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Tool Sources",
+      "type": "array"
     }
   },
   "required": [

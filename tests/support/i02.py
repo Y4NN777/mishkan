@@ -3,7 +3,16 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from mishkan.policy import Decision, EffectivePolicy, PolicyDocument, PolicyRule, PolicyScope
+from mishkan.planning import PlanValidator
+from mishkan.policy import (
+    Decision,
+    EffectivePolicy,
+    PolicyAuthority,
+    PolicyDocument,
+    PolicyLoader,
+    PolicyRule,
+    PolicyScope,
+)
 from mishkan.policy.models import ResourceRequest, canonical_fingerprint
 from mishkan.tools.catalog import ToolCatalog
 from mishkan.tools.gateway_models import AdapterResult, InvocationContext
@@ -128,3 +137,9 @@ def context_for(
 def inspector(root: Path) -> ContentInspector:
     profile = InspectionProfileLoader().load(INSPECTION_URI, root)
     return ContentInspector(profile)
+
+
+def plan_validator(root: Path) -> PlanValidator:
+    catalog = ToolCatalog((CATALOG_URI,), root)
+    policy = PolicyLoader().load((POLICY_URI,), root)
+    return PlanValidator(catalog, policy, PolicyAuthority())

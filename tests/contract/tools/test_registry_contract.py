@@ -166,6 +166,8 @@ result_schema: {type: object}
 timeout_behavior: cancel_local
 idempotency: idempotent
 target_scopes: [path]
+target_arguments: {path: [path]}
+resources: {timeout_seconds: 30, memory_mb: 64, network: false, concurrency: 1}
 """,
         encoding="utf-8",
     )

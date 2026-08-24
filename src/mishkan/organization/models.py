@@ -24,6 +24,7 @@ class OrganizationDefinition(DefinitionModel):
 class OutcomeDefinition(DefinitionModel):
     schema_version: str
     outcome_id: str = Field(min_length=1)
+    objective_class: str = Field(min_length=1)
     intent: str = Field(min_length=3)
     allowed_roles: tuple[str, ...] = Field(min_length=1)
     task_roles: tuple[str, ...] = Field(min_length=1)
