@@ -228,7 +228,19 @@ class CapabilityGateway:
                 deadline=deadline,
             )
             call_id = str(envelope.id)
-            self._audit(context, call_id, "tool.call_authorized", "allow", authorization.reason)
+            self._audit(
+                context,
+                call_id,
+                "tool.call_authorized",
+                "allow",
+                authorization.reason,
+                {
+                    "authorization_id": str(authorization.id),
+                    "request_fingerprint": authorization.request_fingerprint,
+                    "approval_id": authorization.approval_id,
+                    "matched_rule_ids": authorization.matched_rule_ids,
+                },
+            )
             if self._cancellation.requested(context.run_id, context.task_attempt_id):
                 raise CapabilityCancelled("cancellation requested before dispatch")
             credentials = self._credentials.resolve(contract.credential_refs)
@@ -292,7 +304,14 @@ class CapabilityGateway:
                 adapter_evidence=adapter_evidence,
                 reason="validated authorized tool result",
             )
-            self._audit(context, call_id, "tool.call_completed", "allow", completed.reason)
+            self._audit(
+                context,
+                call_id,
+                "tool.call_completed",
+                "allow",
+                completed.reason,
+                {"result_id": str(completed.id), "status": completed.status.value},
+            )
             return completed
         except CapabilityCancelled:
             terminal_result = self._terminal(
@@ -309,6 +328,11 @@ class CapabilityGateway:
                 "tool.call_cancelled",
                 "cancelled",
                 terminal_result.reason,
+                {
+                    "result_id": str(terminal_result.id),
+                    "status": terminal_result.status.value,
+                    "error_code": terminal_result.error_code,
+                },
             )
             return terminal_result
         except TimeoutError:
@@ -326,6 +350,11 @@ class CapabilityGateway:
                 "tool.call_uncertain",
                 "uncertain",
                 terminal_result.reason,
+                {
+                    "result_id": str(terminal_result.id),
+                    "status": terminal_result.status.value,
+                    "error_code": terminal_result.error_code,
+                },
             )
             return terminal_result
         except (MishkanError, OSError, ValueError) as exc:
@@ -346,7 +375,18 @@ class CapabilityGateway:
                 pre_dispatch_codes.add(ErrorCode.TOOL_SCHEMA)
             status = CallStatus.REFUSED if code in pre_dispatch_codes else CallStatus.FAILED
             terminal_result = self._terminal(context, call_id, started, status, code, reason)
-            self._audit(context, terminal_result.call_id, "tool.call_refused", status.value, reason)
+            self._audit(
+                context,
+                terminal_result.call_id,
+                "tool.call_refused",
+                status.value,
+                reason,
+                {
+                    "result_id": str(terminal_result.id),
+                    "status": terminal_result.status.value,
+                    "error_code": terminal_result.error_code,
+                },
+            )
             return terminal_result
 
     def _resolve_targets(self, declared: DeclaredTargets) -> ResolvedTargets:
@@ -530,6 +570,7 @@ class CapabilityGateway:
         event_type: str,
         decision: str,
         reason: str,
+        details: dict[str, Any] | None = None,
     ) -> None:
         inspected_reason = self._inspector.inspect(reason)
         self._evidence.record(
@@ -542,5 +583,12 @@ class CapabilityGateway:
                 capability=context.binding.tool_id,
                 decision=decision,
                 reason=inspected_reason,
+                details={
+                    "registry_fingerprint": context.registry.fingerprint,
+                    "plan_fingerprint": context.plan_fingerprint,
+                    "policy_fingerprint": context.policy.fingerprint,
+                    "binding_contract_fingerprint": context.binding.contract_fingerprint,
+                    **(details or {}),
+                },
             )
         )
