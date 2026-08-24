@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 from crewai.flow.flow import Flow, listen, start
 from pydantic import BaseModel, Field
 
@@ -33,6 +35,9 @@ class InitializationFlowState(BaseModel):
 class CrewAIInitializationFlow(Flow[InitializationFlowState]):
     """Supported CrewAI Flow with MISHKAN-owned authoritative persistence."""
 
+    # CrewAI's built-in flows use this hook to avoid an implicit LanceDB Memory.
+    # MISHKAN owns memory and persistence explicitly; the contract test pins this boundary.
+    _skip_auto_memory: ClassVar[bool] = True
     initial_state = InitializationFlowState
 
     def __init__(

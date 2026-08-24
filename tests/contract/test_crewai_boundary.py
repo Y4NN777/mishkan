@@ -18,6 +18,7 @@ def test_production_boundary_is_real_crewai_without_a_runtime_selector() -> None
     assert "runtime" not in parameters
     assert "runtime_selector" not in parameters
     assert issubclass(CrewAIInitializationFlow, Flow)
+    assert CrewAIInitializationFlow._skip_auto_memory is True
     assert Agent.__module__.startswith("crewai.")
     assert Task.__module__.startswith("crewai.")
     assert Crew.__module__.startswith("crewai.")
