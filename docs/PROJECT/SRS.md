@@ -1,14 +1,14 @@
 # MISHKAN Software Requirements Specification
 
 **Status:** Approved — Gate G2
-**Version:** 1.4
-**Derived from:** Approved PRD 1.2
+**Version:** 1.5
+**Derived from:** Approved PRD 1.3
 **Normative vocabulary:** MUST, MUST NOT, SHOULD, MAY follow RFC 2119 meanings
 
-Version 1.4 clarifies the tool model without changing the approved product scope. It treats
-general-purpose file, terminal/process, web, and browser surfaces as real tools whose concrete
-inputs are governed at invocation time; makes adapter presence part of availability; and removes
-any requirement for a universal capability taxonomy or one tool contract per ecosystem command.
+Version 1.5 adds observable decision-quality assistance without assigning its implementation. It
+requires evidence-grounded context, credible alternatives, explicit uncertainty, validation,
+independent challenge, and engineer-controlled acceptance. Version 1.4 clarified the general-tool
+model and remains incorporated without change.
 
 ## 1. Purpose and scope
 
@@ -174,6 +174,63 @@ authority without a recorded policy decision.
 The engineer MUST be able to inspect every normalized plan version, its authorization decision,
 its difference from the preceding version, and the reasons each role, task, dependency, capability,
 and completion condition was selected.
+
+### PLN-012 — Decision context
+
+A task that recommends a durable product, system, architecture, data, security, scalability,
+operational, or other technical choice MUST identify the exact decision question, applicable
+requirements, repository evidence, constraints, declared preferences, risks, and material unknowns.
+
+**Verification:** A decision fixture with missing context is rejected as incomplete rather than
+receiving an unqualified recommendation.
+
+### PLN-013 — Evidence classification
+
+A decision result MUST distinguish verified evidence and its source from assumptions, engineer
+preferences, inferences, and unresolved unknowns. It MUST NOT present an unsupported inference as a
+verified fact.
+
+**Verification:** Injected unsupported claims remain labelled as assumptions or cause an
+inconclusive result.
+
+### PLN-014 — Credible alternatives
+
+When more than one credible option exists, the decision result MUST compare at least two options
+against the same declared criteria. When the available evidence supports only one credible option,
+the result MUST state how alternatives were sought and why the rejected candidates were not
+credible; it MUST NOT fabricate an alternative to satisfy a fixed count.
+
+### PLN-015 — Context-derived criteria
+
+Decision criteria and any weighting MUST be inspectable and traceable to the objective,
+requirements, discovered repository evidence, declared preferences, or effective policy. The
+system MUST NOT rely on an undisclosed universal technology scorecard.
+
+### PLN-016 — Recommendation contract
+
+A decision result MUST either recommend an option or explicitly declare the evidence
+insufficient. A recommendation MUST state its rationale, relevant trade-offs and risks, confidence
+and its basis, unresolved questions, expected consequences, and reversal or migration implications.
+
+### PLN-017 — Validation and independent challenge
+
+A consequential recommendation MUST identify proportionate validation evidence, such as a focused
+prototype, benchmark, contract test, threat analysis, schema exercise, or authoritative-source
+check. An identity that produced the recommendation MUST NOT perform its acceptance evaluation.
+Failed or missing required validation MUST leave the recommendation unaccepted.
+
+### PLN-018 — Staged durable decisions
+
+A recommendation MUST NOT silently modify accepted product, system, architecture, data, policy, or
+delivery authority. A choice that changes durable authority MUST be staged with its context,
+alternatives, rationale, consequences, evidence, validation result, deciding identity, and lineage,
+then pass the applicable policy or engineer-approval boundary before becoming effective.
+
+### PLN-019 — Configurable explanation support
+
+The system MUST allow the engineer to request an explanation depth and focus areas for decision
+support. Adapting the explanation MUST NOT remove technical evidence, uncertainty, risks, or
+consequences required by PLN-012–018.
 
 ## 6. Organization and coordination
 
@@ -897,6 +954,8 @@ events, logs, snapshots, artifacts, reports, or diffs.
 | ERR-PRJ-001 | Repository or revision cannot be established | Do not plan or run; report evidence failure |
 | ERR-PLN-001 | Plan violates schema, organization, or policy | Reject plan with every detected violation |
 | ERR-PLN-002 | Plan has no valid authorization decision, or required approval is absent | Remain awaiting decision or approval; do not execute |
+| ERR-DEC-001 | Decision context or evidence is insufficient for a justified recommendation | Return an inconclusive result with assumptions and unknowns; do not change durable authority |
+| ERR-DEC-002 | Required validation, independent challenge, or durable decision record is absent or failed | Keep the recommendation staged or rejected; preserve evidence and prior authority |
 | ERR-POL-001 | Requested authority is not granted | Refuse before action and emit audit evidence |
 | ERR-POL-002 | Equally specific and prioritized policy rules conflict | Deny without selecting a rule; expose the conflict |
 | ERR-ROL-001 | Production/evaluation or orchestration/reporting conflict | Reject task assignment |
@@ -1022,6 +1081,7 @@ the specific objective and repository revision and are not fixed universal chain
 | UC-08 Operate headlessly | AUT-001–007 |
 | UC-09 Use remote capacity | DST-001–010 |
 | UC-10 Extend controlled capabilities | TOL-001–027 |
+| UC-11 Make an evidence-based engineering decision | PLN-012–019, ORG-005–007 |
 | SC-01 Repository adaptation | PRJ-003–007, ORG-012 |
 | SC-02 End-to-end delegation | PLN, ORG, and RUN sections |
 | SC-03 Human control | SAF-003–013 |
@@ -1033,3 +1093,4 @@ the specific objective and repository revision and are not fixed universal chain
 | SC-09 Local operation | NFR-001–003 |
 | SC-10 Skill learning loop | SKL-011–024 |
 | SC-11 Controlled tool extension | TOL-003–027 |
+| SC-12 Decision-quality assistance | PLN-012–019, ERR-DEC-001–002 |

@@ -1,10 +1,10 @@
 # MISHKAN Product Requirements Document
 
 **Status:** Approved — Gate G1
-**Version:** 1.2
+**Version:** 1.3
 **Scope:** Product problem and outcomes only
 
-**Approved:** 2026-08-23 by Y4NN777, including the skills and tools amendment
+**Approved:** 2026-08-23 by Y4NN777; decision-quality assistance amendment approved 2026-08-24
 
 ## 1. Problem
 
@@ -12,7 +12,7 @@ Software engineers increasingly delegate parts of software work to AI assistants
 assistants commonly operate as isolated, short-lived sessions. Their behavior, knowledge, quality
 controls, and access boundaries vary by tool and disappear when the session ends.
 
-This creates five observable problems:
+This creates six observable problems:
 
 1. Complex engineering outcomes must repeatedly be decomposed and coordinated by the engineer.
 2. Work context, decisions, and lessons are lost or become difficult to recover between sessions.
@@ -22,6 +22,9 @@ This creates five observable problems:
    exposing repositories and external systems to unintended state changes.
 5. Long-running or multi-project work is difficult to resume, audit, operate unattended, or
    distribute without binding the engineer to one interactive development tool.
+6. Engineering recommendations can hide assumptions, omit credible alternatives, or present a
+   confident choice without enough project evidence, validation, or explanation for the engineer
+   to judge architecture, data, security, scalability, and other cross-disciplinary consequences.
 
 MISHKAN exists to provide a persistent, inspectable, and safety-constrained software engineering
 organization that accepts engineering objectives, organizes the work, preserves context, and
@@ -115,6 +118,17 @@ by MISHKAN or configured external sources. The engineer can see exactly which ca
 a role and task may use. Availability never implies authorization, and a newly discovered
 capability never silently expands an accepted plan.
 
+### UC-11 — Make an evidence-based engineering decision
+
+The engineer can ask the organization to clarify a consequential engineering choice. The system
+uses the actual repository, requirements, constraints, preferences, and current authoritative
+sources to identify credible alternatives; compare their relevant trade-offs; distinguish evidence
+from assumptions and unknowns; and return a recommendation or an explicit inconclusive result.
+
+The result identifies risks, confidence limits, validation evidence, and reversal or migration
+consequences in enough detail for the engineer to judge the choice. A recommendation does not
+silently become project authority merely because an AI actor produced it.
+
 ## 4. Out of scope
 
 MISHKAN will not:
@@ -184,6 +198,12 @@ A tool is one inspectable atomic capability with declared inputs, outputs, effec
 and provenance. Tools are exposed to organizational roles only through the effective organization,
 plan, and policy; their implementation source does not grant additional authority.
 
+### PP-11 — Evidence before recommendation
+
+The organization derives decision criteria from the objective and project context rather than a
+hidden universal scorecard. It explains alternatives, evidence, assumptions, uncertainty,
+trade-offs, and validation before asking the engineer to accept a consequential choice.
+
 ## 6. Success criteria
 
 The product succeeds when all of the following outcomes can be demonstrated:
@@ -251,6 +271,14 @@ catalogue and differences, compose an exact toolset, and make it available to an
 Calls outside the resolved set or policy scope are refused, while an accepted call has validated
 input, attributable effects, a validated result, and durable non-secret evidence.
 
+### SC-12 — Decision-quality assistance
+
+For a representative structural engineering choice with multiple credible alternatives, the
+organization produces a reviewable comparison tied to repository and requirement evidence,
+identifies assumptions and unknowns, recommends one option or declares the evidence insufficient,
+states confidence and relevant consequences, proposes a validation method, and receives an
+independent challenge before the choice can become accepted authority.
+
 ## 7. Product boundaries requiring later specification
 
 The PRD intentionally does not decide:
@@ -282,3 +310,7 @@ Those decisions follow only after this product problem and scope are approved.
 7. MISHKAN provides a first-class tool system for native and externally supplied atomic
    capabilities. Its registry, toolsets, discovery, lifecycle, schemas, and runtime availability
    are versioned and inspectable; effective access remains plan- and policy-bound.
+8. MISHKAN provides evidence-based assistance for consequential engineering choices. It derives
+   relevant criteria from project context, compares credible alternatives, exposes evidence,
+   assumptions, unknowns, trade-offs, risks, confidence, validation, and reversibility, and keeps
+   durable acceptance under engineer-controlled authority.
