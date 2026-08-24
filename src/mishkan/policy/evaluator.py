@@ -112,11 +112,13 @@ class PolicyAuthority:
             return False
         collection_pairs = (
             (request.paths, scope.paths),
+            (request.executables, scope.executables),
             (request.network_destinations, scope.network_destinations),
             (request.remotes, scope.remotes),
             (request.branches, scope.branches),
             (request.environments, scope.environments),
             (request.credentials, scope.credentials),
+            (request.external_resources, scope.external_resources),
         )
         if not all(cls._matches_all(values, selectors) for values, selectors in collection_pairs):
             return False
@@ -156,11 +158,13 @@ class PolicyAuthority:
             scope.capabilities,
             scope.effect_classes,
             scope.paths,
+            scope.executables,
             scope.network_destinations,
             scope.remotes,
             scope.branches,
             scope.environments,
             scope.credentials,
+            scope.external_resources,
             scope.isolation_profiles,
         )
         selector_score = sum(

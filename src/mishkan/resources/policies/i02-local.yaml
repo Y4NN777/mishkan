@@ -16,11 +16,13 @@ rules:
       capabilities: [repository.read_file]
       effect_classes: [read]
       paths: ["*"]
+      executables: ["*"]
       network_destinations: ["*"]
       remotes: ["*"]
       branches: ["*"]
       environments: ["*"]
       credentials: ["*"]
+      external_resources: ["*"]
       isolation_profiles: ["*"]
       max_timeout_seconds: 120
       max_memory_mb: 512

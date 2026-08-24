@@ -10,11 +10,12 @@ adapter: operator.release.publish
 input_schema:
   type: object
   additionalProperties: false
-  required: [target, version, artifact]
+  required: [target, version, artifact, destination]
   properties:
     target: {type: string}
     version: {type: string}
     artifact: {type: string}
+    destination: {type: string}
 result_schema:
   type: object
   additionalProperties: false

@@ -58,11 +58,13 @@ class PolicyScope(PolicyModel):
     capabilities: tuple[str, ...] = ("*",)
     effect_classes: tuple[str, ...] = ("*",)
     paths: tuple[str, ...] = ("*",)
+    executables: tuple[str, ...] = ("*",)
     network_destinations: tuple[str, ...] = ("*",)
     remotes: tuple[str, ...] = ("*",)
     branches: tuple[str, ...] = ("*",)
     environments: tuple[str, ...] = ("*",)
     credentials: tuple[str, ...] = ("*",)
+    external_resources: tuple[str, ...] = ("*",)
     isolation_profiles: tuple[str, ...] = ("*",)
     max_timeout_seconds: int | None = Field(default=None, ge=1, le=86_400)
     max_memory_mb: int | None = Field(default=None, ge=1)
@@ -78,11 +80,13 @@ class PolicyScope(PolicyModel):
         "capabilities",
         "effect_classes",
         "paths",
+        "executables",
         "network_destinations",
         "remotes",
         "branches",
         "environments",
         "credentials",
+        "external_resources",
         "isolation_profiles",
     )
     @classmethod
@@ -157,11 +161,13 @@ class AuthorizationRequest(PolicyModel):
     capability: str = Field(min_length=1)
     effect_class: str = Field(min_length=1)
     paths: tuple[str, ...] = ()
+    executables: tuple[str, ...] = ()
     network_destinations: tuple[str, ...] = ()
     remotes: tuple[str, ...] = ()
     branches: tuple[str, ...] = ()
     environments: tuple[str, ...] = ()
     credentials: tuple[str, ...] = ()
+    external_resources: tuple[str, ...] = ()
     isolation_profile: str | None = None
     resources: ResourceRequest
 
@@ -180,11 +186,13 @@ class AuthorizationRequest(PolicyModel):
 
     @field_validator(
         "paths",
+        "executables",
         "network_destinations",
         "remotes",
         "branches",
         "environments",
         "credentials",
+        "external_resources",
     )
     @classmethod
     def scoped_identifiers_are_unambiguous(cls, value: tuple[str, ...]) -> tuple[str, ...]:

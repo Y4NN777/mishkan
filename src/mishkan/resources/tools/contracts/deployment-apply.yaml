@@ -10,11 +10,12 @@ adapter: operator.deployment.apply
 input_schema:
   type: object
   additionalProperties: false
-  required: [environment, artifact, revision]
+  required: [environment, artifact, revision, destination]
   properties:
     environment: {type: string}
     artifact: {type: string}
     revision: {type: string}
+    destination: {type: string}
 result_schema:
   type: object
   additionalProperties: false

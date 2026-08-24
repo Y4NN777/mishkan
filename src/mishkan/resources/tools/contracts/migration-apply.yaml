@@ -10,11 +10,12 @@ adapter: operator.migration.apply
 input_schema:
   type: object
   additionalProperties: false
-  required: [environment, migration_id, plan_fingerprint]
+  required: [environment, migration_id, plan_fingerprint, destination]
   properties:
     environment: {type: string}
     migration_id: {type: string}
     plan_fingerprint: {type: string}
+    destination: {type: string}
 result_schema:
   type: object
   additionalProperties: false

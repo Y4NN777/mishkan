@@ -10,13 +10,14 @@ adapter: native.git.push
 input_schema:
   type: object
   additionalProperties: false
-  required: [repository, remote, local_branch, remote_branch, expected_revision]
+  required: [repository, remote, local_branch, remote_branch, expected_revision, destination]
   properties:
     repository: {type: string}
     remote: {type: string}
     local_branch: {type: string}
     remote_branch: {type: string}
     expected_revision: {type: string}
+    destination: {type: string}
 result_schema:
   type: object
   additionalProperties: false
