@@ -47,6 +47,7 @@ cannot be represented clearly in one row.
 | D-025 | Delivery | Accepted | Use topic branches (`feat/*`, `fix/*`, and other applicable change prefixes) into `develop`, then promote `develop` into `main` after the integrated gate | Direct topic-to-main merges are prohibited; the already-published I00 merge is retained as history rather than silently rewritten | Engineer correction, 2026-08-23 |
 | D-026 | Delivery | Accepted | Begin I01 on `feat/i01-local-crewai` using progressive tested commits | I01 is authorized; I02 and later increments remain outside the active implementation scope | Engineer validation, 2026-08-24 |
 | D-027 | Delivery | Accepted | Begin I02 on `feat/i02-policy-tools` using the approved Policy Authority, immutable Tool Registry, and deterministic Capability Gateway boundaries | I02 is authorized; operational policy remains public and configurable, integrity-stage ordering remains fixed, and I03 and later increments stay outside the active implementation scope | Engineer continuation authorization, 2026-08-24 |
+| D-028 | Delivery | Accepted | Reopen the I02 increment gate and replace the assumed universal SWE catalogue with a capability-first model resolved to concrete repository- and environment-available adapters | The registry and enforcement mechanism remain valid evidence, but an abstract backend is not an operational tool, team eligibility is not authority, and I02 cannot be promoted until its catalogue and availability claims are truthful | Engineer correction and validation, 2026-08-24 |
 
 ## Open decisions
 
