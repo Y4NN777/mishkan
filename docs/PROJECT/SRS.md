@@ -1,13 +1,14 @@
 # MISHKAN Software Requirements Specification
 
 **Status:** Approved — Gate G2
-**Version:** 1.3
+**Version:** 1.4
 **Derived from:** Approved PRD 1.2
 **Normative vocabulary:** MUST, MUST NOT, SHOULD, MAY follow RFC 2119 meanings
 
-Version 1.3 restores the first-class skills and tools systems omitted during consolidation. It
-preserves the 1.1 error-code namespace and makes their discovery, composition, trust, invocation,
-mutation, and recovery explicit.
+Version 1.4 clarifies the tool model without changing the approved product scope. It treats
+general-purpose file, terminal/process, web, and browser surfaces as real tools whose concrete
+inputs are governed at invocation time; makes adapter presence part of availability; and removes
+any requirement for a universal capability taxonomy or one tool contract per ecosystem command.
 
 ## 1. Purpose and scope
 
@@ -573,7 +574,8 @@ claiming sources.
 
 The system MUST support versioned named toolsets that compose exact tools or other toolsets.
 Toolset ordering, inclusion, exclusion, availability rules, and nesting bounds MUST be public
-configuration, and resolution cycles MUST be rejected.
+configuration, and resolution cycles MUST be rejected. A toolset MAY constrain discovery or role,
+project, platform, session, or task eligibility, but MUST NOT grant authority by itself.
 
 ### TOL-006 — Deferred discovery
 
@@ -583,9 +585,11 @@ to a task or invoked.
 
 ### TOL-007 — Availability
 
-The system MUST evaluate a tool's configured runtime, platform, credential-reference, service,
-resource, and dependency conditions before task binding. Unavailability MUST be visible and MUST
-NOT be represented as authorization denial or successful execution.
+The system MUST verify that a concrete invocable adapter is registered at the intended execution
+location and evaluate the tool's configured runtime, platform, credential-reference, service,
+resource, health, and dependency conditions before task binding. An abstract interface, adapter
+type, or contract without a runnable registered implementation MUST be unavailable. Unavailability
+MUST be visible and MUST NOT be represented as authorization denial or successful execution.
 
 ### TOL-008 — Registry snapshot
 
@@ -596,6 +600,8 @@ Registry changes MUST create a new snapshot and MUST NOT silently alter an accep
 
 A task MAY use only exact tools present in its accepted plan, permitted for the assigned role,
 available in the bound registry snapshot, and supported by the assigned execution location.
+Repository evidence, outcome constraints, role eligibility, and toolsets MAY guide selection but
+MUST resolve to those exact tool identities before plan acceptance.
 
 ### TOL-010 — No implicit authority expansion
 
@@ -687,6 +693,22 @@ through that binding until it is reconciled or replanned.
 Adding, enabling, disabling, updating, removing, or changing the precedence of a tool source,
 adapter, tool, or toolset MUST be a typed stateful capability. Changes MUST be validated and become
 effective atomically under policy without rewriting prior registry snapshots or call evidence.
+
+### TOL-026 — General-purpose execution tools
+
+A general-purpose terminal or process tool MAY accept a repository-discovered executable,
+task-runner target, arguments, working directory, and environment as validated inputs; the system
+MUST NOT require a distinct tool contract for every command. The accepted plan and effective
+policy MUST constrain the actual executable or command pattern, arguments, working directory,
+environment, network access, resources, and effect class at the invocation boundary. Discovery of
+a command MUST NOT grant authority to run it.
+
+### TOL-027 — Repository-controlled extensions
+
+A repository-controlled tool, toolset, source, server, or plugin definition MAY contribute a
+candidate only through a configured source and declared trust path. Repository content MUST NOT
+activate its own extension, approve its own lifecycle change, expand an existing task binding, or
+modify effective policy without the normal validation and authorization decisions.
 
 ## 12. Events, evidence, and retention
 

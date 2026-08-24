@@ -1,9 +1,9 @@
 # MISHKAN Requirement-to-Responsibility Map
 
 **Status:** Approved — Gate G4
-**Version:** 1.0
+**Version:** 1.1
 **Sequence:** SWE-BASICS-BEFORE-CODE 04
-**Derived from:** Approved PRD 1.2, SRS 1.3, System Contract 1.2
+**Derived from:** Approved PRD 1.2, SRS 1.4, System Contract 1.3
 
 ## 1. Purpose
 
@@ -199,13 +199,15 @@ proposal or grant the consuming task capabilities.
 ### RSP-021 — Resolve and expose atomic tools
 
 Discover versioned tools from configured native and external sources; validate contracts,
-namespaces, availability, adapters, and external schema state; resolve nested toolsets into immutable
-registry snapshots; search metadata without eagerly loading every schema; bind exact eligible tools
-to authorized CrewAI agents without creating another tool-calling runtime.
+namespaces, concrete adapter registration, location-specific availability, and external schema
+state; resolve nested toolsets into immutable registry snapshots; search metadata without eagerly
+loading every schema; bind exact eligible tools to authorized CrewAI agents without creating
+another tool-calling runtime or a universal capability taxonomy.
 
 **Owns:** tool and toolset definitions, source and adapter provenance, registry snapshot, collision
-and drift decisions, availability result, task tool binding, CrewAI tool representation. It does not
-authorize or dispatch a call.
+and drift decisions, concrete availability result, task tool binding, CrewAI tool representation.
+It does not authorize or dispatch a call. General-purpose command, path, and destination inputs are
+enforced by RSP-011 rather than expanded into synthetic per-command tools.
 
 ## 4. Requirement ownership matrix
 
@@ -223,7 +225,7 @@ Each range is inclusive. No requirement appears in more than one row.
 | RSP-008 | ORG-009, RUN-001–005, RUN-007, RUN-009, RUN-011 |
 | RSP-009 | ORG-005–008 |
 | RSP-010 | RUN-006, RUN-008, RUN-010 |
-| RSP-011 | SAF-001–002, SAF-007, SAF-011, SAF-013, TOL-012–022 |
+| RSP-011 | SAF-001–002, SAF-007, SAF-011, SAF-013, TOL-012–022, TOL-026 |
 | RSP-012 | SAF-008–010, SAF-012, OBS-008 |
 | RSP-013 | KNW-001–005 |
 | RSP-014 | KNW-006, SKL-006–008, SKL-016–025 |
@@ -233,7 +235,7 @@ Each range is inclusive. No requirement appears in more than one row.
 | RSP-018 | NFR-001–006, NFR-008–010 |
 | RSP-019 | TC-001–007 |
 | RSP-020 | SKL-001–005, SKL-009–015 |
-| RSP-021 | TOL-001–011, TOL-023–025 |
+| RSP-021 | TOL-001–011, TOL-023–025, TOL-027 |
 
 ## 5. Error ownership matrix
 
@@ -277,7 +279,7 @@ Each range is inclusive. No requirement appears in more than one row.
 | RSP-016 | INV-022 |
 | RSP-017 | CTR-012, INV-023 |
 | RSP-020 | CTR-013, INV-024 |
-| RSP-021 | CTR-014, INV-027 |
+| RSP-021 | CTR-014, INV-027, INV-031 |
 
 `INV-003` is primarily enforced at the capability boundary by RSP-011; RSP-006 supplies the
 authorization decision but does not enforce its own decision.

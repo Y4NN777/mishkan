@@ -1,9 +1,9 @@
 # MISHKAN System Contract and Invariants
 
 **Status:** Approved — Gate G3
-**Version:** 1.2
+**Version:** 1.3
 **Sequence:** SWE-BASICS-BEFORE-CODE 03
-**Derived from:** Approved SRS 1.3
+**Derived from:** Approved SRS 1.4
 
 ## 1. Contract boundary
 
@@ -157,7 +157,9 @@ repository-specific plan, CrewAI coordination, or deterministic effect enforceme
 MISHKAN can discover, inspect, compose, and lifecycle-manage typed atomic tools from configured
 sources without silently expanding authority. CrewAI agents receive only exact tools bound to the
 accepted plan, and every call crosses validation and policy enforcement before producing an
-attributable validated result or stable refusal.
+attributable validated result or stable refusal. General-purpose tools remain general: their
+concrete command, path, destination, and effect inputs are constrained at that same boundary rather
+than being re-described as a new tool for every operation.
 
 ## 7. Integrity invariants
 
@@ -332,6 +334,12 @@ An uncertain state-changing effect is never repeated automatically. Retry requir
 bounds plus declared idempotency, a deduplication key, or an authorized compensation rule, and it
 never erases the prior attempt or external-state evidence.
 
+### INV-031 — Concrete tool availability
+
+No tool enters an accepted task binding unless a concrete invocable adapter is registered and its
+declared availability conditions hold at the intended execution location. A contract, protocol,
+adapter interface, or configured name alone is not evidence of availability.
+
 ## 8. Policy decision contract
 
 ### 8.1 Capability request
@@ -423,7 +431,8 @@ A registry snapshot contains versioned tool contracts from configured native or 
 Each contract declares identity, schemas, effect class, availability, scopes, credentials by
 reference, timeout, idempotency, and provenance. Minimal metadata may be searched before full
 schemas are loaded. Collisions, dependency failure, and external schema drift remain explicit and
-cannot mutate a bound snapshot.
+cannot mutate a bound snapshot. Availability includes a concrete registered adapter and its
+location-specific readiness; abstract adapter types remain catalogue metadata, not bindable tools.
 
 ### 10.2 Toolsets and assignment
 
@@ -433,6 +442,10 @@ eligibility, the plan selects the task set, policy decides effects, and the exec
 advertise support. No source, server, credential, toolset, or availability state grants access by
 itself.
 
+The registry does not require a universal cross-project capability taxonomy. Repository evidence
+and stable outcome constraints guide the planner, while role or project toolsets narrow eligible
+visibility. Only the exact resolved tools recorded in the accepted plan become task bindings.
+
 ### 10.3 CrewAI binding and dispatch
 
 Production tools are represented through supported CrewAI tool interfaces. A MISHKAN enforcement
@@ -440,6 +453,12 @@ wrapper validates the typed call envelope and arguments, resolves actual targets
 authorization and runtime limits, resolves only required credentials, dispatches the configured
 adapter, and validates the result. This boundary does not implement another agent tool-calling
 loop.
+
+File, terminal/process, web, and browser implementations may be general-purpose tools. For a
+terminal/process call, the executable or command pattern, arguments, working directory,
+environment, network access, resource limits, and declared effect are normalized call inputs and
+policy selectors. A discovered `pytest`, `npm`, `go`, or equivalent command does not require a new
+tool identity, and its discovery does not authorize its execution.
 
 ### 10.4 External tools and lifecycle
 
@@ -560,7 +579,7 @@ Dependencies describe required capabilities, not component ownership or topology
 | DEP-015 | Shared worker coordination | Post-core distributed only | Local mode remains valid; distributed tasks block or recover by lease | DST-001–010 |
 | DEP-016 | Current-state monitoring projection | Optional for execution | Execution continues; monitor reconnects from durable state | RUN-012, OBS-004–006 |
 | DEP-017 | External effect surface | Required only by a requested capability | Apply the policy decision; never bypass external protection | SAF-003–008 |
-| DEP-018 | Tool registry, discovery, and adapters | Required per tool-using task | Do not bind or dispatch the unavailable tool; expose configured fallback eligibility | TOL-001–025 |
+| DEP-018 | Tool registry, discovery, and adapters | Required per tool-using task | Do not bind or dispatch the unavailable tool; expose configured fallback eligibility | TOL-001–027 |
 
 Every plan identifies its required dependencies. Required dependencies cannot silently become
 optional; optional failures remain visible. Concrete products, protocols, processes, and topology
@@ -577,7 +596,7 @@ are assigned only after the responsibility and architecture stages.
 | Enforcement and evidence | SAF-001–013, OBS-001–008 |
 | Knowledge | KNW-001–006 |
 | Skills and procedural memory | SKL-001–025 |
-| Tools and atomic capabilities | TOL-001–025 |
+| Tools and atomic capabilities | TOL-001–027 |
 | Headless scheduling | AUT-001–007 |
 | Distributed preservation | DST-001–010 |
 | Performance and compatibility | NFR-001–010 |
