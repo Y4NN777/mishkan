@@ -1,11 +1,11 @@
 # MISHKAN Implementation and Acceptance Plan
 
-**Status:** Approved — delivery baseline
+**Status:** Proposed amendment — engineer review required
 
-**Version:** 1.2
+**Version:** 1.3
 
-**Derived from:** PRD 1.2, SRS 1.3, Contract 1.2, Responsibility Map 1.0,
-System Model 1.0, Architecture 1.0, and accepted decisions D-001–D-028
+**Derived from:** PRD 1.2, SRS 1.4, Contract 1.3, Responsibility Map 1.1,
+System Model 1.1, Architecture 1.1, and accepted decisions D-001–D-029
 
 ## 1. Purpose and authority
 
@@ -38,155 +38,63 @@ to scaffold or implement the system.
 7. **Evidence follows execution.** Planned tests live with code. `docs/VALIDATION` receives only
    observed results from an actual gate; it never contains speculative checklists.
 
-### 2.1 Capability-first SWE tool model
+### 2.1 General tools, configurable toolsets, and extensions
 
-MISHKAN does not ship one universal tool list and does not infer authority from team membership.
-The capability model is a planning taxonomy that connects organization intent to concrete tools;
-it is not a tool contract, a toolset, a policy grant, or a static workflow definition.
+MISHKAN uses a small, comprehensible tool model inspired by mature coding agents. It does not
+maintain a universal cross-project capability taxonomy and it does not assign guessed tool families
+to all 32 roles or 15 outcomes.
+
+The model has four layers:
+
+| Layer | Purpose |
+|---|---|
+| General built-in tools | Stable primitives for scoped file read/search/edit/patch, terminal/process execution, web retrieval, and browser automation when configured |
+| Toolsets | Versioned named compositions that narrow which tools are visible or eligible for a role, project, platform, session, or task |
+| Dynamic extensions | Namespaced tools discovered from configured MCP servers, plugins, project sources, or operator-managed adapters |
+| Dedicated adapters | Optional typed integrations where a structured API, idempotency contract, credential boundary, or external-state result is materially stronger than a terminal command |
+
+Toolsets and availability are not authority. Role definitions may name eligible toolsets and an
+outcome may state required effects or evidence, but neither must enumerate a universal tool list.
+Repository discovery tells the CrewAI planner which project commands, services, and configured
+extensions are relevant. The accepted plan then records the exact tool identities and versions for
+each task, and public policy decides the actual calls and scopes.
+
+A terminal/process surface is a first-class tool. A command such as `pytest`, `npm test`,
+`go test`, a formatter, compiler, package manager, or project script is normally a validated input
+to that tool—not a synthetic tool contract. Its executable or command pattern, arguments, working
+directory, environment, network access, resource limits, and effect class are normalized and
+checked at the deterministic gateway. Discovery makes the command plan-eligible; it never
+authorizes execution.
+
+A dedicated adapter is appropriate when its protocol adds a guarantee the general tool cannot
+truthfully provide, such as a typed pull-request operation, deployment idempotency key, migration
+state transition, browser session, or remote MCP schema. Abstract adapter interfaces and configured
+names remain unavailable until a concrete runnable implementation is registered and healthy at the
+intended execution location.
 
 Tool resolution follows this order:
 
-1. Repository discovery records revision-bound facts about languages, frameworks, package and build
-   systems, tests, source control, data stores, infrastructure, documentation, and configured
-   external services.
-2. The stable outcome contributes goals, completion constraints, and candidate capability families.
-3. Participating roles contribute family eligibility only; eligibility never grants an effect.
-4. The registry discovers concrete versioned tools from bundled-native, project, operator-managed,
-   and external protocol sources.
-5. Availability checks prove that each concrete adapter, runtime, platform, service, dependency,
-   credential reference, and resource requirement is satisfied at the intended execution location.
-6. CrewAI planning selects exact tool identities and versions for repository-specific tasks.
-7. MISHKAN validates separation, targets, scopes, policy, and approvals, then freezes the exact
-   registry snapshot and task bindings in the accepted plan.
-8. CrewAI receives only those frozen tool bindings through its supported tool interface; the
-   deterministic gateway rechecks the binding and effective authority on every invocation.
+1. Load configured built-in, project, operator, plugin, and MCP sources under their declared trust
+   and lifecycle rules.
+2. Discover repository evidence and execution-location facts without inventing missing tools.
+3. Expand eligible toolsets and filter them by concrete adapter availability.
+4. Let the CrewAI planning crew select the smallest exact tools needed for repository-specific
+   tasks and completion evidence.
+5. Validate role separation, schemas, targets, scopes, resources, policy, and approvals.
+6. Freeze the registry snapshot and exact task bindings in the accepted plan.
+7. Expose only those bindings through supported CrewAI tool interfaces; revalidate every real call
+   and its inputs at the MISHKAN gateway.
 
-A tool is operational only when its contract identifies a concrete runnable adapter and all
-availability conditions are satisfied. An interface, protocol, abstract backend, documentation
-entry, adapter template, or example is not an operational tool. It remains excluded from accepted
-bindings and exposes a non-secret unavailability reason until configured. The bundled-native kernel
-therefore stays deliberately small and truthful; breadth comes from configured sources and
-repository-aware adapter discovery.
-
-A generic subprocess or container runner is adapter infrastructure, not proof that arbitrary SWE
-commands are safe or available as one broad agent tool. Every command-derived tool declares its
-executable or task-runner identity, typed arguments, working directory, target extraction, effect
-class, environment, network, timeout, and result contract. A raw command surface may exist only as
-an explicitly configured and scoped operator capability; it is never the implicit implementation
-of all build, test, security, data, or delivery families.
-
-#### Capability families
-
-The family identifiers below are stable planning vocabulary. Adapter examples are non-normative:
-they guide discovery and compatibility tests but do not declare a product dependency or imply that
-an adapter is installed, available, selected, or authorized.
-
-| Family | Planning meaning | Examples of concrete adapter surfaces |
-|---|---|---|
-| `REP-READ` | Scoped repository discovery and inspection | native read, content search, revision diff, language index |
-| `REP-WRITE` | Scoped source and artifact changes | patch, write, formatter, generator |
-| `SCM-LOCAL` | Local source-control state | status, diff, branch, commit, tag |
-| `SCM-REMOTE` | Remote collaboration and publication | fetch, push, pull request or merge request, review metadata |
-| `COLLAB` | Engineering work coordination outside CrewAI | configured issue, project, work-item, and review-system adapters |
-| `BUILD` | Dependency, package, compile, and artifact work | discovered package-manager, compiler, task-runner, container-build adapter |
-| `QUALITY` | Deterministic verification | unit/integration/E2E tests, lint, typecheck, coverage, benchmark |
-| `UI` | Frontend and user-experience verification | browser automation, accessibility, visual, responsive, performance checks |
-| `API` | Service and interface verification | HTTP/RPC client, API contract, schema compatibility, service harness |
-| `DATA` | Data-store and schema lifecycle | schema inspection/diff, migration generation/validation/application, backup/restore |
-| `PLATFORM` | Infrastructure and delivery lifecycle | container, Compose, IaC, CI, artifact, release, deployment adapters |
-| `RELIABILITY` | Operational behavior and recovery | health, logs, metrics, traces, load, failover, disaster-recovery checks |
-| `SECURITY` | Product and supply-chain assurance | secret, SAST, dependency, license, image, IaC, dynamic security checks |
-| `DOCS` | Documentation and contract maintenance | Markdown, links, diagrams, API docs, changelog, runbook validation |
-| `KNOWLEDGE` | Attributed episodic, semantic, and structural context | mem0, Cognee, Graphify, configured knowledge MCP sources |
-| `RESEARCH` | Attributed investigation outside project-owned context | configured web, paper, standards, and source-retrieval adapters |
-| `EVIDENCE` | Explicit findings and engineering artifacts | finding submission, artifact registration, report-material preparation |
-
-CrewAI coordination and automatic policy, result, event, and acceptance persistence are
-intentionally absent from this table: they are control-plane/runtime responsibilities, not tools an
-agent invokes. `EVIDENCE` covers only intentional agent-produced finding or artifact operations.
-
-The historical SPEC/SRS contributes the original semantic baseline: orchestrators use coordination
-and context surfaces; specialists receive scoped repository, knowledge, and sandboxed execution;
-QA receives read-only context and verification; Reporters write reviewed memory; and direct external
-research belongs to the Investigator. The canonical SRS supersedes the drafts' fixed names and
-blanket tier lists, but this responsibility split remains rationale for the candidate eligibility
-below. Exact identities still come only from configured, available tool sources.
-
-#### Canonical role eligibility baseline
-
-This matrix names every organization-v1 identity. It constrains which families I05 definitions may
-consider; it is neither an exact task binding nor authorization. I05 must narrow these candidates
-from repository evidence and outcome needs, resolve exact available tools, and then apply policy.
-
-| Team | Identity | Candidate family eligibility |
-|---|---|---|
-| Orchestration | `PM` | `REP-READ`, `SCM-REMOTE`, `COLLAB`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| Orchestration | `CTO` | `REP-READ`, `COLLAB`, `QUALITY`, `API`, `DATA`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| Frontend | `Frontend_Lead` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `COLLAB`, `BUILD`, `QUALITY`, `UI`, `API`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| Frontend | `Frontend_DesignLead` | `REP-READ`, `REP-WRITE`, `QUALITY`, `UI`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| Frontend | `Frontend_UXExpert` | `REP-READ`, `REP-WRITE`, `QUALITY`, `UI`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| Frontend | `Frontend_Engineer` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `BUILD`, `QUALITY`, `UI`, `API`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| Frontend | `Frontend_A11ySpec` | `REP-READ`, `REP-WRITE`, `BUILD`, `QUALITY`, `UI`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| Frontend | `Frontend_SecuritySpec` | `REP-READ`, `REP-WRITE`, `BUILD`, `QUALITY`, `UI`, `API`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| Frontend | `Frontend_QA` | `REP-READ`, `BUILD`, `QUALITY`, `UI`, `API`, `SECURITY`, `KNOWLEDGE`, `EVIDENCE` |
-| Frontend | `Frontend_Reporter` | `REP-READ`, `COLLAB`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| Backend | `Backend_Lead` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `COLLAB`, `BUILD`, `QUALITY`, `API`, `DATA`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| Backend | `Backend_ArchSpec` | `REP-READ`, `REP-WRITE`, `QUALITY`, `API`, `DATA`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| Backend | `Backend_StandardsSpec` | `REP-READ`, `REP-WRITE`, `BUILD`, `QUALITY`, `API`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| Backend | `Backend_Engineer` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `BUILD`, `QUALITY`, `API`, `DATA`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| Backend | `Backend_DatabaseSpec` | `REP-READ`, `REP-WRITE`, `BUILD`, `QUALITY`, `API`, `DATA`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| Backend | `Backend_SecuritySpec` | `REP-READ`, `REP-WRITE`, `BUILD`, `QUALITY`, `API`, `DATA`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| Backend | `Backend_QA` | `REP-READ`, `BUILD`, `QUALITY`, `API`, `DATA`, `SECURITY`, `KNOWLEDGE`, `EVIDENCE` |
-| Backend | `Backend_Reporter` | `REP-READ`, `COLLAB`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| Infrastructure | `Infra_Lead` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `COLLAB`, `BUILD`, `QUALITY`, `DATA`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| Infrastructure | `Infra_PlatformSpec` | `REP-READ`, `REP-WRITE`, `BUILD`, `QUALITY`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| Infrastructure | `Infra_DeliverySpec` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `BUILD`, `QUALITY`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| Infrastructure | `Infra_ReliabilitySpec` | `REP-READ`, `REP-WRITE`, `QUALITY`, `DATA`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| Infrastructure | `Infra_SecuritySpec` | `REP-READ`, `REP-WRITE`, `BUILD`, `QUALITY`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| Infrastructure | `Infra_QA` | `REP-READ`, `BUILD`, `QUALITY`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `KNOWLEDGE`, `EVIDENCE` |
-| Infrastructure | `Infra_Reporter` | `REP-READ`, `COLLAB`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| Documentation | `Doc_Specialist` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `BUILD`, `QUALITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| Research | `Research_Clarificator` | `REP-READ`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| Research | `Research_Formulator` | `REP-READ`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| Research | `Research_Investigator` | `REP-READ`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `RESEARCH`, `EVIDENCE` |
-| Research | `Research_Summarizer` | `REP-READ`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| Research | `Research_Evaluator` | `REP-READ`, `QUALITY`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| Research | `Research_Reporter` | `REP-READ`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-
-#### Canonical outcome capability baseline
-
-Each row is a candidate capability envelope, not a fixed task sequence and not a requirement to
-bind every listed family. The repository-specific CrewAI plan selects the smallest available set
-that can satisfy the outcome contract; missing required capability is reported rather than replaced
-by an imagined tool.
-
-| Outcome | Candidate capability envelope |
-|---|---|
-| `mishkan-init` | `REP-READ`, discovered `BUILD`/`QUALITY`/`UI`/`API`/`DATA`/`PLATFORM`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| `sprint-close` | `REP-READ`, `SCM-LOCAL`, `SCM-REMOTE`, `COLLAB`, `BUILD`, `QUALITY`, applicable team families, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| `deep-research` | `REP-READ`, `DOCS`, `KNOWLEDGE`, `RESEARCH`, `EVIDENCE` |
-| `codebase-audit` | `REP-READ`, `BUILD`, `QUALITY`, applicable `UI`/`API`/`DATA`/`PLATFORM`/`RELIABILITY`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| `architecture-panel` | `REP-READ`, applicable `API`/`DATA`/`PLATFORM`/`RELIABILITY`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| `blast-radius` | `REP-READ`, `SCM-LOCAL`, `BUILD`, `QUALITY`, applicable `UI`/`API`/`DATA`/`PLATFORM`/`RELIABILITY`, `SECURITY`, `KNOWLEDGE`, `EVIDENCE` |
-| `release-readiness` | `REP-READ`, `SCM-LOCAL`, `SCM-REMOTE`, `COLLAB`, `BUILD`, `QUALITY`, applicable team families, `RELIABILITY`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| `dep-audit` | `REP-READ`, `BUILD`, `QUALITY`, `SECURITY`, `KNOWLEDGE`, applicable `RESEARCH`, `DOCS`, `EVIDENCE` |
-| `standards-rollout` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `COLLAB`, `BUILD`, `QUALITY`, applicable team families, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| `knowledge-gap-discovery` | `REP-READ`, `DOCS`, `KNOWLEDGE`, `RESEARCH`, `EVIDENCE` |
-| `frontend-feature-ship` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `COLLAB`, `BUILD`, `QUALITY`, `UI`, applicable `API`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| `backend-api-version` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `COLLAB`, `BUILD`, `QUALITY`, `API`, applicable `DATA`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| `backend-schema-migration` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `COLLAB`, `BUILD`, `QUALITY`, `API`, `DATA`, applicable `PLATFORM`/`RELIABILITY`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| `infra-deploy` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `COLLAB`, `BUILD`, `QUALITY`, applicable `DATA`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| `infra-dr-drill` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `QUALITY`, `DATA`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-
-The accepted plan persists the trace
-`outcome -> participating role -> task -> capability family -> concrete tool/version -> adapter/source -> availability evidence -> policy decision -> scope`.
-This trace is what makes the same organization useful across different repositories without
-turning role definitions into broad permissions or outcomes into static workflows.
+The durable trace is
+`outcome -> repository evidence -> participating role -> task -> exact tool/version -> adapter/source -> availability evidence -> policy decision -> actual input scopes`.
+This makes the same organization useful across different repositories without static workflows,
+broad team permissions, or a fabricated command catalogue.
 
 ## 3. Proposed implementation baseline
 
-Plan acceptance approves the following baseline. Exact dependency patches are locked when the
-owning increment begins and are upgraded only through reviewed lockfile changes.
+If this amendment is accepted, the following baseline remains in force. Exact dependency patches
+are locked when the owning increment begins and are upgraded only through reviewed lockfile
+changes.
 
 | Area | Baseline |
 |---|---|
@@ -331,23 +239,24 @@ repository fixtures, no production test-double selection, and no paid service ca
 
 ### I02 — Public policy, tools, and governed effects
 
-**Runnable result:** A CrewAI task can resolve repository-appropriate concrete native or MCP tools
-and call only its exact bound versions. Filesystem, command, network, credential, Git, release,
-deployment, and migration effects obey a public versioned `allow`/`require_approval`/`deny`
-decision and emit non-secret evidence. A declared capability without a configured runnable adapter
-is visibly unavailable and cannot enter an accepted binding.
+**Runnable result:** A CrewAI task can use general built-in tools and configured native, plugin, or
+MCP extensions, but can call only its exact bound versions. Filesystem, terminal/process, network,
+credential, Git, release, deployment, and migration effects obey a public versioned
+`allow`/`require_approval`/`deny` decision and emit non-secret evidence. A declared tool without a
+configured runnable adapter is visibly unavailable and cannot enter an accepted binding.
 
 **Build scope:**
 
 - implement deterministic policy precedence, approval, revocation, fingerprints, and policy
   evolution without a private action deny-list;
-- implement the capability-family vocabulary as planning metadata separate from concrete registry
-  tools, toolsets, role eligibility, accepted bindings, and policy grants;
-- retain a small bundled-native kernel containing only capabilities with concrete runnable adapters;
-  examples and abstract backend contracts remain unavailable until a configured source supplies the
-  adapter and its availability proof;
+- implement truthful general file and terminal/process tools with input-level path, command,
+  environment, network, effect, and resource policy; do not generate one tool per project command;
+- retain a small bundled-native set containing only tools with concrete runnable adapters; examples
+  and abstract backend contracts remain unavailable until a configured source supplies the adapter
+  and its availability proof;
 - implement Level 0 tool metadata, deferred full-schema loading, namespaces, collision handling,
-  nested toolsets, immutable snapshots, availability, and CrewAI tool representations;
+  nested toolsets, project and operator source trust, immutable snapshots, concrete availability,
+  and CrewAI tool representations;
 - implement invocation/result envelopes, schema validation, actual target resolution, symlink-safe
   workspace scopes, late credentials, output inspection, cancellation, and uncertain effects;
 - add configured Docker/Podman isolation profiles. The reference profile may declare no network,
@@ -357,7 +266,7 @@ is visibly unavailable and cannot enter an accepted binding.
   configured concrete adapter;
 - implement MCP session lifecycle and bound-schema drift refusal.
 
-**Primary trace:** PLN-005–008, SAF-001–013, TOL-001–025, NFR-005, NFR-010, TC-006.
+**Primary trace:** PLN-005–008, SAF-001–013, TOL-001–027, NFR-005, NFR-010, TC-006.
 
 **Acceptance gate:**
 
@@ -369,10 +278,10 @@ uv run pytest tests/acceptance/test_stateful_capability_policy.py
 ```
 
 The gate must prove that policy—not an action name—permits, gates, or refuses the same concrete
-stateful tool, that abstract or missing adapters are unavailable before binding, that materially
-different repositories resolve different exact tools for the same capability need, and that an
-uncertain effect is not automatically repeated. Passing gateway tests alone does not accept the
-SWE catalogue or the increment.
+stateful tool; that the terminal can run two repository-specific command surfaces without synthetic
+per-command tool contracts; that abstract or missing adapters are unavailable before binding; that
+materially different repositories produce different exact task bindings; and that an uncertain
+effect is not automatically repeated. Passing gateway tests alone does not accept the increment.
 
 ### I03 — Durable daemon, recovery, and observation
 
@@ -450,11 +359,11 @@ cannot succeed until independent downstream evaluation and reporting are accepte
 
 **Build scope:**
 
-- define exactly the SRS roster and outcome catalogue with roles, delegation eligibility, tool and
-  skill eligibility, capability-family eligibility, path scopes, tier needs, and structured
-  contracts;
-- compile outcome needs, role eligibility, repository discovery, execution-location capability,
-  and registry availability into the smallest exact tool bindings required by each accepted task;
+- define exactly the SRS roster and outcome catalogue with roles, delegation eligibility, toolset
+  and skill eligibility, path scopes, tier needs, and structured contracts;
+- compile outcome constraints, role and project toolset eligibility, repository discovery,
+  execution-location support, and registry availability into the smallest exact tool bindings
+  required by each accepted task;
 - validate role separation before CrewAI materialization and again at result acceptance;
 - implement adaptive outcome constraints rather than fixed task lists;
 - implement separate production, QA/evaluation, and Reporter tasks with versioned result schemas;
@@ -658,7 +567,7 @@ Distributed work remains post-core: I00–I07 must pass locally before I08 begin
 |---|---|
 | I00 | SYS-001–005, SYS-007, NFR-007, TC-001–003 |
 | I01 | PRJ-001–007, PLN-001–004, PLN-009–011, RUN-001–003, RUN-006, NFR-002, TC-007 |
-| I02 | PLN-005–008, SAF-001–013, TOL-001–025, NFR-005, NFR-010, TC-006 |
+| I02 | PLN-005–008, SAF-001–013, TOL-001–027, NFR-005, NFR-010, TC-006 |
 | I03 | SYS-006, RUN-004–005, RUN-007–012, OBS-001–008, NFR-003–004 |
 | I04 | SKL-001–025 |
 | I05 | ORG-001–012 |
@@ -698,11 +607,15 @@ Official compatibility baselines are rechecked when their increment begins:
 
 ## 10. Plan approval gate
 
-The engineer approved this document on 2026-08-23. The approval:
+The engineer approved the original delivery baseline on 2026-08-23. That approval:
 
 1. accepts the implementation baseline, repository shape, increments, and Git delivery protocol;
 2. closes delivery-planning decision D-023;
 3. permits implementation only after a separate explicit instruction to begin coding.
+
+Version 1.3 replaces the rejected capability-family design with the general-tool model. D-030 is
+the review decision for this amendment; until it is accepted, I02 implementation remains paused
+and the amended text grants no new implementation authority.
 
 Any material change to CrewAI's role, persistence authority, public policy semantics, repository-
 specific planning, or responsibility ownership requires an updated accepted decision before code

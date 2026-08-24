@@ -1,14 +1,14 @@
 # MISHKAN Architecture
 
-**Status:** Approved — Gate G5
+**Status:** Proposed amendment — Gate G5 review
 
-**Version:** 1.0
+**Version:** 1.1
 
-**Derived from:** Approved System Model 1.0, Responsibility Map 1.0, and D-021
+**Derived from:** Proposed System Model 1.1, approved Responsibility Map 1.1, D-021, and D-029
 
 ## 1. Scope and rules
 
-This document derives C4 structure from the approved behavior model. It proposes deployment and
+This document derives C4 structure from the amended behavior model. It proposes deployment and
 component boundaries; it does not authorize implementation. A component is a cohesive ownership
 boundary, not automatically a package, process, service, or team.
 
@@ -23,6 +23,9 @@ The following constraints shape every boundary:
 - Operational values—including providers, routes, tools, endpoints, timeouts, retry limits, path
   scopes, isolation profiles, and capability decisions—come from public versioned configuration or
   policy. Code owns schemas and invariants, not a private operational deny-list.
+- The built-in tool surface uses a small set of general primitives. Toolsets narrow visibility,
+  configured extensions add typed integrations, and exact commands, paths, destinations, and
+  effects are authorized as call inputs. Architecture does not encode a universal SWE taxonomy.
 - Stateful effects are governed as `allow`, `require_approval`, or `deny`. Absence of a grant gives
   no authority, but commit, push, deploy, release, and migration are not globally prohibited.
 - Authoritative state changes use short transactions. CrewAI execution, model calls, external
@@ -209,23 +212,34 @@ capability dispatch, durable evidence, and acceptance remain MISHKAN responsibil
 
 ### ADR-005 — Versioned external adapter ports
 
-**Status:** Accepted by D-016
+**Status:** Accepted by D-016; amended by D-029
 
 **Decision:** Inference, memory, knowledge, structure, external tools, credentials, isolation,
 scheduling, and worker transport connect through typed versioned ports selected by effective
 configuration. Adapter presence never grants authority. External tool schemas are discovered and
 frozen in the accepted task binding before CrewAI receives them.
 
+General file, terminal/process, web, and browser tools may retain stable identities across projects;
+repository-specific commands and targets are normalized inputs enforced by the gateway. Dedicated
+adapters are added when a configured protocol supplies stronger typed, idempotency, credential, or
+external-state semantics. A contract or adapter interface without a concrete runnable registration
+is unavailable and cannot enter a task binding.
+
 **Consequence:** Concrete providers and operational limits may evolve without rewriting core
-policy or plan semantics, while schema drift produces an explicit blocked or replan state.
+policy or plan semantics, while schema drift produces an explicit blocked or replan state. New
+project commands normally require plan and policy data, not new Python tool classes.
 
 ## 6. Approval
 
-The engineer accepted the structural baseline on 2026-08-23:
+The engineer accepted the original structural baseline on 2026-08-23:
 
 - D-015 accepts ADR-002 persistence profiles;
 - D-016 accepts ADR-003 through ADR-005 interface boundaries;
 - D-022 closes Gate G5 with System Model 1.0 and Architecture 1.0.
+
+Version 1.1 applies accepted tool semantics from D-029 without changing containers or component
+ownership. Its amended model and delivery plan remain subject to engineer review before the I02
+implementation gate resumes.
 
 The post-architecture implementation and acceptance plan may now turn the approved
 responsibilities, behaviors, and boundaries into delivery slices. The cited framework ends at

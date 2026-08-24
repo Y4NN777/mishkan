@@ -1,8 +1,8 @@
 # MISHKAN System Model
 
-**Status:** Approved — Sequence 05 behavioral basis
-**Version:** 1.0
-**Derived from:** Approved PRD 1.2, SRS 1.3, System Contract 1.2, Responsibility Map 1.0
+**Status:** Proposed amendment — Sequence 05 behavioral basis
+**Version:** 1.1
+**Derived from:** Approved PRD 1.2, SRS 1.4, System Contract 1.3, Responsibility Map 1.1
 
 ## 1. Purpose and modeling discipline
 
@@ -243,9 +243,10 @@ sequenceDiagram
 
     O->>T: add or update configured tool source
     T->>T: discover, namespace, filter, validate, and detect collisions
+    T->>T: verify concrete adapter and location-specific availability
     T->>V: atomically persist new immutable registry snapshot and event
     V-->>P: expose catalogue metadata and snapshot identity
-    P->>T: resolve task toolsets against exact snapshot
+    P->>T: resolve repository evidence and eligible toolsets against exact snapshot
     T-->>P: exact tool identities, versions, and schemas
     P->>A: authorize plan fingerprint including resolved tool binding
     A->>V: persist decision and accepted plan binding
@@ -267,10 +268,10 @@ sequenceDiagram
     participant D as Configured tool adapter
     participant V as Evidence persistence (RSP-015)
 
-    C->>T: request bound tool identity and arguments
+    C->>T: request bound tool identity and concrete arguments
     T->>T: verify plan registry snapshot and exact task binding
     T->>G: typed invocation envelope
-    G->>G: validate schema and resolve actual targets
+    G->>G: validate schema; resolve paths, commands, destinations, and effects
     G->>A: verify exact capability decision and scope
     alt refused or constraint unavailable
         A-->>G: deny or require missing approval
@@ -292,6 +293,11 @@ sequenceDiagram
 An uncertain state-changing effect blocks dependent acceptance until reconciliation. It is never
 automatically retried unless the tool contract establishes safe idempotency, deduplication, or an
 authorized compensation rule.
+
+The terminal/process adapter follows this same sequence. Repository-discovered commands are
+arguments and policy selectors for one bound tool, not new implicit tool identities. A dedicated
+adapter is used only when its configured protocol provides a required typed or external-state
+contract.
 
 ## 9. Plan revision and crash recovery
 
@@ -398,7 +404,8 @@ The diagrams establish these structural needs without yet choosing containers:
 2. State transitions use short consistency boundaries; model execution and external effects never
    occur inside them.
 3. Accepted state and its typed evidence cannot be written independently.
-4. Tool resolution and tool dispatch remain separate ownership boundaries.
+4. Tool resolution and tool dispatch remain separate ownership boundaries; toolsets narrow
+   eligibility, and general-tool inputs receive policy enforcement at dispatch.
 5. Skill proposal and active-version mutation remain separate ownership boundaries.
 6. Schedule occurrence, remote lease, and result acceptance have distinct identities and meanings.
 7. Read models and live delivery may lag, but authorization and acceptance never depend on a stale

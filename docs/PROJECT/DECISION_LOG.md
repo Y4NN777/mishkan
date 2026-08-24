@@ -49,10 +49,11 @@ cannot be represented clearly in one row.
 | D-027 | Delivery | Accepted | Begin I02 on `feat/i02-policy-tools` using the approved Policy Authority, immutable Tool Registry, and deterministic Capability Gateway boundaries | I02 is authorized; operational policy remains public and configurable, integrity-stage ordering remains fixed, and I03 and later increments stay outside the active implementation scope | Engineer continuation authorization, 2026-08-24 |
 | D-028 | Delivery | Superseded | Reopen the I02 increment gate and replace the assumed universal SWE catalogue with a capability-first model resolved to concrete repository- and environment-available adapters | Superseded by D-029 because capability-family matrices introduced false precision and per-command tool contracts | Engineer correction and validation, 2026-08-24 |
 | D-029 | Governance | Accepted | PRD 1.2, SRS 1.4, System Contract 1.3, and Responsibility Map 1.1 define a small general-tool model with configurable toolsets, dynamic extensions, concrete adapter availability, and input-level policy | No universal capability-family taxonomy or 32-role/15-outcome tool matrix; terminal/process is a governed first-class tool, roles and projects narrow eligibility, accepted plans bind exact tools, and CrewAI remains the sole production runtime | Engineer direction informed by official [Hermes tools and toolsets](https://github.com/hermes-agent-org/hermes/blob/main/website/docs/user-guide/features/tools.md) and [Claude Code tools and permissions](https://code.claude.com/docs/en/tools-reference), 2026-08-24 |
+| D-030 | Delivery | Proposed | Accept System Model 1.1, Architecture 1.1, and Implementation Plan 1.3 as the amended delivery baseline | If accepted, I02 resumes against general tools and input-level policy; implementation remains paused until this review closes | Derived documentation amendment, 2026-08-24 |
 
 ## Open decisions
 
-None.
+D-030 awaits engineer review.
 
 ## Review rules
 

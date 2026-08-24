@@ -16,14 +16,16 @@ This index is the entry point for durable MISHKAN documentation.
 | Document | Status | Role |
 |---|---|---|
 | [`PROJECT/PRD.md`](PROJECT/PRD.md) | Approved 1.2 | Product problem, scope, success criteria, skills, and controlled capabilities |
-| [`PROJECT/SRS.md`](PROJECT/SRS.md) | Approved 1.3 | Canonical verifiable requirements including first-class skills and tools |
+| [`PROJECT/SRS.md`](PROJECT/SRS.md) | Approved 1.4 | Canonical verifiable requirements including general tools, toolsets, extensions, and skills |
 | [`PROJECT/DECISION_LOG.md`](PROJECT/DECISION_LOG.md) | Living | Central registry for accepted, open, and superseded decisions |
-| [`PROJECT/IMPLEMENTATION_PLAN.md`](PROJECT/IMPLEMENTATION_PLAN.md) | Approved 1.1 | Post-architecture vertical delivery, acceptance, and Git-flow plan |
-| [`SYSTEM/CONTRACT.md`](SYSTEM/CONTRACT.md) | Approved 1.2 | Sequence 03 promises, invariants, refusals, and abstract dependencies |
-| [`SYSTEM/RESPONSIBILITIES.md`](SYSTEM/RESPONSIBILITIES.md) | Approved 1.0 | Sequence 04 primary responsibility ownership and handoffs |
-| [`SYSTEM/MODEL.md`](SYSTEM/MODEL.md) | Approved 1.0 | Sequence 05 context, lifecycle, and interaction behavior basis |
-| [`SYSTEM/ARCHITECTURE.md`](SYSTEM/ARCHITECTURE.md) | Approved 1.0 | Sequence 05 C4 structure and compact architecture decisions |
+| [`PROJECT/IMPLEMENTATION_PLAN.md`](PROJECT/IMPLEMENTATION_PLAN.md) | Proposed 1.3 | Amended post-architecture vertical delivery, acceptance, and Git-flow plan |
+| [`SYSTEM/CONTRACT.md`](SYSTEM/CONTRACT.md) | Approved 1.3 | Sequence 03 promises, invariants, refusals, and abstract dependencies |
+| [`SYSTEM/RESPONSIBILITIES.md`](SYSTEM/RESPONSIBILITIES.md) | Approved 1.1 | Sequence 04 primary responsibility ownership and handoffs |
+| [`SYSTEM/MODEL.md`](SYSTEM/MODEL.md) | Proposed 1.1 | Amended Sequence 05 context, lifecycle, and interaction behavior basis |
+| [`SYSTEM/ARCHITECTURE.md`](SYSTEM/ARCHITECTURE.md) | Proposed 1.1 | Amended Sequence 05 C4 structure and compact architecture decisions |
 | [`VALIDATION/I00.md`](VALIDATION/I00.md) | Passed | Observed local and remote acceptance evidence for the I00 foundation |
+| [`VALIDATION/I01.md`](VALIDATION/I01.md) | Passed | Observed local and remote acceptance evidence for real CrewAI execution |
+| [`VALIDATION/I02.md`](VALIDATION/I02.md) | Reopened | Narrow mechanism evidence and remaining corrected I02 acceptance conditions |
 
 ## Authority rules
 

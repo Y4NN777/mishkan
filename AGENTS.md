@@ -4,15 +4,15 @@ These instructions apply to the entire repository.
 
 ## Current stage
 
-MISHKAN has completed the framework's final pre-code stage, Sequence 05, and Implementation Plan
-1.2 is approved. Increments I00 and I01 have passed their local and remote acceptance gates.
-Increment I02 is authorized on `feat/i02-policy-tools`. Its registry, policy, gateway, and
-deterministic enforcement mechanisms have passed their narrow local tests, but the I02 increment
-gate is reopened: the bundled catalogue overstates abstract stateful adapters as operational and
-does not yet derive a credible SWE capability surface from the 32-role organization and 15
-adaptive outcomes. Remote CI and the unrestricted live Ollama regression also remain pending.
-Work outside I02 requires the owning increment to begin under the progressive delivery protocol in
-the approved plan.
+MISHKAN has completed the framework's final pre-code stage, Sequence 05. Increments I00 and I01
+have passed their local and remote acceptance gates. Increment I02 is authorized on
+`feat/i02-policy-tools`, but implementation is paused while proposed System Model 1.1,
+Architecture 1.1, and Implementation Plan 1.3 receive engineer review. The existing registry,
+policy, gateway, and deterministic enforcement mechanisms passed their narrow local tests; the
+reopened gate concerns false adapter availability and the missing truthful general terminal/process
+surface. The rejected universal capability-family taxonomy and 32-role/15-outcome tool matrices
+must not return. Remote CI and the unrestricted live Ollama regression also remain pending. Work
+outside I02 requires its owning increment to begin under the progressive delivery protocol.
 
 ## Mandatory method
 
@@ -59,6 +59,9 @@ not silently turn them into approved architecture.
 - Treat tools as first-class typed atomic capabilities resolved from a public versioned registry.
   Tool availability, grouping, and source do not grant authority; exact plan and policy scope is
   enforced before dispatch, and production invocation remains integrated with CrewAI.
+- Prefer a small set of general file, terminal/process, web, and browser tools plus configurable
+  toolsets and dynamic extensions. Project commands are governed inputs, not synthetic tool types;
+  do not introduce a universal capability-family taxonomy or static role/outcome tool matrix.
 
 ## Change discipline
 

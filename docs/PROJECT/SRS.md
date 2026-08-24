@@ -1021,7 +1021,7 @@ the specific objective and repository revision and are not fixed universal chain
 | UC-07 Preserve knowledge and grow skills | KNW-001–006, SKL-001–025 |
 | UC-08 Operate headlessly | AUT-001–007 |
 | UC-09 Use remote capacity | DST-001–010 |
-| UC-10 Extend controlled capabilities | TOL-001–025 |
+| UC-10 Extend controlled capabilities | TOL-001–027 |
 | SC-01 Repository adaptation | PRJ-003–007, ORG-012 |
 | SC-02 End-to-end delegation | PLN, ORG, and RUN sections |
 | SC-03 Human control | SAF-003–013 |
@@ -1032,4 +1032,4 @@ the specific objective and repository revision and are not fixed universal chain
 | SC-08 Distributed recovery | DST-001–010, post-core |
 | SC-09 Local operation | NFR-001–003 |
 | SC-10 Skill learning loop | SKL-011–024 |
-| SC-11 Controlled tool extension | TOL-003–025 |
+| SC-11 Controlled tool extension | TOL-003–027 |
