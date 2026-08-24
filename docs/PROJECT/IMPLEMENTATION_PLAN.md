@@ -2,10 +2,10 @@
 
 **Status:** Approved — delivery baseline
 
-**Version:** 1.1
+**Version:** 1.2
 
 **Derived from:** PRD 1.2, SRS 1.3, Contract 1.2, Responsibility Map 1.0,
-System Model 1.0, Architecture 1.0, and accepted decisions D-001–D-022
+System Model 1.0, Architecture 1.0, and accepted decisions D-001–D-028
 
 ## 1. Purpose and authority
 
@@ -37,6 +37,135 @@ to scaffold or implement the system.
    not merely a collection of internal classes.
 7. **Evidence follows execution.** Planned tests live with code. `docs/VALIDATION` receives only
    observed results from an actual gate; it never contains speculative checklists.
+
+### 2.1 Capability-first SWE tool model
+
+MISHKAN does not ship one universal tool list and does not infer authority from team membership.
+The capability model is a planning taxonomy that connects organization intent to concrete tools;
+it is not a tool contract, a toolset, a policy grant, or a static workflow definition.
+
+Tool resolution follows this order:
+
+1. Repository discovery records revision-bound facts about languages, frameworks, package and build
+   systems, tests, source control, data stores, infrastructure, documentation, and configured
+   external services.
+2. The stable outcome contributes goals, completion constraints, and candidate capability families.
+3. Participating roles contribute family eligibility only; eligibility never grants an effect.
+4. The registry discovers concrete versioned tools from bundled-native, project, operator-managed,
+   and external protocol sources.
+5. Availability checks prove that each concrete adapter, runtime, platform, service, dependency,
+   credential reference, and resource requirement is satisfied at the intended execution location.
+6. CrewAI planning selects exact tool identities and versions for repository-specific tasks.
+7. MISHKAN validates separation, targets, scopes, policy, and approvals, then freezes the exact
+   registry snapshot and task bindings in the accepted plan.
+8. CrewAI receives only those frozen tool bindings through its supported tool interface; the
+   deterministic gateway rechecks the binding and effective authority on every invocation.
+
+A tool is operational only when its contract identifies a concrete runnable adapter and all
+availability conditions are satisfied. An interface, protocol, abstract backend, documentation
+entry, adapter template, or example is not an operational tool. It remains excluded from accepted
+bindings and exposes a non-secret unavailability reason until configured. The bundled-native kernel
+therefore stays deliberately small and truthful; breadth comes from configured sources and
+repository-aware adapter discovery.
+
+#### Capability families
+
+The family identifiers below are stable planning vocabulary. Adapter examples are non-normative:
+they guide discovery and compatibility tests but do not declare a product dependency or imply that
+an adapter is installed, available, selected, or authorized.
+
+| Family | Planning meaning | Examples of concrete adapter surfaces |
+|---|---|---|
+| `REP-READ` | Scoped repository discovery and inspection | native read, content search, revision diff, language index |
+| `REP-WRITE` | Scoped source and artifact changes | patch, write, formatter, generator |
+| `SCM-LOCAL` | Local source-control state | status, diff, branch, commit, tag |
+| `SCM-REMOTE` | Remote collaboration and publication | fetch, push, pull request or merge request, review metadata |
+| `BUILD` | Dependency, package, compile, and artifact work | discovered package-manager, compiler, task-runner, container-build adapter |
+| `QUALITY` | Deterministic verification | unit/integration/E2E tests, lint, typecheck, coverage, benchmark |
+| `UI` | Frontend and user-experience verification | browser automation, accessibility, visual, responsive, performance checks |
+| `API` | Service and interface verification | HTTP/RPC client, API contract, schema compatibility, service harness |
+| `DATA` | Data-store and schema lifecycle | schema inspection/diff, migration generation/validation/application, backup/restore |
+| `PLATFORM` | Infrastructure and delivery lifecycle | container, Compose, IaC, CI, artifact, release, deployment adapters |
+| `RELIABILITY` | Operational behavior and recovery | health, logs, metrics, traces, load, failover, disaster-recovery checks |
+| `SECURITY` | Product and supply-chain assurance | secret, SAST, dependency, license, image, IaC, dynamic security checks |
+| `DOCS` | Documentation and contract maintenance | Markdown, links, diagrams, API docs, changelog, runbook validation |
+| `KNOWLEDGE` | Attributed external and accumulated context | literal read, research, mem0, Cognee, Graphify, configured MCP sources |
+| `EVIDENCE` | Durable acceptance and reporting artifacts | result envelope, artifact, event, finding, report-schema validation |
+
+CrewAI coordination is intentionally absent from this table: it is the mandatory production
+runtime in which agents, tasks, teams, crews, flows, and selected tools operate, not another tool
+family.
+
+#### Canonical role eligibility baseline
+
+This matrix names every organization-v1 identity. It constrains which families I05 definitions may
+consider; it is neither an exact task binding nor authorization. I05 must narrow these candidates
+from repository evidence and outcome needs, resolve exact available tools, and then apply policy.
+
+| Team | Identity | Candidate family eligibility |
+|---|---|---|
+| Orchestration | `PM` | `REP-READ`, `SCM-REMOTE`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| Orchestration | `CTO` | `REP-READ`, `QUALITY`, `API`, `DATA`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| Frontend | `Frontend_Lead` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `BUILD`, `QUALITY`, `UI`, `API`, `SECURITY`, `DOCS`, `EVIDENCE` |
+| Frontend | `Frontend_DesignLead` | `REP-READ`, `REP-WRITE`, `QUALITY`, `UI`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| Frontend | `Frontend_UXExpert` | `REP-READ`, `REP-WRITE`, `QUALITY`, `UI`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| Frontend | `Frontend_Engineer` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `BUILD`, `QUALITY`, `UI`, `API`, `SECURITY`, `DOCS`, `EVIDENCE` |
+| Frontend | `Frontend_A11ySpec` | `REP-READ`, `REP-WRITE`, `BUILD`, `QUALITY`, `UI`, `SECURITY`, `DOCS`, `EVIDENCE` |
+| Frontend | `Frontend_SecuritySpec` | `REP-READ`, `REP-WRITE`, `BUILD`, `QUALITY`, `UI`, `API`, `SECURITY`, `DOCS`, `EVIDENCE` |
+| Frontend | `Frontend_QA` | `REP-READ`, `BUILD`, `QUALITY`, `UI`, `API`, `SECURITY`, `EVIDENCE` |
+| Frontend | `Frontend_Reporter` | `REP-READ`, `DOCS`, `EVIDENCE` |
+| Backend | `Backend_Lead` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `BUILD`, `QUALITY`, `API`, `DATA`, `SECURITY`, `DOCS`, `EVIDENCE` |
+| Backend | `Backend_ArchSpec` | `REP-READ`, `REP-WRITE`, `QUALITY`, `API`, `DATA`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| Backend | `Backend_StandardsSpec` | `REP-READ`, `REP-WRITE`, `BUILD`, `QUALITY`, `API`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| Backend | `Backend_Engineer` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `BUILD`, `QUALITY`, `API`, `DATA`, `SECURITY`, `DOCS`, `EVIDENCE` |
+| Backend | `Backend_DatabaseSpec` | `REP-READ`, `REP-WRITE`, `BUILD`, `QUALITY`, `API`, `DATA`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `DOCS`, `EVIDENCE` |
+| Backend | `Backend_SecuritySpec` | `REP-READ`, `REP-WRITE`, `BUILD`, `QUALITY`, `API`, `DATA`, `SECURITY`, `DOCS`, `EVIDENCE` |
+| Backend | `Backend_QA` | `REP-READ`, `BUILD`, `QUALITY`, `API`, `DATA`, `SECURITY`, `EVIDENCE` |
+| Backend | `Backend_Reporter` | `REP-READ`, `DOCS`, `EVIDENCE` |
+| Infrastructure | `Infra_Lead` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `BUILD`, `QUALITY`, `DATA`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `DOCS`, `EVIDENCE` |
+| Infrastructure | `Infra_PlatformSpec` | `REP-READ`, `REP-WRITE`, `BUILD`, `QUALITY`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `DOCS`, `EVIDENCE` |
+| Infrastructure | `Infra_DeliverySpec` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `BUILD`, `QUALITY`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `DOCS`, `EVIDENCE` |
+| Infrastructure | `Infra_ReliabilitySpec` | `REP-READ`, `REP-WRITE`, `QUALITY`, `DATA`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `DOCS`, `EVIDENCE` |
+| Infrastructure | `Infra_SecuritySpec` | `REP-READ`, `REP-WRITE`, `BUILD`, `QUALITY`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `DOCS`, `EVIDENCE` |
+| Infrastructure | `Infra_QA` | `REP-READ`, `BUILD`, `QUALITY`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `EVIDENCE` |
+| Infrastructure | `Infra_Reporter` | `REP-READ`, `DOCS`, `EVIDENCE` |
+| Documentation | `Doc_Specialist` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `BUILD`, `QUALITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| Research | `Research_Clarificator` | `REP-READ`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| Research | `Research_Formulator` | `REP-READ`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| Research | `Research_Investigator` | `REP-READ`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| Research | `Research_Summarizer` | `REP-READ`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| Research | `Research_Evaluator` | `REP-READ`, `QUALITY`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| Research | `Research_Reporter` | `REP-READ`, `DOCS`, `EVIDENCE` |
+
+#### Canonical outcome capability baseline
+
+Each row is a candidate capability envelope, not a fixed task sequence and not a requirement to
+bind every listed family. The repository-specific CrewAI plan selects the smallest available set
+that can satisfy the outcome contract; missing required capability is reported rather than replaced
+by an imagined tool.
+
+| Outcome | Candidate capability envelope |
+|---|---|
+| `mishkan-init` | `REP-READ`, discovered `BUILD`/`QUALITY`/`UI`/`API`/`DATA`/`PLATFORM`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| `sprint-close` | `REP-READ`, `SCM-LOCAL`, `SCM-REMOTE`, `BUILD`, `QUALITY`, applicable team families, `SECURITY`, `DOCS`, `EVIDENCE` |
+| `deep-research` | `REP-READ`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| `codebase-audit` | `REP-READ`, `BUILD`, `QUALITY`, applicable `UI`/`API`/`DATA`/`PLATFORM`/`RELIABILITY`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| `architecture-panel` | `REP-READ`, applicable `API`/`DATA`/`PLATFORM`/`RELIABILITY`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| `blast-radius` | `REP-READ`, `SCM-LOCAL`, `BUILD`, `QUALITY`, applicable `UI`/`API`/`DATA`/`PLATFORM`/`RELIABILITY`, `SECURITY`, `KNOWLEDGE`, `EVIDENCE` |
+| `release-readiness` | `REP-READ`, `SCM-LOCAL`, `SCM-REMOTE`, `BUILD`, `QUALITY`, applicable team families, `RELIABILITY`, `SECURITY`, `DOCS`, `EVIDENCE` |
+| `dep-audit` | `REP-READ`, `BUILD`, `QUALITY`, `SECURITY`, `KNOWLEDGE`, `DOCS`, `EVIDENCE` |
+| `standards-rollout` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `BUILD`, `QUALITY`, applicable team families, `SECURITY`, `DOCS`, `EVIDENCE` |
+| `knowledge-gap-discovery` | `REP-READ`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| `frontend-feature-ship` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `BUILD`, `QUALITY`, `UI`, applicable `API`, `SECURITY`, `DOCS`, `EVIDENCE` |
+| `backend-api-version` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `BUILD`, `QUALITY`, `API`, applicable `DATA`, `SECURITY`, `DOCS`, `EVIDENCE` |
+| `backend-schema-migration` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `BUILD`, `QUALITY`, `API`, `DATA`, applicable `PLATFORM`/`RELIABILITY`, `SECURITY`, `DOCS`, `EVIDENCE` |
+| `infra-deploy` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `BUILD`, `QUALITY`, applicable `DATA`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `DOCS`, `EVIDENCE` |
+| `infra-dr-drill` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `QUALITY`, `DATA`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `DOCS`, `EVIDENCE` |
+
+The accepted plan persists the trace
+`outcome -> participating role -> task -> capability family -> concrete tool/version -> adapter/source -> availability evidence -> policy decision -> scope`.
+This trace is what makes the same organization useful across different repositories without
+turning role definitions into broad permissions or outcomes into static workflows.
 
 ## 3. Proposed implementation baseline
 
@@ -186,22 +315,30 @@ repository fixtures, no production test-double selection, and no paid service ca
 
 ### I02 — Public policy, tools, and governed effects
 
-**Runnable result:** A CrewAI task can discover and call only its exact bound native or MCP tool;
-filesystem, command, network, credential, Git, release, deployment, and migration effects obey a
-public versioned `allow`/`require_approval`/`deny` decision and emit non-secret evidence.
+**Runnable result:** A CrewAI task can resolve repository-appropriate concrete native or MCP tools
+and call only its exact bound versions. Filesystem, command, network, credential, Git, release,
+deployment, and migration effects obey a public versioned `allow`/`require_approval`/`deny`
+decision and emit non-secret evidence. A declared capability without a configured runnable adapter
+is visibly unavailable and cannot enter an accepted binding.
 
 **Build scope:**
 
 - implement deterministic policy precedence, approval, revocation, fingerprints, and policy
   evolution without a private action deny-list;
+- implement the capability-family vocabulary as planning metadata separate from concrete registry
+  tools, toolsets, role eligibility, accepted bindings, and policy grants;
+- retain a small bundled-native kernel containing only capabilities with concrete runnable adapters;
+  examples and abstract backend contracts remain unavailable until a configured source supplies the
+  adapter and its availability proof;
 - implement Level 0 tool metadata, deferred full-schema loading, namespaces, collision handling,
   nested toolsets, immutable snapshots, availability, and CrewAI tool representations;
 - implement invocation/result envelopes, schema validation, actual target resolution, symlink-safe
   workspace scopes, late credentials, output inspection, cancellation, and uncertain effects;
 - add configured Docker/Podman isolation profiles. The reference profile may declare no network,
   30 seconds, and 512 MB, but those are visible policy values rather than code constants;
-- model commit, push, deployment, release, and migration as typed adapters with exact repository,
-  remote, branch, environment, and approval scopes;
+- model commit, push, deployment, release, and migration as typed contracts with exact repository,
+  remote, branch, environment, and approval scopes, but expose them as operational only through a
+  configured concrete adapter;
 - implement MCP session lifecycle and bound-schema drift refusal.
 
 **Primary trace:** PLN-005–008, SAF-001–013, TOL-001–025, NFR-005, NFR-010, TC-006.
@@ -215,8 +352,11 @@ uv run pytest tests/contract/tools
 uv run pytest tests/acceptance/test_stateful_capability_policy.py
 ```
 
-The gate must prove that policy—not an action name—permits, gates, or refuses the same stateful tool,
-and that an uncertain effect is not automatically repeated.
+The gate must prove that policy—not an action name—permits, gates, or refuses the same concrete
+stateful tool, that abstract or missing adapters are unavailable before binding, that materially
+different repositories resolve different exact tools for the same capability need, and that an
+uncertain effect is not automatically repeated. Passing gateway tests alone does not accept the
+SWE catalogue or the increment.
 
 ### I03 — Durable daemon, recovery, and observation
 
@@ -295,7 +435,10 @@ cannot succeed until independent downstream evaluation and reporting are accepte
 **Build scope:**
 
 - define exactly the SRS roster and outcome catalogue with roles, delegation eligibility, tool and
-  skill eligibility, path scopes, tier needs, and structured contracts;
+  skill eligibility, capability-family eligibility, path scopes, tier needs, and structured
+  contracts;
+- compile outcome needs, role eligibility, repository discovery, execution-location capability,
+  and registry availability into the smallest exact tool bindings required by each accepted task;
 - validate role separation before CrewAI materialization and again at result acceptance;
 - implement adaptive outcome constraints rather than fixed task lists;
 - implement separate production, QA/evaluation, and Reporter tasks with versioned result schemas;

@@ -5,7 +5,7 @@ These instructions apply to the entire repository.
 ## Current stage
 
 MISHKAN has completed the framework's final pre-code stage, Sequence 05, and Implementation Plan
-1.1 is approved. Increments I00 and I01 have passed their local and remote acceptance gates.
+1.2 is approved. Increments I00 and I01 have passed their local and remote acceptance gates.
 Increment I02 is authorized on `feat/i02-policy-tools`. Its registry, policy, gateway, and
 deterministic enforcement mechanisms have passed their narrow local tests, but the I02 increment
 gate is reopened: the bundled catalogue overstates abstract stateful adapters as operational and
