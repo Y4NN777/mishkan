@@ -227,6 +227,59 @@ def test_command_is_governed_by_public_isolation_values_not_a_private_action_lis
     assert runner.timeout == 30
 
 
+@pytest.mark.commands
+def test_isolated_command_timeout_is_uncertain_and_not_retried(tmp_path: Path) -> None:
+    class TimeoutRunner:
+        calls = 0
+
+        def run(
+            self,
+            argv: tuple[str, ...],
+            timeout_seconds: int,
+        ) -> subprocess.CompletedProcess[str]:
+            self.calls += 1
+            raise subprocess.TimeoutExpired(argv, timeout_seconds)
+
+    profile = IsolationProfileLoader().load(
+        "package://mishkan.resources.isolation/local-no-network.yaml",
+        tmp_path,
+    )
+    runner = TimeoutRunner()
+    policy = policy_for(
+        "command.run",
+        Decision.ALLOW,
+        effect_class="command",
+        paths=(".",),
+        executables=("python",),
+    )
+    context = context_for(
+        tmp_path,
+        "command.run",
+        policy,
+        (".", "python"),
+        runtime="container",
+        isolation_profile="local.no-network",
+    )
+    gateway = CapabilityGateway(
+        tmp_path,
+        PolicyAuthority(),
+        MappingCredentialResolver({}),
+        inspector(tmp_path),
+        {"isolation.command": ContainerCommandAdapter(ContainerCommand(profile, runner))},
+        MemoryEvidenceSink(),
+    )
+
+    result = gateway.invoke(
+        context,
+        {"argv": ["python", "-V"], "workspace": "."},
+        DeclaredTargets(paths=(".",), executables=("python",)),
+    )
+
+    assert result.status is CallStatus.UNCERTAIN
+    assert result.retryable is False
+    assert runner.calls == 1
+
+
 @pytest.mark.unicode
 def test_unicode_confusable_target_is_refused_before_dispatch(tmp_path: Path) -> None:
     policy = policy_for(

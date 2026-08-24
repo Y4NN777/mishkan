@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import difflib
+import subprocess
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -70,7 +71,10 @@ class ContainerCommandAdapter:
             isinstance(item, str) for item in argv_value
         ):
             raise ValueError("command argv must contain only strings")
-        completed = self._command.run(workspace, tuple(argv_value))
+        try:
+            completed = self._command.run(workspace, tuple(argv_value))
+        except subprocess.TimeoutExpired as exc:
+            raise TimeoutError("isolated command exceeded its configured timeout") from exc
         return AdapterResult(
             output={
                 "exit_code": completed.returncode,
