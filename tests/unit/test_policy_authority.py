@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -170,6 +170,39 @@ rules:
 
     assert first_policy.fingerprint != second_policy.fingerprint
     assert first_policy.documents[0].adoption_authority == "Engineer"
+
+
+@pytest.mark.parametrize(
+    ("effective_from", "retired_at"),
+    [
+        (utc_now() + timedelta(minutes=10), None),
+        (None, utc_now() - timedelta(minutes=10)),
+    ],
+)
+def test_inactive_policy_revision_cannot_grant_authority(
+    effective_from: datetime | None,
+    retired_at: datetime | None,
+) -> None:
+    document = PolicyDocument(
+        source_id="project.policy",
+        revision="inactive",
+        adoption_authority="Engineer",
+        effective_from=effective_from,
+        retired_at=retired_at,
+        rules=(_rule("push.inactive", Decision.ALLOW, capabilities=("git.push",)),),
+    )
+    policy = EffectivePolicy(
+        documents=(document,),
+        source_uris=("project:inactive.yaml",),
+        fingerprint=canonical_fingerprint(
+            {"uri": "project:inactive.yaml", "fingerprint": document.fingerprint}
+        ),
+    )
+
+    decision = PolicyAuthority().evaluate(_request(), policy)
+
+    assert decision.decision is Decision.DENY
+    assert decision.matched_rule_ids == ()
 
 
 def test_bundled_policy_is_loaded_through_a_public_package_uri(tmp_path: Path) -> None:

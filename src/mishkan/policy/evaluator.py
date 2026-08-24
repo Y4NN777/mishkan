@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from fnmatch import fnmatchcase
 
 from mishkan.domain.errors import ErrorCode, MishkanError
+from mishkan.domain.time import utc_now
 from mishkan.policy.models import (
     ApprovalEvidence,
     AuthorizationDecision,
@@ -32,12 +33,15 @@ class PolicyAuthority:
         policy: EffectivePolicy,
         approval: ApprovalEvidence | None = None,
     ) -> AuthorizationDecision:
+        now = utc_now()
         matches = [
             _Match(
                 document, rule, (document.priority, rule.priority, self._specificity(rule.scope))
             )
             for document in policy.documents
             for rule in document.rules
+            if (document.effective_from is None or document.effective_from <= now)
+            and (document.retired_at is None or document.retired_at > now)
             if self._matches(request, rule.scope)
         ]
         revisions = tuple(f"{item.source_id}@{item.revision}" for item in policy.documents)
