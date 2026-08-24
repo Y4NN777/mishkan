@@ -1,0 +1,67 @@
+"""Resolve public MISHKAN routes into supported CrewAI LLM objects."""
+
+from collections.abc import Iterator
+
+from crewai import LLM
+
+from mishkan.config.models import MishkanConfig, ModelCandidate, ProviderConfig
+from mishkan.crewai.credentials import CredentialPoolResolver
+from mishkan.domain.errors import ErrorCode, MishkanError
+
+
+class CrewAIModelRouter:
+    """Materialize configured candidates; CrewAI remains the inference caller."""
+
+    def __init__(
+        self,
+        config: MishkanConfig,
+        credential_resolver: CredentialPoolResolver | None = None,
+    ) -> None:
+        self._config = config
+        self._credentials = credential_resolver or CredentialPoolResolver()
+
+    def candidates_for(self, route_name: str) -> Iterator[LLM]:
+        route = self._config.model_routes.get(route_name)
+        if route is None:
+            raise MishkanError(
+                ErrorCode.CONFIGURATION,
+                "CrewAI model route does not exist",
+                details={"route": route_name},
+            )
+        for candidate in route.candidates:
+            provider = self._config.providers[candidate.provider]
+            for credential in self._credentials.resolve(provider.credential_pool):
+                yield self._materialize(candidate, provider, credential)
+
+    def _materialize(
+        self,
+        candidate: ModelCandidate,
+        provider: ProviderConfig,
+        credential: str | None,
+    ) -> LLM:
+        provider_name, model_name = self._provider_model(provider.kind, candidate.model)
+        return LLM(
+            model=model_name,
+            provider=provider_name,
+            base_url=str(provider.endpoint).rstrip("/"),
+            api_key=credential,
+            temperature=self._config.crewai.temperature,
+            timeout=self._config.crewai.model_timeout_seconds,
+        )
+
+    @staticmethod
+    def _provider_model(kind: str, model: str) -> tuple[str, str]:
+        mapping = {
+            "ollama": ("ollama", model),
+            "openai-compatible": ("openai", model),
+            "anthropic": ("anthropic", model),
+            "bedrock": ("bedrock", model),
+        }
+        try:
+            return mapping[kind]
+        except KeyError as exc:
+            raise MishkanError(
+                ErrorCode.CONFIGURATION,
+                "provider kind is not supported by the CrewAI boundary",
+                details={"kind": kind},
+            ) from exc

@@ -30,6 +30,65 @@
       "title": "CredentialSource",
       "type": "string"
     },
+    "CrewAIRuntimeConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "max_agent_iterations": {
+          "default": 4,
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Max Agent Iterations",
+          "type": "integer"
+        },
+        "model_timeout_seconds": {
+          "default": 120,
+          "maximum": 3600,
+          "minimum": 10,
+          "title": "Model Timeout Seconds",
+          "type": "integer"
+        },
+        "plan_validation_retries": {
+          "default": 2,
+          "maximum": 10,
+          "minimum": 0,
+          "title": "Plan Validation Retries",
+          "type": "integer"
+        },
+        "review_retries": {
+          "default": 2,
+          "maximum": 10,
+          "minimum": 0,
+          "title": "Review Retries",
+          "type": "integer"
+        },
+        "structured_output_retries": {
+          "default": 2,
+          "maximum": 10,
+          "minimum": 0,
+          "title": "Structured Output Retries",
+          "type": "integer"
+        },
+        "telemetry": {
+          "default": false,
+          "title": "Telemetry",
+          "type": "boolean"
+        },
+        "temperature": {
+          "default": 0.0,
+          "maximum": 2.0,
+          "minimum": 0.0,
+          "title": "Temperature",
+          "type": "number"
+        },
+        "tracing": {
+          "default": false,
+          "title": "Tracing",
+          "type": "boolean"
+        }
+      },
+      "title": "CrewAIRuntimeConfig",
+      "type": "object"
+    },
     "ModelCandidate": {
       "additionalProperties": false,
       "properties": {
@@ -197,6 +256,9 @@
       },
       "title": "Agent Routes",
       "type": "object"
+    },
+    "crewai": {
+      "$ref": "#/$defs/CrewAIRuntimeConfig"
     },
     "mode": {
       "$ref": "#/$defs/OperatingMode"

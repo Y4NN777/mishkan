@@ -180,5 +180,32 @@ def export_contract_schemas(
     _emit({"exported": [str(path) for path in paths]}, as_json=_state(ctx).json_output)
 
 
+@app.command("init")
+def initialize_repository(
+    ctx: typer.Context,
+    objective: Annotated[
+        str,
+        typer.Argument(help="Repository-specific initialization objective."),
+    ],
+    repository: Annotated[
+        Path | None,
+        typer.Option("--repository", "-r", help="Git repository to initialize."),
+    ] = None,
+) -> None:
+    """Run the read-only CrewAI initialization flow and durably resume it."""
+
+    state = _state(ctx)
+    effective = _load_or_exit(ctx)
+    target = repository or effective.value.project.workspace
+    try:
+        from mishkan.application.initialize import MishkanInitializer
+
+        report = MishkanInitializer().run(effective.value, target, objective)
+    except MishkanError as error:
+        _emit_error(error, as_json=state.json_output)
+        raise typer.Exit(code=2) from error
+    _emit(report.model_dump(mode="json"), as_json=state.json_output)
+
+
 if __name__ == "__main__":
     app()
