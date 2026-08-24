@@ -62,6 +62,17 @@ class ProjectConfig(StrictConfigModel):
     workspace: Path
 
 
+class CrewAIRuntimeConfig(StrictConfigModel):
+    tracing: bool = False
+    telemetry: bool = False
+    temperature: float = Field(default=0.0, ge=0.0, le=2.0)
+    model_timeout_seconds: int = Field(default=120, ge=10, le=3_600)
+    max_agent_iterations: int = Field(default=4, ge=1, le=100)
+    plan_validation_retries: int = Field(default=2, ge=0, le=10)
+    review_retries: int = Field(default=2, ge=0, le=10)
+    structured_output_retries: int = Field(default=2, ge=0, le=10)
+
+
 class MishkanConfig(StrictConfigModel):
     """Complete effective configuration required before a run can be accepted."""
 
@@ -74,6 +85,7 @@ class MishkanConfig(StrictConfigModel):
     agent_routes: dict[str, str] = Field(default_factory=dict)
     services: dict[str, ServiceConfig] = Field(default_factory=dict)
     policy_sources: tuple[str, ...] = Field(min_length=1)
+    crewai: CrewAIRuntimeConfig = Field(default_factory=CrewAIRuntimeConfig)
 
     @field_validator("timezone")
     @classmethod

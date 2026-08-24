@@ -1,0 +1,22 @@
+schema_version: "1.0"
+manifests:
+  readme: [README.md, README.rst, README.txt]
+  python_manifest: [pyproject.toml, setup.py, setup.cfg]
+  javascript_manifest: [package.json]
+  go_manifest: [go.mod]
+  rust_manifest: [Cargo.toml]
+  tests: [pytest.ini, tox.ini, vitest.config.ts, jest.config.js]
+languages:
+  .py: Python
+  .pyi: Python
+  .js: JavaScript
+  .jsx: JavaScript
+  .ts: TypeScript
+  .tsx: TypeScript
+  .go: Go
+  .rs: Rust
+  .java: Java
+  .kt: Kotlin
+  .swift: Swift
+excluded_directories: [.git, .mishkan, .venv, node_modules]
+evidence_limit: 200

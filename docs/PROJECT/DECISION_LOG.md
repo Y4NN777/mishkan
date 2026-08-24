@@ -45,6 +45,7 @@ cannot be represented clearly in one row.
 | D-023 | Delivery | Accepted | Deliver MISHKAN through the vertical increments, acceptance gates, repository baseline, and progressive Git protocol in `PROJECT/IMPLEMENTATION_PLAN.md` | The delivery baseline is approved; coding remains blocked until the engineer separately authorizes implementation | Engineer validation, 2026-08-23 |
 | D-024 | Delivery | Accepted | Begin implementation increment I00 on its dedicated branch under Implementation Plan 1.0 | Only the contract-bearing foundation is authorized; later increments retain their dependency and acceptance gates | Engineer authorization, 2026-08-23 |
 | D-025 | Delivery | Accepted | Use topic branches (`feat/*`, `fix/*`, and other applicable change prefixes) into `develop`, then promote `develop` into `main` after the integrated gate | Direct topic-to-main merges are prohibited; the already-published I00 merge is retained as history rather than silently rewritten | Engineer correction, 2026-08-23 |
+| D-026 | Delivery | Accepted | Begin I01 on `feat/i01-local-crewai` using progressive tested commits | I01 is authorized; I02 and later increments remain outside the active implementation scope | Engineer validation, 2026-08-24 |
 
 ## Open decisions
 

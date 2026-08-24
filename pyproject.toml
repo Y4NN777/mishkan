@@ -16,6 +16,7 @@ dependencies = [
   "crewai>=1,<2",
   "pydantic>=2.10,<3",
   "pyyaml>=6,<7",
+  "sqlalchemy>=2,<3",
   "typer>=0.16,<1",
 ]
 
@@ -48,6 +49,7 @@ addopts = "--strict-config --strict-markers"
 testpaths = ["tests"]
 markers = [
   "acceptance: runnable increment acceptance test",
+  "ollama: requires a local Ollama service and configured model",
 ]
 
 [tool.coverage.run]
