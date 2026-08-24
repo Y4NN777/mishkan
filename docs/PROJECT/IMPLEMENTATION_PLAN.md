@@ -68,6 +68,13 @@ bindings and exposes a non-secret unavailability reason until configured. The bu
 therefore stays deliberately small and truthful; breadth comes from configured sources and
 repository-aware adapter discovery.
 
+A generic subprocess or container runner is adapter infrastructure, not proof that arbitrary SWE
+commands are safe or available as one broad agent tool. Every command-derived tool declares its
+executable or task-runner identity, typed arguments, working directory, target extraction, effect
+class, environment, network, timeout, and result contract. A raw command surface may exist only as
+an explicitly configured and scoped operator capability; it is never the implicit implementation
+of all build, test, security, data, or delivery families.
+
 #### Capability families
 
 The family identifiers below are stable planning vocabulary. Adapter examples are non-normative:
@@ -80,6 +87,7 @@ an adapter is installed, available, selected, or authorized.
 | `REP-WRITE` | Scoped source and artifact changes | patch, write, formatter, generator |
 | `SCM-LOCAL` | Local source-control state | status, diff, branch, commit, tag |
 | `SCM-REMOTE` | Remote collaboration and publication | fetch, push, pull request or merge request, review metadata |
+| `COLLAB` | Engineering work coordination outside CrewAI | configured issue, project, work-item, and review-system adapters |
 | `BUILD` | Dependency, package, compile, and artifact work | discovered package-manager, compiler, task-runner, container-build adapter |
 | `QUALITY` | Deterministic verification | unit/integration/E2E tests, lint, typecheck, coverage, benchmark |
 | `UI` | Frontend and user-experience verification | browser automation, accessibility, visual, responsive, performance checks |
@@ -89,12 +97,20 @@ an adapter is installed, available, selected, or authorized.
 | `RELIABILITY` | Operational behavior and recovery | health, logs, metrics, traces, load, failover, disaster-recovery checks |
 | `SECURITY` | Product and supply-chain assurance | secret, SAST, dependency, license, image, IaC, dynamic security checks |
 | `DOCS` | Documentation and contract maintenance | Markdown, links, diagrams, API docs, changelog, runbook validation |
-| `KNOWLEDGE` | Attributed external and accumulated context | literal read, research, mem0, Cognee, Graphify, configured MCP sources |
-| `EVIDENCE` | Durable acceptance and reporting artifacts | result envelope, artifact, event, finding, report-schema validation |
+| `KNOWLEDGE` | Attributed episodic, semantic, and structural context | mem0, Cognee, Graphify, configured knowledge MCP sources |
+| `RESEARCH` | Attributed investigation outside project-owned context | configured web, paper, standards, and source-retrieval adapters |
+| `EVIDENCE` | Explicit findings and engineering artifacts | finding submission, artifact registration, report-material preparation |
 
-CrewAI coordination is intentionally absent from this table: it is the mandatory production
-runtime in which agents, tasks, teams, crews, flows, and selected tools operate, not another tool
-family.
+CrewAI coordination and automatic policy, result, event, and acceptance persistence are
+intentionally absent from this table: they are control-plane/runtime responsibilities, not tools an
+agent invokes. `EVIDENCE` covers only intentional agent-produced finding or artifact operations.
+
+The historical SPEC/SRS contributes the original semantic baseline: orchestrators use coordination
+and context surfaces; specialists receive scoped repository, knowledge, and sandboxed execution;
+QA receives read-only context and verification; Reporters write reviewed memory; and direct external
+research belongs to the Investigator. The canonical SRS supersedes the drafts' fixed names and
+blanket tier lists, but this responsibility split remains rationale for the candidate eligibility
+below. Exact identities still come only from configured, available tool sources.
 
 #### Canonical role eligibility baseline
 
@@ -104,38 +120,38 @@ from repository evidence and outcome needs, resolve exact available tools, and t
 
 | Team | Identity | Candidate family eligibility |
 |---|---|---|
-| Orchestration | `PM` | `REP-READ`, `SCM-REMOTE`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| Orchestration | `CTO` | `REP-READ`, `QUALITY`, `API`, `DATA`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| Frontend | `Frontend_Lead` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `BUILD`, `QUALITY`, `UI`, `API`, `SECURITY`, `DOCS`, `EVIDENCE` |
+| Orchestration | `PM` | `REP-READ`, `SCM-REMOTE`, `COLLAB`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| Orchestration | `CTO` | `REP-READ`, `COLLAB`, `QUALITY`, `API`, `DATA`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| Frontend | `Frontend_Lead` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `COLLAB`, `BUILD`, `QUALITY`, `UI`, `API`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
 | Frontend | `Frontend_DesignLead` | `REP-READ`, `REP-WRITE`, `QUALITY`, `UI`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
 | Frontend | `Frontend_UXExpert` | `REP-READ`, `REP-WRITE`, `QUALITY`, `UI`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| Frontend | `Frontend_Engineer` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `BUILD`, `QUALITY`, `UI`, `API`, `SECURITY`, `DOCS`, `EVIDENCE` |
-| Frontend | `Frontend_A11ySpec` | `REP-READ`, `REP-WRITE`, `BUILD`, `QUALITY`, `UI`, `SECURITY`, `DOCS`, `EVIDENCE` |
-| Frontend | `Frontend_SecuritySpec` | `REP-READ`, `REP-WRITE`, `BUILD`, `QUALITY`, `UI`, `API`, `SECURITY`, `DOCS`, `EVIDENCE` |
-| Frontend | `Frontend_QA` | `REP-READ`, `BUILD`, `QUALITY`, `UI`, `API`, `SECURITY`, `EVIDENCE` |
-| Frontend | `Frontend_Reporter` | `REP-READ`, `DOCS`, `EVIDENCE` |
-| Backend | `Backend_Lead` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `BUILD`, `QUALITY`, `API`, `DATA`, `SECURITY`, `DOCS`, `EVIDENCE` |
+| Frontend | `Frontend_Engineer` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `BUILD`, `QUALITY`, `UI`, `API`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| Frontend | `Frontend_A11ySpec` | `REP-READ`, `REP-WRITE`, `BUILD`, `QUALITY`, `UI`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| Frontend | `Frontend_SecuritySpec` | `REP-READ`, `REP-WRITE`, `BUILD`, `QUALITY`, `UI`, `API`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| Frontend | `Frontend_QA` | `REP-READ`, `BUILD`, `QUALITY`, `UI`, `API`, `SECURITY`, `KNOWLEDGE`, `EVIDENCE` |
+| Frontend | `Frontend_Reporter` | `REP-READ`, `COLLAB`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| Backend | `Backend_Lead` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `COLLAB`, `BUILD`, `QUALITY`, `API`, `DATA`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
 | Backend | `Backend_ArchSpec` | `REP-READ`, `REP-WRITE`, `QUALITY`, `API`, `DATA`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
 | Backend | `Backend_StandardsSpec` | `REP-READ`, `REP-WRITE`, `BUILD`, `QUALITY`, `API`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| Backend | `Backend_Engineer` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `BUILD`, `QUALITY`, `API`, `DATA`, `SECURITY`, `DOCS`, `EVIDENCE` |
-| Backend | `Backend_DatabaseSpec` | `REP-READ`, `REP-WRITE`, `BUILD`, `QUALITY`, `API`, `DATA`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `DOCS`, `EVIDENCE` |
-| Backend | `Backend_SecuritySpec` | `REP-READ`, `REP-WRITE`, `BUILD`, `QUALITY`, `API`, `DATA`, `SECURITY`, `DOCS`, `EVIDENCE` |
-| Backend | `Backend_QA` | `REP-READ`, `BUILD`, `QUALITY`, `API`, `DATA`, `SECURITY`, `EVIDENCE` |
-| Backend | `Backend_Reporter` | `REP-READ`, `DOCS`, `EVIDENCE` |
-| Infrastructure | `Infra_Lead` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `BUILD`, `QUALITY`, `DATA`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `DOCS`, `EVIDENCE` |
-| Infrastructure | `Infra_PlatformSpec` | `REP-READ`, `REP-WRITE`, `BUILD`, `QUALITY`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `DOCS`, `EVIDENCE` |
-| Infrastructure | `Infra_DeliverySpec` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `BUILD`, `QUALITY`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `DOCS`, `EVIDENCE` |
-| Infrastructure | `Infra_ReliabilitySpec` | `REP-READ`, `REP-WRITE`, `QUALITY`, `DATA`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `DOCS`, `EVIDENCE` |
-| Infrastructure | `Infra_SecuritySpec` | `REP-READ`, `REP-WRITE`, `BUILD`, `QUALITY`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `DOCS`, `EVIDENCE` |
-| Infrastructure | `Infra_QA` | `REP-READ`, `BUILD`, `QUALITY`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `EVIDENCE` |
-| Infrastructure | `Infra_Reporter` | `REP-READ`, `DOCS`, `EVIDENCE` |
+| Backend | `Backend_Engineer` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `BUILD`, `QUALITY`, `API`, `DATA`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| Backend | `Backend_DatabaseSpec` | `REP-READ`, `REP-WRITE`, `BUILD`, `QUALITY`, `API`, `DATA`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| Backend | `Backend_SecuritySpec` | `REP-READ`, `REP-WRITE`, `BUILD`, `QUALITY`, `API`, `DATA`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| Backend | `Backend_QA` | `REP-READ`, `BUILD`, `QUALITY`, `API`, `DATA`, `SECURITY`, `KNOWLEDGE`, `EVIDENCE` |
+| Backend | `Backend_Reporter` | `REP-READ`, `COLLAB`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| Infrastructure | `Infra_Lead` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `COLLAB`, `BUILD`, `QUALITY`, `DATA`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| Infrastructure | `Infra_PlatformSpec` | `REP-READ`, `REP-WRITE`, `BUILD`, `QUALITY`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| Infrastructure | `Infra_DeliverySpec` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `BUILD`, `QUALITY`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| Infrastructure | `Infra_ReliabilitySpec` | `REP-READ`, `REP-WRITE`, `QUALITY`, `DATA`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| Infrastructure | `Infra_SecuritySpec` | `REP-READ`, `REP-WRITE`, `BUILD`, `QUALITY`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| Infrastructure | `Infra_QA` | `REP-READ`, `BUILD`, `QUALITY`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `KNOWLEDGE`, `EVIDENCE` |
+| Infrastructure | `Infra_Reporter` | `REP-READ`, `COLLAB`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
 | Documentation | `Doc_Specialist` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `BUILD`, `QUALITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
 | Research | `Research_Clarificator` | `REP-READ`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
 | Research | `Research_Formulator` | `REP-READ`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| Research | `Research_Investigator` | `REP-READ`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| Research | `Research_Investigator` | `REP-READ`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `RESEARCH`, `EVIDENCE` |
 | Research | `Research_Summarizer` | `REP-READ`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
 | Research | `Research_Evaluator` | `REP-READ`, `QUALITY`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| Research | `Research_Reporter` | `REP-READ`, `DOCS`, `EVIDENCE` |
+| Research | `Research_Reporter` | `REP-READ`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
 
 #### Canonical outcome capability baseline
 
@@ -147,20 +163,20 @@ by an imagined tool.
 | Outcome | Candidate capability envelope |
 |---|---|
 | `mishkan-init` | `REP-READ`, discovered `BUILD`/`QUALITY`/`UI`/`API`/`DATA`/`PLATFORM`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| `sprint-close` | `REP-READ`, `SCM-LOCAL`, `SCM-REMOTE`, `BUILD`, `QUALITY`, applicable team families, `SECURITY`, `DOCS`, `EVIDENCE` |
-| `deep-research` | `REP-READ`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| `sprint-close` | `REP-READ`, `SCM-LOCAL`, `SCM-REMOTE`, `COLLAB`, `BUILD`, `QUALITY`, applicable team families, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| `deep-research` | `REP-READ`, `DOCS`, `KNOWLEDGE`, `RESEARCH`, `EVIDENCE` |
 | `codebase-audit` | `REP-READ`, `BUILD`, `QUALITY`, applicable `UI`/`API`/`DATA`/`PLATFORM`/`RELIABILITY`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
 | `architecture-panel` | `REP-READ`, applicable `API`/`DATA`/`PLATFORM`/`RELIABILITY`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
 | `blast-radius` | `REP-READ`, `SCM-LOCAL`, `BUILD`, `QUALITY`, applicable `UI`/`API`/`DATA`/`PLATFORM`/`RELIABILITY`, `SECURITY`, `KNOWLEDGE`, `EVIDENCE` |
-| `release-readiness` | `REP-READ`, `SCM-LOCAL`, `SCM-REMOTE`, `BUILD`, `QUALITY`, applicable team families, `RELIABILITY`, `SECURITY`, `DOCS`, `EVIDENCE` |
-| `dep-audit` | `REP-READ`, `BUILD`, `QUALITY`, `SECURITY`, `KNOWLEDGE`, `DOCS`, `EVIDENCE` |
-| `standards-rollout` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `BUILD`, `QUALITY`, applicable team families, `SECURITY`, `DOCS`, `EVIDENCE` |
-| `knowledge-gap-discovery` | `REP-READ`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
-| `frontend-feature-ship` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `BUILD`, `QUALITY`, `UI`, applicable `API`, `SECURITY`, `DOCS`, `EVIDENCE` |
-| `backend-api-version` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `BUILD`, `QUALITY`, `API`, applicable `DATA`, `SECURITY`, `DOCS`, `EVIDENCE` |
-| `backend-schema-migration` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `BUILD`, `QUALITY`, `API`, `DATA`, applicable `PLATFORM`/`RELIABILITY`, `SECURITY`, `DOCS`, `EVIDENCE` |
-| `infra-deploy` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `BUILD`, `QUALITY`, applicable `DATA`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `DOCS`, `EVIDENCE` |
-| `infra-dr-drill` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `QUALITY`, `DATA`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `DOCS`, `EVIDENCE` |
+| `release-readiness` | `REP-READ`, `SCM-LOCAL`, `SCM-REMOTE`, `COLLAB`, `BUILD`, `QUALITY`, applicable team families, `RELIABILITY`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| `dep-audit` | `REP-READ`, `BUILD`, `QUALITY`, `SECURITY`, `KNOWLEDGE`, applicable `RESEARCH`, `DOCS`, `EVIDENCE` |
+| `standards-rollout` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `COLLAB`, `BUILD`, `QUALITY`, applicable team families, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| `knowledge-gap-discovery` | `REP-READ`, `DOCS`, `KNOWLEDGE`, `RESEARCH`, `EVIDENCE` |
+| `frontend-feature-ship` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `COLLAB`, `BUILD`, `QUALITY`, `UI`, applicable `API`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| `backend-api-version` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `COLLAB`, `BUILD`, `QUALITY`, `API`, applicable `DATA`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| `backend-schema-migration` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `COLLAB`, `BUILD`, `QUALITY`, `API`, `DATA`, applicable `PLATFORM`/`RELIABILITY`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| `infra-deploy` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `SCM-REMOTE`, `COLLAB`, `BUILD`, `QUALITY`, applicable `DATA`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
+| `infra-dr-drill` | `REP-READ`, `REP-WRITE`, `SCM-LOCAL`, `QUALITY`, `DATA`, `PLATFORM`, `RELIABILITY`, `SECURITY`, `DOCS`, `KNOWLEDGE`, `EVIDENCE` |
 
 The accepted plan persists the trace
 `outcome -> participating role -> task -> capability family -> concrete tool/version -> adapter/source -> availability evidence -> policy decision -> scope`.
