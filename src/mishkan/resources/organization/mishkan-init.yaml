@@ -1,0 +1,6 @@
+schema_version: "1.0"
+outcome_id: mishkan.init
+intent: Produce a repository-specific, evidence-cited initialization report without modifying the repository.
+allowed_roles: [Repository_Investigator]
+allowed_tools: [repository.read_file]
+max_tasks: 4

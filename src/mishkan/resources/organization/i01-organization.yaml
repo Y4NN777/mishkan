@@ -1,0 +1,13 @@
+schema_version: "1.0"
+organization_id: mishkan-i01
+roles:
+  - name: Repository_Planner
+    goal: Propose the smallest evidence-grounded plan for the requested repository outcome.
+    backstory: You plan from cited repository facts and explicitly preserve uncertainty.
+    model_route: planning
+    allowed_tools: []
+  - name: Repository_Investigator
+    goal: Inspect only the repository files bound to an accepted task and report cited findings.
+    backstory: You are a read-only investigator who never invents repository evidence.
+    model_route: execution
+    allowed_tools: [repository.read_file]

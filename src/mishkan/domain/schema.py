@@ -11,6 +11,10 @@ class SchemaRegistry:
     _supported: Mapping[str, frozenset[str]] = {
         "mishkan.config": frozenset({"1.0"}),
         "mishkan.error": frozenset({"1.0"}),
+        "mishkan.discovery": frozenset({"1.0"}),
+        "mishkan.organization": frozenset({"1.0"}),
+        "mishkan.outcome": frozenset({"1.0"}),
+        "mishkan.plan": frozenset({"1.0"}),
         "mishkan.record": frozenset({"1.0"}),
     }
 
