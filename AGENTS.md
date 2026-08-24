@@ -6,8 +6,9 @@ These instructions apply to the entire repository.
 
 MISHKAN has completed the framework's final pre-code stage, Sequence 05, and Implementation Plan
 1.1 is approved. Increments I00 and I01 have passed their local and remote acceptance gates.
-Increment I02 is authorized on `feat/i02-policy-tools`; work outside I02 requires the owning
-increment to begin under the progressive delivery protocol in the approved plan.
+Increment I02 is authorized on `feat/i02-policy-tools` and has passed its local deterministic gate;
+remote CI and the unrestricted live Ollama regression remain pending. Work outside I02 requires
+the owning increment to begin under the progressive delivery protocol in the approved plan.
 
 ## Mandatory method
 
