@@ -1,0 +1,29 @@
+schema_version: "1.0"
+tool_id: deployment.apply
+version: 1.0.0
+crewai_name: deployment_apply
+summary: Apply one deployment plan to one exact environment.
+effect_class: deployment
+source_id: bundled.core
+source_kind: operator
+adapter: operator.deployment.apply
+input_schema:
+  type: object
+  additionalProperties: false
+  required: [environment, artifact, revision]
+  properties:
+    environment: {type: string}
+    artifact: {type: string}
+    revision: {type: string}
+result_schema:
+  type: object
+  additionalProperties: false
+  required: [environment, revision, external_reference]
+  properties:
+    environment: {type: string}
+    revision: {type: string}
+    external_reference: {type: string}
+timeout_behavior: effect_may_be_uncertain
+idempotency: none
+target_scopes: [environment, network]
+credential_refs: [deployment.target]

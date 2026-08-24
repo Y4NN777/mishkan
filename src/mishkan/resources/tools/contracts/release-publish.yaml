@@ -1,0 +1,29 @@
+schema_version: "1.0"
+tool_id: release.publish
+version: 1.0.0
+crewai_name: release_publish
+summary: Publish one exact release artifact and version to a configured target.
+effect_class: release
+source_id: bundled.core
+source_kind: operator
+adapter: operator.release.publish
+input_schema:
+  type: object
+  additionalProperties: false
+  required: [target, version, artifact]
+  properties:
+    target: {type: string}
+    version: {type: string}
+    artifact: {type: string}
+result_schema:
+  type: object
+  additionalProperties: false
+  required: [target, version, external_reference]
+  properties:
+    target: {type: string}
+    version: {type: string}
+    external_reference: {type: string}
+timeout_behavior: effect_may_be_uncertain
+idempotency: deduplication_key
+target_scopes: [external_resource, network]
+credential_refs: [release.target]

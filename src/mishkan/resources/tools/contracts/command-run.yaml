@@ -1,0 +1,27 @@
+schema_version: "1.0"
+tool_id: command.run
+version: 1.0.0
+crewai_name: command_run
+summary: Run an argument-vector command through a configured isolation profile.
+effect_class: command
+source_id: bundled.core
+source_kind: native
+adapter: isolation.command
+input_schema:
+  type: object
+  additionalProperties: false
+  required: [argv, workspace]
+  properties:
+    argv: {type: array, minItems: 1, items: {type: string}}
+    workspace: {type: string, minLength: 1}
+result_schema:
+  type: object
+  additionalProperties: false
+  required: [exit_code, stdout, stderr]
+  properties:
+    exit_code: {type: integer}
+    stdout: {type: string}
+    stderr: {type: string}
+timeout_behavior: effect_may_be_uncertain
+idempotency: none
+target_scopes: [path, executable, network]

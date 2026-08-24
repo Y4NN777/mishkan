@@ -17,6 +17,8 @@ class SchemaRegistry:
         "mishkan.plan": frozenset({"1.0"}),
         "mishkan.policy": frozenset({"1.0"}),
         "mishkan.record": frozenset({"1.0"}),
+        "mishkan.tool": frozenset({"1.0"}),
+        "mishkan.tool-source": frozenset({"1.0"}),
     }
 
     @classmethod

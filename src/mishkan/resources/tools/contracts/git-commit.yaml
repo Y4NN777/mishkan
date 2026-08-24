@@ -1,0 +1,32 @@
+schema_version: "1.0"
+tool_id: git.commit
+version: 1.0.0
+crewai_name: git_commit
+summary: Create a repository commit within exact revision and branch scope.
+effect_class: repository_write
+source_id: bundled.core
+source_kind: native
+adapter: native.git.commit
+input_schema:
+  type: object
+  additionalProperties: false
+  required: [repository, branch, base_revision, message, paths]
+  properties:
+    repository: {type: string}
+    branch: {type: string}
+    base_revision: {type: string}
+    message: {type: string, minLength: 1}
+    paths: {type: array, minItems: 1, items: {type: string}}
+result_schema:
+  type: object
+  additionalProperties: false
+  required: [repository, branch, predecessor, revision, diff]
+  properties:
+    repository: {type: string}
+    branch: {type: string}
+    predecessor: {type: string}
+    revision: {type: string}
+    diff: {type: string}
+timeout_behavior: effect_may_be_uncertain
+idempotency: deduplication_key
+target_scopes: [repository, branch, path]
