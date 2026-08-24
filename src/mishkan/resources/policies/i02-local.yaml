@@ -1,0 +1,28 @@
+schema_version: "1.0"
+source_id: bundled.local
+revision: "1"
+adoption_authority: MISHKAN release
+priority: 0
+rules:
+  - rule_id: local.repository-read
+    priority: 100
+    decision: allow
+    scope:
+      identities: ["role:Repository_Investigator", "role:Repository_Reviewer"]
+      objective_classes: [repository-initialization]
+      repositories: ["*"]
+      outcomes: [mishkan.init]
+      roles: [Repository_Investigator, Repository_Reviewer]
+      capabilities: [repository.read_file]
+      effect_classes: [read]
+      paths: ["*"]
+      network_destinations: ["*"]
+      remotes: ["*"]
+      branches: ["*"]
+      environments: ["*"]
+      credentials: ["*"]
+      isolation_profiles: ["*"]
+      max_timeout_seconds: 120
+      max_memory_mb: 512
+      allow_network: false
+      max_concurrency: 1

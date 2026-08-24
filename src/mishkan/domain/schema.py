@@ -15,6 +15,7 @@ class SchemaRegistry:
         "mishkan.organization": frozenset({"1.0"}),
         "mishkan.outcome": frozenset({"1.0"}),
         "mishkan.plan": frozenset({"1.0"}),
+        "mishkan.policy": frozenset({"1.0"}),
         "mishkan.record": frozenset({"1.0"}),
     }
 
