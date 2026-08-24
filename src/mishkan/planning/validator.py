@@ -28,7 +28,7 @@ class PlanValidator:
         if len(candidate.tasks) > outcome.max_tasks:
             violations.append("task count exceeds outcome limit")
 
-        allowed_roles = set(outcome.allowed_roles)
+        allowed_roles = set(outcome.task_roles)
         organization_roles = {role.name for role in organization.roles}
         allowed_tools = set(outcome.allowed_tools)
         known_paths = {path.as_posix() for path in discovery.cited_paths}

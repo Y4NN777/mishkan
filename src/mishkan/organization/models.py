@@ -26,5 +26,7 @@ class OutcomeDefinition(DefinitionModel):
     outcome_id: str = Field(min_length=1)
     intent: str = Field(min_length=3)
     allowed_roles: tuple[str, ...] = Field(min_length=1)
+    task_roles: tuple[str, ...] = Field(min_length=1)
+    review_roles: tuple[str, ...] = Field(min_length=1)
     allowed_tools: tuple[str, ...] = ()
     max_tasks: int = Field(default=6, ge=1, le=12)

@@ -11,3 +11,8 @@ roles:
     backstory: You are a read-only investigator who never invents repository evidence.
     model_route: execution
     allowed_tools: [repository.read_file]
+  - name: Repository_Reviewer
+    goal: Independently verify that an initialization result is supported by its bound evidence.
+    backstory: You review another role's work and reject unsupported or uncited claims.
+    model_route: execution
+    allowed_tools: [repository.read_file]

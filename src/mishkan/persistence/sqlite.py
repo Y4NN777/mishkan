@@ -15,7 +15,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, rela
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.identity import new_id
 from mishkan.domain.time import utc_now
-from mishkan.planning.models import AcceptedPlan, InitializationResult
+from mishkan.planning.models import AcceptedPlan, InitializationResult, ReviewDecision
 from mishkan.repository.models import DiscoverySnapshot
 
 
@@ -72,6 +72,18 @@ class ResultRow(Base):
     accepted_at: Mapped[str] = mapped_column(String(40), nullable=False)
 
 
+class AcceptanceRow(Base):
+    __tablename__ = "task_acceptances"
+    __table_args__ = (UniqueConstraint("run_id", "task_key"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id"), nullable=False)
+    task_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    result_id: Mapped[str] = mapped_column(ForeignKey("accepted_results.id"), nullable=False)
+    review_payload: Mapped[str] = mapped_column(Text, nullable=False)
+    accepted_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
 class OutboxRow(Base):
     __tablename__ = "event_outbox"
 
@@ -89,6 +101,7 @@ class RunSnapshot:
     resumed: bool
     plan: AcceptedPlan | None
     results: tuple[InitializationResult, ...]
+    reviews: tuple[ReviewDecision, ...]
 
     @property
     def completed_task_ids(self) -> frozenset[str]:
@@ -186,7 +199,12 @@ class LocalRunRepository:
             session.flush()
             return self._snapshot(session, run, resumed=False)
 
-    def accept_result(self, run_id: str, result: InitializationResult) -> RunSnapshot:
+    def accept_result(
+        self,
+        run_id: str,
+        result: InitializationResult,
+        review: ReviewDecision,
+    ) -> RunSnapshot:
         with Session(self._engine) as session, session.begin():
             run = self._require_run(session, run_id)
             task = session.scalar(
@@ -222,15 +240,40 @@ class LocalRunRepository:
                         "task already has a different accepted result",
                         details={"run_id": run_id, "task_id": result.task_id},
                     )
+                acceptance = session.scalar(
+                    select(AcceptanceRow).where(
+                        AcceptanceRow.run_id == run_id,
+                        AcceptanceRow.task_key == result.task_id,
+                    )
+                )
+                if acceptance is None or acceptance.review_payload != review.model_dump_json():
+                    raise MishkanError(
+                        ErrorCode.DUPLICATE_RESULT,
+                        "task already has different review evidence",
+                        details={"run_id": run_id, "task_id": result.task_id},
+                    )
                 return self._snapshot(session, run, resumed=True)
 
+            result_id = str(new_id())
+            accepted_at = utc_now().isoformat()
             session.add(
                 ResultRow(
-                    id=str(new_id()),
+                    id=result_id,
                     run_id=run_id,
                     task_key=result.task_id,
                     payload=payload,
-                    accepted_at=utc_now().isoformat(),
+                    accepted_at=accepted_at,
+                )
+            )
+            session.flush()
+            session.add(
+                AcceptanceRow(
+                    id=str(new_id()),
+                    run_id=run_id,
+                    task_key=result.task_id,
+                    result_id=result_id,
+                    review_payload=review.model_dump_json(),
+                    accepted_at=accepted_at,
                 )
             )
             task.status = "completed"
@@ -297,11 +340,25 @@ class LocalRunRepository:
         result_rows = session.scalars(
             select(ResultRow).where(ResultRow.run_id == run.id).order_by(ResultRow.accepted_at)
         ).all()
+        acceptance_rows = session.scalars(
+            select(AcceptanceRow)
+            .where(AcceptanceRow.run_id == run.id)
+            .order_by(AcceptanceRow.accepted_at)
+        ).all()
         plan = AcceptedPlan.model_validate_json(plan_row.payload) if plan_row is not None else None
         results = tuple(
             InitializationResult.model_validate_json(row.payload) for row in result_rows
         )
-        return RunSnapshot(run_id=run.id, resumed=resumed, plan=plan, results=results)
+        reviews = tuple(
+            ReviewDecision.model_validate_json(row.review_payload) for row in acceptance_rows
+        )
+        return RunSnapshot(
+            run_id=run.id,
+            resumed=resumed,
+            plan=plan,
+            results=results,
+            reviews=reviews,
+        )
 
     @staticmethod
     def _add_event(

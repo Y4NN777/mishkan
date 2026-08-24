@@ -10,7 +10,7 @@ from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.organization import load_initialization_definitions
 from mishkan.persistence import LocalRunRepository
 from mishkan.planning import PlanCandidate, PlanTask, PlanValidator
-from mishkan.planning.models import InitializationResult
+from mishkan.planning.models import InitializationResult, ReviewDecision
 from mishkan.repository import RepositoryInspector
 
 
@@ -55,6 +55,15 @@ def _accepted_plan(discovery):  # type: ignore[no-untyped-def]
     return PlanValidator().accept(candidate, discovery, organization, outcome)
 
 
+def _review(task_id: str = "read-readme") -> ReviewDecision:
+    return ReviewDecision(
+        task_id=task_id,
+        verdict="accepted",
+        summary="An independent reviewer verified the bound evidence.",
+        checked_citations=("README.md",),
+    )
+
+
 def test_state_and_outbox_are_durable_and_resumable(tmp_path: Path) -> None:
     discovery = _discovery(tmp_path)
     database = tmp_path / ".mishkan" / "mishkan.db"
@@ -69,7 +78,7 @@ def test_state_and_outbox_are_durable_and_resumable(tmp_path: Path) -> None:
         cited_paths=("README.md",),
         findings=("The repository contains a project overview.",),
     )
-    repository.accept_result(started.run_id, result)
+    repository.accept_result(started.run_id, result, _review())
 
     resumed = LocalRunRepository(database).start_or_resume(
         discovery, "Initialize this repository", "mishkan.init"
@@ -78,6 +87,7 @@ def test_state_and_outbox_are_durable_and_resumable(tmp_path: Path) -> None:
     assert resumed.resumed is True
     assert resumed.plan == plan
     assert resumed.results == (result,)
+    assert resumed.reviews == (_review(),)
     assert [event["event_type"] for event in repository.outbox_events()] == [
         "run.started",
         "plan.accepted",
@@ -101,11 +111,12 @@ def test_conflicting_duplicate_result_is_refused(tmp_path: Path) -> None:
         cited_paths=("README.md",),
         findings=("First accepted finding.",),
     )
-    repository.accept_result(run.run_id, first)
+    repository.accept_result(run.run_id, first, _review())
 
     with pytest.raises(MishkanError) as caught:
         repository.accept_result(
             run.run_id,
             first.model_copy(update={"summary": "A conflicting summary."}),
+            _review(),
         )
     assert caught.value.envelope.code is ErrorCode.DUPLICATE_RESULT
