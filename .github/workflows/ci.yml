@@ -53,6 +53,7 @@ jobs:
       - name: Type check
         run: >-
           uv run --python "${{ matrix.python-version }}" mypy --strict
+          --python-version "${{ matrix.python-version }}"
           --cache-dir "${{ runner.temp }}/mypy-cache" src
 
       - name: Verify exported schemas
