@@ -5,9 +5,9 @@ These instructions apply to the entire repository.
 ## Current stage
 
 MISHKAN has completed the framework's final pre-code stage, Sequence 05, and Implementation Plan
-1.1 is approved. Increment I00 has passed its local and remote acceptance gates. Increment I01 is
-authorized on `feat/i01-local-crewai`; work outside I01 requires the owning increment to begin under
-the progressive delivery protocol in the approved plan.
+1.1 is approved. Increments I00 and I01 have passed their local and remote acceptance gates. No
+later increment is currently authorized; further implementation requires the engineer to authorize
+the owning increment under the progressive delivery protocol in the approved plan.
 
 ## Mandatory method
 
