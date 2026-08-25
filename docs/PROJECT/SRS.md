@@ -7,8 +7,8 @@
 
 Version 1.6 replaces the historical 32-identity/15-outcome assumptions and promotes the validated
 mission, engineering-context, native-capability, artifact, MCP, harness, skills, communication,
-intervention, and professional-evolution behavior in WD-001–WD-027. Version 1.5 decision-quality
-assistance and the 1.4 general-tool model remain incorporated.
+intervention, professional-evolution, and mission-scoped environment behavior in WD-001–WD-028.
+Version 1.5 decision-quality assistance and the 1.4 general-tool model remain incorporated.
 
 ## 1. Purpose and scope
 
@@ -515,8 +515,9 @@ of its transport.
 The Mission Brief MUST record known execution locations, platform and architecture constraints,
 project-established environment definitions, isolation and network needs, credential references,
 resource constraints, and required environment evidence. Before environment-dependent tasks become
-eligible, the mission plan MUST reference one versioned environment decision produced under ENG
-requirements or record the exact unresolved dependency and affected scope.
+eligible, the mission plan MUST contain the agent-authored proposal required by PLN-021 and
+reference its compatible versioned binding resolved under ENG-009–013, or record the exact
+unresolved dependency and affected scope.
 
 ## 9. Run execution and recovery
 

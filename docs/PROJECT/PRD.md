@@ -9,7 +9,8 @@
 Version 1.4 replaces the historical fixed 32-identity and 15-outcome assumptions with an explicit
 59-identity professional organization, free-form missions, and optional versioned mission
 templates. It also incorporates the validated engineering-context, native-capability, skills,
-external-harness, communication, intervention, and agent-evolution decisions in WD-001–WD-027.
+external-harness, communication, intervention, agent-evolution, and mission-scoped environment
+decisions in WD-001–WD-028.
 
 ## 1. Problem
 

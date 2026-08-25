@@ -21,7 +21,7 @@ This index is the entry point for durable MISHKAN documentation.
 | [`PROJECT/IMPLEMENTATION_PLAN.md`](PROJECT/IMPLEMENTATION_PLAN.md) | Proposed 1.4 — D-036 | I00/I01 retention and vertical I02–I11 delivery, acceptance, and Git-flow plan |
 | [`SYSTEM/CONTRACT.md`](SYSTEM/CONTRACT.md) | Proposed 1.4 — D-033 | Sequence 03 promises, invariants, refusals, sessions, artifacts, and mediation |
 | [`SYSTEM/RESPONSIBILITIES.md`](SYSTEM/RESPONSIBILITIES.md) | Proposed 1.2 — D-034 | Sequence 04 exact primary ownership and handoffs for RSP-001–026 |
-| [`SYSTEM/MODEL.md`](SYSTEM/MODEL.md) | Proposed 1.2 — D-035 | Mission-centered Sequence 05 behavior, including environment decision and generation |
+| [`SYSTEM/MODEL.md`](SYSTEM/MODEL.md) | Proposed 1.2 — D-035 | Mission-centered Sequence 05 behavior, including agent-authored environment planning and governed generation |
 | [`SYSTEM/ARCHITECTURE.md`](SYSTEM/ARCHITECTURE.md) | Proposed 1.2 — D-035 | Transactional modular-monolith structure, mission environment boundary, and architecture decisions |
 | [`VALIDATION/I00.md`](VALIDATION/I00.md) | Passed | Observed local and remote acceptance evidence for the I00 foundation |
 | [`VALIDATION/I01.md`](VALIDATION/I01.md) | Passed | Observed local and remote acceptance evidence for real CrewAI execution |
