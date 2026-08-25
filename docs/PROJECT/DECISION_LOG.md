@@ -56,7 +56,7 @@ cannot be represented clearly in one row.
 | D-034 | Governance | Accepted | Requirement-to-Responsibility Map 1.2 is authoritative | Every SRS 1.6 requirement, error, promise, and invariant has exactly one primary owner and explicit handoffs through RSP-001–026 | Engineer validation after assistant coherence audit, 2026-08-25 |
 | D-035 | Architecture | Accepted | System Model 1.2 and Architecture 1.2 are authoritative | The mission-centered behavioral model and single-authority transactional modular monolith supersede D-017, D-022, and the unaccepted D-030 model/architecture amendment while retaining CrewAI as the sole internal production runtime | Engineer validation after assistant coherence audit, 2026-08-25 |
 | D-036 | Delivery | Accepted | Implementation Plan 1.4 is authoritative and I02 resumes on `feat/i02-policy-tools` | It supersedes D-023 and the unaccepted D-030 plan amendment; delivery follows I02–I11 and their complete SRS ownership; I00/I01 evidence remains accepted and later increments retain their gates | Engineer validation after assistant coherence audit, 2026-08-25 |
-| D-037 | Architecture / Delivery | Proposed | Detail mission-scoped environment behavior in System Model 1.3, Architecture 1.3, and Implementation Plan 1.5 without changing PRD 1.4 or SRS 1.6 | Makes the agent-authored plan, per-context binding lifecycle, Dev Container/Podman/Compose descriptor boundaries, ordinary Artifact/Edit/Process effects, work packages, and acceptance scenarios explicit; D-035–D-036 remain authoritative until engineer acceptance | Derived from accepted PLN-021, MSN-016, ENG-009–013, CTR-020, INV-042, and RSP-005/022/025; proposed 2026-08-25 |
+| D-037 | Architecture / Delivery | Accepted | System Model 1.3, Architecture 1.3, and Implementation Plan 1.5 are authoritative without changing PRD 1.4 or SRS 1.6 | Makes the agent-authored plan, per-context binding lifecycle, Dev Container/Podman/Compose descriptor boundaries, ordinary Artifact/Edit/Process effects, work packages, and acceptance scenarios explicit; preserves D-036's I02 authority and the later increment gates | Engineer confirmation after assistant coherence audit, 2026-08-25 |
 
 ## Working-decision promotion matrix
 
@@ -96,9 +96,9 @@ left solely in that register; authority transferred through accepted decisions D
 
 ## Open decisions
 
-D-037 is the only proposed documentary amendment. D-030 was superseded without acceptance; D-032
-through D-036 remain authoritative and were accepted in order on 2026-08-25. I02 is resumed under
-Implementation Plan 1.4 and remains subject to its implementation scope and acceptance gate.
+No documentary-baseline decision remains open. D-030 was superseded without acceptance; D-032
+through D-037 were accepted in order on 2026-08-25. I02 remains resumed under Implementation Plan
+1.5 and subject to its implementation scope and acceptance gate.
 
 ## Review rules
 

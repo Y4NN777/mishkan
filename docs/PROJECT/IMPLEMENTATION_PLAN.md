@@ -1,10 +1,9 @@
 # MISHKAN Implementation and Acceptance Plan
 
-**Status:** Proposed 1.5 amendment; version 1.4 remains accepted by D-036
+**Status:** Accepted by D-037 on 2026-08-25
 **Version:** 1.5
-**Derived from:** PRD 1.4, SRS 1.6, Contract 1.4, Responsibility Map 1.2, proposed System Model 1.3,
-and proposed Architecture 1.3; the accepted 1.2 design remains authoritative until amendment
-acceptance
+**Derived from:** PRD 1.4, SRS 1.6, Contract 1.4, Responsibility Map 1.2, System Model 1.3, and
+Architecture 1.3 accepted by D-032–D-035 and D-037
 
 ## 1. Purpose and gate authority
 
@@ -14,7 +13,7 @@ framework stage.
 
 I00 and I01 remain accepted exactly as implemented and evidenced. Their code, historical commits,
 and validation records are not rewritten. D-032 through D-036 accepted the version 1.4 documentary
-baseline in order on 2026-08-25. D-036 resumes I02. This proposed 1.5 amendment details later
+baseline in order on 2026-08-25. D-036 resumes I02. D-037 accepts this version 1.5 detail of later
 mission-environment delivery without expanding current implementation authority; every later
 increment remains subject to its own dependencies, scope, and acceptance gate.
 
@@ -531,9 +530,9 @@ to every affected gate.
 3. D-034 accepts Responsibility Map 1.2.
 4. D-035 accepts System Model 1.2 and Architecture 1.2 and supersedes D-030.
 5. D-036 accepts Implementation Plan 1.4 and explicitly authorizes resumption of I02.
-6. D-037 proposes the Model 1.3, Architecture 1.3, and Implementation Plan 1.5 mission-environment
-   detail amendment; it does not replace D-035–D-036 unless explicitly accepted.
+6. D-037 accepts the Model 1.3, Architecture 1.3, and Implementation Plan 1.5 mission-environment
+   detail amendment while preserving D-036's I02 authority and the later increment gates.
 
-The first five decisions were accepted in order on 2026-08-25. D-036 therefore resumes I02 only;
-it does not accept I02 evidence in advance or authorize later increments outside their declared
-gates. D-037 is a proposed design/delivery clarification and does not suspend I02.
+All six decisions were accepted in order on 2026-08-25. D-036 therefore resumes I02 only; it does
+not accept I02 evidence in advance or authorize later increments outside their declared gates.
+D-037 accepts the design/delivery clarification and does not suspend or broaden I02.

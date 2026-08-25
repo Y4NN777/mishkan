@@ -1,9 +1,9 @@
 # MISHKAN Architecture
 
-**Status:** Proposed 1.3 amendment; version 1.2 remains accepted by D-035
+**Status:** Accepted by D-037 on 2026-08-25
 **Version:** 1.3
-**Derived from:** proposed System Model 1.3 and Responsibility Map 1.2 accepted by D-034, plus retained
-decisions D-015, D-016, D-021, D-022, and D-029
+**Derived from:** System Model 1.3 accepted by D-037 and Responsibility Map 1.2 accepted by D-034,
+plus retained decisions D-015, D-016, D-021, D-022, and D-029
 
 ## 1. Scope and non-negotiable boundaries
 
@@ -413,7 +413,6 @@ generated files grant no authority.
 
 ## 10. Gate effect
 
-System Model 1.2 and Architecture 1.2 supersede the version 1.1 amendments and D-030 under D-035.
-Architecture alone grants no effect authority; D-036 resumes I02 under the accepted plan, policy,
-and increment gates. The version 1.3 mission-environment detail remains proposed under D-037 and
-does not replace the accepted 1.2 architecture until that decision is explicitly accepted.
+System Model 1.2 and Architecture 1.2 superseded the version 1.1 amendments and D-030 under D-035;
+D-037 now accepts the version 1.3 mission-environment detail. Architecture alone grants no effect
+authority; D-036 resumes I02 under the accepted plan, policy, and increment gates.

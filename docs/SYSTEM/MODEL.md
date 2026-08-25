@@ -1,6 +1,6 @@
 # MISHKAN System Model
 
-**Status:** Proposed 1.3 amendment; version 1.2 remains accepted by D-035
+**Status:** Accepted by D-037 on 2026-08-25
 **Version:** 1.3
 **Derived from:** PRD 1.4, SRS 1.6, System Contract 1.4, and Responsibility Map 1.2 accepted by
 D-032–D-034
@@ -596,7 +596,6 @@ semantics.
 8. The accepted structural direction remains a transactional modular monolith with an outbox, not
    full event sourcing or service-first decomposition.
 
-These conclusions supersede the version 1.1 behavior amendment under D-035. Implementation
-authority is governed separately by D-036 and the accepted increment gates. The version 1.3
-mission-environment detail remains proposed under D-037 and does not supersede the accepted 1.2
-model until that decision is explicitly accepted.
+These conclusions supersede the version 1.1 behavior amendment and the version 1.2 model detail
+under D-035. D-037 accepts the version 1.3 mission-environment detail. Implementation authority is
+governed separately by D-036 and the accepted increment gates.
