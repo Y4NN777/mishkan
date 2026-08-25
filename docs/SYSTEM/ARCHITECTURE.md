@@ -1,8 +1,8 @@
 # MISHKAN Architecture
 
-**Status:** Accepted by D-035 on 2026-08-25
-**Version:** 1.2
-**Derived from:** System Model 1.2 and Responsibility Map 1.2 accepted by D-034–D-035, plus retained
+**Status:** Proposed 1.3 amendment; version 1.2 remains accepted by D-035
+**Version:** 1.3-proposed
+**Derived from:** proposed System Model 1.3 and Responsibility Map 1.2 accepted by D-034, plus retained
 decisions D-015, D-016, D-021, D-022, and D-029
 
 ## 1. Scope and non-negotiable boundaries
@@ -229,6 +229,104 @@ consume verified Containerfile or Dockerfile inputs; Podman Kubernetes YAML and 
 separate runtime/service adapters selected only for those semantics. Compose is bound only through
 a verified Compose-compatible adapter. None of these names proves host availability or makes a
 generated description ready.
+
+#### Environment module internals
+
+The environment module is one application component with explicit internal ports; these ports are
+not separately deployable authorities.
+
+```mermaid
+flowchart LR
+    Planning["Planning / accepted MissionEnvironmentPlan"]
+    Crew["CrewAI environment task"]
+    Context["Context evidence"]
+    Registry["Engine and adapter registry"]
+    Gateway["Effect gateway"]
+    Artifact["Artifact store"]
+
+    subgraph Env["Mission environment component · RSP-025"]
+        Observe["Observation assembler"]
+        Eligible["Eligibility presenter"]
+        Validate["Proposal compatibility validator"]
+        Resolve["Per-context binding resolver"]
+        Descriptor["Descriptor-set contract validator"]
+        Verify["Verification and settlement recorder"]
+        Invalidate["Context invalidation evaluator"]
+    end
+
+    Context --> Observe
+    Registry --> Observe
+    Observe --> Eligible
+    Eligible --> Planning
+    Planning --> Validate
+    Validate --> Resolve
+    Registry --> Resolve
+    Resolve -->|"binding or incompatibility"| Planning
+    Planning -->|"authorized generation task"| Crew
+    Crew -->|"candidate bytes and rationale"| Gateway
+    Gateway --> Artifact
+    Artifact --> Descriptor
+    Descriptor --> Planning
+    Crew -->|"build · start · probe · cleanup"| Gateway
+    Gateway --> Verify
+    Verify --> Planning
+    Context --> Invalidate
+    Invalidate --> Planning
+```
+
+The observation assembler merges repository, prospective-workspace, execution-location, worker,
+engine, policy-relevant, and existing-definition evidence without deciding an outcome. The
+eligibility presenter returns candidates and unknowns to the CrewAI planning turn. The proposal
+validator checks the normalized agent-authored request; the resolver selects only within its
+bounded constraints and returns incompatibility rather than silently changing `reuse_existing`,
+`host_native`, `generate`, `propose_project_change`, or `unresolved`.
+
+The descriptor-set validator validates identities, formats, references, bases, and secret-free
+structure after an accountable CrewAI task has produced candidate bytes. It does not generate those
+bytes. The verification recorder consumes settled effect evidence and never treats an adapter
+return, image identifier, or ready-looking file as accepted mission state by itself. The
+invalidation evaluator compares stored fingerprints with new authoritative observations and emits
+a replanning dependency; it does not mutate the accepted plan directly.
+
+#### Environment application operations
+
+| Operation | Input authority | Durable result | External effect |
+|---|---|---|---|
+| Observe environment context | accepted Mission Brief context and configured safe probes | `EnvironmentObservation` revision with facts and unknowns | read/probe only through governed capabilities |
+| Present eligible choices | observation and registry snapshots | bounded candidate set attached to planning input | none |
+| Submit environment proposal | CrewAI result plus accountable identity and lineage | normalized `MissionEnvironmentPlan` candidate | none |
+| Resolve context binding | accepted plan revision and exact context fingerprint | compatible `EnvironmentBinding` or precise incompatibility | none |
+| Commit descriptor set | accepted generation result and immutable member artifacts | `EnvironmentDescriptorSet` identity and validation state | artifact transfer only |
+| Propose project persistence | descriptor set, logical paths, and exact base revisions | typed Edit/Patch change-set reference | no mutation until separately authorized |
+| Materialize environment | binding, descriptor artifacts, location, and effect grant | one `EnvironmentAttempt` settlement | build/acquire/start through gateway |
+| Verify environment | binding, location fingerprint, required check profile | `EnvironmentVerification` with coverage and limitations | probes/project commands/cleanup through gateway |
+| Invalidate binding | changed context, plan, policy, adapter, engine, or evidence | invalidation fact and affected task set | none |
+
+Application commands use expected-current revisions for the plan, binding, descriptor set, and
+working references. Long builds, pulls, starts, probes, and cleanup never hold the metadata
+transaction open. Their call identities and artifact references are recorded before a short
+settlement transaction decides whether the environment remains unverified, failed, cancelled,
+uncertain, verified, or invalidated.
+
+#### Format and engine adapter boundaries
+
+- A Dev Container format adapter validates the selected specification version, feature references,
+  mounts, lifecycle commands, user model, and image/build/Compose references. A separate observed
+  CLI adapter performs supported build or up operations when available.
+- OCI build-input validation is distinct from execution. A Containerfile or Dockerfile can bind to
+  a verified Podman, Docker/BuildKit, or other compatible engine without changing its recorded
+  dialect and compatibility evidence.
+- Podman Kubernetes YAML and Quadlet adapters exist only for requested pod/service lifecycle
+  semantics. They are not automatic companions to every Containerfile.
+- Compose is a descriptor family whose provider and compatibility mode are observed. Docker
+  Compose, Podman Compose, or another configured implementation cannot be substituted silently.
+- Host-native, Nix, mise, language-toolchain, and CI descriptions use the same binding and evidence
+  contracts. Container formats receive no architectural priority merely because adapters exist.
+
+Descriptor bytes and logs are immutable artifacts. Proposed logical project paths and their
+change-set journal belong to Edit/Patch. Running process groups, jobs, containers, volumes, and
+networks belong to the execution/effect boundary. Environment records reference those identities;
+they do not duplicate their lifecycle state or cleanup authority.
 
 ## 7. Artifact and persistence architecture
 

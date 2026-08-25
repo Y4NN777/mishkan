@@ -1,7 +1,7 @@
 # MISHKAN System Model
 
-**Status:** Accepted by D-035 on 2026-08-25
-**Version:** 1.2
+**Status:** Proposed 1.3 amendment; version 1.2 remains accepted by D-035
+**Version:** 1.3-proposed
 **Derived from:** PRD 1.4, SRS 1.6, System Contract 1.4, and Responsibility Map 1.2 accepted by
 D-032–D-034
 
@@ -315,6 +315,131 @@ separate Terminal/Process or specialized-adapter effects executed by accountable
 environment description therefore cannot mark itself ready, and generated project changes follow
 the ordinary independent-evaluation path. A context or base-revision change creates a new plan and
 binding revision and invalidates only its dependent task bindings.
+
+### 8.2 Environment decision and binding lifecycle
+
+**Question:** Which states prevent a proposal, generated file, running container, and verified
+mission dependency from being confused with one another?
+
+```mermaid
+stateDiagram-v2
+    [*] --> Observing
+    Observing --> AwaitingProposal: eligible evidence and unknowns published
+    Observing --> Unresolved: required observation unavailable
+    AwaitingProposal --> Proposed: CrewAI task returns owned MissionEnvironmentPlan
+    Proposed --> Replanning: proposal invalid, incomplete, or consequentially unaccepted
+    Proposed --> Resolving: normalized plan revision accepted
+    Resolving --> Incompatible: requested outcome cannot be preserved
+    Resolving --> BoundUnverified: compatible adapter and location bound
+    Incompatible --> Replanning: precise incompatibility returned
+    Replanning --> AwaitingProposal: revised evidence or mission decision requested
+    BoundUnverified --> Generating: descriptor generation required
+    BoundUnverified --> Verifying: existing or host-native binding requires verification
+    Generating --> AwaitingMutation: immutable descriptor set accepted
+    Generating --> Failed: generation result rejected
+    AwaitingMutation --> Verifying: project change applied or artifact-only input selected
+    AwaitingMutation --> Replanning: base revision or authority changed
+    Verifying --> Verified: location-bound checks settle successfully
+    Verifying --> Failed: checks settle unsuccessfully
+    Verifying --> Cancelled: cancellation settles without uncertain effect
+    Verifying --> Uncertain: build, start, probe, or cleanup cannot be settled
+    Verified --> Invalidated: context fingerprint or required evidence changes
+    Uncertain --> Verifying: reconciliation proves a safe continuation
+    Uncertain --> Replanning: reconciliation requires a different decision
+    Invalidated --> AwaitingProposal: affected scope is replanned
+    Unresolved --> AwaitingProposal: missing dependency becomes observable
+```
+
+`Observed`, `available`, `compatible`, `authorized`, `materialized`, and `verified` remain separate
+facts even when one command observes several of them. `BoundUnverified` releases only tasks that do
+not require a runnable environment. `Verified` releases exactly the dependent task set recorded in
+the accepted plan. `Failed`, `Cancelled`, `Uncertain`, `Incompatible`, and `Unresolved` preserve
+their evidence and do not collapse into one generic unavailable state.
+
+Generation is not an authority shortcut. `Generating` produces candidate descriptor artifacts;
+`AwaitingMutation` distinguishes an artifact-only environment input from a proposed project change.
+Only the latter crosses Edit/Patch with an exact base revision. A successful build without cleanup
+settlement may remain `Uncertain`, and a successful descriptor parse cannot skip `Verifying` when
+dependent tasks require runtime evidence.
+
+### 8.3 Mission environment records and cardinality
+
+**Question:** What is versioned once per mission, once per context, or once per effect attempt?
+
+```mermaid
+classDiagram
+    class MissionBrief {
+      +mission_id
+      +brief_revision
+      +environment_intent
+      +known_constraints
+      +required_evidence
+    }
+    class MissionEnvironmentPlan {
+      +plan_revision
+      +owner_identity
+      +crewai_lineage
+      +requested_outcomes
+      +rationale_and_unknowns
+    }
+    class EnvironmentContext {
+      +context_id
+      +repository_or_workspace
+      +service_group
+      +execution_location
+      +platform_architecture
+      +context_fingerprint
+    }
+    class EnvironmentBinding {
+      +binding_id
+      +binding_revision
+      +requested_outcome
+      +adapter_and_engine
+      +compatibility_state
+      +dependent_tasks
+    }
+    class EnvironmentDescriptorSet {
+      +descriptor_set_id
+      +format_members
+      +base_evidence
+      +artifact_ids
+      +change_set_id
+    }
+    class EnvironmentAttempt {
+      +attempt_id
+      +operation
+      +effect_call_ids
+      +settlement
+      +artifact_ids
+    }
+    class EnvironmentVerification {
+      +verification_id
+      +location_fingerprint
+      +checks_and_coverage
+      +settlement
+      +limitations
+    }
+    MissionBrief "1" --> "1..*" MissionEnvironmentPlan : revised through planning
+    MissionEnvironmentPlan "1" --> "1..*" EnvironmentContext : decides per material context
+    EnvironmentContext "1" --> "1..*" EnvironmentBinding : versioned resolution
+    EnvironmentBinding "1" --> "0..*" EnvironmentDescriptorSet : generates or reuses
+    EnvironmentBinding "1" --> "0..*" EnvironmentAttempt : materializes and cleans
+    EnvironmentBinding "1" --> "0..*" EnvironmentVerification : verifies at locations
+```
+
+A `MissionEnvironmentPlan` can cover several contexts but must state one requested outcome per
+material context. A binding never spans incompatible repository revisions, platforms,
+architectures, service groups, or execution locations. A descriptor set is a typed collection: it
+may contain `.devcontainer/devcontainer.json`, referenced Dockerfile or Containerfile inputs,
+Compose inputs, Podman Kubernetes YAML, Quadlet units, Nix or toolchain files only when the accepted
+semantics require them. It does not require all formats and does not make any filename universal.
+
+Each descriptor member records its specification or engine dialect, logical project path when one
+is proposed, immutable artifact identity, input/base evidence, sensitivity, and derivation. A
+single binding can have several materialization attempts and verifications; only a verification
+whose location and context fingerprints still match can satisfy dependent tasks. Reuse of an
+existing project definition creates a descriptor-set reference to observed project evidence rather
+than copying or regenerating its bytes.
 
 ## 9. PTY, job, browser, and MCP session lifecycle
 
