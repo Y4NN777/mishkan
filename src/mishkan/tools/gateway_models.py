@@ -40,8 +40,10 @@ class DeclaredTargets(GatewayModel):
 
 class ResolvedPath(GatewayModel):
     requested: str
+    lexical_relative: str = ""
     relative: str
     absolute: Path
+    link_chain: tuple[str, ...] = ()
 
 
 class ResolvedTargets(GatewayModel):

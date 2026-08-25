@@ -1,0 +1,41 @@
+schema_version: "1.0"
+tool_id: file.stat
+version: 1.0.0
+crewai_name: file_stat
+summary: Inspect bounded metadata for one resolved filesystem object.
+effect_class: read
+source_id: bundled.core
+source_kind: native
+adapter: native.file.stat
+input_schema:
+  type: object
+  additionalProperties: false
+  required: [path]
+  properties:
+    path: {type: string, minLength: 1}
+    digest: {type: boolean}
+result_schema:
+  type: object
+  additionalProperties: false
+  required: [path, object_type, size, permissions, modified_ns, object_identity, digest]
+  properties:
+    path: {type: string}
+    object_type: {type: string, enum: [file, directory]}
+    size: {type: integer, minimum: 0}
+    permissions: {type: integer, minimum: 0}
+    modified_ns: {type: integer}
+    object_identity:
+      type: object
+      additionalProperties: false
+      required: [device, inode]
+      properties:
+        device: {type: integer, minimum: 0}
+        inode: {type: integer, minimum: 0}
+    digest: {type: [string, "null"]}
+timeout_behavior: cancel_local
+idempotency: idempotent
+target_scopes: [path]
+target_arguments: {path: [path]}
+resources: {timeout_seconds: 10, memory_mb: 64, network: false, concurrency: 1}
+adapter_config:
+  max_digest_bytes: 16777216

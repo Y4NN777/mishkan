@@ -27,6 +27,9 @@ INSPECTION_URI = "package://mishkan.resources.inspection/i02-default.yaml"
 TEST_ADAPTERS = frozenset(
     {
         "native.repository.read_file",
+        "native.file.resolve",
+        "native.file.stat",
+        "native.file.read",
         "native.repository.write_file",
         "isolation.command",
         "native.git.commit",
@@ -119,7 +122,11 @@ def context_for(
     network: bool = False,
     isolation_profile: str | None = None,
 ) -> InvocationContext:
-    source_uri = CATALOG_URI if tool_id == "repository.read_file" else MECHANISM_CATALOG_URI
+    source_uri = (
+        CATALOG_URI
+        if tool_id == "repository.read_file" or tool_id.startswith("file.")
+        else MECHANISM_CATALOG_URI
+    )
     catalog = ToolCatalog(
         (source_uri,),
         root,

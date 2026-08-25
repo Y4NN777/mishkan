@@ -1,9 +1,30 @@
 schema_version: "1.0"
 source_id: bundled.core
 source_kind: native
-revision: "1"
+revision: "2"
 adoption_authority: MISHKAN release
 tools:
+  - tool_id: file.resolve
+    version: 1.0.0
+    summary: Resolve one scoped path and report the observed filesystem object.
+    effect_class: read
+    source_id: bundled.core
+    source_kind: native
+    contract_uri: package://mishkan.resources.tools/contracts/file-resolve.yaml
+  - tool_id: file.stat
+    version: 1.0.0
+    summary: Inspect bounded metadata for one resolved filesystem object.
+    effect_class: read
+    source_id: bundled.core
+    source_kind: native
+    contract_uri: package://mishkan.resources.tools/contracts/file-stat.yaml
+  - tool_id: file.read
+    version: 1.0.0
+    summary: Read bounded bytes, text, ranges, or lines from one resolved regular file.
+    effect_class: read
+    source_id: bundled.core
+    source_kind: native
+    contract_uri: package://mishkan.resources.tools/contracts/file-read.yaml
   - tool_id: repository.read_file
     version: 1.0.0
     summary: Read one exact repository-relative file bound to the accepted task.
@@ -12,6 +33,10 @@ tools:
     source_kind: native
     contract_uri: package://mishkan.resources.tools/contracts/read-file.yaml
 toolsets:
+  - toolset_id: file.readonly
+    version: 1.0.0
+    summary: Canonical non-mutating native file capabilities.
+    tools: [file.resolve, file.stat, file.read]
   - toolset_id: repository.readonly
     version: 1.0.0
     summary: Repository inspection capabilities.

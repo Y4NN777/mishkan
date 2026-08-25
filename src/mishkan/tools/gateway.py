@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Mapping
 from datetime import timedelta
 from fnmatch import fnmatchcase
@@ -371,8 +372,8 @@ class CapabilityGateway:
                 ErrorCode.TOOL_UNAVAILABLE,
                 ErrorCode.TOOL_DRIFT,
             }
-            if code is ErrorCode.TOOL_SCHEMA and call_id is None:
-                pre_dispatch_codes.add(ErrorCode.TOOL_SCHEMA)
+            if call_id is None:
+                pre_dispatch_codes.update({ErrorCode.TOOL_SCHEMA, ErrorCode.FILE})
             status = CallStatus.REFUSED if code in pre_dispatch_codes else CallStatus.FAILED
             terminal_result = self._terminal(context, call_id, started, status, code, reason)
             self._audit(
@@ -401,13 +402,22 @@ class CapabilityGateway:
                     details={"path": value},
                 ) from exc
             candidate = self._root / value
-            resolved = candidate.resolve(strict=False)
-            if candidate.is_absolute() and not resolved.is_relative_to(self._root):
+            lexical = Path(os.path.abspath(candidate))
+            if not lexical.is_relative_to(self._root):
                 raise MishkanError(
                     ErrorCode.AUTHORITY_NOT_GRANTED,
-                    "filesystem target resolves outside the accepted workspace",
+                    "filesystem target is lexically outside the accepted workspace",
                     details={"path": value},
                 )
+            link_chain = self._link_chain(lexical)
+            try:
+                resolved = lexical.resolve(strict=False)
+            except (OSError, RuntimeError) as exc:
+                raise MishkanError(
+                    ErrorCode.FILE,
+                    "filesystem target link chain cannot be resolved",
+                    details={"category": "symlink_escape", "path": value},
+                ) from exc
             if not resolved.is_relative_to(self._root):
                 raise MishkanError(
                     ErrorCode.AUTHORITY_NOT_GRANTED,
@@ -417,8 +427,10 @@ class CapabilityGateway:
             paths.append(
                 ResolvedPath(
                     requested=value,
+                    lexical_relative=lexical.relative_to(self._root).as_posix(),
                     relative=resolved.relative_to(self._root).as_posix(),
                     absolute=resolved,
+                    link_chain=link_chain,
                 )
             )
         collections = {
@@ -441,6 +453,24 @@ class CapabilityGateway:
                 "declared target contains unstable Unicode",
             ) from exc
         return ResolvedTargets(paths=tuple(paths), **normalized)
+
+    def _link_chain(self, lexical: Path) -> tuple[str, ...]:
+        chain: list[str] = []
+        current = self._root
+        for part in lexical.relative_to(self._root).parts:
+            current = current / part
+            try:
+                if current.is_symlink():
+                    chain.append(
+                        f"{current.relative_to(self._root).as_posix()}->{os.readlink(current)}"
+                    )
+            except OSError as exc:
+                raise MishkanError(
+                    ErrorCode.FILE,
+                    "filesystem target link chain cannot be inspected",
+                    details={"category": "permission_denied", "path": lexical.as_posix()},
+                ) from exc
+        return tuple(chain)
 
     @staticmethod
     def _validate_binding(context: InvocationContext, contract_fingerprint: str) -> None:

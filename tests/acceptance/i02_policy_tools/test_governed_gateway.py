@@ -171,6 +171,7 @@ def test_invalid_adapter_output_is_contained_after_dispatch(tmp_path: Path) -> N
                 paths=(
                     ResolvedPath(
                         requested="README.md",
+                        lexical_relative="README.md",
                         relative="README.md",
                         absolute=tmp_path / "README.md",
                     ),

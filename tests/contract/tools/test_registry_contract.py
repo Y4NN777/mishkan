@@ -106,16 +106,33 @@ def test_availability_is_visible_and_not_an_authorization_decision(tmp_path: Pat
     assert caught.value.envelope.code is ErrorCode.TOOL_UNAVAILABLE
 
 
-def test_bundled_catalog_advertises_only_its_runnable_read_adapter(tmp_path: Path) -> None:
+def test_bundled_catalog_advertises_only_runnable_native_read_adapters(tmp_path: Path) -> None:
+    adapters = frozenset(
+        {
+            READ_ADAPTER,
+            "native.file.resolve",
+            "native.file.stat",
+            "native.file.read",
+        }
+    )
     catalog = ToolCatalog(
         (CATALOG_URI,),
         tmp_path,
-        available_adapters=frozenset({READ_ADAPTER}),
+        available_adapters=adapters,
     )
 
-    assert tuple(tool.tool_id for tool in catalog.list_metadata()) == ("repository.read_file",)
-    snapshot = catalog.snapshot(("repository.readonly",))
-    assert tuple(tool.tool_id for tool in snapshot.tools) == ("repository.read_file",)
+    assert tuple(tool.tool_id for tool in catalog.list_metadata()) == (
+        "file.resolve",
+        "file.stat",
+        "file.read",
+        "repository.read_file",
+    )
+    snapshot = catalog.snapshot(("file.readonly",))
+    assert tuple(tool.tool_id for tool in snapshot.tools) == (
+        "file.resolve",
+        "file.stat",
+        "file.read",
+    )
 
 
 def test_contract_without_an_installed_adapter_cannot_enter_snapshot(tmp_path: Path) -> None:
