@@ -30,6 +30,7 @@ TEST_ADAPTERS = frozenset(
         "native.file.resolve",
         "native.file.stat",
         "native.file.read",
+        "native.file.list",
         "native.repository.write_file",
         "isolation.command",
         "native.git.commit",

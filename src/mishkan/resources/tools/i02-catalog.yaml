@@ -1,7 +1,7 @@
 schema_version: "1.0"
 source_id: bundled.core
 source_kind: native
-revision: "2"
+revision: "3"
 adoption_authority: MISHKAN release
 tools:
   - tool_id: file.resolve
@@ -25,6 +25,13 @@ tools:
     source_id: bundled.core
     source_kind: native
     contract_uri: package://mishkan.resources.tools/contracts/file-read.yaml
+  - tool_id: file.list
+    version: 1.0.0
+    summary: List one directory or bounded tree with deterministic pagination and visible omissions.
+    effect_class: read
+    source_id: bundled.core
+    source_kind: native
+    contract_uri: package://mishkan.resources.tools/contracts/file-list.yaml
   - tool_id: repository.read_file
     version: 1.0.0
     summary: Read one exact repository-relative file bound to the accepted task.
@@ -36,7 +43,7 @@ toolsets:
   - toolset_id: file.readonly
     version: 1.0.0
     summary: Canonical non-mutating native file capabilities.
-    tools: [file.resolve, file.stat, file.read]
+    tools: [file.resolve, file.stat, file.read, file.list]
   - toolset_id: repository.readonly
     version: 1.0.0
     summary: Repository inspection capabilities.

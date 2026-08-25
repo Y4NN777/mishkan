@@ -8,6 +8,7 @@ from support.i02 import context_for, inspector, policy_for
 from mishkan.policy import Decision, PolicyAuthority
 from mishkan.tools.adapters import (
     CapabilityAdapter,
+    FileListAdapter,
     FileReadAdapter,
     FileResolveAdapter,
     FileStatAdapter,
@@ -279,3 +280,100 @@ def test_file_read_supports_empty_line_views(tmp_path: Path) -> None:
     assert result.output is not None
     assert result.output["content"] == ""
     assert result.output["line_range"] is None
+
+
+def test_file_list_is_recursive_filtered_and_deterministic(tmp_path: Path) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "z.py").write_text("z", encoding="utf-8")
+    (tmp_path / "src" / "a.py").write_text("a", encoding="utf-8")
+    (tmp_path / "src" / "notes.txt").write_text("notes", encoding="utf-8")
+    (tmp_path / "src" / ".secret.py").write_text("secret", encoding="utf-8")
+    policy = policy_for("file.list", Decision.ALLOW, effect_class="read", paths=("src",))
+    context = context_for(tmp_path, "file.list", policy, ("src",))
+    adapter = FileListAdapter(max_results=10, max_traversal_entries=100)
+
+    result = gateway_for(tmp_path, adapter, adapter.adapter_id).invoke(
+        context,
+        {
+            "path": "src",
+            "recursive": True,
+            "max_depth": 2,
+            "include": ["*.py"],
+            "exclude": ["*z.py"],
+            "include_hidden": False,
+        },
+        DeclaredTargets(paths=("src",)),
+    )
+
+    assert result.status is CallStatus.COMPLETED
+    assert result.output is not None
+    assert [entry["path"] for entry in result.output["entries"]] == ["a.py"]
+    assert result.output["ordering"] == "path-bytewise-ascending"
+    assert result.output["ignore_evidence"]["hidden"] == "excluded"
+    assert result.output["truncated"] is False
+
+
+def test_file_list_cursor_is_bound_to_the_query(tmp_path: Path) -> None:
+    (tmp_path / "src").mkdir()
+    for name in ("a.py", "b.py", "c.py"):
+        (tmp_path / "src" / name).touch()
+    policy = policy_for("file.list", Decision.ALLOW, effect_class="read", paths=("src",))
+    context = context_for(tmp_path, "file.list", policy, ("src",))
+    adapter = FileListAdapter(max_results=2, max_traversal_entries=100)
+    gateway = gateway_for(tmp_path, adapter, adapter.adapter_id)
+    arguments = {"path": "src", "include": ["*.py"], "max_results": 2}
+
+    first = gateway.invoke(context, arguments, DeclaredTargets(paths=("src",)))
+
+    assert first.status is CallStatus.COMPLETED
+    assert first.output is not None
+    assert [entry["path"] for entry in first.output["entries"]] == ["a.py", "b.py"]
+    assert first.output["truncated"] is True
+    cursor = first.output["continuation_cursor"]
+    second = gateway.invoke(
+        context,
+        {**arguments, "cursor": cursor},
+        DeclaredTargets(paths=("src",)),
+    )
+    mismatched = gateway.invoke(
+        context,
+        {**arguments, "include_hidden": True, "cursor": cursor},
+        DeclaredTargets(paths=("src",)),
+    )
+
+    assert second.status is CallStatus.COMPLETED
+    assert second.output is not None
+    assert [entry["path"] for entry in second.output["entries"]] == ["c.py"]
+    assert second.output["continuation_cursor"] is None
+    assert mismatched.status is CallStatus.FAILED
+    assert mismatched.error_code == "ERR-FIL-001"
+
+    (tmp_path / "src" / "aa.py").touch()
+    changed = gateway.invoke(
+        context,
+        {**arguments, "cursor": cursor},
+        DeclaredTargets(paths=("src",)),
+    )
+    assert changed.status is CallStatus.FAILED
+    assert changed.error_code == "ERR-FIL-001"
+
+
+def test_file_list_does_not_follow_links_implicitly(tmp_path: Path) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "target").mkdir()
+    (tmp_path / "target" / "inside.txt").touch()
+    (tmp_path / "src" / "linked").symlink_to(tmp_path / "target", target_is_directory=True)
+    policy = policy_for("file.list", Decision.ALLOW, effect_class="read", paths=("src",))
+    context = context_for(tmp_path, "file.list", policy, ("src",))
+    adapter = FileListAdapter(max_results=10, max_traversal_entries=100)
+
+    result = gateway_for(tmp_path, adapter, adapter.adapter_id).invoke(
+        context,
+        {"path": "src", "recursive": True},
+        DeclaredTargets(paths=("src",)),
+    )
+
+    assert result.status is CallStatus.COMPLETED
+    assert result.output is not None
+    assert [entry["path"] for entry in result.output["entries"]] == ["linked"]
+    assert result.output["entries"][0]["object_type"] == "symlink"

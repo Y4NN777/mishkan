@@ -5,9 +5,13 @@ from __future__ import annotations
 import base64
 import difflib
 import hashlib
+import json
+import os
+import platform
 import stat
 import subprocess
 from dataclasses import dataclass
+from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -341,6 +345,208 @@ class FileReadAdapter:
                 "file cannot be decoded with the requested encoding",
                 details={"category": "encoding_error", "encoding": encoding},
             ) from exc
+
+
+class FileListAdapter:
+    adapter_id = "native.file.list"
+
+    def __init__(self, max_results: int, max_traversal_entries: int) -> None:
+        self._max_results = max_results
+        self._max_traversal_entries = max_traversal_entries
+
+    def invoke(self, call: AdapterCall) -> AdapterResult:
+        target = call.targets.paths[0]
+        root = target.absolute
+        try:
+            before = root.stat()
+        except FileNotFoundError as exc:
+            raise MishkanError(
+                ErrorCode.FILE,
+                "listing root was not found",
+                details={"category": "not_found", "path": target.relative},
+            ) from exc
+        if not stat.S_ISDIR(before.st_mode):
+            raise MishkanError(
+                ErrorCode.FILE,
+                "listing requires a directory",
+                details={"category": "unsupported_type", "path": target.relative},
+            )
+        if bool(call.arguments.get("follow_links", False)):
+            raise MishkanError(
+                ErrorCode.FILE,
+                "link-following listing is not available in this adapter",
+                details={"category": "unsupported_type"},
+            )
+        limit = int(call.arguments.get("max_results", self._max_results))
+        if limit < 1 or limit > self._max_results:
+            raise MishkanError(
+                ErrorCode.FILE,
+                "requested listing bound exceeds the configured limit",
+                details={"category": "result_limit", "limit": self._max_results},
+            )
+        recursive = bool(call.arguments.get("recursive", False))
+        max_depth = int(call.arguments.get("max_depth", 1 if not recursive else 32))
+        include = tuple(str(item) for item in call.arguments.get("include", ("*",)))
+        exclude = tuple(str(item) for item in call.arguments.get("exclude", ()))
+        include_hidden = bool(call.arguments.get("include_hidden", False))
+        object_types = frozenset(str(item) for item in call.arguments.get("object_types", ()))
+        query_digest = self._query_digest(call.arguments)
+        offset, expected_view_digest = self._cursor_state(
+            call.arguments.get("cursor"), query_digest
+        )
+        entries, inaccessible, traversal_limited = self._walk(
+            root,
+            recursive=recursive,
+            max_depth=max_depth,
+            include=include,
+            exclude=exclude,
+            include_hidden=include_hidden,
+            object_types=object_types,
+        )
+        entries.sort(key=lambda item: str(item["path"]).encode())
+        view_digest = hashlib.sha256(
+            json.dumps(entries, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()[:16]
+        if expected_view_digest is not None and expected_view_digest != view_digest:
+            raise MishkanError(
+                ErrorCode.FILE,
+                "listed view changed since the continuation cursor was issued",
+                details={"category": "changed_during_read"},
+            )
+        if offset > len(entries):
+            raise MishkanError(
+                ErrorCode.FILE,
+                "listing cursor is beyond the available result set",
+                details={"category": "invalid_query"},
+            )
+        page = entries[offset : offset + limit]
+        next_offset = offset + len(page)
+        has_more = next_offset < len(entries)
+        truncated = has_more or traversal_limited
+        after = root.stat()
+        changed = (before.st_dev, before.st_ino, before.st_mtime_ns) != (
+            after.st_dev,
+            after.st_ino,
+            after.st_mtime_ns,
+        )
+        return AdapterResult(
+            output={
+                "root": target.relative,
+                "entries": page,
+                "ordering": "path-bytewise-ascending",
+                "query_digest": query_digest,
+                "view_digest": view_digest,
+                "engine": "python.scandir",
+                "engine_version": platform.python_version(),
+                "ignore_evidence": {
+                    "hidden": "included" if include_hidden else "excluded",
+                    "include": list(include),
+                    "exclude": list(exclude),
+                },
+                "inaccessible": inaccessible,
+                "cycles": [],
+                "truncated": truncated,
+                "continuation_cursor": (
+                    f"{query_digest}:{view_digest}:{next_offset}" if has_more else None
+                ),
+                "changed_during_list": changed,
+            },
+            actual_targets=call.targets,
+            evidence={"traversal_entries_limit": self._max_traversal_entries},
+        )
+
+    @staticmethod
+    def _query_digest(arguments: dict[str, Any]) -> str:
+        normalized = {key: value for key, value in arguments.items() if key != "cursor"}
+        payload = json.dumps(normalized, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+        return hashlib.sha256(payload.encode()).hexdigest()[:16]
+
+    @staticmethod
+    def _cursor_state(cursor: Any, query_digest: str) -> tuple[int, str | None]:
+        if cursor is None:
+            return 0, None
+        try:
+            digest, view_digest, raw_offset = str(cursor).split(":", maxsplit=2)
+            offset = int(raw_offset)
+        except (TypeError, ValueError) as exc:
+            raise MishkanError(
+                ErrorCode.FILE,
+                "listing cursor is invalid",
+                details={"category": "invalid_query"},
+            ) from exc
+        if digest != query_digest or len(view_digest) != 16 or offset < 0:
+            raise MishkanError(
+                ErrorCode.FILE,
+                "listing cursor does not match the normalized query",
+                details={"category": "invalid_query"},
+            )
+        return offset, view_digest
+
+    def _walk(
+        self,
+        root: Path,
+        *,
+        recursive: bool,
+        max_depth: int,
+        include: tuple[str, ...],
+        exclude: tuple[str, ...],
+        include_hidden: bool,
+        object_types: frozenset[str],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, str]], bool]:
+        entries: list[dict[str, Any]] = []
+        inaccessible: list[dict[str, str]] = []
+        pending: list[tuple[Path, int]] = [(root, 0)]
+        visited = 0
+        traversal_limited = False
+        while pending and not traversal_limited:
+            directory, depth = pending.pop()
+            try:
+                children = sorted(os.scandir(directory), key=lambda item: os.fsencode(item.name))
+            except OSError as exc:
+                relative = directory.relative_to(root).as_posix() or "."
+                inaccessible.append({"path": relative, "error": type(exc).__name__})
+                continue
+            for child in children:
+                visited += 1
+                if visited > self._max_traversal_entries:
+                    traversal_limited = True
+                    break
+                path = Path(child.path)
+                relative = path.relative_to(root).as_posix()
+                if not include_hidden and any(
+                    part.startswith(".") for part in Path(relative).parts
+                ):
+                    continue
+                if any(fnmatchcase(relative, pattern) for pattern in exclude):
+                    continue
+                try:
+                    observed = child.stat(follow_symlinks=False)
+                except OSError as exc:
+                    inaccessible.append({"path": relative, "error": type(exc).__name__})
+                    continue
+                kind = _object_type(observed.st_mode)
+                entry_depth = depth + 1
+                if recursive and kind == "directory" and entry_depth < max_depth:
+                    pending.append((path, entry_depth))
+                if not any(fnmatchcase(relative, pattern) for pattern in include):
+                    continue
+                if object_types and kind not in object_types:
+                    continue
+                try:
+                    link_target = os.readlink(path) if kind == "symlink" else None
+                except OSError as exc:
+                    inaccessible.append({"path": relative, "error": type(exc).__name__})
+                    continue
+                entries.append(
+                    {
+                        "path": relative,
+                        "object_type": kind,
+                        "depth": entry_depth,
+                        "size": observed.st_size if kind == "file" else None,
+                        "link_target": link_target,
+                    }
+                )
+        return entries, inaccessible, traversal_limited
 
 
 class ReadFileAdapter:

@@ -113,6 +113,7 @@ def test_bundled_catalog_advertises_only_runnable_native_read_adapters(tmp_path:
             "native.file.resolve",
             "native.file.stat",
             "native.file.read",
+            "native.file.list",
         }
     )
     catalog = ToolCatalog(
@@ -125,6 +126,7 @@ def test_bundled_catalog_advertises_only_runnable_native_read_adapters(tmp_path:
         "file.resolve",
         "file.stat",
         "file.read",
+        "file.list",
         "repository.read_file",
     )
     snapshot = catalog.snapshot(("file.readonly",))
@@ -132,6 +134,7 @@ def test_bundled_catalog_advertises_only_runnable_native_read_adapters(tmp_path:
         "file.resolve",
         "file.stat",
         "file.read",
+        "file.list",
     )
 
 
