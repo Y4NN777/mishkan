@@ -13,6 +13,7 @@ from typing import Any, Protocol
 from jsonschema import Draft202012Validator  # type: ignore[import-untyped]
 from jsonschema.exceptions import SchemaError, ValidationError  # type: ignore[import-untyped]
 
+from mishkan.artifacts import ArtifactProvenance, ArtifactStore
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.time import utc_now
 from mishkan.policy import ApprovalEvidence, AuthorizationRequest, Decision, PolicyAuthority
@@ -69,6 +70,17 @@ def declared_targets_for(
 
 
 def _select_argument_values(arguments: dict[str, Any], selector: str) -> tuple[str, ...]:
+    current = _select_argument_nodes(arguments, selector)
+    flattened: list[str] = []
+    for value in current:
+        if isinstance(value, str):
+            flattened.append(value)
+        elif isinstance(value, list) and all(isinstance(item, str) for item in value):
+            flattened.extend(value)
+    return tuple(flattened)
+
+
+def _select_argument_nodes(arguments: dict[str, Any], selector: str) -> tuple[Any, ...]:
     current: list[Any] = [arguments]
     for part in selector.split("."):
         selected: list[Any] = []
@@ -88,13 +100,7 @@ def _select_argument_values(arguments: dict[str, Any], selector: str) -> tuple[s
         current = selected
         if not current:
             return ()
-    flattened: list[str] = []
-    for value in current:
-        if isinstance(value, str):
-            flattened.append(value)
-        elif isinstance(value, list) and all(isinstance(item, str) for item in value):
-            flattened.extend(value)
-    return tuple(flattened)
+    return tuple(current)
 
 
 def credential_references_for(
@@ -179,6 +185,7 @@ class CapabilityGateway:
         adapters: Mapping[str, CapabilityAdapter],
         evidence: EvidenceSink,
         cancellation: CancellationSignal | None = None,
+        artifact_store: ArtifactStore | None = None,
     ) -> None:
         self._root = Path(repository_root).resolve()
         self._policy = policy_authority
@@ -187,6 +194,7 @@ class CapabilityGateway:
         self._adapters = dict(adapters)
         self._evidence = evidence
         self._cancellation = cancellation or NeverCancelled()
+        self._artifact_store = artifact_store
 
     def invoke(
         self,
@@ -197,6 +205,7 @@ class CapabilityGateway:
     ) -> ToolResultEnvelope:
         started = utc_now()
         call_id: str | None = None
+        dispatched_status: CallStatus | None = None
         contract = context.registry.require(context.binding.tool_id)
         try:
             self._validate_binding(context, contract.provenance_fingerprint)
@@ -255,6 +264,16 @@ class CapabilityGateway:
                     "effective policy denies the exact capability request",
                     details={"request_fingerprint": request.fingerprint},
                 )
+            if contract.artifact_output_argument is not None:
+                artifact_values = _select_argument_nodes(
+                    arguments, contract.artifact_output_argument
+                )
+                if artifact_values == (True,) and self._artifact_store is None:
+                    raise MishkanError(
+                        ErrorCode.TOOL_UNAVAILABLE,
+                        "requested complete-output artifacts require a configured artifact store",
+                        details={"tool_id": contract.tool_id},
+                    )
             deadline = started + timedelta(seconds=context.resources.timeout_seconds)
             envelope = InvocationEnvelope(
                 run_id=context.run_id,
@@ -307,6 +326,7 @@ class CapabilityGateway:
                     ),
                 )
             )
+            dispatched_status = adapter_result.call_status
             if adapter_result.actual_targets != resolved:
                 raise MishkanError(
                     ErrorCode.TOOL_EFFECT,
@@ -315,11 +335,45 @@ class CapabilityGateway:
             secret_values = tuple(credentials.values())
             for content in adapter_result.inspection_content:
                 self._inspector.inspect(content, secret_values)
+            output_with_artifacts = dict(adapter_result.output)
+            references_with_artifacts = list(adapter_result.external_references)
+            artifact_channels: set[str] = set()
+            for candidate in adapter_result.artifact_candidates:
+                if candidate.channel in artifact_channels:
+                    raise MishkanError(
+                        ErrorCode.TOOL_SCHEMA,
+                        "adapter returned duplicate artifact output channels",
+                    )
+                artifact_channels.add(candidate.channel)
+                self._inspector.inspect(
+                    candidate.content.decode("utf-8", errors="replace"), secret_values
+                )
+                if self._artifact_store is None:
+                    raise MishkanError(
+                        ErrorCode.ARTIFACT,
+                        "adapter returned artifact content without a configured store",
+                    )
+                manifest = self._artifact_store.put_bytes(
+                    candidate.content,
+                    media_type=candidate.media_type,
+                    provenance=ArtifactProvenance(
+                        producer_identity=context.identity,
+                        run_id=context.run_id,
+                        task_attempt_id=context.task_attempt_id,
+                        call_id=call_id,
+                        capability=contract.tool_id,
+                        channel=candidate.channel,
+                    ),
+                    complete=candidate.complete,
+                )
+                reference = manifest.reference
+                output_with_artifacts[f"{candidate.channel}_artifact_ref"] = reference
+                references_with_artifacts.append(reference)
             inspected = self._inspector.inspect(
                 json.dumps(
                     {
-                        "output": adapter_result.output,
-                        "external_references": adapter_result.external_references,
+                        "output": output_with_artifacts,
+                        "external_references": references_with_artifacts,
                         "evidence": adapter_result.evidence,
                     },
                     sort_keys=True,
@@ -439,11 +493,18 @@ class CapabilityGateway:
                     {ErrorCode.TOOL_SCHEMA, ErrorCode.FILE, ErrorCode.SECRET_CONTENT}
                 )
             status = CallStatus.REFUSED if code in pre_dispatch_codes else CallStatus.FAILED
+            if dispatched_status in {CallStatus.CANCELLED, CallStatus.UNCERTAIN}:
+                status = dispatched_status
             terminal_result = self._terminal(context, call_id, started, status, code, reason)
+            event_type = {
+                CallStatus.CANCELLED: "tool.call_cancelled",
+                CallStatus.UNCERTAIN: "tool.call_uncertain",
+                CallStatus.REFUSED: "tool.call_refused",
+            }.get(status, "tool.call_failed")
             self._audit(
                 context,
                 terminal_result.call_id,
-                "tool.call_refused",
+                event_type,
                 status.value,
                 reason,
                 {

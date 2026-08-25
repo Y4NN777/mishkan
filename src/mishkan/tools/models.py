@@ -92,6 +92,7 @@ class ToolContract(ToolModel):
     credential_refs: tuple[str, ...] = ()
     credential_arguments: tuple[str, ...] = ()
     policy_arguments: tuple[str, ...] = ()
+    artifact_output_argument: str | None = None
     availability: AvailabilityConditions = Field(default_factory=AvailabilityConditions)
     resources: ResourceRequest
     adapter_config: dict[str, Any] = Field(default_factory=dict)

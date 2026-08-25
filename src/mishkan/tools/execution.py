@@ -81,6 +81,7 @@ class ShellProfile(ExecutionModel):
 
 class OutputPolicy(ExecutionModel):
     preview_bytes: int = Field(ge=1)
+    preserve_full_output_as_artifact: bool = False
 
 
 class ExecutionRequest(ExecutionModel):

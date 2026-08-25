@@ -93,12 +93,20 @@ class InvocationEnvelope(DomainRecord):
         return require_aware(value)
 
 
+class ArtifactCandidate(GatewayModel):
+    channel: str = Field(pattern=r"^(stdout|stderr)$")
+    media_type: str = Field(min_length=1)
+    content: bytes = Field(exclude=True)
+    complete: bool
+
+
 class AdapterResult(GatewayModel):
     output: dict[str, Any]
     actual_targets: ResolvedTargets
     external_references: tuple[str, ...] = ()
     evidence: dict[str, Any] = Field(default_factory=dict)
     inspection_content: tuple[str, ...] = Field(default=(), exclude=True)
+    artifact_candidates: tuple[ArtifactCandidate, ...] = Field(default=(), exclude=True)
     call_status: CallStatus = CallStatus.COMPLETED
     retryable: bool = False
     error_code: str | None = None

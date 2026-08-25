@@ -8,6 +8,8 @@ from typing import Any
 import pytest
 from support.i02 import context_for, inspector, policy_for
 
+from mishkan.artifacts import FilesystemArtifactStore
+from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.policy import Decision, PolicyAuthority
 from mishkan.tools.adapters import BashShellAdapter
 from mishkan.tools.crewai_gateway import GatewayCrewAITool
@@ -55,7 +57,10 @@ def arguments(script: str, **overrides: Any) -> dict[str, Any]:
         "declared_executables": [],
         "network_destinations": [],
         "declared_effects": [],
-        "output_policy": {"preview_bytes": 4096},
+        "output_policy": {
+            "preview_bytes": 4096,
+            "preserve_full_output_as_artifact": False,
+        },
     }
     value.update(overrides)
     return value
@@ -85,6 +90,7 @@ def gateway(
     credentials: MappingCredentialResolver | None = None,
     cancellation: Any = None,
     max_output_bytes: int = 64_000,
+    artifact_store: Any = None,
 ) -> CapabilityGateway:
     adapter = BashShellAdapter(
         max_output_bytes=max_output_bytes,
@@ -101,6 +107,7 @@ def gateway(
         {adapter.adapter_id: adapter},
         MemoryEvidenceSink(),
         cancellation,
+        artifact_store,
     )
 
 
@@ -331,3 +338,42 @@ def test_bash_is_a_current_crewai_tool_binding(tmp_path: Path) -> None:
 
     assert output["stdout_preview"] == "through-crewai"
     assert output["mode"] == "shell"
+
+
+@pytest.mark.commands
+def test_bash_large_output_uses_the_same_immutable_artifact_surface(tmp_path: Path) -> None:
+    store = FilesystemArtifactStore(tmp_path / ".mishkan" / "artifacts", max_artifact_bytes=4096)
+    value = arguments(
+        "printf '%01000d' 0",
+        output_policy={"preview_bytes": 32, "preserve_full_output_as_artifact": True},
+    )
+    result = gateway(tmp_path, artifact_store=store).invoke(
+        shell_context(tmp_path, value), value, targets(value)
+    )
+
+    assert result.status is CallStatus.COMPLETED
+    assert result.output is not None
+    reference = result.output["stdout_artifact_ref"]
+    assert len(store.read_bytes(reference)) == 1000
+    assert result.output["stdout_preview"] == "0" * 32
+
+
+@pytest.mark.commands
+def test_artifact_failure_preserves_an_already_uncertain_shell_effect(tmp_path: Path) -> None:
+    class FailingStore:
+        def put_bytes(self, *_: Any, **__: Any) -> Any:
+            raise MishkanError(ErrorCode.ARTIFACT, "injected artifact failure")
+
+    value = arguments(
+        ": > changed.txt; printf 'large-output'",
+        declared_paths=["changed.txt"],
+        declared_effects=["repository.write"],
+        output_policy={"preview_bytes": 1, "preserve_full_output_as_artifact": True},
+    )
+    result = gateway(tmp_path, artifact_store=FailingStore()).invoke(
+        shell_context(tmp_path, value), value, targets(value)
+    )
+
+    assert result.status is CallStatus.UNCERTAIN
+    assert result.error_code == "ERR-ART-001"
+    assert (tmp_path / "changed.txt").exists()

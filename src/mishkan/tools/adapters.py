@@ -36,7 +36,12 @@ from mishkan.tools.execution import (
     ExecutionStatus,
     ShellProfile,
 )
-from mishkan.tools.gateway_models import AdapterResult, CallStatus, ResolvedTargets
+from mishkan.tools.gateway_models import (
+    AdapterResult,
+    ArtifactCandidate,
+    CallStatus,
+    ResolvedTargets,
+)
 from mishkan.tools.isolation import ContainerCommand
 
 
@@ -982,6 +987,9 @@ class DirectProcessAdapter:
                 stdout.decode("utf-8", errors="replace"),
                 stderr.decode("utf-8", errors="replace"),
             ),
+            artifact_candidates=self._artifact_candidates(
+                request, stdout, stderr, termination_cause
+            ),
             call_status=outer_status,
             retryable=False,
             error_code=(
@@ -1242,6 +1250,26 @@ class DirectProcessAdapter:
         return content[:limit].decode("utf-8", errors="replace")
 
     @staticmethod
+    def _artifact_candidates(
+        request: ExecutionRequest,
+        stdout: bytes,
+        stderr: bytes,
+        termination_cause: str | None,
+    ) -> tuple[ArtifactCandidate, ...]:
+        if not request.output_policy.preserve_full_output_as_artifact:
+            return ()
+        return tuple(
+            ArtifactCandidate(
+                channel=channel,
+                media_type="text/plain; charset=utf-8",
+                content=content,
+                complete=termination_cause != "output_limit",
+            )
+            for channel, content in (("stdout", stdout), ("stderr", stderr))
+            if len(content) > request.output_policy.preview_bytes
+        )
+
+    @staticmethod
     def _status(
         cause: str | None,
         return_code: int,
@@ -1426,6 +1454,9 @@ class BashShellAdapter(DirectProcessAdapter):
             inspection_content=(
                 stdout.decode("utf-8", errors="replace"),
                 stderr.decode("utf-8", errors="replace"),
+            ),
+            artifact_candidates=self._artifact_candidates(
+                request, stdout, stderr, termination_cause
             ),
             call_status=outer_status,
             retryable=False,

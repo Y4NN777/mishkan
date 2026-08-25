@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 from support.i02 import context_for, inspector, policy_for
 
+from mishkan.artifacts import ArtifactLifecycle, ArtifactValidation, FilesystemArtifactStore
 from mishkan.policy import Decision, PolicyAuthority
 from mishkan.tools.adapters import DirectProcessAdapter
 from mishkan.tools.crewai_gateway import GatewayCrewAITool
@@ -31,7 +32,10 @@ def arguments(*args: str, **overrides: Any) -> dict[str, Any]:
         "timeout_seconds": 5,
         "expected_exit_codes": [0],
         "declared_effects": [],
-        "output_policy": {"preview_bytes": 4096},
+        "output_policy": {
+            "preview_bytes": 4096,
+            "preserve_full_output_as_artifact": False,
+        },
     }
     value.update(overrides)
     return value
@@ -55,6 +59,7 @@ def gateway(
     credentials: MappingCredentialResolver | None = None,
     cancellation: Any = None,
     max_output_bytes: int = 64_000,
+    artifact_store: Any = None,
 ) -> CapabilityGateway:
     adapter = DirectProcessAdapter(
         max_output_bytes=max_output_bytes,
@@ -69,6 +74,7 @@ def gateway(
         {adapter.adapter_id: adapter},
         MemoryEvidenceSink(),
         cancellation,
+        artifact_store,
     )
 
 
@@ -320,7 +326,11 @@ def test_native_process_refuses_network_denial_it_cannot_enforce(tmp_path: Path)
 
 @pytest.mark.commands
 def test_process_output_limit_terminates_without_unbounded_result(tmp_path: Path) -> None:
-    value = arguments("-c", "print('x' * 100000)", output_policy={"preview_bytes": 128})
+    value = arguments(
+        "-c",
+        "print('x' * 100000)",
+        output_policy={"preview_bytes": 128, "preserve_full_output_as_artifact": False},
+    )
     result = gateway(tmp_path, max_output_bytes=512).invoke(
         process_context(tmp_path, value), value, targets(value)
     )
@@ -330,6 +340,94 @@ def test_process_output_limit_terminates_without_unbounded_result(tmp_path: Path
     assert result.output["termination_cause"] == "output_limit"
     assert result.output["truncated"] is True
     assert len(result.output["stdout_preview"].encode()) <= 128
+
+
+@pytest.mark.commands
+def test_process_large_output_is_committed_as_an_immutable_artifact(tmp_path: Path) -> None:
+    store = FilesystemArtifactStore(tmp_path / ".mishkan" / "artifacts", max_artifact_bytes=4096)
+    value = arguments(
+        "-c",
+        "print('artifact-output-' * 100)",
+        output_policy={"preview_bytes": 64, "preserve_full_output_as_artifact": True},
+    )
+    result = gateway(tmp_path, artifact_store=store).invoke(
+        process_context(tmp_path, value), value, targets(value)
+    )
+
+    assert result.status is CallStatus.COMPLETED
+    assert result.output is not None
+    reference = result.output["stdout_artifact_ref"]
+    assert reference in result.external_references
+    assert store.read_bytes(reference) == ("artifact-output-" * 100 + "\n").encode()
+    manifest = store.read_manifest(reference)
+    assert manifest.lifecycle is ArtifactLifecycle.AVAILABLE
+    assert manifest.validation is ArtifactValidation.INTEGRITY_VERIFIED
+    assert manifest.acceptance == "unaccepted"
+    assert manifest.declared_media_type == "text/plain; charset=utf-8"
+    assert manifest.detected_media_type is None
+    assert manifest.provenance.call_id == result.call_id
+    assert manifest.provenance.channel == "stdout"
+
+
+@pytest.mark.commands
+def test_output_limit_artifact_is_partial_and_quarantined(tmp_path: Path) -> None:
+    store = FilesystemArtifactStore(tmp_path / ".mishkan" / "artifacts", max_artifact_bytes=1024)
+    value = arguments(
+        "-c",
+        "print('x' * 100000)",
+        output_policy={"preview_bytes": 64, "preserve_full_output_as_artifact": True},
+    )
+    result = gateway(tmp_path, max_output_bytes=512, artifact_store=store).invoke(
+        process_context(tmp_path, value), value, targets(value)
+    )
+
+    assert result.status is CallStatus.UNCERTAIN
+    assert result.output is not None
+    reference = result.output["stdout_artifact_ref"]
+    manifest = store.read_manifest(reference)
+    assert manifest.lifecycle is ArtifactLifecycle.QUARANTINED
+    assert manifest.validation is ArtifactValidation.PARTIAL
+    assert len(store.read_bytes(reference)) == 512
+
+
+@pytest.mark.commands
+def test_process_artifact_request_is_refused_before_dispatch_without_store(tmp_path: Path) -> None:
+    marker = tmp_path / "must-not-exist"
+    value = arguments(
+        "-c",
+        f"from pathlib import Path;Path({str(marker)!r}).touch()",
+        output_policy={"preview_bytes": 64, "preserve_full_output_as_artifact": True},
+    )
+    result = gateway(tmp_path).invoke(process_context(tmp_path, value), value, targets(value))
+
+    assert result.status is CallStatus.REFUSED
+    assert result.error_code == "ERR-TOL-002"
+    assert not marker.exists()
+
+
+@pytest.mark.secrets
+def test_secret_output_never_reaches_artifact_storage(tmp_path: Path) -> None:
+    store = FilesystemArtifactStore(tmp_path / ".mishkan" / "artifacts", max_artifact_bytes=4096)
+    secret = "artifact-secret-canary-123456"
+    value = arguments(
+        "-c",
+        "import os;print(os.environ['TOKEN'] * 4)",
+        credential_environment={"TOKEN": "service.token"},
+        output_policy={"preview_bytes": 8, "preserve_full_output_as_artifact": True},
+    )
+    result = gateway(
+        tmp_path,
+        credentials=MappingCredentialResolver({"service.token": secret}),
+        artifact_store=store,
+    ).invoke(
+        process_context(tmp_path, value, credential_scope=("service.token",)),
+        value,
+        targets(value),
+    )
+
+    assert result.status is CallStatus.FAILED
+    assert result.error_code == "ERR-SEC-001"
+    assert not tuple((tmp_path / ".mishkan" / "artifacts" / "manifests").iterdir())
 
 
 @pytest.mark.commands
