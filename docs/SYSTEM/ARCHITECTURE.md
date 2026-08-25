@@ -92,6 +92,7 @@ flowchart TB
     Crew["Direct CrewAI integration"]
     Quality["Evaluation, reporting, acceptance"]
     Registry["Tool, engine, environment, and pack registry"]
+    Environment["Mission environment resolution"]
     Gateway["Effect and capability gateway"]
     Native["Native capabilities and sessions"]
     Skills["Skills and professional learning"]
@@ -106,7 +107,12 @@ flowchart TB
     Mission --> Org
     Mission --> Conversation
     Mission --> Planning
+    Mission --> Environment
     Planning --> Policy
+    Environment --> Planning
+    Environment --> Registry
+    Environment --> Gateway
+    Environment --> Artifacts
     Policy -->|"authorized mission and plan"| Crew
     Crew --> Quality
     Crew --> Registry
@@ -144,7 +150,7 @@ flowchart TB
 | Tool registry | RSP-021 | tool contracts, snapshots, and CrewAI bindings |
 | Artifacts and working references | RSP-023 | immutable content metadata, CAS references, and recovery |
 | MCP and harness mediation | RSP-024 | MCP client/server and external-client application translation |
-| Engine, environment, and pack resolution | RSP-025 | observed availability and materialization |
+| Mission environment, engine, and pack resolution | RSP-025 | environment decisions, descriptor-set generation, observed availability, location-bound verification, and materialization |
 | Professional evolution | RSP-026 | scoped competence and profile evidence |
 
 Native file, edit, process, Bash, PTY, job, Web, and Browser adapters remain distinct modules behind
@@ -193,6 +199,29 @@ resources, state, and settlement evidence. Session handles are opaque applicatio
 caller cannot reuse authenticated browser state, shell environment, or MCP authority from another
 task implicitly.
 
+### Mission environment resolution
+
+The mission-environment module is owned by RSP-025 and consumes the RSP-022 Mission Brief plus
+RSP-004 context evidence. It stores a versioned aggregate with one binding per materially distinct
+repository, greenfield workspace, service group, platform, or execution location. Each binding
+records one outcome—reuse existing, host native, generate, propose project change, or unresolved—
+and fingerprints the evidence, selected adapter, descriptor artifacts, verification, and affected
+plan tasks.
+
+The module selects descriptor formats but does not write project files or operate containers by
+itself. Descriptor bytes and manifests terminate at RSP-023. A proposed project materialization is
+a typed change set dispatched through RSP-011's Edit/Patch adapter. Image build, environment start,
+readiness probes, project commands, and cleanup cross the same gateway through direct process,
+Bash, managed job, or a justified typed adapter. Their effects remain individually authorized and
+settled.
+
+Format adapters are independent and versioned. The Dev Container adapter validates the selected
+specification and its image, build, or supported multi-container references. Podman image builds
+consume verified Containerfile or Dockerfile inputs; Podman Kubernetes YAML and Quadlet are
+separate runtime/service adapters selected only for those semantics. Compose is bound only through
+a verified Compose-compatible adapter. None of these names proves host availability or makes a
+generated description ready.
+
 ## 7. Artifact and persistence architecture
 
 Local mode uses SQLite in WAL mode and a filesystem content-addressed store under the project
@@ -203,6 +232,7 @@ working-reference semantics.
 | Consistency boundary | Atomic metadata records |
 |---|---|
 | Mission launch or revision | Mission Brief, PM/CTO confirmations, crew revision, command, state transition, outbox fact |
+| Mission environment decision | context and Brief fingerprints, decision revision, binding outcomes, descriptor artifact identities, verification state, affected tasks, outbox fact |
 | Plan acceptance | plan version, context fingerprints, policy decision, exact skill/tool/engine bindings, outbox fact |
 | Result acceptance | accepted attempt, validated artifact references, dependency release, outbox fact |
 | Intervention | expected current state, actor and authority, scoped effect, resulting state, outbox fact |
@@ -269,7 +299,10 @@ Integrate CrewAI 1.x directly. Do not expose a production runtime selector or in
 
 Resolve native capabilities, skills, tools, engines, environments, packs, and external protocols
 from configured sources and observed project/location evidence. Bind only concrete runnable
-adapters. Discovery, availability, credentials, and instructions grant no authority.
+adapters. A mission environment decision may reuse observed state or generate attributable
+descriptor artifacts, but materialization and verification still cross ordinary governed effect
+boundaries. Discovery, availability, credentials, instructions, and generated files grant no
+authority.
 
 ## 10. Gate effect
 

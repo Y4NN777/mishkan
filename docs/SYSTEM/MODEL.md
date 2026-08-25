@@ -244,6 +244,59 @@ sequenceDiagram
 Discovery, installation, health, instructions, and credentials never grant authority. Project
 commands remain process/Bash inputs, not invented tool identities.
 
+### 8.1 Mission execution-environment decision and generation
+
+**Question:** How does a mission reuse or generate a Dev Container, Podman, or other reproducible
+environment without making containerization universal or bypassing ordinary effects?
+
+```mermaid
+sequenceDiagram
+    participant M as Mission governance (RSP-022)
+    participant X as Context evidence (RSP-004)
+    participant E as Environment resolution (RSP-025)
+    participant P as Planning (RSP-005)
+    participant A as Artifacts (RSP-023)
+    participant G as Effect gateway (RSP-011)
+    participant V as Evidence and events (RSP-015)
+    M->>E: Mission Brief, environment intent, affected tasks and locations
+    E->>X: inspect repository, greenfield, machine, worker, and existing definitions
+    X-->>E: attributed observations, base revisions, compatibility facts, unknowns
+    E->>E: choose reuse_existing, host_native, generate, propose_project_change, or unresolved
+    alt reuse existing or host native
+        E->>G: verify exact adapter, toolchain, policy, and location
+        G-->>E: settled verification evidence
+    else generate or propose project change
+        E->>E: select only supported descriptor formats and versions
+        E->>A: commit descriptor set and provenance as immutable artifacts
+        A-->>E: artifact identities
+        E->>G: optional typed project change; then build/start/probe/cleanup requests
+        G-->>E: applied/refused mutation and settled execution evidence
+    else unresolved
+        E->>V: degradation and exact dependent scope
+    end
+    E->>V: persist versioned environment decision and evidence
+    E-->>P: verified binding, proposal, or unresolved dependency
+    P->>P: fingerprint decision in affected plan tasks
+```
+
+One mission can own several environment bindings when repositories, services, platforms, or
+workers differ. The binding is the smallest context-specific unit and records its source evidence,
+target location, descriptor artifacts, adapter and engine versions, policy lineage, verification
+result, and affected plan tasks. The mission-level decision is their versioned aggregate.
+
+`Dev Container` means a descriptor conforming to the selected Development Container
+specification and may refer to an image, build input, or a supported multi-container definition.
+For Podman, the resolver uses only forms supported by the verified target adapter: ordinarily a
+Containerfile or Dockerfile for image construction, and Kubernetes YAML or Quadlet only when the
+mission requires those runtime or service semantics. A Compose document is selected only when the
+actual Compose-compatible adapter is verified. These are engine inputs, not MISHKAN runtimes.
+
+Generation settles first as immutable artifacts or a typed change set. Project persistence is a
+separate Edit/Patch effect; build, start, readiness, project-command verification, and cleanup are
+separate Terminal/Process or specialized-adapter effects. An environment description therefore
+cannot mark itself ready. A context or base-revision change creates a new decision revision and
+invalidates only its dependent task bindings.
+
 ## 9. PTY, job, browser, and MCP session lifecycle
 
 **Question:** How are long-lived state and uncertain effects contained?
