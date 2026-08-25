@@ -1,247 +1,272 @@
 # MISHKAN Architecture
 
-**Status:** Proposed amendment — Gate G5 review
+**Status:** Proposed amendment — awaiting D-035
+**Version:** 1.2
+**Derived from:** Proposed System Model 1.2, Responsibility Map 1.2, and retained decisions D-015, D-016, D-021, D-022, D-029
 
-**Version:** 1.1
+## 1. Scope and non-negotiable boundaries
 
-**Derived from:** Proposed System Model 1.1, approved Responsibility Map 1.1, D-021, and D-029
+This document derives structure from the behavioral model. It does not authorize implementation.
 
-## 1. Scope and rules
+- `mishkand` is the single authoritative application service.
+- CrewAI 1.x is integrated directly as the sole production runtime for agents and teams. There is
+  no competing `AgentRuntime`, runtime selector, or second tool-calling loop.
+- CLI, SDK, `mishkan chat`, operational TUI, HTTP/OpenAPI, SSE, MCP, schedules, and harnesses are
+  clients or triggers of the same application commands and queries.
+- Policy values and operational restrictions are public, versioned, and configurable. Code owns
+  schemas and integrity invariants, not a private deny-list.
+- Mission plans, crews, skills, packs, engines, and capability bindings are contextual. No
+  universal workflow or static role/tool matrix is embedded.
+- Availability never grants authority, and no engine is bindable without a concrete executable
+  adapter and location-specific evidence.
+- Authoritative transitions use short transactions with an outbox. CrewAI, model calls, external
+  effects, artifact body transfer, and event delivery remain outside those transactions.
 
-This document derives C4 structure from the amended behavior model. It proposes deployment and
-component boundaries; it does not authorize implementation. A component is a cohesive ownership
-boundary, not automatically a package, process, service, or team.
+## 2. Container view
 
-The following constraints shape every boundary:
-
-- CrewAI 1.x is the sole production runtime for agents, tasks, crews, processes, flows, and model
-  tool-calling. MISHKAN supplies policy, evidence, acceptance, and capability enforcement around it;
-  it does not create a competing coordination engine.
-- An organizational outcome is stable, but its task graph is compiled from the objective,
-  repository evidence, applicable organization, capabilities, and effective policy. No universal
-  static workflow chain is embedded in the product.
-- Operational values—including providers, routes, tools, endpoints, timeouts, retry limits, path
-  scopes, isolation profiles, and capability decisions—come from public versioned configuration or
-  policy. Code owns schemas and invariants, not a private operational deny-list.
-- The built-in tool surface uses a small set of general primitives. Toolsets narrow visibility,
-  configured extensions add typed integrations, and exact commands, paths, destinations, and
-  effects are authorized as call inputs. Architecture does not encode a universal SWE taxonomy.
-- Stateful effects are governed as `allow`, `require_approval`, or `deny`. Absence of a grant gives
-  no authority, but commit, push, deploy, release, and migration are not globally prohibited.
-- Authoritative state changes use short transactions. CrewAI execution, model calls, external
-  effects, event delivery, projections, and artifact export remain outside those transactions.
-
-## 2. C4 container view
-
-**Question:** Which independently runnable or persisted parts exist, and where is authority held?
+**Question:** Which runnable and persisted boundaries exist, and where is authority held?
 
 ```mermaid
 flowchart LR
-    Engineer["Engineer / Operator"]
-    Scheduler["External scheduler"]
-    Repo["Repository systems"]
-    Context["Inference and context services"]
-    Tools["Configured external tool servers"]
-    Security["Credential and isolation services"]
+    CEO["CEO / operator"]
+    Harness["Codex, Claude, other harness"]
+    Scheduler["OS or external scheduler"]
+    Repos["Repositories and external systems"]
+    Services["Models, knowledge, MCP, credentials, isolation"]
 
     subgraph Product["MISHKAN product boundary"]
-        Client["mishkan CLI / Python SDK<br/>control clients"]
-        Daemon["mishkand<br/>transactional control plane + CrewAI coordination"]
-        Worker["mishkan-worker<br/>stateless leased execution + CrewAI"]
-        Watch["mishkan watch<br/>read-only Go TUI"]
-        Metadata[("Authoritative metadata<br/>SQLite/WAL local · PostgreSQL distributed")]
-        Artifacts[("Inspectable artifacts<br/>results · patches · reports · JSONL export")]
+        Clients["CLI · Python SDK · mishkan chat"]
+        TUI["Go/Bubble Tea operational TUI"]
+        HTTP["HTTP/OpenAPI + SSE"]
+        Bridge["Local STDIO MCP bridge"]
+        Daemon["mishkand transactional modular monolith"]
+        CrewAI["CrewAI 1.x directly integrated"]
+        Worker["mishkan-worker stateless leased executor"]
+        Metadata[("SQLite/WAL local · PostgreSQL distributed")]
+        Content[("Filesystem CAS local · S3-compatible blobs distributed")]
     end
 
-    Engineer -->|objectives, policy, approvals| Client
-    Client -->|versioned control API| Daemon
-    Scheduler -.->|idempotent trigger| Daemon
-    Watch -.->|snapshot + resumable events| Daemon
-    Daemon -->|short transactions| Metadata
-    Daemon -.->|immutable task envelope + lease| Worker
-    Worker -.->|validated result evidence| Daemon
-    Daemon -.->|inspectable export| Artifacts
-    Daemon -->|evidence and authorized effects| Repo
-    Daemon -->|inference and attributed retrieval| Context
-    Daemon -->|discovery and governed calls| Tools
-    Daemon -->|late credentials and bounded execution| Security
-    Worker -->|authorized task effects| Repo
-    Worker -->|inference and attributed retrieval| Context
-    Worker -->|governed calls| Tools
-    Worker -->|late credentials and bounded execution| Security
+    CEO <-->|"conversation, commands, inspection"| Clients
+    CEO <-->|"drill-down and governed interventions"| TUI
+    Harness <-->|"versioned application contract"| HTTP
+    Harness <-->|"local MCP transport"| Bridge
+    Scheduler -->|"idempotent run command"| HTTP
+    Clients --> Daemon
+    TUI -->|"snapshot, SSE, same commands"| Daemon
+    HTTP --> Daemon
+    Bridge -->|"stateless MCP/application translation"| Daemon
+    Daemon --> CrewAI
+    Daemon -->|"short transactions + outbox"| Metadata
+    Daemon <-->|"immutable bodies"| Content
+    Daemon <-->|"lease and immutable envelope"| Worker
+    Daemon <-->|"governed effects and evidence"| Repos
+    Worker <-->|"bounded task effects"| Repos
+    Daemon <-->|"typed configured adapters"| Services
+    Worker <-->|"task-scoped adapters"| Services
 ```
 
-| Container | Boundary |
+| Container | Authority and limits |
 |---|---|
-| `mishkan` CLI / SDK | Thin typed clients; never a second policy or coordination implementation |
-| `mishkand` | Owns authoritative application decisions, run coordination, scheduling, acceptance, events, and local CrewAI execution |
-| `mishkan-worker` | Claims immutable envelopes, executes within granted scope, and returns evidence; owns no plan or policy authority |
-| `mishkan watch` | Reconstructs a bounded read model from snapshots and events; initially performs no mutations |
-| Authoritative metadata | Stores relational current state and the transactional event outbox behind one repository contract |
-| Inspectable artifacts | Holds large task results, patches, reports, and exported event streams referenced from authoritative metadata |
+| `mishkan` CLI / SDK / chat | Typed clients; own no policy, mission state, plan, or CrewAI runtime |
+| `mishkan watch` | Operational client with transparent drill-down and authorized commands; owns no authoritative projection or stronger authority |
+| HTTP/OpenAPI + SSE | Versioned application facade and resumable observation transport |
+| STDIO MCP bridge | Local transport bridge; stateless beyond connection lifecycle and never an authority source |
+| `mishkand` | Sole application authority for organization, missions, conversations, policy, planning, coordination, effects, acceptance, artifacts, events, schedules, and workers |
+| CrewAI integration | Materializes accepted MISHKAN definitions as CrewAI agents, tasks, crews, processes, and flows |
+| `mishkan-worker` | Executes leased immutable task envelopes; cannot plan, authorize, accept, commit, push, deploy, or migrate unless the exact envelope and policy grant the particular capability |
+| Metadata stores | Authoritative relational state, transactions, leases, and outbox through one repository contract |
+| Content stores | Immutable artifact bodies addressed by integrity identity; metadata remains authoritative in the application store |
 
-Local, cloud, and hybrid operation use the same logical boundaries even when the daemon, embedded
-database, and local execution share one host. Distributed mode changes placement and failure modes,
-not authority or acceptance semantics.
+## 3. Modular-monolith component view
 
-## 3. C4 component view: `mishkand`
-
-**Question:** How are the 21 approved responsibilities grouped without duplicating ownership?
+**Question:** How are all 26 responsibilities grouped without duplicating ownership?
 
 ```mermaid
 flowchart TB
-    API["Interface and operating context"]
-    Catalog["Repository and organization catalog"]
-    Plan["Repository-specific planning"]
-    Policy["Policy and approval authority"]
-    Crew["CrewAI coordination boundary"]
-    Quality["Independent evaluation, reporting, and acceptance"]
-    Registry["Versioned tool registry"]
-    Gateway["Capability and security gateway"]
-    ContextSkills["Attributed context and skills"]
-    State["Evidence, state, and event outbox"]
-    Automation["Scheduling and worker coordination"]
-    Conformance["Build and release conformance suite"]
+    API["Application interfaces and identity"]
+    Org["Organization and mission governance"]
+    Conversation["Conversations and interventions"]
+    Planning["Context and planning"]
+    Policy["Policy and approvals"]
+    Crew["Direct CrewAI integration"]
+    Quality["Evaluation, reporting, acceptance"]
+    Registry["Tool, engine, environment, and pack registry"]
+    Gateway["Effect and capability gateway"]
+    Native["Native capabilities and sessions"]
+    Skills["Skills and professional learning"]
+    Knowledge["Attributed knowledge"]
+    Artifacts["Artifacts and working references"]
+    Events["State, evidence, projections, and outbox"]
+    Automation["Scheduling and workers"]
+    Conformance["Conformance and release assurance"]
 
-    API --> Catalog
-    Catalog --> Plan
-    Plan --> Policy
-    Policy -->|accepted plan + exact grants| Crew
+    API --> Org
+    Org --> Conversation
+    Org --> Planning
+    Planning --> Policy
+    Policy -->|"authorized mission and plan"| Crew
     Crew --> Quality
-    Quality -->|accepted result or typed rejection| State
-    Crew -->|eligible tool identities| Registry
-    Registry -->|immutable binding| Gateway
-    Gateway -->|validated result envelope| Crew
-    Crew --> ContextSkills
-    Automation -->|idempotent run or leased task| Crew
-    State -.->|durable facts| API
-    Conformance -.->|verifies boundaries| API
-    Conformance -.->|verifies runtime constraints| Crew
+    Crew --> Registry
+    Registry --> Gateway
+    Crew --> Skills
+    Crew --> Knowledge
+    Gateway --> Native
+    Native --> Artifacts
+    Quality --> Artifacts
+    Quality --> Events
+    Conversation --> Events
+    Automation --> Crew
+    Events -.-> API
+    Conformance -.-> Crew
+    Conformance -.-> Gateway
 ```
 
-Every responsibility has exactly one primary component owner:
-
-| Component | Primary responsibilities |
+| Module | Primary responsibilities |
 |---|---|
-| Interface and operating context | RSP-001, RSP-002, RSP-003 |
-| Repository and organization catalog | RSP-004, RSP-007 |
-| Repository-specific planning | RSP-005 |
-| Policy and approval authority | RSP-006 |
-| CrewAI coordination boundary | RSP-008 |
-| Independent evaluation, reporting, and acceptance | RSP-009, RSP-010 |
-| Versioned tool registry | RSP-021 |
-| Capability and security gateway | RSP-011, RSP-012 |
-| Attributed context and skills | RSP-013, RSP-014, RSP-020 |
-| Evidence, state, and event outbox | RSP-015 |
-| Scheduling and worker coordination | RSP-016, RSP-017 |
-| Build and release conformance suite | RSP-018, RSP-019 |
+| Application interfaces and identity | RSP-001–003 |
+| Repository context and planning | RSP-004–005 |
+| Policy and approvals | RSP-006 |
+| Organization and mission governance | RSP-007, RSP-022 |
+| Direct CrewAI integration | RSP-008 |
+| Evaluation, reporting, and acceptance | RSP-009–010 |
+| Effect and capability gateway | RSP-011–012 |
+| Attributed knowledge | RSP-013 |
+| Skill lifecycle and use | RSP-014, RSP-020 |
+| State, evidence, projections, and outbox | RSP-015 |
+| Scheduling and workers | RSP-016–017 |
+| Conformance and release assurance | RSP-018–019 |
+| Tool registry | RSP-021 |
+| Artifacts and working references | RSP-023 |
+| MCP and harness mediation | RSP-024 |
+| Engine, environment, and pack resolution | RSP-025 |
+| Professional evolution | RSP-026 |
 
-These are modules of one transactional control plane first. They gain process boundaries only when a
-required isolation, scaling, or failure-containment property justifies the distributed cost.
+Native file, edit, process, Bash, PTY, job, Web, Browser, and artifact adapters are capability
+implementations behind RSP-011 and the applicable registry/session module. They do not own policy
+or become independent application services.
 
-## 4. Consistency and effect boundaries
+## 4. Application command and observation paths
 
-The authoritative metadata transaction includes both the state transition and its outbox fact. It
-MUST NOT include model execution or an external effect.
+All clients submit versioned commands to one application layer. The application authenticates the
+client, validates schema and current expected state, resolves the requested mission or
+conversation, applies policy, commits the state transition with an outbox fact, and returns a typed
+result. A TUI intervention and the corresponding CLI, SDK, HTTP, or MCP command therefore have the
+same behavior and refusal.
 
-| Consistency boundary | Atomic records |
+Queries use bounded projections and identify their cursor or snapshot version. SSE resumes from a
+durable cursor and makes gaps explicit. A projection may lag and is never used as authorization
+state. The STDIO MCP bridge translates transport messages into the same HTTP/application contract;
+it does not cache authoritative mission or policy state.
+
+## 5. CrewAI integration boundary
+
+The CrewAI module receives only an accepted mission, crew revision, plan, exact task bindings, and
+policy-scoped execution context. It materializes supported CrewAI Agents, Tasks, Crews, Processes,
+and Flows directly and records CrewAI runtime identities as lineage.
+
+MISHKAN does not implement a framework-neutral production agent interface. Deterministic doubles
+may replace externalized calls in tests, but no configuration can select them as a production
+runtime. CrewAI candidate results still cross deterministic output validation, independent
+evaluation, effect evidence, and acceptance before dependent work or mission completion advances.
+
+## 6. Capability, engine, and session boundary
+
+The registry distinguishes metadata discovery from concrete binding. A bindable entry includes an
+adapter identity, schemas, observed execution location, readiness evidence, exact version, effects,
+scopes, dependencies, and provenance. Toolsets and technical packs are contextual compositions,
+not authority records. The accepted plan fingerprints exact bindings.
+
+Every invocation crosses the effect gateway, which resolves real paths, commands, URLs, origins,
+credentials, repositories, resources, and declared effects before policy. Execution adapters then
+operate outside the transaction and return `completed`, `failed`, `cancelled`, or `uncertain`.
+Only compatible configured fallbacks are eligible, and degradation is an explicit event and result
+property.
+
+PTY, managed job, browser, and MCP sessions store ownership, location, scopes, cursors, deadlines,
+resources, state, and settlement evidence. Session handles are opaque application identities; a
+caller cannot reuse authenticated browser state, shell environment, or MCP authority from another
+task implicitly.
+
+## 7. Artifact and persistence architecture
+
+Local mode uses SQLite in WAL mode and a filesystem content-addressed store under the project
+metadata area. Distributed mode requires PostgreSQL and an S3-compatible blob store. Both profiles
+implement the same repository, transaction, lease, outbox, artifact-manifest, and compare-and-swap
+working-reference semantics.
+
+| Consistency boundary | Atomic metadata records |
 |---|---|
-| Plan acceptance | plan version, repository/discovery fingerprint, policy snapshot, tool/skill bindings, outbox fact |
-| Result acceptance | accepted attempt, validated result references, dependency release, outbox fact |
-| Approval change | exact authorization scope, decision or revocation, actor evidence, outbox fact |
-| Skill activation | inspected staged version, active pointer, provenance lineage, outbox fact |
-| Schedule trigger | occurrence identity, overlap decision, at-most-one run identity, outbox fact |
-| Worker lease | attempt envelope identity, worker identity, expiry, state transition, outbox fact |
+| Mission launch or revision | Mission Brief, PM/CTO confirmations, crew revision, command, state transition, outbox fact |
+| Plan acceptance | plan version, context fingerprints, policy decision, exact skill/tool/engine bindings, outbox fact |
+| Result acceptance | accepted attempt, validated artifact references, dependency release, outbox fact |
+| Intervention | expected current state, actor and authority, scoped effect, resulting state, outbox fact |
+| Skill/profile activation | candidate version, evidence and policy decision, active pointer, lineage, outbox fact |
+| Working-reference update | expected current revision, new immutable revision, conflict or new pointer, outbox fact |
+| Schedule trigger | occurrence identity, overlap decision, at-most-one run, outbox fact |
+| Worker lease | immutable task envelope, worker identity, attempt, expiry, state transition, outbox fact |
 
-A capability invocation first records an authorized attempt, performs the effect outside the
-transaction, and then records a validated terminal result. If completion cannot be established,
-the attempt becomes `uncertain`; it is never silently retried unless the tool contract proves the
-operation idempotent under the same key.
+Blob transfer and integrity verification occur outside the metadata transaction. The manifest is
+made available only after verified content exists. Missing content, partial transfer, or failed
+cleanup becomes explicit reconciliation state; it never produces an accepted result.
 
-## 5. Architecture decisions
+## 8. Deployment profiles
 
-### ADR-001 — Transactional modular control plane
+### Local, cloud, and hybrid
 
-**Status:** Accepted by D-021
+One `mishkand` instance owns application state. SQLite/WAL and filesystem artifacts are sufficient.
+Configured local or cloud inference and capability adapters may vary without changing authority.
+Knowledge-service loss may degrade eligible work visibly.
 
-**Decision:** Keep relational current state authoritative and append an event-outbox fact in the
-same short transaction. Deliver events, build read projections, run CrewAI, and perform external
-effects asynchronously from that boundary.
+### Distributed
 
-**Why:** This preserves local-first simplicity and direct invariants without the replay hazards of
-full event sourcing or the distributed consistency cost of service-first decomposition.
+PostgreSQL is required for shared coordination and S3-compatible storage for artifact bodies.
+Stateless workers advertise observed capabilities, receive task-scoped mTLS identity and leases,
+and return structured results and artifacts. Workers never gain acceptance authority. Lease expiry,
+duplicate completion, revision mismatch, and partial network failure preserve exactly-once accepted
+completion semantics.
 
-**Risk control:** Module APIs and ownership tests prevent the daemon from collapsing into shared
-mutable internals; transaction-duration and SQLite-contention measurements are release gates.
+## 9. Architecture decisions
 
-### ADR-002 — Persistence profiles
+### ADR-001 — Transactional modular monolith
 
-**Status:** Accepted by D-015
+**Status:** Retained from D-021; version 1.2 boundary amendment proposed
 
-**Decision:** Use SQLite in WAL mode for local, cloud, and hybrid metadata, and require PostgreSQL
-for distributed mode. Both implement the same repository, transaction, lease, and outbox semantics.
-Artifact bodies remain inspectable outside relational rows and are referenced with integrity
-metadata. Schema migration is an explicit environment-scoped capability operation governed by
-policy and approval; startup never mutates an unsupported schema implicitly.
+Keep relational current state authoritative and append an outbox fact in the same short
+transaction. Keep all application authority in `mishkand`; split processes only for clients,
+workers, or justified isolation.
 
-**Consequence:** Distributed support cannot rely on SQLite locking behavior, while local operation
-does not require a database service.
+### ADR-002 — Persistence and artifact profiles
 
-### ADR-003 — One control API and resumable observation
+**Status:** Metadata decision retained from D-015; artifact amendment proposed
 
-**Status:** Accepted by D-016
+Use SQLite/WAL plus filesystem CAS locally and PostgreSQL plus S3-compatible blobs in distributed
+mode. Engineer-executed migrations implement one explicit repository contract; startup never
+silently mutates an unsupported schema.
 
-**Decision:** `mishkand` exposes one versioned `/v1` HTTP control API. CLI, SDK, external scheduler,
-and TUI call the same application commands and queries. The TUI obtains a bounded snapshot and then
-resumes a typed SSE stream by durable cursor; it is not an authority source.
+### ADR-003 — One operational application interface
 
-**Consequence:** Local in-process shortcuts may optimize transport but must pass the same command,
-validation, authorization, and error contracts.
+**Status:** HTTP/SSE basis retained from D-016; chat, TUI commands, and MCP amendment proposed
 
-### ADR-004 — CrewAI production boundary
+Expose the same commands and queries through CLI, SDK, chat, TUI, HTTP/OpenAPI, SSE, and the MCP
+facade. The local STDIO bridge remains non-authoritative. There is no version 1 Web dashboard.
 
-**Status:** Accepted by D-016 as the structural realization of D-002
+### ADR-004 — Direct CrewAI production integration
 
-**Decision:** A narrow CrewAI integration materializes accepted MISHKAN organization and plan
-versions as supported CrewAI agents, tasks, crews, processes, and flows. MISHKAN does not expose an
-alternative production runtime selector. Test doubles replace only externalized runtime ports in
-test configuration. Workers use the same supported CrewAI boundary for assigned execution.
+**Status:** Retained from D-002 and D-016; clarified
 
-**Consequence:** CrewAI runtime identities and outcomes are recorded as lineage, while policy,
-capability dispatch, durable evidence, and acceptance remain MISHKAN responsibilities.
+Integrate CrewAI 1.x directly. Do not expose a production runtime selector or introduce an
+`AgentRuntime` abstraction that competes with CrewAI coordination.
 
-### ADR-005 — Versioned external adapter ports
+### ADR-005 — Contextual registries and typed adapters
 
-**Status:** Accepted by D-016; amended by D-029
+**Status:** Tool basis retained from D-029; engine, pack, session, Web, Browser, and MCP amendment proposed
 
-**Decision:** Inference, memory, knowledge, structure, external tools, credentials, isolation,
-scheduling, and worker transport connect through typed versioned ports selected by effective
-configuration. Adapter presence never grants authority. External tool schemas are discovered and
-frozen in the accepted task binding before CrewAI receives them.
+Resolve native capabilities, skills, tools, engines, environments, packs, and external protocols
+from configured sources and observed project/location evidence. Bind only concrete runnable
+adapters. Discovery, availability, credentials, and instructions grant no authority.
 
-General file, terminal/process, web, and browser tools may retain stable identities across projects;
-repository-specific commands and targets are normalized inputs enforced by the gateway. Dedicated
-adapters are added when a configured protocol supplies stronger typed, idempotency, credential, or
-external-state semantics. A contract or adapter interface without a concrete runnable registration
-is unavailable and cannot enter a task binding.
+## 10. Gate effect
 
-**Consequence:** Concrete providers and operational limits may evolve without rewriting core
-policy or plan semantics, while schema drift produces an explicit blocked or replan state. New
-project commands normally require plan and policy data, not new Python tool classes.
-
-## 6. Approval
-
-The engineer accepted the original structural baseline on 2026-08-23:
-
-- D-015 accepts ADR-002 persistence profiles;
-- D-016 accepts ADR-003 through ADR-005 interface boundaries;
-- D-022 closes Gate G5 with System Model 1.0 and Architecture 1.0.
-
-Version 1.1 applies accepted tool semantics from D-029 without changing containers or component
-ownership. Its amended model and delivery plan remain subject to engineer review before the I02
-implementation gate resumes.
-
-The post-architecture implementation and acceptance plan may now turn the approved
-responsibilities, behaviors, and boundaries into delivery slices. The cited framework ends at
-Sequence 05; this planning step is not a fabricated Sequence 06. Architecture approval does not
-itself authorize coding.
+System Model 1.2 and Architecture 1.2 supersede the active version 1.1 amendments and D-030 only if
+D-035 is accepted. Until then they are reviewable proposals, I02 remains paused, and no production
+code is authorized by this document.
