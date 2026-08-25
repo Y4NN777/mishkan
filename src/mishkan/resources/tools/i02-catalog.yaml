@@ -1,7 +1,7 @@
 schema_version: "1.0"
 source_id: bundled.core
 source_kind: native
-revision: "6"
+revision: "7"
 adoption_authority: MISHKAN release
 tools:
   - tool_id: file.resolve
@@ -62,6 +62,14 @@ tools:
     source_kind: native
     contract_uri: package://mishkan.resources.tools/contracts/process-exec.yaml
     availability: {platforms: [linux, darwin], runtimes: [python]}
+  - tool_id: core.shell.run
+    version: 1.0.0
+    summary: Run one Bash script under an explicit versioned shell profile.
+    effect_class: command
+    source_id: bundled.core
+    source_kind: native
+    contract_uri: package://mishkan.resources.tools/contracts/shell-run.yaml
+    availability: {platforms: [linux, darwin], runtimes: [python], dependencies: [bash]}
 toolsets:
   - toolset_id: file.readonly
     version: 1.0.0
@@ -79,3 +87,11 @@ toolsets:
     version: 1.0.0
     summary: Direct process execution without shell interpretation.
     tools: [core.process.exec]
+  - toolset_id: execution.shell
+    version: 1.0.0
+    summary: Full Bash semantics under a versioned execution profile.
+    tools: [core.shell.run]
+  - toolset_id: execution.local
+    version: 1.0.0
+    summary: Direct process and Bash execution selected by required semantics.
+    tools: [core.process.exec, core.shell.run]

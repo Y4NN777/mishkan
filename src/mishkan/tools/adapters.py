@@ -10,6 +10,7 @@ import os
 import platform
 import resource
 import selectors
+import shlex
 import signal
 import stat
 import subprocess
@@ -33,6 +34,7 @@ from mishkan.tools.execution import (
     ExecutionRequest,
     ExecutionResult,
     ExecutionStatus,
+    ShellProfile,
 )
 from mishkan.tools.gateway_models import AdapterResult, CallStatus, ResolvedTargets
 from mishkan.tools.isolation import ContainerCommand
@@ -995,22 +997,25 @@ class DirectProcessAdapter:
                 "direct process adapter received a non-process execution mode",
                 details={"category": "invalid_mode"},
             )
+        self._validate_common_constraints(request, call)
+
+    def _validate_common_constraints(self, request: ExecutionRequest, call: AdapterCall) -> None:
         if not call.resources.network:
             raise MishkanError(
                 ErrorCode.TOOL_UNAVAILABLE,
-                "direct process adapter cannot enforce the requested network denial",
+                "native execution adapter cannot enforce the requested network denial",
                 details={"constraint": "network:false"},
             )
         if request.timeout_seconds > call.resources.timeout_seconds:
             raise MishkanError(
                 ErrorCode.EXECUTION,
-                "requested process timeout exceeds the authorized resource bound",
+                "requested execution timeout exceeds the authorized resource bound",
                 details={"category": "resource_limit"},
             )
         if request.output_policy.preview_bytes > self._max_output_bytes:
             raise MishkanError(
                 ErrorCode.EXECUTION,
-                "requested process preview exceeds the configured output bound",
+                "requested execution preview exceeds the configured output bound",
                 details={"category": "output_limit"},
             )
         if len(request.environment) + len(request.credential_environment) > (
@@ -1018,14 +1023,14 @@ class DirectProcessAdapter:
         ):
             raise MishkanError(
                 ErrorCode.EXECUTION,
-                "requested process environment exceeds the configured entry bound",
+                "requested execution environment exceeds the configured entry bound",
                 details={"category": "environment_limit"},
             )
         stdin_bytes = request.stdin.encode("utf-8") if request.stdin is not None else b""
         if len(stdin_bytes) > self._max_stdin_bytes:
             raise MishkanError(
                 ErrorCode.EXECUTION,
-                "requested process stdin exceeds the configured input bound",
+                "requested execution stdin exceeds the configured input bound",
                 details={"category": "input_limit"},
             )
 
@@ -1045,35 +1050,59 @@ class DirectProcessAdapter:
     @staticmethod
     def _executable(request: ExecutionRequest, call: AdapterCall) -> Path:
         assert request.executable is not None
-        requested = Path(request.executable)
+        resolved = DirectProcessAdapter._canonical_executable(request.executable, call)
+        if len(call.targets.executables) != 1:
+            raise MishkanError(
+                ErrorCode.AUTHORITY_NOT_GRANTED,
+                "direct process received unexpected executable targets",
+            )
+        return resolved
+
+    @staticmethod
+    def _canonical_executable(value: str, call: AdapterCall) -> Path:
+        requested = Path(value)
         try:
             resolved = requested.resolve(strict=True)
         except OSError as exc:
             raise MishkanError(
                 ErrorCode.TOOL_UNAVAILABLE,
                 "direct process executable is unavailable",
-                details={"executable": request.executable},
+                details={"executable": value},
             ) from exc
-        if resolved != requested or call.targets.executables != (str(resolved),):
+        if (
+            resolved != requested
+            or not call.targets.executables
+            or call.targets.executables[0] != str(resolved)
+        ):
             raise MishkanError(
                 ErrorCode.AUTHORITY_NOT_GRANTED,
                 "direct process executable differs from its authorized canonical target",
-                details={"executable": request.executable},
+                details={"executable": value},
             )
         if not resolved.is_file() or not os.access(resolved, os.X_OK):
             raise MishkanError(
                 ErrorCode.TOOL_UNAVAILABLE,
                 "direct process target is not an executable regular file",
-                details={"executable": request.executable},
+                details={"executable": value},
             )
         return resolved
 
     @staticmethod
     def _cwd(call: AdapterCall) -> Path:
-        if len(call.targets.paths) != 1 or not call.targets.paths[0].absolute.is_dir():
+        if len(call.targets.paths) != 1:
             raise MishkanError(
                 ErrorCode.EXECUTION,
                 "direct process requires one existing workspace directory",
+                details={"category": "invalid_cwd"},
+            )
+        return DirectProcessAdapter._first_workspace_directory(call)
+
+    @staticmethod
+    def _first_workspace_directory(call: AdapterCall) -> Path:
+        if not call.targets.paths or not call.targets.paths[0].absolute.is_dir():
+            raise MishkanError(
+                ErrorCode.EXECUTION,
+                "execution requires an existing workspace directory as its first path",
                 details={"category": "invalid_cwd"},
             )
         return call.targets.paths[0].absolute
@@ -1257,6 +1286,249 @@ class DirectProcessAdapter:
         if return_code < 0:
             return "signal_termination"
         return "unexpected_exit_code"
+
+
+class BashShellAdapter(DirectProcessAdapter):
+    """Run one governed Bash script under an explicit versioned profile."""
+
+    adapter_id = "native.shell.bash"
+
+    def __init__(
+        self,
+        *,
+        max_output_bytes: int,
+        max_stdin_bytes: int,
+        max_environment_entries: int,
+        max_script_bytes: int,
+        max_startup_file_bytes: int,
+        execution_location: str = "local",
+    ) -> None:
+        super().__init__(
+            max_output_bytes=max_output_bytes,
+            max_stdin_bytes=max_stdin_bytes,
+            max_environment_entries=max_environment_entries,
+            execution_location=execution_location,
+        )
+        if min(max_script_bytes, max_startup_file_bytes) < 1:
+            raise ValueError("Bash script and startup-file bounds must be positive")
+        self._max_script_bytes = max_script_bytes
+        self._max_startup_file_bytes = max_startup_file_bytes
+
+    def invoke(self, call: AdapterCall) -> AdapterResult:
+        request = self._request(call)
+        self._validate_constraints(request, call)
+        assert request.shell_profile is not None
+        assert request.script is not None
+        profile = request.shell_profile
+        executable = self._canonical_executable(profile.interpreter, call)
+        self._validate_declared_executables(call)
+        cwd = self._first_workspace_directory(call)
+        startup_paths = self._startup_paths(profile, call)
+        effective_script = self._effective_script(profile, startup_paths, request.script)
+        stdin = request.stdin.encode("utf-8") if request.stdin is not None else b""
+        environment = self._environment(request, call)
+        argv = self._argv(executable, profile, effective_script)
+        started_at = utc_now()
+        started_monotonic = time.monotonic()
+        try:
+            process = subprocess.Popen(
+                argv,
+                cwd=cwd,
+                env=environment,
+                stdin=subprocess.PIPE if stdin else subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                start_new_session=True,
+                preexec_fn=self._resource_limiter(call.resources.memory_mb),
+            )
+        except (OSError, ValueError) as exc:
+            raise MishkanError(
+                ErrorCode.EXECUTION,
+                "Bash shell could not be spawned",
+                details={"category": "spawn_failure", "reason": type(exc).__name__},
+            ) from exc
+        stdout, stderr, termination_cause = self._communicate(
+            process,
+            stdin,
+            timeout_seconds=request.timeout_seconds,
+            started_monotonic=started_monotonic,
+            cancellation_requested=call.cancellation_requested,
+        )
+        return_code = process.returncode
+        if return_code is None:
+            raise MishkanError(
+                ErrorCode.EXECUTION,
+                "Bash shell did not settle after termination",
+                details={"category": "lost_process"},
+            )
+        status = self._status(termination_cause, return_code, request.expected_exit_codes)
+        effect_settlement = (
+            EffectSettlement.ABSENT if not request.declared_effects else EffectSettlement.UNCERTAIN
+        )
+        outer_status = self._outer_status(status, termination_cause, request.declared_effects)
+        result = ExecutionResult(
+            execution_id=UUID(call.execution_id),
+            mode=ExecutionMode.SHELL,
+            status=status,
+            executable=str(executable),
+            args=(),
+            cwd=call.targets.paths[0].relative,
+            exit_code=return_code if return_code >= 0 else None,
+            signal=-return_code if return_code < 0 else None,
+            started_at=started_at,
+            finished_at=utc_now(),
+            stdout_preview=self._preview(stdout, request.output_policy.preview_bytes),
+            stderr_preview=self._preview(stderr, request.output_policy.preview_bytes),
+            stdout_bytes=len(stdout),
+            stderr_bytes=len(stderr),
+            stdout_digest=f"sha256:{hashlib.sha256(stdout).hexdigest()}",
+            stderr_digest=f"sha256:{hashlib.sha256(stderr).hexdigest()}",
+            truncated=(
+                len(stdout) > request.output_policy.preview_bytes
+                or len(stderr) > request.output_policy.preview_bytes
+                or termination_cause == "output_limit"
+            ),
+            termination_cause=termination_cause,
+            expected_exit_codes=request.expected_exit_codes,
+            environment_names=tuple(sorted(request.environment)),
+            credential_environment_names=tuple(sorted(request.credential_environment)),
+            declared_effects=request.declared_effects,
+            effect_settlement=effect_settlement,
+            execution_location=self._execution_location,
+            error=self._error(status, termination_cause, return_code),
+        )
+        profile_payload = json.dumps(
+            profile.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
+        ).encode()
+        return AdapterResult(
+            output=result.model_dump(mode="json"),
+            actual_targets=call.targets,
+            evidence={
+                "adapter": self.adapter_id,
+                "shell": True,
+                "dialect": profile.dialect.value,
+                "profile_id": profile.profile_id,
+                "profile_revision": profile.revision,
+                "profile_fingerprint": f"sha256:{hashlib.sha256(profile_payload).hexdigest()}",
+                "interpreter": str(executable),
+                "startup_mode": "no_profile_no_rc",
+                "startup_files": [
+                    path.relative for path in call.targets.paths[1 : 1 + len(profile.startup_files)]
+                ],
+                "shell_options": profile.options.model_dump(mode="json"),
+                "script_digest": f"sha256:{hashlib.sha256(request.script.encode()).hexdigest()}",
+                "process_group": "isolated",
+                "ambient_environment": False,
+                "memory_limit_mb": call.resources.memory_mb,
+                "network_denial_enforced": False,
+                "isolation_profile": call.isolation_profile,
+            },
+            inspection_content=(
+                stdout.decode("utf-8", errors="replace"),
+                stderr.decode("utf-8", errors="replace"),
+            ),
+            call_status=outer_status,
+            retryable=False,
+            error_code=(
+                ErrorCode.EXECUTION.value if outer_status is not CallStatus.COMPLETED else None
+            ),
+            reason=f"Bash shell settled as {status.value}",
+        )
+
+    def _validate_constraints(self, request: ExecutionRequest, call: AdapterCall) -> None:
+        if request.mode is not ExecutionMode.SHELL:
+            raise MishkanError(
+                ErrorCode.EXECUTION,
+                "Bash adapter received a non-shell execution mode",
+                details={"category": "invalid_mode"},
+            )
+        self._validate_common_constraints(request, call)
+        assert request.script is not None
+        if len(request.script.encode("utf-8")) > self._max_script_bytes:
+            raise MishkanError(
+                ErrorCode.EXECUTION,
+                "Bash script exceeds the configured input bound",
+                details={"category": "input_limit"},
+            )
+
+    def _startup_paths(self, profile: ShellProfile, call: AdapterCall) -> tuple[Path, ...]:
+        resolved = call.targets.paths[1 : 1 + len(profile.startup_files)]
+        if len(resolved) != len(profile.startup_files):
+            raise MishkanError(
+                ErrorCode.TOOL_EFFECT,
+                "resolved Bash startup files differ from the selected profile",
+            )
+        paths: list[Path] = []
+        for expected, target in zip(profile.startup_files, resolved, strict=True):
+            if target.requested != expected or not target.absolute.is_file():
+                raise MishkanError(
+                    ErrorCode.TOOL_UNAVAILABLE,
+                    "Bash startup file is unavailable",
+                    details={"path": expected},
+                )
+            if target.absolute.stat().st_size > self._max_startup_file_bytes:
+                raise MishkanError(
+                    ErrorCode.EXECUTION,
+                    "Bash startup file exceeds the configured input bound",
+                    details={"category": "input_limit", "path": expected},
+                )
+            paths.append(target.absolute)
+        return tuple(paths)
+
+    @staticmethod
+    def _validate_declared_executables(call: AdapterCall) -> None:
+        for value in call.targets.executables[1:]:
+            requested = Path(value)
+            try:
+                resolved = requested.resolve(strict=True)
+            except OSError as exc:
+                raise MishkanError(
+                    ErrorCode.TOOL_UNAVAILABLE,
+                    "declared Bash executable is unavailable",
+                    details={"executable": value},
+                ) from exc
+            if resolved != requested or not resolved.is_file() or not os.access(resolved, os.X_OK):
+                raise MishkanError(
+                    ErrorCode.AUTHORITY_NOT_GRANTED,
+                    "declared Bash executable is not a canonical executable file",
+                    details={"executable": value},
+                )
+
+    @staticmethod
+    def _effective_script(
+        profile: ShellProfile,
+        startup_paths: tuple[Path, ...],
+        script: str,
+    ) -> str:
+        prelude = [
+            'if [ -z "${BASH_VERSION-}" ]; then '
+            "printf '%s\\n' 'configured interpreter is not Bash' >&2; exit 2; fi"
+        ]
+        if profile.options.inherit_errexit:
+            prelude.append(
+                "shopt -s inherit_errexit 2>/dev/null || { "
+                "printf '%s\\n' 'inherit_errexit is unsupported' >&2; exit 2; }"
+            )
+        prelude.extend(f"source -- {shlex.quote(str(path))}" for path in startup_paths)
+        return "\n".join((*prelude, script))
+
+    @staticmethod
+    def _argv(executable: Path, profile: ShellProfile, script: str) -> tuple[str, ...]:
+        options = profile.options
+        return (
+            str(executable),
+            "--noprofile",
+            "--norc",
+            "-o" if options.pipefail else "+o",
+            "pipefail",
+            "-o" if options.errexit else "+o",
+            "errexit",
+            "-o" if options.nounset else "+o",
+            "nounset",
+            "-c",
+            script,
+            "mishkan-shell",
+        )
 
 
 class WriteFileAdapter:

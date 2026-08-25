@@ -201,6 +201,12 @@ class CapabilityGateway:
         try:
             self._validate_binding(context, contract.provenance_fingerprint)
             self._validate_schema(contract.input_schema, arguments, "input")
+            serialized_arguments = json.dumps(arguments, sort_keys=True, separators=(",", ":"))
+            if self._inspector.inspect(serialized_arguments) != serialized_arguments:
+                raise MishkanError(
+                    ErrorCode.SECRET_CONTENT,
+                    "tool arguments require redaction and cannot be executed faithfully",
+                )
             credential_references = credential_references_for(contract, arguments)
             policy_arguments = policy_argument_values_for(contract, arguments)
             resolved = self._resolve_targets(declared_targets)
@@ -429,7 +435,9 @@ class CapabilityGateway:
                 ErrorCode.TOOL_DRIFT,
             }
             if call_id is None:
-                pre_dispatch_codes.update({ErrorCode.TOOL_SCHEMA, ErrorCode.FILE})
+                pre_dispatch_codes.update(
+                    {ErrorCode.TOOL_SCHEMA, ErrorCode.FILE, ErrorCode.SECRET_CONTENT}
+                )
             status = CallStatus.REFUSED if code in pre_dispatch_codes else CallStatus.FAILED
             terminal_result = self._terminal(context, call_id, started, status, code, reason)
             self._audit(

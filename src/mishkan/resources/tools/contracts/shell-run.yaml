@@ -1,0 +1,182 @@
+schema_version: "1.0"
+tool_id: core.shell.run
+version: 1.0.0
+crewai_name: shell_run
+summary: Run one bounded Bash script under an explicit versioned shell profile.
+effect_class: command
+source_id: bundled.core
+source_kind: native
+adapter: native.shell.bash
+input_schema:
+  type: object
+  additionalProperties: false
+  required:
+    - mode
+    - shell_profile
+    - script
+    - cwd
+    - environment
+    - credential_environment
+    - stdin
+    - timeout_seconds
+    - expected_exit_codes
+    - declared_paths
+    - declared_executables
+    - network_destinations
+    - declared_effects
+    - output_policy
+  properties:
+    mode: {type: string, const: shell}
+    shell_profile:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - profile_id
+        - revision
+        - dialect
+        - interpreter
+        - startup_files
+        - options
+      properties:
+        schema_version: {type: string, const: "1.0"}
+        profile_id: {type: string, pattern: "^[a-z][a-z0-9_.-]{1,127}$"}
+        revision: {type: string, minLength: 1}
+        dialect: {type: string, const: bash}
+        interpreter: {type: string, pattern: "^/[^\\u0000]*$"}
+        startup_files:
+          type: array
+          uniqueItems: true
+          items: {type: string, minLength: 1}
+        options:
+          type: object
+          additionalProperties: false
+          required: [pipefail, errexit, nounset, inherit_errexit]
+          properties:
+            pipefail: {type: boolean}
+            errexit: {type: boolean}
+            nounset: {type: boolean}
+            inherit_errexit: {type: boolean}
+    script: {type: string, minLength: 1, maxLength: 262144}
+    cwd: {type: string, minLength: 1}
+    environment:
+      type: object
+      propertyNames: {pattern: "^[A-Za-z_][A-Za-z0-9_]*$"}
+      additionalProperties: {type: string}
+    credential_environment:
+      type: object
+      propertyNames: {pattern: "^[A-Za-z_][A-Za-z0-9_]*$"}
+      additionalProperties: {type: string, minLength: 1}
+    stdin: {type: [string, "null"]}
+    timeout_seconds: {type: integer, minimum: 1, maximum: 86400}
+    expected_exit_codes:
+      type: array
+      uniqueItems: true
+      items: {type: integer}
+    declared_paths:
+      type: array
+      uniqueItems: true
+      items: {type: string, minLength: 1}
+    declared_executables:
+      type: array
+      uniqueItems: true
+      items: {type: string, pattern: "^/[^\\u0000]*$"}
+    network_destinations:
+      type: array
+      uniqueItems: true
+      items: {type: string, minLength: 1}
+    declared_effects:
+      type: array
+      uniqueItems: true
+      items: {type: string, minLength: 1}
+    output_policy:
+      type: object
+      additionalProperties: false
+      required: [preview_bytes]
+      properties:
+        preview_bytes: {type: integer, minimum: 1}
+result_schema:
+  type: object
+  additionalProperties: false
+  required:
+    - schema_version
+    - execution_id
+    - mode
+    - status
+    - executable
+    - args
+    - cwd
+    - exit_code
+    - signal
+    - started_at
+    - finished_at
+    - stdout_preview
+    - stderr_preview
+    - stdout_bytes
+    - stderr_bytes
+    - stdout_digest
+    - stderr_digest
+    - stdout_artifact_ref
+    - stderr_artifact_ref
+    - truncated
+    - termination_cause
+    - expected_exit_codes
+    - environment_names
+    - credential_environment_names
+    - declared_effects
+    - observed_effects
+    - effect_settlement
+    - retryable
+    - execution_location
+    - error
+  properties:
+    schema_version: {type: string, const: "1.0"}
+    execution_id: {type: string, format: uuid}
+    mode: {type: string, const: shell}
+    status: {type: string, enum: [completed, failed, timed_out, cancelled, lost, uncertain]}
+    executable: {type: string}
+    args: {type: array, items: {type: string}}
+    cwd: {type: string}
+    exit_code: {type: [integer, "null"]}
+    signal: {type: [integer, "null"], minimum: 1}
+    started_at: {type: string, format: date-time}
+    finished_at: {type: string, format: date-time}
+    stdout_preview: {type: string}
+    stderr_preview: {type: string}
+    stdout_bytes: {type: integer, minimum: 0}
+    stderr_bytes: {type: integer, minimum: 0}
+    stdout_digest: {type: string, pattern: "^sha256:[a-f0-9]{64}$"}
+    stderr_digest: {type: string, pattern: "^sha256:[a-f0-9]{64}$"}
+    stdout_artifact_ref: {type: [string, "null"]}
+    stderr_artifact_ref: {type: [string, "null"]}
+    truncated: {type: boolean}
+    termination_cause:
+      type: [string, "null"]
+      enum: [null, cancellation, timeout, output_limit]
+    expected_exit_codes: {type: array, uniqueItems: true, items: {type: integer}}
+    environment_names: {type: array, uniqueItems: true, items: {type: string}}
+    credential_environment_names: {type: array, uniqueItems: true, items: {type: string}}
+    declared_effects: {type: array, uniqueItems: true, items: {type: string}}
+    observed_effects: {type: array, uniqueItems: true, items: {type: string}}
+    effect_settlement: {type: string, enum: [absent, completed, uncertain]}
+    retryable: {type: boolean}
+    execution_location: {type: string}
+    error: {type: [string, "null"]}
+timeout_behavior: terminate_process_group_and_settle_effects
+idempotency: none
+target_scopes: [path, executable, network, environment, external_resource]
+target_arguments:
+  path: [cwd, shell_profile.startup_files, declared_paths]
+  executable: [shell_profile.interpreter, declared_executables]
+  network: [network_destinations]
+  environment: [environment.@keys, credential_environment.@keys]
+  external_resource: [declared_effects]
+credential_arguments: [credential_environment.*]
+policy_arguments: [script, shell_profile.profile_id, shell_profile.revision]
+resources: {timeout_seconds: 30, memory_mb: 512, network: true, concurrency: 1}
+adapter_config:
+  max_output_bytes: 2097152
+  max_stdin_bytes: 65536
+  max_environment_entries: 128
+  max_script_bytes: 262144
+  max_startup_file_bytes: 262144

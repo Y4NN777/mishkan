@@ -42,6 +42,43 @@ class EffectSettlement(StrEnum):
     UNCERTAIN = "uncertain"
 
 
+class ShellDialect(StrEnum):
+    BASH = "bash"
+
+
+class ShellOptions(ExecutionModel):
+    pipefail: bool = True
+    errexit: bool = False
+    nounset: bool = False
+    inherit_errexit: bool = False
+
+
+class ShellProfile(ExecutionModel):
+    schema_version: str = "1.0"
+    profile_id: str = Field(pattern=r"^[a-z][a-z0-9_.-]{1,127}$")
+    revision: str = Field(min_length=1)
+    dialect: ShellDialect = ShellDialect.BASH
+    interpreter: str
+    startup_files: tuple[str, ...] = ()
+    options: ShellOptions = Field(default_factory=ShellOptions)
+
+    @field_validator("interpreter")
+    @classmethod
+    def interpreter_is_absolute(cls, value: str) -> str:
+        if not Path(value).is_absolute():
+            raise ValueError("shell profile interpreter must be absolute")
+        return value
+
+    @field_validator("startup_files")
+    @classmethod
+    def startup_files_are_relative_and_unique(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if len(value) != len(set(value)):
+            raise ValueError("shell profile startup files must be unique")
+        if any(not item or Path(item).is_absolute() for item in value):
+            raise ValueError("shell profile startup files must be workspace-relative")
+        return value
+
+
 class OutputPolicy(ExecutionModel):
     preview_bytes: int = Field(ge=1)
 
@@ -55,12 +92,16 @@ class ExecutionRequest(ExecutionModel):
     cwd: str = Field(min_length=1)
     executable: str | None = None
     args: tuple[str, ...] = ()
-    script: str | None = None
+    script: str | None = Field(default=None, min_length=1)
+    shell_profile: ShellProfile | None = None
     environment: dict[str, str] = Field(default_factory=dict)
     credential_environment: dict[str, str] = Field(default_factory=dict)
     stdin: str | None = None
     timeout_seconds: int = Field(ge=1, le=86_400)
     expected_exit_codes: tuple[int, ...] = (0,)
+    declared_paths: tuple[str, ...] = ()
+    declared_executables: tuple[str, ...] = ()
+    network_destinations: tuple[str, ...] = ()
     declared_effects: tuple[str, ...] = ()
     output_policy: OutputPolicy
 
@@ -78,11 +119,31 @@ class ExecutionRequest(ExecutionModel):
             raise ValueError("execution environment names must be portable identifiers")
         return value
 
-    @field_validator("expected_exit_codes", "declared_effects")
+    @field_validator(
+        "expected_exit_codes",
+        "declared_paths",
+        "declared_executables",
+        "network_destinations",
+        "declared_effects",
+    )
     @classmethod
     def tuple_values_are_unique(cls, value: tuple[object, ...]) -> tuple[object, ...]:
         if len(value) != len(set(value)):
             raise ValueError("execution tuple values must be unique")
+        return value
+
+    @field_validator("declared_paths")
+    @classmethod
+    def declared_paths_are_relative(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if any(not item or Path(item).is_absolute() for item in value):
+            raise ValueError("declared execution paths must be workspace-relative")
+        return value
+
+    @field_validator("declared_executables")
+    @classmethod
+    def declared_executables_are_absolute(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if any(not Path(item).is_absolute() for item in value):
+            raise ValueError("declared execution executables must be absolute")
         return value
 
     @model_validator(mode="after")
@@ -90,8 +151,15 @@ class ExecutionRequest(ExecutionModel):
         if self.mode is ExecutionMode.PROCESS:
             if self.executable is None or not Path(self.executable).is_absolute():
                 raise ValueError("direct process mode requires an absolute executable")
-            if self.script is not None:
-                raise ValueError("direct process mode does not accept a shell script")
+            if self.script is not None or self.shell_profile is not None:
+                raise ValueError("direct process mode does not accept shell fields")
+        if self.mode is ExecutionMode.SHELL:
+            if self.executable is not None or self.args:
+                raise ValueError("shell mode resolves its interpreter and accepts no argv")
+            if self.script is None or self.shell_profile is None:
+                raise ValueError("shell mode requires a script and versioned shell profile")
+            if "\x00" in self.script:
+                raise ValueError("shell script must not contain a null byte")
         if set(self.environment) & set(self.credential_environment):
             raise ValueError("plain and credential environment names must not overlap")
         return self

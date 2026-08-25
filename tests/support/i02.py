@@ -34,6 +34,7 @@ TEST_ADAPTERS = frozenset(
         "native.search.files",
         "ripgrep.search.text",
         "native.process.exec",
+        "native.shell.bash",
         "native.repository.write_file",
         "isolation.command",
         "native.git.commit",
@@ -135,13 +136,14 @@ def context_for(
         or tool_id.startswith("file.")
         or tool_id.startswith("search.")
         or tool_id.startswith("core.process.")
+        or tool_id.startswith("core.shell.")
         else MECHANISM_CATALOG_URI
     )
     catalog = ToolCatalog(
         (source_uri,),
         root,
         runtime=runtime,
-        available_dependencies=frozenset({"rg"}),
+        available_dependencies=frozenset({"rg", "bash"}),
         available_adapters=TEST_ADAPTERS,
     )
     snapshot = catalog.snapshot((tool_id,))

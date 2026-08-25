@@ -7,6 +7,9 @@ from mishkan.tools.execution import (
     ExecutionRequest,
     ExecutionResult,
     ExecutionStatus,
+    ShellDialect,
+    ShellOptions,
+    ShellProfile,
 )
 from mishkan.tools.models import RegistrySnapshot, ToolBinding, ToolContract
 
@@ -17,6 +20,9 @@ __all__ = [
     "ExecutionStatus",
     "GatewayCrewAITool",
     "RegistrySnapshot",
+    "ShellDialect",
+    "ShellOptions",
+    "ShellProfile",
     "ToolBinding",
     "ToolCatalog",
     "ToolContract",

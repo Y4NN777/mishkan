@@ -117,12 +117,13 @@ def test_bundled_catalog_advertises_only_runnable_native_adapters(tmp_path: Path
             "native.search.files",
             "ripgrep.search.text",
             "native.process.exec",
+            "native.shell.bash",
         }
     )
     catalog = ToolCatalog(
         (CATALOG_URI,),
         tmp_path,
-        available_dependencies=frozenset({"rg"}),
+        available_dependencies=frozenset({"rg", "bash"}),
         available_adapters=adapters,
     )
 
@@ -135,6 +136,7 @@ def test_bundled_catalog_advertises_only_runnable_native_adapters(tmp_path: Path
         "search.text",
         "repository.read_file",
         "core.process.exec",
+        "core.shell.run",
     )
     snapshot = catalog.snapshot(("file.readonly",))
     assert tuple(tool.tool_id for tool in snapshot.tools) == (
@@ -147,6 +149,13 @@ def test_bundled_catalog_advertises_only_runnable_native_adapters(tmp_path: Path
     assert tuple(tool.tool_id for tool in search_snapshot.tools) == (
         "search.files",
         "search.text",
+    )
+    shell_snapshot = catalog.snapshot(("execution.shell",))
+    assert tuple(tool.tool_id for tool in shell_snapshot.tools) == ("core.shell.run",)
+    execution_snapshot = catalog.snapshot(("execution.local",))
+    assert tuple(tool.tool_id for tool in execution_snapshot.tools) == (
+        "core.process.exec",
+        "core.shell.run",
     )
 
 
