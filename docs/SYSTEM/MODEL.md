@@ -73,10 +73,17 @@ stateDiagram-v2
     Paused --> Planned: brief or plan changes
     Paused --> Active: resume authorized
     Blocked --> Active: limitation reconciled
+    Blocked --> Failed: reconciliation proves terminal failure
+    Remediating --> Failed: correction bound exhausted
     Proposed --> Cancelled: stop accepted
     Clarifying --> Cancelled: stop accepted
     Planned --> Cancelled: stop accepted
-    Active --> Cancelled: effects settle
+    Paused --> Cancelled: stop accepted
+    Blocked --> Cancelled: stop accepted
+    Active --> Cancelling: stop accepted
+    Evaluating --> Cancelling: stop accepted
+    Remediating --> Cancelling: stop accepted
+    Cancelling --> Cancelled: effects settle or reconcile
     Active --> Failed: terminal failure
     Evaluating --> Failed: terminal acceptance failure
     Completed --> [*]
@@ -309,8 +316,7 @@ stateDiagram-v2
     Staged --> Active: required decision accepted
     Quarantined --> Candidate: finding resolved
     Active --> Superseded: newer version activated
-    Active --> Restored: prior eligible version restored
-    Superseded --> Restored: restoration accepted
+    Superseded --> Candidate: restoration requested with prior version lineage
 ```
 
 Activation policy depends on source, trust, scope, effect, and risk; staging is not universal.

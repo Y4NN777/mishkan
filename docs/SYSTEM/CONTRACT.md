@@ -7,9 +7,10 @@
 
 ## 1. Contract boundary
 
-MISHKAN accepts engineering objectives and repository evidence, coordinates the approved
-organization through CrewAI, and returns validated engineering results with durable evidence. The
-contract applies equally to interactive, headless, scheduled, and—when enabled—distributed work.
+MISHKAN accepts engineering objectives and bound execution-context evidence, coordinates the bound
+versioned organization through CrewAI, and returns validated engineering results with durable
+evidence. The contract applies equally to interactive, headless, scheduled, and—when
+enabled—distributed work.
 
 The contract says what remains true regardless of storage, transport, process topology, provider,
 or user interface. It does not assign the guarantees to components; that occurs in Sequence 04.
@@ -50,7 +51,8 @@ Its role, tools, scopes, and delegation rights come from the organization, plan,
 The system contract recognizes these input classes:
 
 1. effective configuration and its provenance;
-2. repository identity, base revision, discovery evidence, and declared project policy;
+2. repository identity and base revision, or prospective-workspace identity and discovery revision,
+   plus discovery evidence and declared project policy;
 3. objective, mission brief, optional template, constraints, and completion conditions;
 4. organization, professional profile, crew, conversation, plan, task, output, report, event,
    policy, tool, toolset, engine, pack, and registry definitions;
@@ -71,7 +73,7 @@ preconditions are validated. Refused input does not partially mutate accepted st
 
 For an accepted interaction, MISHKAN produces one or more of:
 
-- a versioned Mission Brief, contextual Mission Crew, and repository-specific plan history;
+- a versioned Mission Brief, contextual Mission Crew, and execution-context-specific plan history;
 - an authorization decision with matched policy evidence;
 - a typed run or task state transition;
 - a validated task result, independent evaluation, or structured report;
@@ -88,14 +90,15 @@ accepted or complete.
 
 ### CTR-001 — Explicit operating context
 
-Every run is evaluated using identifiable configuration, organization, repository base revision,
-plan version, and policy version records. Their provenance is inspectable without disclosing
-credentials.
+Every run is evaluated using identifiable configuration, organization, bound repository/base
+revision or prospective-workspace/discovery revision, plan version, and policy version records.
+Their provenance is inspectable without disclosing credentials.
 
-### CTR-002 — Repository-specific coordination
+### CTR-002 — Execution-context-specific coordination
 
 The same objective may produce a different task graph and role participation for different
-repository evidence. MISHKAN does not substitute a universal hardcoded task chain for planning.
+repository or prospective-workspace evidence. MISHKAN does not substitute a universal hardcoded
+task chain for planning.
 
 ### CTR-003 — Policy-governed autonomy
 
@@ -154,8 +157,8 @@ acceptance semantics. A remote worker receives only bounded coordinator-issued a
 
 MISHKAN can discover and progressively load portable procedural skills, record whether their use
 succeeded, learn attributable improvements from teaching or reviewed experience, and activate or
-restore versions through visible policy and provenance. A skill never grants authority or replaces the
-repository-specific plan, CrewAI coordination, or deterministic effect enforcement.
+restore versions through visible policy and provenance. A skill never grants authority or replaces
+the execution-context-specific plan, CrewAI coordination, or deterministic effect enforcement.
 
 ### CTR-014 — Controlled tool extension and invocation
 
@@ -208,8 +211,8 @@ These laws are not user-configurable operational policy.
 
 ### INV-001 — Identifiable state
 
-Every persisted domain record has a globally unique identity, schema version, and unambiguous
-creation time. A record that changes meaning creates a new version or transition rather than
+Every persisted domain record has a globally unique UUID identity, schema version, and unambiguous
+UTC creation time. A record that changes meaning creates a new version or transition rather than
 silently replacing history.
 
 ### INV-002 — Decision before effect
@@ -245,11 +248,12 @@ Every semantic plan revision has a different fingerprint, a predecessor except f
 version, a reason, a difference record, and an authorization decision. A resume never substitutes
 an unrecorded plan.
 
-### INV-008 — Repository lineage
+### INV-008 — Repository and greenfield lineage
 
-Every run has one repository and immutable base revision. Any revision produced by authorized work
-identifies its predecessor, responsible task, and run. External revision mismatch blocks affected
-execution or acceptance until reconciled.
+Every run has one execution context: one repository and immutable base revision, or one versioned
+prospective workspace before repository establishment. Any established repository and revision
+produced by authorized work identifies its predecessor context, responsible task, and run. Context
+or revision mismatch blocks affected execution or acceptance until reconciled.
 
 ### INV-009 — Dependency eligibility
 
@@ -317,20 +321,22 @@ are never mutated automatically.
 
 ### INV-021 — Knowledge provenance
 
-Knowledge used as evidence identifies source, scope, retrieval time, and repository revision or
-staleness. Knowledge does not become cross-project guidance without a recorded policy decision and
-provenance.
+Knowledge used as evidence identifies source, scope, retrieval time, bound execution-context
+revision, applicable repository revision, and staleness. Knowledge does not become cross-project
+guidance without a recorded policy decision and provenance.
 
 ### INV-022 — Schedule uniqueness
 
-One trigger occurrence creates at most one accepted run. Overlap for the same project and outcome
-occurs only under an explicit matching allow decision.
+One trigger occurrence creates at most one accepted run. Concurrent runs with the same resolved
+overlap key occur only under an explicit matching allow decision; the key never requires a fixed
+outcome catalogue.
 
 ### INV-023 — Remote envelope and lease integrity
 
 A remote assignment is immutable after issuance and bound to worker identity, task attempt,
-repository revision, plan and policy fingerprints, capabilities, resources, deadline, and lease.
-Invalid or expired authority cannot produce an accepted completion.
+execution-context revision, applicable repository revision, plan and policy fingerprints,
+capabilities, resources, deadline, and lease. Invalid or expired authority cannot produce an
+accepted completion.
 
 ### INV-024 — Progressive skill disclosure
 
@@ -346,10 +352,11 @@ policy, and quarantine thresholds are public versioned configuration, not privat
 
 ### INV-026 — Atomic and recoverable skill evolution
 
-A skill mutation is durable while staged and activates one complete validated version atomically.
-Failure preserves the prior active version. Supersession, rejection, archival, or deletion never
-erases accepted lineage, and eligible prior versions can re-enter the same validation and policy
-path for restoration.
+A skill mutation that policy stages remains durable until resolved; policy-authorized immediate
+mutation does not require that intermediate state. Activation still changes to one complete
+validated version atomically. Failure preserves the prior active version. Supersession, rejection,
+archival, or deletion never erases accepted lineage, and eligible prior versions can re-enter the
+same validation and policy path for restoration.
 
 ### INV-027 — Immutable tool resolution
 
@@ -446,7 +453,7 @@ Every request evaluated by policy contains at least:
 
 - acting identity and functional role;
 - namespaced capability identifier and declared effect class;
-- project, repository, and run identity;
+- project, bound execution-context, applicable repository, and run identity;
 - concrete targets and typed scopes applicable to that capability;
 - plan, organization, and policy fingerprints;
 - requested credentials, resources, and time bounds without credential values;
@@ -542,9 +549,10 @@ eligibility, the plan selects the task set, policy decides effects, and the exec
 advertise support. No source, server, credential, toolset, or availability state grants access by
 itself.
 
-The registry does not require a universal cross-project capability taxonomy. Repository evidence
-and stable outcome constraints guide the planner, while role or project toolsets narrow eligible
-visibility. Only the exact resolved tools recorded in the accepted plan become task bindings.
+The registry does not require a universal cross-project capability taxonomy. Execution-context
+evidence plus objective and optional-template constraints guide the planner, while role or project
+toolsets narrow eligible visibility. Only the exact resolved tools recorded in the accepted plan
+become task bindings.
 
 ### 10.3 CrewAI binding and dispatch
 
@@ -612,7 +620,7 @@ production agent/team coordination remains within CrewAI.
 A plan revision is acceptable only when:
 
 1. it cites validated evidence or an explicit engineer request as its reason;
-2. it retains the run, objective, repository, base revision, and organization lineage;
+2. it retains the run, objective, bound execution context and revision, and organization lineage;
 3. it describes added, removed, changed, and preserved tasks;
 4. preserved results still satisfy unchanged inputs, contracts, revision requirements, and policy;
 5. invalidated results remain in history and are never presented as current acceptance evidence;
@@ -714,9 +722,9 @@ Dependencies describe required capabilities, not component ownership or topology
 
 | ID | Abstract capability | Criticality | Contract when unavailable | SRS source |
 |---|---|---|---|---|
-| DEP-001 | Production agent coordination | Core required | Affected run cannot start or advance; emit retryable dependency failure | ORG, RUN, TC-001–003 |
+| DEP-001 | Production agent coordination | Core required | Affected run cannot start or advance; emit retryable dependency failure | ORG-001–016, MSN-001–008, RUN-001–012, TC-001–003 |
 | DEP-002 | Model inference | Required per selected task | Block affected task; attempt only policy-authorized routes; expose failure | SYS-003, RUN-007 |
-| DEP-003 | Repository and source-control access | Core required | Work requiring unavailable evidence is blocked, not guessed | PRJ-001–008, SAF-001–008 |
+| DEP-003 | Workspace, repository, and source-control access | Core required | Work requiring unavailable evidence is blocked, not guessed | PRJ-001–010, SAF-001–008 |
 | DEP-004 | Durable metadata and evidence persistence | Core required | Do not report acceptance or completion | RUN-008, OBS-003, NFR-007 |
 | DEP-005 | Identity and credential resolution | Required per protected action | Refuse action without revealing or persisting credentials | SAF-003, SAF-009, DST-002–003 |
 | DEP-006 | Policy decision and capability enforcement | Core required | No effect may occur; produce a stable policy failure | PLN-005–008, SAF-003–006 |
@@ -726,7 +734,7 @@ Dependencies describe required capabilities, not component ownership or topology
 | DEP-010 | Live event delivery | Optional for task correctness | Buffer within bounds, expose gaps, preserve durable work | OBS-004–006, NFR-006 |
 | DEP-011 | Episodic, semantic, and structural context | Optional | Continue safe work in declared degraded mode | KNW-001–005 |
 | DEP-012 | Literal scoped repository reading | Required when no other source can establish a needed fact | Block affected reasoning instead of inventing evidence | PRJ-004–005, KNW-002 |
-| DEP-013 | Skill catalogue, provenance, and lifecycle store | Optional for ordinary task execution; required for skill use or learning | Record miss and continue without the skill, or preserve the staged mutation until available | SKL-001–025 |
+| DEP-013 | Skill catalogue, provenance, and lifecycle store | Optional for ordinary task execution; required for skill use or learning | Record miss and continue without the skill, or preserve any unresolved mutation until available | SKL-001–025 |
 | DEP-014 | Persistent scheduling | Required only for scheduled mode | Interactive and direct headless runs remain available | AUT-001–007 |
 | DEP-015 | Shared worker coordination | Post-core distributed only | Local mode remains valid; distributed tasks block or recover by lease | DST-001–010 |
 | DEP-016 | Current-state monitoring projection | Optional for execution | Execution continues; monitor reconnects from durable state | RUN-012, OBS-004–006 |
@@ -734,7 +742,7 @@ Dependencies describe required capabilities, not component ownership or topology
 | DEP-018 | Tool registry, discovery, and adapters | Required per tool-using task | Do not bind or dispatch the unavailable tool; expose configured fallback eligibility | TOL-001–027 |
 | DEP-019 | Mission, organization, and conversation persistence | Core required | Do not launch or mutate a mission whose Brief, crew, command, or decision cannot be made durable | ORG-001–016, MSN-001–015 |
 | DEP-020 | Artifact and working-reference storage | Required per artifact-producing task | Do not accept missing content; retain recovery and conflict evidence | ART-001–008 |
-| DEP-021 | Native execution and session adapters | Required per selected capability | Refuse unavailable modes and preserve uncertain effects for reconciliation | FIL, EDT, EXE, BRW |
+| DEP-021 | Native execution and session adapters | Required per selected capability | Refuse unavailable modes and preserve uncertain effects for reconciliation | FIL-001–007, EDT-001–008, EXE-001–008, BRW-001–008 |
 | DEP-022 | Web retrieval surfaces | Optional unless required by the accepted task | Use only a contract-compatible configured fallback and expose provenance loss | WEB-001–007 |
 | DEP-023 | MCP mediation and external-client identity | Required only for MCP or harness use | Other clients remain available; affected request receives stable refusal | MCP-001–009 |
 | DEP-024 | Engineering engine and environment resolution | Required per selected technical action | Do not claim readiness or execute without a concrete verified adapter at the location | CTX-004–008, ENG-001–008 |
@@ -747,8 +755,8 @@ are assigned only after the responsibility and architecture stages.
 
 | Contract area | Principal SRS source |
 |---|---|
-| Operating context and identity | SYS-001–007, PRJ-001–008, CTX-001–008 |
-| Adaptive planning and policy | PRJ-007–008, PLN-001–019, SAF-003–006 |
+| Operating context and identity | SYS-001–007, PRJ-001–010, CTX-001–008 |
+| Adaptive planning and policy | PRJ-007–010, PLN-001–020, SAF-003–006 |
 | Organization and separation | ORG-001–016 |
 | Mission governance and communication | MSN-001–015 |
 | Execution and recovery | RUN-001–012 |

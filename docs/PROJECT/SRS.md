@@ -57,13 +57,15 @@ mode that is absent from the effective configuration or accepted plan.
 
 ### SYS-004 — Stable identifiers
 
-Every project, repository revision, plan, run, task, approval, event, artifact, schedule, and worker
-record MUST have a globally unique identifier.
+Every persisted domain record MUST have a globally unique UUID identifier. This includes projects,
+execution contexts and revisions, missions, Briefs, crew revisions, conversations, messages,
+commands, decisions, escalations, interventions, plans, runs, tasks, approvals, events, artifacts,
+skills, professional-profile revisions, schedules, sessions, and workers.
 
 ### SYS-005 — Time representation
 
-Persisted timestamps MUST represent an unambiguous instant. User-facing rendering MUST identify the
-applied timezone.
+Persisted timestamps MUST represent an unambiguous instant in UTC. User-facing rendering MUST
+identify the applied configured IANA timezone.
 
 ### SYS-006 — Interface parity
 
@@ -75,18 +77,18 @@ through a documented programmatic interface with the same validation and authori
 Expected user, policy, dependency, and system failures MUST use stable machine-readable error codes
 and MUST NOT be reported as successful runs.
 
-## 4. Repository establishment
+## 4. Execution context and repository establishment
 
-### PRJ-001 — Repository identity
+### PRJ-001 — Repository-bound run identity
 
-A run MUST target exactly one repository and record one immutable base revision identifier.
-Authorized actions MAY produce later revisions, each of which MUST retain lineage to that base and
-the responsible task.
+A repository-bound run MUST target exactly one repository and record one immutable base revision
+identifier. It MUST NOT bind another repository implicitly. Authorized later revisions MUST retain
+lineage to that base and the responsible task.
 
 ### PRJ-002 — Revision validation
 
-The system MUST verify the bound revision before planning and before accepting each externally
-executed task result.
+The system MUST verify the bound repository revision before planning and before accepting each
+externally executed task result for a repository-bound run.
 
 ### PRJ-003 — Repository discovery
 
@@ -107,23 +109,37 @@ than infer a definitive value without evidence.
 Reinitializing an existing project MUST preserve accepted run history and MUST produce a new
 discovery revision rather than overwriting prior discovery evidence.
 
-### PRJ-007 — Project-specific behavior
+### PRJ-007 — Context-specific behavior
 
-Two repositories with materially different discovered characteristics MUST be permitted to produce
-different plans for the same named organizational outcome.
+Two repositories or prospective workspaces with materially different discovered characteristics
+MUST be permitted to produce different plans for the same objective or optional template guidance.
 
 ### PRJ-008 — Multi-repository mission binding
 
-A mission MAY coordinate multiple repository-bound runs. Each run MUST still satisfy PRJ-001 and
-MUST record the mission-level dependency, revision, result, and acceptance relationship without
-granting one repository's paths or authority to another repository implicitly.
+A mission MAY coordinate multiple repository- or prospective-workspace-bound runs. Each run MUST
+satisfy PRJ-001–002 or PRJ-009–010 as applicable and MUST record the mission-level dependency,
+context, revision where applicable, result, and acceptance relationship without granting one
+context's paths or authority to another implicitly.
+
+### PRJ-009 — Greenfield execution context
+
+Before a greenfield repository exists, a run MUST bind exactly one versioned prospective workspace
+and discovery revision and MUST record the repository base as not yet established. A run that is
+neither repository-bound nor prospective-workspace-bound MUST be refused.
+
+### PRJ-010 — Greenfield validation and establishment lineage
+
+The system MUST verify the prospective workspace and discovery revision before planning and before
+accepting each externally executed task result. Establishing a repository MUST create an explicit
+lineage transition to a repository identity and base revision rather than silently replacing the
+prospective context.
 
 ## 5. Planning and approval
 
-### PLN-001 — Explicit objective
+### PLN-001 — Explicit repository-bound objective
 
-Every plan MUST identify the engineer-provided objective, repository revision, requested outcome,
-and applicable policy revision.
+Every repository-bound plan MUST identify the engineer-provided objective, repository revision,
+requested result, optional mission-template reference, and applicable policy revision.
 
 ### PLN-002 — Structured plan
 
@@ -150,8 +166,8 @@ versioned policy. The decision MUST be one of allow, require approval, or deny.
 ### PLN-006 — Policy pre-authorization
 
 A plan MAY begin without interactive approval when a versioned policy matches its objective class,
-repository, workflow outcome, role set, capability authority, path and external-resource scopes,
-resource limits, and plan constraints.
+bound execution context, optional mission-template identity, role set, capability authority, path
+and external-resource scopes, resource limits, and plan constraints.
 
 ### PLN-007 — Pre-authorization mismatch
 
@@ -238,6 +254,12 @@ then pass the applicable policy or engineer-approval boundary before becoming ef
 The system MUST allow the engineer to request an explanation depth and focus areas for decision
 support. Adapting the explanation MUST NOT remove technical evidence, uncertainty, risks, or
 consequences required by PLN-012–018.
+
+### PLN-020 — Explicit greenfield plan context
+
+Every prospective-workspace plan MUST identify the engineer-provided objective, prospective
+workspace and discovery revision, requested result, optional mission-template reference, and
+applicable policy revision. It MUST NOT invent a repository identity or base revision.
 
 ## 6. Organization and coordination
 
@@ -649,9 +671,9 @@ scripts, references, templates, examples, and tests addressed from that manifest
 
 ### SKL-002 — Distinct semantics
 
-The system MUST distinguish a skill from a tool, prompt, organizational role, workflow outcome,
-and repository-specific plan. Selecting a skill MUST NOT grant capabilities or replace CrewAI
-coordination, plan authorization, or deterministic enforcement.
+The system MUST distinguish a skill from a tool, prompt, organizational role, mission template,
+and execution-context-specific task plan. Selecting a skill MUST NOT grant capabilities or replace
+CrewAI coordination, plan authorization, or deterministic enforcement.
 
 ### SKL-003 — Level 0 catalogue
 
@@ -731,7 +753,7 @@ When supplied source material cannot be safely or usefully embedded in a skill p
 MUST allow the skill to retain attributed retrieval instructions and references instead of copying
 the entire source.
 
-### SKL-016 — Staged mutations
+### SKL-016 — Governed mutations
 
 Create, patch, edit, delete, archive, restore, and supporting-file changes MUST execute as typed
 stateful capabilities under effective policy. Policy MUST be able to allow a routine mutation
@@ -798,8 +820,8 @@ but MUST pass the same provenance, inspection, and policy path as every other ex
 
 ### TOL-001 — Distinct semantics
 
-The system MUST distinguish a tool from a skill, prompt, organizational role, workflow outcome,
-and task. A tool is one typed atomic capability; registering or selecting it MUST NOT grant
+The system MUST distinguish a tool from a skill, prompt, organizational role, mission template,
+and task plan. A tool is one typed atomic capability; registering or selecting it MUST NOT grant
 authority or create a competing agent execution loop.
 
 ### TOL-002 — Versioned tool contract
@@ -850,8 +872,8 @@ Registry changes MUST create a new snapshot and MUST NOT silently alter an accep
 
 A task MAY use only exact tools present in its accepted plan, permitted for the assigned role,
 available in the bound registry snapshot, and supported by the assigned execution location.
-Repository evidence, outcome constraints, role eligibility, and toolsets MAY guide selection but
-MUST resolve to those exact tool identities before plan acceptance.
+Execution-context evidence, objective and optional-template constraints, role eligibility, and
+toolsets MAY guide selection but MUST resolve to those exact tool identities before plan acceptance.
 
 ### TOL-010 — No implicit authority expansion
 
@@ -1399,8 +1421,9 @@ interactive execution.
 
 ### AUT-002 — Persistent schedule
 
-A schedule MUST survive control-process restart and identify its project, outcome, input, timezone,
-trigger, pre-authorization policy, and status.
+A schedule MUST survive control-process restart and identify its project or prospective workspace,
+mission request, optional template reference, input, timezone, trigger, overlap key,
+pre-authorization policy, and status.
 
 ### AUT-003 — Timezone
 
@@ -1409,8 +1432,9 @@ timezone.
 
 ### AUT-004 — Overlap prevention
 
-The system MUST prevent concurrent active runs of the same outcome for the same project unless an
-explicit policy permits overlap.
+The system MUST prevent concurrent active runs with the same configured overlap key unless an
+explicit policy permits overlap. The key MUST be derived from the resolved mission target and MUST
+NOT depend on membership in a fixed outcome catalogue.
 
 ### AUT-005 — Idempotent trigger
 
@@ -1449,8 +1473,9 @@ whose requirements it satisfies.
 
 ### DST-005 — Versioned task envelope
 
-A remote task assignment MUST be immutable after issuance and include the repository revision, plan fingerprint, task contract,
-role definition fingerprint, inputs, policy fingerprint, path scope, resources, and deadline.
+A remote task assignment MUST be immutable after issuance and include the execution-context
+revision, repository revision when established, plan fingerprint, task contract, role-definition
+fingerprint, inputs, policy fingerprint, path scope, resources, and deadline.
 
 ### DST-006 — Lease
 
@@ -1464,8 +1489,8 @@ trigger lease-based recovery.
 
 ### DST-008 — Revision mismatch
 
-A worker MUST refuse execution or completion when its repository revision differs from the task
-envelope.
+A worker MUST refuse execution or completion when its execution-context revision or applicable
+repository revision differs from the task envelope.
 
 ### DST-009 — Worker authority
 
@@ -1533,7 +1558,7 @@ events, logs, snapshots, artifacts, reports, or diffs.
 | Code | Condition | Required result |
 |---|---|---|
 | ERR-CFG-001 | Effective configuration is absent, malformed, or incompatible | Refuse the requested operation; identify the invalid field or version |
-| ERR-PRJ-001 | Repository or revision cannot be established | Do not plan or run; report evidence failure |
+| ERR-PRJ-001 | Repository/base revision or prospective-workspace/discovery revision cannot be established | Do not plan or run; report evidence failure |
 | ERR-PLN-001 | Plan violates schema, organization, or policy | Reject plan with every detected violation |
 | ERR-PLN-002 | Plan has no valid authorization decision, or required approval is absent | Remain awaiting decision or approval; do not execute |
 | ERR-DEC-001 | Decision context or evidence is insufficient for a justified recommendation | Return an inconclusive result with assumptions and unknowns; do not change durable authority |
@@ -1542,7 +1567,7 @@ events, logs, snapshots, artifacts, reports, or diffs.
 | ERR-POL-002 | Equally specific and prioritized policy rules conflict | Deny without selecting a rule; expose the conflict |
 | ERR-ROL-001 | Production/evaluation or orchestration/reporting conflict | Reject task assignment |
 | ERR-OUT-001 | Result fails its output contract | Reject, retry within policy, then fail with evidence |
-| ERR-REV-001 | Repository revision differs from accepted plan | Block execution or completion and require reconciliation |
+| ERR-REV-001 | Execution-context or applicable repository revision differs from the accepted plan | Block execution or completion and require reconciliation |
 | ERR-RUN-001 | Run is interrupted | Preserve accepted results and expose resumable state |
 | ERR-RUN-002 | Duplicate result is received | Preserve first accepted result; record and ignore duplicate |
 | ERR-DEP-001 | Optional context service is unavailable | Continue only permitted degraded work and expose limitation |
@@ -1570,7 +1595,7 @@ events, logs, snapshots, artifacts, reports, or diffs.
 | ERR-WRK-001 | Worker identity, capability, revision, or lease is invalid | Reject claim or completion and preserve evidence |
 | ERR-VER-001 | Persisted schema version is unsupported | Refuse automatic mutation and identify required operator action |
 
-## 27. Approved and candidate technical constraints
+## 27. Retained and proposed technical constraints
 
 This section records implementation constraints separately from behavioral requirements. It does
 not assign component responsibilities.
@@ -1600,8 +1625,8 @@ version 1.
 
 ### TC-005 — Local and distributed metadata
 
-The accepted direction is an embedded relational store for non-distributed operation and PostgreSQL
-for distributed operation. This becomes binding only after the persistence ADR is approved.
+The retained D-015 direction is an embedded relational store for non-distributed operation and
+PostgreSQL for distributed operation behind equivalent repository and transaction semantics.
 
 ### TC-006 — Policy-controlled migrations
 
@@ -1629,6 +1654,12 @@ adapter. Concrete vendors remain deployment decisions.
 
 ## Appendix A — Organization version 1 roster
 
+The human CEO is external to the 59-identity roster. Inside the organization, PM heads Product and
+Experience; CTO heads Architecture and System Design, Software Engineering, Data and AI,
+Platform/Delivery/Reliability, and Security/Supply Chain. Independent Assurance, Research and
+Decision Support, and Documentation and Organizational Learning remain separate responsibility
+homes so mission composition cannot erase their independence.
+
 ### Executive agents
 
 `PM`, `CTO`
@@ -1643,7 +1674,11 @@ adapter. Concrete vendors remain deployment decisions.
 
 ### Software Engineering
 
-`Software_EngineeringLead`, `Web_Application_Engineer`, `Android_Engineer`,
+`Software_EngineeringLead`
+
+#### Software Engineering Pool
+
+`Web_Application_Engineer`, `Android_Engineer`,
 `Apple_Platform_Engineer`, `Backend_Service_Engineer`, `Desktop_TUI_Engineer`,
 `Systems_Software_Engineer`, `Integration_SDK_Engineer`
 
@@ -1662,13 +1697,27 @@ adapter. Concrete vendors remain deployment decisions.
 
 ### Independent Assurance
 
-`Quality_Lead`, `Product_Functional_Evaluator`, `Software_Technical_Evaluator`,
+`Quality_Lead`
+
+#### Quality Evaluation Pool
+
+`Product_Functional_Evaluator`, `Software_Technical_Evaluator`,
 `Mobile_Application_Evaluator`, `Accessibility_Evaluator`,
 `Performance_Resilience_Evaluator`, `Data_AI_Evaluator`, `Platform_Release_Evaluator`,
+
+#### Security Evaluation Pool
+
 `Application_Security_Evaluator`, `Platform_Infrastructure_Security_Evaluator`,
 `Identity_Access_Security_Evaluator`, `SupplyChain_Security_Evaluator`,
-`Data_AI_Security_Evaluator`, `Product_Delivery_Reporter`, `Technical_Change_Reporter`,
-`Incident_Operations_Reporter`, `Evidence_Auditor`
+`Data_AI_Security_Evaluator`
+
+#### Mission Reporting Pool
+
+`Product_Delivery_Reporter`, `Technical_Change_Reporter`, `Incident_Operations_Reporter`
+
+#### Evidence Audit
+
+`Evidence_Auditor`
 
 ### Research and Decision Support
 
@@ -1677,12 +1726,19 @@ adapter. Concrete vendors remain deployment decisions.
 
 ### Documentation and Organizational Learning
 
+#### Documentation Pool
+
 `Product_Documentation_Specialist`, `Developer_Documentation_Specialist`,
 `Architecture_Documentation_Specialist`, `Operations_Documentation_Specialist`,
-`Security_Documentation_Specialist`, `Knowledge_Curator`, `Skill_Curator`
+`Security_Documentation_Specialist`
 
-The roster contains exactly 59 persistent identities. Branches and pools are responsibility homes;
-they are not static mission teams.
+#### Curation
+
+`Knowledge_Curator`, `Skill_Curator`
+
+The five named pools have exactly the memberships shown above. Pool membership narrows a reusable
+responsibility home; it does not grant tools or authority and does not create a static mission team.
+The roster contains exactly 59 persistent identities.
 
 ## Appendix B — Optional mission-template contract
 
@@ -1703,8 +1759,8 @@ matching template MUST NOT prevent a valid free-form mission.
 
 | PRD item | Principal SRS coverage |
 |---|---|
-| UC-01 Establish organization | PRJ-001–008, ORG-001–003 |
-| UC-02 Delegate objective | PLN-001–011, RUN-001–012 |
+| UC-01 Establish organization | PRJ-001–010, ORG-001–003 |
+| UC-02 Delegate objective | PLN-001–011, PLN-020, RUN-001–012 |
 | UC-03 Coordinate work | ORG-004–016, MSN-001–008, RUN-003–007 |
 | UC-04 Enforce authority | SAF-001–013 |
 | UC-05 Review evidence | MSN-009–015, OBS-001–008, RUN-012 |
@@ -1714,12 +1770,12 @@ matching template MUST NOT prevent a valid free-form mission.
 | UC-09 Use remote capacity | DST-001–010 |
 | UC-10 Extend controlled capabilities | CTX-004, TOL-001–027, ENG-001–008 |
 | UC-11 Make an evidence-based engineering decision | PLN-012–019, ORG-005–007 |
-| UC-12 Govern adaptive mission | PRJ-008, ORG-011–014, MSN-001–008 |
+| UC-12 Govern adaptive mission | PRJ-008–010, PLN-020, ORG-011–014, MSN-001–008 |
 | UC-13 Converse, inspect, intervene | MSN-009–015, SYS-006 |
 | UC-14 Use external harness | MCP-001–009, SYS-006, TC-008 |
 | UC-15 Evolve professional capability | ORG-015–016, SKL-013–024 |
-| SC-01 Repository adaptation | CTX-001–008, PRJ-003–008, ORG-012 |
-| SC-02 End-to-end delegation | PLN-001–019, ORG-001–016, MSN-001–008, RUN-001–012 |
+| SC-01 Repository adaptation | CTX-001–008, PRJ-003–010, ORG-012 |
+| SC-02 End-to-end delegation | PLN-001–020, ORG-001–016, MSN-001–008, RUN-001–012 |
 | SC-03 Human control | SAF-003–013 |
 | SC-04 Recovery | RUN-008–010 |
 | SC-05 Degraded usefulness | KNW-005, WEB-007, ENG-008, ERR-DEP-001 |

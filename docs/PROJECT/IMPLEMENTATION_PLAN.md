@@ -45,10 +45,11 @@ MISHKAN/
 ├── uv.lock
 ├── src/mishkan/
 │   ├── domain/          # contracts, identities, errors, invariants
-│   ├── application/     # commands, queries, mission use cases
-│   ├── organization/    # 59 profiles, branches, pools, crew composition
+│   ├── application/     # commands, queries, transaction orchestration
+│   ├── organization/    # 59 profiles, branches, pools, templates
+│   ├── missions/        # Mission Brief, crews, lifecycle, assignments
 │   ├── conversations/   # channels, messages, decisions, escalations
-│   ├── planning/        # Mission Brief and repository-specific plans
+│   ├── planning/        # execution-context-specific task plans and revisions
 │   ├── crewai/          # sole production agent/team runtime integration
 │   ├── policy/          # public policy and deterministic decisions
 │   ├── registry/        # tools, engines, packs, adapters, availability
@@ -238,7 +239,7 @@ assurance and reporting, converse durably, and process rare governed CEO interve
 - expose `org`, `mission`, `conversation`, `intervention`, and `advisory` through CLI, SDK, HTTP, and
   MCP application contracts.
 
-**Primary trace:** PRJ-008, PLN-012–019, ORG-001–016, MSN-001–015.
+**Primary trace:** PRJ-008–010, PLN-012–020, ORG-001–016, MSN-001–015.
 
 **Gate:** materially different mission fixtures produce different Briefs, crews, plans, tools, and
 evidence; PM/CTO disagreement pauses only dependent work and pings the CEO; producer/evaluator and
@@ -360,7 +361,7 @@ to every affected gate.
 | I03 | SYS-006, RUN-004–005, RUN-007–012, EDT-001–008, EXE-004–008, ART-001–008, OBS-001–008, NFR-003–004, TC-009 |
 | I04 | WEB-001–007, BRW-001–008, MCP-001–009, TC-008 |
 | I05 | CTX-001–008, SKL-001–025, ENG-001–008 |
-| I06 | PRJ-008, PLN-012–019, ORG-001–016, MSN-001–015 |
+| I06 | PRJ-008–010, PLN-012–020, ORG-001–016, MSN-001–015 |
 | I07 | KNW-001–006 |
 | I08 | AUT-001–007 |
 | I09 | DST-001–010 |

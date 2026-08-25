@@ -65,12 +65,15 @@ work context without assuming that all projects share the same structure.
 
 The engineer can submit an outcome such as investigating a defect, designing a change, implementing
 a feature, reviewing architecture, preparing a release, or researching an unknown. The system
-turns that outcome into an explicit, reviewable plan appropriate to the repository.
+turns that outcome into an explicit, reviewable plan appropriate to the repository or prospective
+workspace.
 
-Each run is anchored to one recorded repository revision. The effective policy decides whether a
-plan may execute automatically, requires interactive approval, or must be rejected. Plans may
-adapt during execution inside pre-authorized boundaries; material changes outside those boundaries
-pause for a policy decision or engineer approval.
+Each run is anchored either to one recorded repository revision or, before a greenfield repository
+exists, to one versioned prospective workspace context. A single run never receives implicit
+authority over multiple repositories. The effective policy decides whether a plan may execute
+automatically, requires interactive approval, or must be rejected. Plans may adapt during execution
+inside pre-authorized boundaries; material changes outside those boundaries pause for a policy
+decision or engineer approval.
 
 ### UC-03 — Coordinate specialized work
 
@@ -206,10 +209,11 @@ consequential operations.
 Production and evaluation are different responsibilities. Reporting is also independent from the
 actor making orchestration decisions.
 
-### PP-03 — Repository-specific planning
+### PP-03 — Execution-context-specific planning
 
-A named organizational outcome remains stable, but its execution plan adapts to the repository,
-requested objective, available capabilities, and approved policy.
+A free-form objective or optional mission template may be reused, but its execution plan adapts to
+the repository or prospective workspace, requested result, available capabilities, and approved
+policy.
 
 ### PP-04 — Inspectable operation
 
@@ -237,7 +241,7 @@ knowledge only through visible provenance and approval.
 
 A skill is a portable, inspectable procedure that helps an organizational role perform a class of
 work. Skills enrich authorized CrewAI work; they do not replace the organization, the
-repository-specific plan, the coordination runtime, or deterministic capability enforcement.
+execution-context-specific plan, the coordination runtime, or deterministic capability enforcement.
 
 ### PP-10 — Tools are typed capabilities
 
@@ -400,10 +404,14 @@ The PRD intentionally does not decide:
 
 Those decisions follow only after this product problem and scope are approved.
 
-## 8. Approved product decisions
+## 8. Product decision baseline proposed for D-032
 
-1. One run targets one repository and records one immutable base revision; authorized actions may
-   produce later revisions whose lineage is captured by the run.
+This list combines retained prior decisions with the amendments proposed by version 1.4. The
+combined baseline becomes authoritative only if D-032 is accepted.
+
+1. One run binds one execution context: one repository and immutable base revision, or one
+   prospective workspace before a greenfield repository exists. Authorized establishment and later
+   revisions retain lineage; multi-repository missions coordinate multiple context-bound runs.
 2. Plan execution and revision are risk- and policy-bound. Matching work may proceed unattended;
    only boundary crossings or policy-designated actions require interactive approval.
 3. Stateful capabilities, including commit and push, are configurable rather than universally

@@ -84,7 +84,8 @@ flowchart LR
 ```mermaid
 flowchart TB
     API["Application interfaces and identity"]
-    Org["Organization and mission governance"]
+    Org["Organization definitions"]
+    Mission["Mission governance"]
     Conversation["Conversations and interventions"]
     Planning["Context and planning"]
     Policy["Policy and approvals"]
@@ -97,12 +98,14 @@ flowchart TB
     Knowledge["Attributed knowledge"]
     Artifacts["Artifacts and working references"]
     Events["State, evidence, projections, and outbox"]
-    Automation["Scheduling and workers"]
+    Scheduling["Scheduling"]
+    Workers["Worker coordination"]
     Conformance["Conformance and release assurance"]
 
-    API --> Org
-    Org --> Conversation
-    Org --> Planning
+    API --> Mission
+    Mission --> Org
+    Mission --> Conversation
+    Mission --> Planning
     Planning --> Policy
     Policy -->|"authorized mission and plan"| Crew
     Crew --> Quality
@@ -115,35 +118,38 @@ flowchart TB
     Quality --> Artifacts
     Quality --> Events
     Conversation --> Events
-    Automation --> Crew
+    Scheduling --> Mission
+    Workers --> Crew
     Events -.-> API
     Conformance -.-> Crew
     Conformance -.-> Gateway
 ```
 
-| Module | Primary responsibilities |
-|---|---|
-| Application interfaces and identity | RSP-001–003 |
-| Repository context and planning | RSP-004–005 |
-| Policy and approvals | RSP-006 |
-| Organization and mission governance | RSP-007, RSP-022 |
-| Direct CrewAI integration | RSP-008 |
-| Evaluation, reporting, and acceptance | RSP-009–010 |
-| Effect and capability gateway | RSP-011–012 |
-| Attributed knowledge | RSP-013 |
-| Skill lifecycle and use | RSP-014, RSP-020 |
-| State, evidence, projections, and outbox | RSP-015 |
-| Scheduling and workers | RSP-016–017 |
-| Conformance and release assurance | RSP-018–019 |
-| Tool registry | RSP-021 |
-| Artifacts and working references | RSP-023 |
-| MCP and harness mediation | RSP-024 |
-| Engine, environment, and pack resolution | RSP-025 |
-| Professional evolution | RSP-026 |
+| Primary component | Primary responsibilities | Distinct internal modules or boundary |
+|---|---|---|
+| Application interfaces and identity | RSP-001–003 | command/query facade and client identity |
+| Execution-context evidence and planning | RSP-004–005 | repository/greenfield context and plan revisions |
+| Policy and approvals | RSP-006 | decision authority |
+| Organization definitions | RSP-007 | profiles, branches, explicit pools, templates |
+| Mission application component | RSP-022 | separate mission-governance and conversation/intervention modules under one primary owner |
+| Direct CrewAI integration | RSP-008 | production coordination boundary |
+| Evaluation, reporting, and acceptance | RSP-009–010 | independent assurance and deterministic acceptance |
+| Effect and security gateway | RSP-011–012 | separate enforcement, native-capability/session adapters, and content-security modules |
+| Attributed knowledge | RSP-013 | knowledge routing and provenance |
+| Skill lifecycle and use | RSP-014, RSP-020 | skill catalogue, selection, learning, and lifecycle |
+| State, evidence, projections, and outbox | RSP-015 | authoritative persistence and derived observation |
+| Scheduling | RSP-016 | schedule and trigger governance |
+| Worker coordination | RSP-017 | enrollment, leases, envelopes, and completion delivery |
+| Conformance and release assurance | RSP-018–019 | quality and runtime conformance |
+| Tool registry | RSP-021 | tool contracts, snapshots, and CrewAI bindings |
+| Artifacts and working references | RSP-023 | immutable content metadata, CAS references, and recovery |
+| MCP and harness mediation | RSP-024 | MCP client/server and external-client application translation |
+| Engine, environment, and pack resolution | RSP-025 | observed availability and materialization |
+| Professional evolution | RSP-026 | scoped competence and profile evidence |
 
-Native file, edit, process, Bash, PTY, job, Web, Browser, and artifact adapters are capability
-implementations behind RSP-011 and the applicable registry/session module. They do not own policy
-or become independent application services.
+Native file, edit, process, Bash, PTY, job, Web, and Browser adapters remain distinct modules behind
+RSP-011; artifact operations terminate at RSP-023. These modules do not own policy or become
+independent application services.
 
 ## 4. Application command and observation paths
 

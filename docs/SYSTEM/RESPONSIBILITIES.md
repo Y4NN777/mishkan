@@ -7,9 +7,9 @@
 
 ## 1. Purpose
 
-This document assigns every approved guarantee to one primary responsibility before components are
-designed. A responsibility describes logic and state ownership. It is not yet a Python module,
-service, daemon, database, or deployment unit.
+This proposed amendment assigns every SRS 1.6 guarantee to one primary responsibility before
+components are designed. A responsibility describes logic and state ownership. It is not yet a
+Python module, service, daemon, database, or deployment unit.
 
 Rules:
 
@@ -61,14 +61,16 @@ the same validation and authorization; return stable machine-readable failures.
 
 **Owns:** interface parity rules and error catalogue semantics.
 
-### RSP-004 — Establish repository evidence and lineage
+### RSP-004 — Establish execution-context evidence and lineage
 
-Identify the repository and base revision, discover project characteristics from cited evidence,
-represent unknowns honestly, preserve discovery history, and validate produced revision lineage.
+Identify the repository/base revision or prospective-workspace/discovery revision, discover project
+characteristics from cited evidence, represent unknowns honestly, preserve discovery history, and
+validate establishment and produced-revision lineage.
 
-**Owns:** repository binding, discovery revision, evidence citations, produced-revision lineage.
+**Owns:** execution-context binding, discovery revision, evidence citations, repository
+establishment, and produced-revision lineage.
 
-### RSP-005 — Compose and revise repository-specific plans
+### RSP-005 — Compose and revise context-specific plans
 
 Transform an objective and evidence into a normalized task graph with roles, dependencies,
 contracts, capabilities, bounds, and completion criteria. Revise plans through explicit linked
@@ -148,8 +150,8 @@ inspection and quarantine decisions; create immutable candidate versions and ato
 policy-authorized mutations immediately or after staging as the effective policy requires;
 preserve update, archival, reset, and restoration lineage.
 
-**Owns:** skill-source catalogue, provenance lock, inspection and quarantine record, staged mutation,
-active-version pointer, pin and archival state, recoverable lineage.
+**Owns:** skill-source catalogue, provenance lock, inspection and quarantine record, candidate or
+staged mutation, active-version pointer, pin and archival state, recoverable lineage.
 
 ### RSP-015 — Persist and project events and evidence
 
@@ -266,8 +268,8 @@ Each range is inclusive. No requirement appears in more than one row.
 | RSP-001 | SYS-001–003 |
 | RSP-002 | SYS-004–005, NFR-007 |
 | RSP-003 | SYS-006–007 |
-| RSP-004 | PRJ-001–008, CTX-001–003 |
-| RSP-005 | PLN-001–004, PLN-009–019 |
+| RSP-004 | PRJ-001–010, CTX-001–003 |
+| RSP-005 | PLN-001–004, PLN-009–020 |
 | RSP-006 | PLN-005–008, SAF-003–006 |
 | RSP-007 | ORG-001–004, ORG-010–014 |
 | RSP-008 | ORG-009, RUN-001–005, RUN-007, RUN-009, RUN-011 |
@@ -350,10 +352,10 @@ authorization decision but does not enforce its own decision.
 
 | Producer | Consumer | Required handoff |
 |---|---|---|
-| RSP-001 | RSP-005–021 | Effective configuration identity and provenance |
-| RSP-004 | RSP-005, RSP-010, RSP-017 | Repository evidence, base revision, and lineage |
+| RSP-001 | RSP-002–026 | Effective configuration identity and provenance |
+| RSP-004 | RSP-005, RSP-010, RSP-017, RSP-022 | Bound execution context, applicable base revision, discovery evidence, and lineage |
 | RSP-005 | RSP-006 | Exact normalized plan fingerprint and capability requests |
-| RSP-006 | RSP-008, RSP-011, RSP-016, RSP-017 | Durable authorization decision and exact scope |
+| RSP-006 | RSP-008, RSP-011, RSP-014, RSP-016–017, RSP-022–026 | Durable authorization decision and exact scope |
 | RSP-007 | RSP-005, RSP-008, RSP-009, RSP-022, RSP-026 | Versioned identities, profiles, branches, pools, templates, and separation metadata |
 | RSP-007 | RSP-021 | Role tool eligibility and declared toolset references |
 | RSP-021 | RSP-005, RSP-008, RSP-011 | Registry snapshot, exact task binding, and CrewAI tool representation |
