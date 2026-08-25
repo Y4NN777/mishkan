@@ -68,6 +68,10 @@ not silently turn them into approved architecture.
 - Treat the 59 identities as persistent professional profiles and Mission Crews as temporary
   contextual compositions. PM and CTO are agents in the organization; free-form missions may use
   optional templates but never require a universal workflow.
+- Require an explicit execution-environment decision for environment-dependent mission work.
+  Reuse existing project definitions when compatible; treat Dev Container, Podman, Docker, Nix,
+  native-host, and other formats as contextual versioned inputs. Generated descriptors are
+  artifacts or governed change sets and never prove runtime readiness by themselves.
 - Treat CLI, SDK, chat, TUI, HTTP/SSE, MCP, schedules, Codex, Claude, and other harnesses as clients
   of the same MISHKAN application authority. The TUI may issue governed interventions; no client
   replaces CrewAI or owns stronger policy or authoritative state.

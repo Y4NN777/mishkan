@@ -35,6 +35,9 @@ complete documentary baseline. This proposed plan grants no production-code auth
    record only observed evidence after a real gate.
 9. Final schema shapes, adapter products, dependency patches, benchmarks, and OS profiles are
    locked by their owning increment, not guessed in this baseline.
+10. Every environment-dependent mission records an explicit environment decision. Containerization
+    is never assumed: reuse, authorized host-native execution, generation, proposed project change,
+    and unresolved dependency are all truthful outcomes.
 
 ## 3. Target repository boundaries
 
@@ -53,6 +56,7 @@ MISHKAN/
 │   ├── crewai/          # sole production agent/team runtime integration
 │   ├── policy/          # public policy and deterministic decisions
 │   ├── registry/        # tools, engines, packs, adapters, availability
+│   ├── environments/    # mission decisions, descriptor sets, materialization evidence
 │   ├── capabilities/    # file, edit, process, shell, PTY, Web, Browser
 │   ├── mcp/             # client, server facade, mediation, transports
 │   ├── skills/          # SKILL.md, bundles, learning, lifecycle
@@ -206,15 +210,46 @@ and truthfully materializes representative development environments.
   coherent live patch/edit, atomic activation, reset, archival, restoration, and crash recovery;
 - implement engine discovery, adapter justification, independent availability states, technical
   packs, reproducible environment materialization, evidence adapters, and visible fallback;
+- define and publish versioned `EnvironmentObservation`, `MissionEnvironmentDecision`,
+  `EnvironmentBinding`, `EnvironmentDescriptorSet`, and `EnvironmentVerification` contracts with
+  stable outcome, lifecycle, provenance, affected-task, and refusal semantics;
+- discover project-owned environment evidence without mutation: Dev Container definitions,
+  Containerfile/Dockerfile inputs, verified Compose files, Podman Kubernetes/Quadlet inputs, Nix or
+  mise configuration, language manifests and lockfiles, CI setup, documented commands, target
+  platforms, and safe engine/version probes;
+- implement the decision outcomes `reuse_existing`, `host_native`, `generate`,
+  `propose_project_change`, and `unresolved`, including multiple bindings for missions that span
+  different repositories, services, platforms, or execution locations;
+- implement independent versioned adapters for Development Container metadata and the selected
+  conforming CLI; Podman detection plus Containerfile/Dockerfile build and bounded run behavior;
+  and, only where required by the operation, Podman Kubernetes YAML or Quadlet. Treat Compose as a
+  separate compatibility binding whose concrete provider must be observed and verified;
+- generate the smallest mission-specific descriptor set as immutable artifacts and optional typed
+  Edit/Patch change sets. Preserve base revisions, target platform/architecture, base-image
+  identity, build context, features/dependencies, mounts, user model, network/resources,
+  credential references, lifecycle commands, cleanup, and compatibility limits when applicable;
+- verify parse/schema validity, acquisition or build, startup/readiness, workspace access,
+  dependency availability, representative project commands, artifacts, cleanup, and repeatability
+  at the intended location. Preserve logs, image identities, effects, timing, limitations, and
+  `verified`, `failed`, `cancelled`, or `uncertain` settlement;
+- prove that existing project definitions are reused when compatible and cannot be overwritten by
+  generation alone; project persistence must cross I03 Edit/Patch while build/start/probe/cleanup
+  crosses I03 Terminal/Process or a justified typed adapter;
 - accept project commands as Terminal/Process inputs and provide representative fixtures for Go,
   JavaScript/TypeScript, Java/Kotlin, Android, Python, Rust, C, and Swift.
 
-**Primary trace:** CTX-001–008, SKL-001–025, ENG-001–008.
+**Primary trace:** CTX-001–008, SKL-001–025, ENG-001–013.
 
 **Gate:** a project-specific missing procedure can yield a Research-authored candidate; effective
 policy can activate a safe native correction immediately or require review; a community candidate
 cannot self-install; every fixture proves actual engine/environment state or an honest unsupported
-result; restoration is byte-identical and retains evidence.
+result; restoration is byte-identical and retains evidence. Environment acceptance additionally
+uses at least: one existing Dev Container reused without mutation; one greenfield descriptor set
+generated and verified; one Podman Containerfile build and bounded run on a compatible worker; one
+multi-service or lifecycle fixture that either proves its selected Compose/Podman adapter or
+truthfully refuses it; one incompatible platform; one secret-reference case; one stale-base
+conflict; one build interruption with non-fabricated settlement; and one cleanup/re-run proving the
+declared reproducibility boundary.
 
 ### I06 — Organization, missions, communication, and professional evolution
 
@@ -228,6 +263,16 @@ assurance and reporting, converse durably, and process rare governed CEO interve
   independence, authority, and profile evidence;
 - implement free-form mission origins, optional templates, Mission Briefs, crew revisions,
   accountable assignments, lifecycle, PM/CTO agreement, scoped disagreement, and CEO escalation;
+- add environment intent to the Mission Brief and require a versioned mission environment decision
+  before dependent tasks become eligible. PM confirms product/developer-experience needs, CTO
+  confirms platform, security, quality, and operability coverage, and the Mission Lead tracks the
+  decision as a plan dependency rather than selecting a container format by role;
+- support per-context environment bindings inside one mission; expose reused definitions,
+  generated descriptor artifacts, proposed project change sets, verification evidence,
+  degradation, and affected tasks through mission inspection and conversations;
+- when repository revision, platform, required engine, policy, or mission scope invalidates a
+  binding, create a new environment and plan revision, preserve prior evidence, and pause only
+  tasks that depend on the invalid binding;
 - support greenfield, existing, multi-repository, product, research, incident, modernization,
   platform, and operational missions without a fixed workflow catalogue;
 - implement Executive, Mission, Branch, and authorized Direct conversations; separate messages,
@@ -239,12 +284,31 @@ assurance and reporting, converse durably, and process rare governed CEO interve
 - expose `org`, `mission`, `conversation`, `intervention`, and `advisory` through CLI, SDK, HTTP, and
   MCP application contracts.
 
-**Primary trace:** PRJ-008–010, PLN-012–020, ORG-001–016, MSN-001–015.
+**Primary trace:** PRJ-008–010, PLN-012–020, ORG-001–016, MSN-001–016.
 
 **Gate:** materially different mission fixtures produce different Briefs, crews, plans, tools, and
 evidence; PM/CTO disagreement pauses only dependent work and pings the CEO; producer/evaluator and
 orchestrator/reporter conflicts are rejected; a restart preserves the Executive conversation and
-an authorized intervention has identical TUI-independent API semantics.
+an authorized intervention has identical TUI-independent API semantics. Greenfield,
+existing-project, multi-repository, and platform-specific fixtures produce different environment
+decisions; no dependent task starts from a generated-but-unverified descriptor; and a binding
+revision pauses only its dependent task set.
+
+#### Environment delivery boundary across increments
+
+| Increment | Environment responsibility | Acceptance boundary |
+|---|---|---|
+| I02 | Read project evidence and execute bounded direct/Bash probes | No environment generation or mutation is claimed |
+| I03 | Supply immutable artifacts, Edit/Patch change sets, jobs, recovery, and durable events | Descriptor bytes and effects can be stored, applied, observed, and recovered truthfully |
+| I05 | Resolve engines and context; decide, generate, materialize, verify, and settle environment bindings | The environment capability works independently on representative fixtures |
+| I06 | Make the decision a required mission-plan dependency and expose it to PM, CTO, crews, and clients | Environment-dependent mission tasks cannot outrun their verified binding |
+| I09 | Re-resolve and verify bindings against advertised remote-worker location and immutable envelope evidence | A local verification is never reused as proof for an incompatible worker |
+| I11 | Expand platform/version fixtures, benchmarks, fault tests, packaging, and operational guidance | Supported combinations are published only from measured conformance evidence |
+
+I05 MUST NOT invent its own file mutation, process lifecycle, artifact store, policy, or mission
+runtime. I06 MUST NOT infer an environment from an agent role or optional mission template. The
+only cross-increment identity is the versioned mission environment decision and its referenced
+artifacts, change sets, adapter evidence, and plan dependencies.
 
 ### I07 — Attributed knowledge and degraded operation
 
@@ -360,8 +424,8 @@ to every affected gate.
 | I02 | PLN-005–008, SAF-001–013, TOL-001–027, FIL-001–007, EXE-001–003, TC-006 |
 | I03 | SYS-006, RUN-004–005, RUN-007–012, EDT-001–008, EXE-004–008, ART-001–008, OBS-001–008, NFR-003–004, TC-009 |
 | I04 | WEB-001–007, BRW-001–008, MCP-001–009, TC-008 |
-| I05 | CTX-001–008, SKL-001–025, ENG-001–008 |
-| I06 | PRJ-008–010, PLN-012–020, ORG-001–016, MSN-001–015 |
+| I05 | CTX-001–008, SKL-001–025, ENG-001–013 |
+| I06 | PRJ-008–010, PLN-012–020, ORG-001–016, MSN-001–016 |
 | I07 | KNW-001–006 |
 | I08 | AUT-001–007 |
 | I09 | DST-001–010 |
