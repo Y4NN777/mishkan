@@ -69,7 +69,9 @@ not silently turn them into approved architecture.
   contextual compositions. PM and CTO are agents in the organization; free-form missions may use
   optional templates but never require a universal workflow.
 - Require an explicit execution-environment decision for environment-dependent mission work.
-  Reuse existing project definitions when compatible; treat Dev Container, Podman, Docker, Nix,
+  An accountable Mission Crew agent authors it through CrewAI; deterministic resolution validates
+  compatibility and binds adapters without selecting a different engineering outcome. Reuse
+  existing project definitions when compatible; treat Dev Container, Podman, Docker, Nix,
   native-host, and other formats as contextual versioned inputs. Generated descriptors are
   artifacts or governed change sets and never prove runtime readiness by themselves.
 - Treat CLI, SDK, chat, TUI, HTTP/SSE, MCP, schedules, Codex, Claude, and other harnesses as clients

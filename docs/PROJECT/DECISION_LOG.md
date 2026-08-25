@@ -91,7 +91,7 @@ left solely in that register; authority transfers only when D-032 through D-036 
 | WD-025 | PRD UC-07; SRS SKL-001–025; Contract Skill §9; RSP-014/020; Model §11; I05 |
 | WD-026 | PRD SC-15; SRS ENG-001–008; Contract CTR-020; RSP-025; Architecture §6; I05/I11 |
 | WD-027 | PRD UC-12–15; SRS ORG-001–016 and MSN-001–015; Contract CTR-015–018; RSP-007/022/026; Model §3–7; I06 |
-| WD-028 | PRD UC-12/PP-16/SC-13; SRS MSN-016 and ENG-009–013; Contract CTR-020/INV-042; RSP-022/025; Model §8.1; Architecture §6; I05/I06/I09/I11 |
+| WD-028 | PRD UC-12/PP-16/SC-13; SRS PLN-021, MSN-016, and ENG-009–013; Contract CTR-015/020 and INV-042; RSP-005/008/022/025; Model §4/§8.1; Architecture §5–6; I05/I06/I09/I11 |
 
 ## Open decisions
 

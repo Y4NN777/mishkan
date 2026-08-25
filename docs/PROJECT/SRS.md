@@ -261,6 +261,15 @@ Every prospective-workspace plan MUST identify the engineer-provided objective, 
 workspace and discovery revision, requested result, optional mission-template reference, and
 applicable policy revision. It MUST NOT invent a repository identity or base revision.
 
+### PLN-021 — Agent-authored mission environment plan
+
+For every context identified by MSN-016, the accepted plan MUST contain a Mission Crew proposal
+produced through CrewAI with one accountable owner, the requested outcome from ENG-009, rationale,
+source evidence, affected tasks and locations, required descriptor semantics or bounded selection
+constraints, expected effects, verification and cleanup criteria, and material alternatives or
+unknowns. Engine availability, a mission template, or an organizational role MUST NOT select the
+outcome by itself. A consequential environment choice MUST also satisfy PLN-012–018.
+
 ## 6. Organization and coordination
 
 ### ORG-001 — Versioned organization
@@ -1382,21 +1391,22 @@ whose required meaning cannot be preserved and MUST NOT infer success from absen
 ### ENG-009 — Mission-scoped environment decision
 
 For each materially distinct repository, greenfield workspace, service group, or execution
-location used by a mission, the system MUST derive a versioned environment decision from the
-Mission Brief, project evidence, target platform, required engines, policy, and verification needs.
-The decision MUST state `reuse_existing`, `host_native`, `generate`, `propose_project_change`, or
-`unresolved`; identify affected tasks and locations; and MUST NOT treat one choice as a universal
-default.
+location used by a mission, the system MUST validate the PLN-021 proposal and resolve its requested
+`reuse_existing`, `host_native`, `generate`, `propose_project_change`, or `unresolved` outcome
+against project evidence, target platform, required engines, policy, and verification needs. It
+MUST produce a versioned compatible binding or a precise incompatibility requiring replanning; it
+MUST NOT silently choose a materially different outcome or engineering design.
 
 ### ENG-010 — Truthful descriptor selection
 
-When ENG-009 selects `generate` or `propose_project_change`, the system MUST select only descriptor
-formats supported by a verified adapter at the target location and identify each format,
-specification or engine version, inputs, and intended lifecycle. Eligible outputs MAY include Dev
-Container metadata; OCI Containerfile or Dockerfile build inputs usable by the selected Podman or
-Docker adapter; a verified Compose definition; or Podman-supported Kubernetes YAML or Quadlet when
-the mission actually requires those semantics. No descriptor family MUST be generated when it does
-not fit the mission.
+When PLN-021 requests `generate` or `propose_project_change`, it MUST identify the required
+environment semantics and either the proposed descriptor formats or explicit bounded selection
+constraints. Resolution MUST honor those constraints, select only formats supported by a verified
+adapter at the target location, and identify each format, specification or engine version, inputs,
+and intended lifecycle. Eligible outputs MAY include Dev Container metadata; OCI Containerfile or
+Dockerfile build inputs usable by the selected Podman or Docker adapter; a verified Compose
+definition; or Podman-supported Kubernetes YAML or Quadlet when the mission actually requires
+those semantics. No descriptor family MUST be generated merely because it is available.
 
 ### ENG-011 — Environment descriptor evidence
 
@@ -1814,7 +1824,7 @@ matching template MUST NOT prevent a valid free-form mission.
 | PRD item | Principal SRS coverage |
 |---|---|
 | UC-01 Establish organization | PRJ-001–010, ORG-001–003 |
-| UC-02 Delegate objective | PLN-001–011, PLN-020, RUN-001–012 |
+| UC-02 Delegate objective | PLN-001–011, PLN-020–021, RUN-001–012 |
 | UC-03 Coordinate work | ORG-004–016, MSN-001–008, MSN-016, RUN-003–007 |
 | UC-04 Enforce authority | SAF-001–013 |
 | UC-05 Review evidence | MSN-009–015, OBS-001–008, RUN-012 |
@@ -1824,12 +1834,12 @@ matching template MUST NOT prevent a valid free-form mission.
 | UC-09 Use remote capacity | DST-001–010 |
 | UC-10 Extend controlled capabilities | CTX-004, TOL-001–027, ENG-001–013 |
 | UC-11 Make an evidence-based engineering decision | PLN-012–019, ORG-005–007 |
-| UC-12 Govern adaptive mission | PRJ-008–010, PLN-020, ORG-011–014, MSN-001–008, MSN-016, ENG-009–013 |
+| UC-12 Govern adaptive mission | PRJ-008–010, PLN-020–021, ORG-011–014, MSN-001–008, MSN-016, ENG-009–013 |
 | UC-13 Converse, inspect, intervene | MSN-009–015, SYS-006 |
 | UC-14 Use external harness | MCP-001–009, SYS-006, TC-008 |
 | UC-15 Evolve professional capability | ORG-015–016, SKL-013–024 |
 | SC-01 Repository adaptation | CTX-001–008, PRJ-003–010, ORG-012 |
-| SC-02 End-to-end delegation | PLN-001–020, ORG-001–016, MSN-001–008, MSN-016, RUN-001–012 |
+| SC-02 End-to-end delegation | PLN-001–021, ORG-001–016, MSN-001–008, MSN-016, RUN-001–012 |
 | SC-03 Human control | SAF-003–013 |
 | SC-04 Recovery | RUN-008–010 |
 | SC-05 Degraded usefulness | KNW-005, WEB-007, ENG-008, ERR-DEP-001 |
@@ -1840,7 +1850,7 @@ matching template MUST NOT prevent a valid free-form mission.
 | SC-10 Skill learning loop | SKL-011–024 |
 | SC-11 Controlled tool extension | TOL-003–027 |
 | SC-12 Decision-quality assistance | PLN-012–019, ERR-DEC-001–002 |
-| SC-13 Adaptive mission operation | ORG-001–016, MSN-001–008, MSN-016, ENG-009–013 |
+| SC-13 Adaptive mission operation | PLN-021, ORG-001–016, MSN-001–008, MSN-016, ENG-009–013 |
 | SC-14 Executive transparency and intervention | MSN-009–015, OBS-001–008 |
 | SC-15 Native engineering execution | FIL-001–007, EDT-001–008, EXE-001–008, ENG-001–013 |
 | SC-16 External harness integration | MCP-001–009, SYS-006, TC-008 |

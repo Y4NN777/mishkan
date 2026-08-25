@@ -107,12 +107,13 @@ flowchart TB
     Mission --> Org
     Mission --> Conversation
     Mission --> Planning
-    Mission --> Environment
+    Mission -->|"bounded clarification and planning"| Crew
+    Crew -->|"candidate Brief and plan"| Mission
+    Crew -->|"candidate plan results"| Planning
     Planning --> Policy
-    Environment --> Planning
+    Planning --> Environment
+    Environment -->|"binding or incompatibility"| Planning
     Environment --> Registry
-    Environment --> Gateway
-    Environment --> Artifacts
     Policy -->|"authorized mission and plan"| Crew
     Crew --> Quality
     Crew --> Registry
@@ -150,7 +151,7 @@ flowchart TB
 | Tool registry | RSP-021 | tool contracts, snapshots, and CrewAI bindings |
 | Artifacts and working references | RSP-023 | immutable content metadata, CAS references, and recovery |
 | MCP and harness mediation | RSP-024 | MCP client/server and external-client application translation |
-| Mission environment, engine, and pack resolution | RSP-025 | environment decisions, descriptor-set generation, observed availability, location-bound verification, and materialization |
+| Mission environment, engine, and pack resolution | RSP-025 | observed eligibility, proposal compatibility, verified bindings, descriptor-adapter resolution, location-bound verification, and materialization evidence |
 | Professional evolution | RSP-026 | scoped competence and profile evidence |
 
 Native file, edit, process, Bash, PTY, job, Web, and Browser adapters remain distinct modules behind
@@ -172,9 +173,13 @@ it does not cache authoritative mission or policy state.
 
 ## 5. CrewAI integration boundary
 
-The CrewAI module receives only an accepted mission, crew revision, plan, exact task bindings, and
-policy-scoped execution context. It materializes supported CrewAI Agents, Tasks, Crews, Processes,
-and Flows directly and records CrewAI runtime identities as lineage.
+The CrewAI module receives bounded authorized organizational-turn envelopes for clarification,
+planning, research, learning, production, evaluation, and reporting, as well as accepted mission
+and task-plan revisions with exact bindings and policy-scoped execution context. It materializes
+supported CrewAI Agents, Tasks, Crews, Processes, and Flows directly and records CrewAI runtime
+identities as lineage. Candidate Mission Briefs, plans, technical decisions, task results,
+evaluations, and reports return to their deterministic owning responsibility for validation and
+durable acceptance.
 
 MISHKAN does not implement a framework-neutral production agent interface. Deterministic doubles
 may replace externalized calls in tests, but no configuration can select them as a production
@@ -201,19 +206,21 @@ task implicitly.
 
 ### Mission environment resolution
 
-The mission-environment module is owned by RSP-025 and consumes the RSP-022 Mission Brief plus
-RSP-004 context evidence. It stores a versioned aggregate with one binding per materially distinct
-repository, greenfield workspace, service group, platform, or execution location. Each binding
-records one outcome—reuse existing, host native, generate, propose project change, or unresolved—
-and fingerprints the evidence, selected adapter, descriptor artifacts, verification, and affected
-plan tasks.
+The mission-environment module is owned by RSP-025. It exposes observed eligible engines, formats,
+locations, compatibility constraints, and unknowns to RSP-005 before a bounded CrewAI planning
+turn. RSP-005 owns the resulting agent-authored `MissionEnvironmentPlan`; RSP-025 then validates its
+requested outcome and resolves one binding per materially distinct repository, greenfield
+workspace, service group, platform, or execution location. A binding fingerprints the accepted
+proposal, evidence, selected adapter, descriptor identities, verification, and affected plan tasks.
+An incompatibility returns to planning and never becomes a silent alternative engineering choice.
 
-The module selects descriptor formats but does not write project files or operate containers by
-itself. Descriptor bytes and manifests terminate at RSP-023. A proposed project materialization is
-a typed change set dispatched through RSP-011's Edit/Patch adapter. Image build, environment start,
-readiness probes, project commands, and cleanup cross the same gateway through direct process,
-Bash, managed job, or a justified typed adapter. Their effects remain individually authorized and
-settled.
+The module validates proposed formats or performs only the bounded selection explicitly left by
+the accepted plan. It does not author project files or operate containers by itself. An accountable
+CrewAI task produces descriptor bytes and invokes the gateway; manifests terminate at RSP-023. A
+proposed project materialization is a typed change set dispatched through RSP-011's Edit/Patch
+adapter. Image build, environment start, readiness probes, project commands, and cleanup cross the
+same gateway through direct process, Bash, managed job, or a justified typed adapter. Their effects
+remain individually authorized and settled.
 
 Format adapters are independent and versioned. The Dev Container adapter validates the selected
 specification and its image, build, or supported multi-container references. Podman image builds
@@ -232,8 +239,8 @@ working-reference semantics.
 | Consistency boundary | Atomic metadata records |
 |---|---|
 | Mission launch or revision | Mission Brief, PM/CTO confirmations, crew revision, command, state transition, outbox fact |
-| Mission environment decision | context and Brief fingerprints, decision revision, binding outcomes, descriptor artifact identities, verification state, affected tasks, outbox fact |
-| Plan acceptance | plan version, context fingerprints, policy decision, exact skill/tool/engine bindings, outbox fact |
+| Mission environment binding | accepted plan fingerprint, requested outcome, binding revision, adapter/location identity, compatibility or refusal, verification state, outbox fact |
+| Plan acceptance | plan version, context fingerprints, agent authorship, environment proposal, policy decision, exact skill/tool/engine bindings, outbox fact |
 | Result acceptance | accepted attempt, validated artifact references, dependency release, outbox fact |
 | Intervention | expected current state, actor and authority, scoped effect, resulting state, outbox fact |
 | Skill/profile activation | candidate version, evidence and policy decision, active pointer, lineage, outbox fact |
@@ -300,9 +307,10 @@ Integrate CrewAI 1.x directly. Do not expose a production runtime selector or in
 Resolve native capabilities, skills, tools, engines, environments, packs, and external protocols
 from configured sources and observed project/location evidence. Bind only concrete runnable
 adapters. A mission environment decision may reuse observed state or generate attributable
-descriptor artifacts, but materialization and verification still cross ordinary governed effect
-boundaries. Discovery, availability, credentials, instructions, and generated files grant no
-authority.
+descriptor artifacts, but it is authored as Mission Crew plan content through CrewAI; the resolver
+cannot replace it with another engineering outcome. Materialization and verification still cross
+ordinary governed effect boundaries. Discovery, availability, credentials, instructions, and
+generated files grant no authority.
 
 ## 10. Gate effect
 

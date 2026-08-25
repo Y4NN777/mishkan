@@ -172,8 +172,11 @@ than being re-described as a new tool for every operation.
 ### CTR-015 — Governed adaptive missions
 
 PM and CTO turn a free-form objective into a versioned Mission Brief and compose a temporary crew
-from the persistent 59-identity organization. Optional templates provide guidance only; neither a
-template nor a discovered capability fixes the task graph, crew, authority, or acceptance path.
+from the persistent 59-identity organization through CrewAI-governed organizational turns. Mission
+Crew agents author candidate plans and technical decisions; deterministic MISHKAN responsibilities
+validate, normalize, authorize, persist, resolve capabilities, and accept or reject them. Optional
+templates provide guidance only; neither a template nor a discovered capability fixes the task
+graph, crew, authority, engineering outcome, or acceptance path.
 
 ### CTR-016 — Durable executive communication and intervention
 
@@ -594,13 +597,20 @@ and CTO. Crew composition is contextual and drawn from the exact persistent orga
 guidance only. Assignments identify one accountable owner, contributors, evidence, authority, and
 handoff. Production, evaluation, reporting, and evidence audit remain independently attributable.
 
-The Mission Brief records environment intent and known constraints, while RSP-025 owns the derived
-mission environment decision for each distinct repository, greenfield workspace, service group, or
-execution location. The accepted task plan references exact verified existing bindings or
-attributable generated descriptor artifacts and change sets. A project mutation remains a separate
-Edit/Patch effect; building, starting, probing, and cleaning an environment remain separate
-Terminal/Process or adapter effects. A mission revision preserves prior decisions and invalidates
-only dependent bindings whose context changed.
+The Mission Brief records environment intent and known constraints. A bounded CrewAI planning turn
+produces a candidate `MissionEnvironmentPlan` with an accountable professional identity, rationale,
+evidence, requested outcome, descriptor semantics or selection constraints, affected tasks, and
+verification criteria. RSP-005 validates and owns the normalized proposal as plan content. RSP-025
+does not choose the engineering outcome: it resolves that proposal for each distinct repository,
+greenfield workspace, service group, or execution location into a compatible `EnvironmentBinding`
+or returns a precise incompatibility for replanning.
+
+The accepted task plan references exact verified existing bindings or attributable generated
+descriptor artifacts and change sets. A project mutation remains a separate Edit/Patch effect;
+building, starting, probing, and cleaning an environment remain separate Terminal/Process or
+adapter effects executed by an accountable CrewAI task. A materially different fallback is a plan
+revision, never a silent resolver substitution. A mission revision preserves prior decisions and
+invalidates only dependent bindings whose context changed.
 
 The durable communication domain distinguishes channel, message, command, decision, escalation,
 and intervention records. PM and CTO resolve ordinary disagreement within their declared authority;
@@ -775,7 +785,7 @@ are assigned only after the responsibility and architecture stages.
 | Contract area | Principal SRS source |
 |---|---|
 | Operating context and identity | SYS-001–007, PRJ-001–010, CTX-001–008 |
-| Adaptive planning and policy | PRJ-007–010, PLN-001–020, SAF-003–006 |
+| Adaptive planning and policy | PRJ-007–010, PLN-001–021, SAF-003–006 |
 | Organization and separation | ORG-001–016 |
 | Mission governance and communication | MSN-001–016 |
 | Execution and recovery | RUN-001–012 |
