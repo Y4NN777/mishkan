@@ -51,10 +51,51 @@ cannot be represented clearly in one row.
 | D-029 | Governance | Accepted | PRD 1.2, SRS 1.4, System Contract 1.3, and Responsibility Map 1.1 define a small general-tool model with configurable toolsets, dynamic extensions, concrete adapter availability, and input-level policy | No universal capability-family taxonomy or 32-role/15-outcome tool matrix; terminal/process is a governed first-class tool, roles and projects narrow eligibility, accepted plans bind exact tools, and CrewAI remains the sole production runtime | Engineer direction informed by official [Hermes tools and toolsets](https://github.com/hermes-agent-org/hermes/blob/main/website/docs/user-guide/features/tools.md) and [Claude Code tools and permissions](https://code.claude.com/docs/en/tools-reference), 2026-08-24 |
 | D-030 | Delivery | Proposed | Accept System Model 1.1, Architecture 1.1, and Implementation Plan 1.3 as the amended delivery baseline | If accepted, I02 resumes against general tools and input-level policy; implementation remains paused until this review closes | Derived documentation amendment, 2026-08-24 |
 | D-031 | Product | Accepted | MISHKAN provides evidence-based assistance for consequential engineering choices while the engineer retains durable decision authority | PRD 1.3 and SRS 1.5 require project-grounded criteria, credible alternatives, explicit evidence and uncertainty, proportionate validation, independent challenge, configurable explanation depth, and staged acceptance | Engineer validation, 2026-08-24 |
+| D-032 | Governance | Proposed | Accept PRD 1.4 and SRS 1.6 as the reconciled product and behavioral baseline | If accepted, free-form missions, 59 persistent identities, PM/CTO governance, operational clients, contextual capabilities, and all WD requirement families supersede conflicting fixed 32/15, one-repository-mission, and read-only-TUI assumptions in D-003, D-007, D-008, and D-011 | Documentation reconciliation, 2026-08-25 |
+| D-033 | Governance | Proposed | Accept System Contract 1.4 | If accepted, mission authority, durable communication, artifact/CAS integrity, isolated sessions, compatible fallback, MCP/harness mediation, and evidence-based evolution become active invariants and refusals | Documentation reconciliation, 2026-08-25 |
+| D-034 | Governance | Proposed | Accept Requirement-to-Responsibility Map 1.2 | If accepted, every SRS 1.6 requirement, error, promise, and invariant has exactly one primary owner and explicit handoffs through RSP-001–026 | Documentation reconciliation, 2026-08-25 |
+| D-035 | Architecture | Proposed | Accept System Model 1.2 and Architecture 1.2 | If accepted, the mission-centered behavioral model and single-authority transactional modular monolith supersede the active 1.1 amendment and D-030 while retaining CrewAI as the sole internal production runtime | Documentation reconciliation, 2026-08-25 |
+| D-036 | Delivery | Proposed | Accept Implementation Plan 1.4 and resume I02 on `feat/i02-policy-tools` | If accepted after D-032–D-035, delivery follows I02–I11 and their complete SRS ownership; I00/I01 code and evidence remain accepted and unchanged | Documentation reconciliation, 2026-08-25 |
+
+## Working-decision promotion matrix
+
+The local register remains non-normative. This matrix proves that no validated working decision is
+left solely in that register; authority transfers only when D-032 through D-036 are accepted.
+
+| Working decision | Durable promotion target |
+|---|---|
+| WD-001 | PRD UC-12/PP-15; SRS CTX-001; Contract CTR-020; RSP-025; Model §6/§8; I05 |
+| WD-002 | SRS CTX-002–003; Contract INV-016/038; RSP-004; Model §8–9; I05 |
+| WD-003 | PRD PP-06/PP-15; SRS CTX-006 and NFR-002; Contract CTR-010/020; RSP-025; I05/I11 |
+| WD-004 | PRD UC-10; SRS CTX-008; Contract INV-002/025; RSP-006/025; Model §8/§11; I05 |
+| WD-005 | SRS CTX-004–005 and ENG-001; Contract CTR-020; RSP-025; Architecture §6; I05 |
+| WD-006 | PRD PP-11/PP-15; SRS CTX-006; Contract INV-039; RSP-025; Model §8; I05 |
+| WD-007 | SRS CTX-001/005; Contract CTR-001/020; RSP-001/025; I05 |
+| WD-008 | SRS CTX-007–008; Contract INV-025/031; RSP-025; I05 |
+| WD-009 | PRD UC-14; SRS MCP-009; Contract CTR-019/INV-041; RSP-024; Model §12; I04 |
+| WD-010 | SRS SYS-006, MSN-015, MCP-001–003; Contract CTR-011/019; RSP-003/024; Architecture §2/§4; I04 |
+| WD-011 | PRD PP-14–15; SRS ENG-001–003; Contract CTR-020; RSP-025; Architecture §6; I05 |
+| WD-012 | SRS ENG-004–006; Contract CTR-020; RSP-025; Architecture §6; I05 |
+| WD-013 | SRS FIL-007, EDT-007, ENG-001; Contract Tool §10; RSP-011/025; I02/I03/I05 |
+| WD-014 | SRS ENG-008; Contract INV-039; RSP-025; Model §8; I05 |
+| WD-015 | SRS EXE-001–008; Contract Execution §12; RSP-011; Model §9; I02/I03 |
+| WD-016 | PRD SC-15; SRS ENG-001/005; Contract CTR-020; RSP-025; I05/I11 |
+| WD-017 | SRS EXE-001–008; Contract INV-030/038; RSP-011; Model §9; I02/I03 |
+| WD-018 | SRS WEB-001–007; Contract INV-039; RSP-011; Model §8; I04 |
+| WD-019 | SRS BRW-001–008; Contract INV-038; RSP-011; Model §9; I04 |
+| WD-020 | SRS ART-001–005; Contract CTR-017/INV-036–037; RSP-023; Model §10; I03 |
+| WD-021 | SRS ART-006–008 and TC-009; Contract Artifact §13; RSP-023; Architecture §7; I03 |
+| WD-022 | SRS MCP-001–009; Contract MCP §14; RSP-024; Model §12; Architecture §2/§4; I04 |
+| WD-023 | SRS FIL-001–007; Contract Tool §10; RSP-011; Model §8; I02 |
+| WD-024 | SRS EDT-001–008; Contract INV-015/030; RSP-011; I03 |
+| WD-025 | PRD UC-07; SRS SKL-001–025; Contract Skill §9; RSP-014/020; Model §11; I05 |
+| WD-026 | PRD SC-15; SRS ENG-001–008; Contract CTR-020; RSP-025; Architecture §6; I05/I11 |
+| WD-027 | PRD UC-12–15; SRS ORG-001–016 and MSN-001–015; Contract CTR-015–018; RSP-007/022/026; Model §3–7; I06 |
 
 ## Open decisions
 
-D-030 awaits engineer review.
+D-030 and D-032 through D-036 await engineer review. D-030 remains open until D-035 is accepted;
+no production-code work resumes before D-036.
 
 ## Review rules
 

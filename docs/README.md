@@ -15,21 +15,22 @@ This index is the entry point for durable MISHKAN documentation.
 
 | Document | Status | Role |
 |---|---|---|
-| [`PROJECT/PRD.md`](PROJECT/PRD.md) | Approved 1.2 | Product problem, scope, success criteria, skills, and controlled capabilities |
-| [`PROJECT/SRS.md`](PROJECT/SRS.md) | Approved 1.4 | Canonical verifiable requirements including general tools, toolsets, extensions, and skills |
+| [`PROJECT/PRD.md`](PROJECT/PRD.md) | Proposed 1.4 — D-032 | Product problem, free-form missions, 59-identity organization, executive control, and contextual capabilities |
+| [`PROJECT/SRS.md`](PROJECT/SRS.md) | Proposed 1.6 — D-032 | Canonical verifiable requirements and complete PRD traceability |
 | [`PROJECT/DECISION_LOG.md`](PROJECT/DECISION_LOG.md) | Living | Central registry for accepted, open, and superseded decisions |
-| [`PROJECT/IMPLEMENTATION_PLAN.md`](PROJECT/IMPLEMENTATION_PLAN.md) | Proposed 1.3 | Amended post-architecture vertical delivery, acceptance, and Git-flow plan |
-| [`SYSTEM/CONTRACT.md`](SYSTEM/CONTRACT.md) | Approved 1.3 | Sequence 03 promises, invariants, refusals, and abstract dependencies |
-| [`SYSTEM/RESPONSIBILITIES.md`](SYSTEM/RESPONSIBILITIES.md) | Approved 1.1 | Sequence 04 primary responsibility ownership and handoffs |
-| [`SYSTEM/MODEL.md`](SYSTEM/MODEL.md) | Proposed 1.1 | Amended Sequence 05 context, lifecycle, and interaction behavior basis |
-| [`SYSTEM/ARCHITECTURE.md`](SYSTEM/ARCHITECTURE.md) | Proposed 1.1 | Amended Sequence 05 C4 structure and compact architecture decisions |
+| [`PROJECT/IMPLEMENTATION_PLAN.md`](PROJECT/IMPLEMENTATION_PLAN.md) | Proposed 1.4 — D-036 | I00/I01 retention and vertical I02–I11 delivery, acceptance, and Git-flow plan |
+| [`SYSTEM/CONTRACT.md`](SYSTEM/CONTRACT.md) | Proposed 1.4 — D-033 | Sequence 03 promises, invariants, refusals, sessions, artifacts, and mediation |
+| [`SYSTEM/RESPONSIBILITIES.md`](SYSTEM/RESPONSIBILITIES.md) | Proposed 1.2 — D-034 | Sequence 04 exact primary ownership and handoffs for RSP-001–026 |
+| [`SYSTEM/MODEL.md`](SYSTEM/MODEL.md) | Proposed 1.2 — D-035 | Mission-centered Sequence 05 behavior model |
+| [`SYSTEM/ARCHITECTURE.md`](SYSTEM/ARCHITECTURE.md) | Proposed 1.2 — D-035 | Transactional modular-monolith structure and architecture decisions |
 | [`VALIDATION/I00.md`](VALIDATION/I00.md) | Passed | Observed local and remote acceptance evidence for the I00 foundation |
 | [`VALIDATION/I01.md`](VALIDATION/I01.md) | Passed | Observed local and remote acceptance evidence for real CrewAI execution |
 | [`VALIDATION/I02.md`](VALIDATION/I02.md) | Reopened | Narrow mechanism evidence and remaining corrected I02 acceptance conditions |
 
 ## Authority rules
 
-- PRD owns product intent; SRS owns observable requirements.
+- PRD owns product intent; SRS owns observable requirements after their recorded gates. Proposed
+  amendments never silently replace the last accepted baseline.
 - The decision log owns decision status. A separate approval file is not created for each gate.
 - System documents derive from accepted requirements and decisions; they do not replace them.
 - Validation contains observed evidence, not self-review or speculative checklists.
