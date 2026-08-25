@@ -1,9 +1,10 @@
 # MISHKAN Implementation and Acceptance Plan
 
-**Status:** Accepted by D-036 on 2026-08-25
-**Version:** 1.4
-**Derived from:** PRD 1.4, SRS 1.6, Contract 1.4, Responsibility Map 1.2, System Model 1.2, and
-Architecture 1.2 accepted by D-032–D-035
+**Status:** Proposed 1.5 amendment; version 1.4 remains accepted by D-036
+**Version:** 1.5
+**Derived from:** PRD 1.4, SRS 1.6, Contract 1.4, Responsibility Map 1.2, proposed System Model 1.3,
+and proposed Architecture 1.3; the accepted 1.2 design remains authoritative until amendment
+acceptance
 
 ## 1. Purpose and gate authority
 
@@ -12,9 +13,10 @@ This post-architecture plan defines vertical delivery increments and their accep
 framework stage.
 
 I00 and I01 remain accepted exactly as implemented and evidenced. Their code, historical commits,
-and validation records are not rewritten. D-032 through D-036 accepted the complete documentary
-baseline in order on 2026-08-25. D-036 resumes I02; every later increment remains subject to its
-own dependencies, scope, and acceptance gate.
+and validation records are not rewritten. D-032 through D-036 accepted the version 1.4 documentary
+baseline in order on 2026-08-25. D-036 resumes I02. This proposed 1.5 amendment details later
+mission-environment delivery without expanding current implementation authority; every later
+increment remains subject to its own dependencies, scope, and acceptance gate.
 
 ## 2. Delivery laws
 
@@ -253,6 +255,34 @@ truthfully refuses it; one incompatible platform; one secret-reference case; one
 conflict; one build interruption with non-fabricated settlement; and one cleanup/re-run proving the
 declared reproducibility boundary.
 
+#### I05 environment work packages
+
+These packages implement the general environment capability. They do not originate a mission or
+choose a mission's engineering outcome.
+
+| Package | Depends on | Runnable deliverable | Required proof |
+|---|---|---|---|
+| I05-E01 — Observation | I02 File/Search/Process and context contracts | read-only observation of repository, prospective workspace, machine/worker, existing descriptors, platform, architecture, engines, versions, and unknowns | fixture snapshots distinguish observed, detected, executable, healthy, project-used, and authorized; probes do not mutate |
+| I05-E02 — Contracts and persistence | I03 metadata/outbox/artifacts | repositories and schemas for `EnvironmentObservation`, `EnvironmentBindingRequest`, `EnvironmentBinding`, `EnvironmentDescriptorSet`, `EnvironmentAttempt`, and `EnvironmentVerification` | schema round-trip, version compatibility, optimistic-concurrency conflict, outbox atomicity, and artifact-reference integrity |
+| I05-E03 — Eligibility and resolution | E01–E02 plus registry/policy | deterministic candidate presentation and compatibility-only resolution for the five requested outcomes | resolver cannot author or substitute an outcome; incompatible platform, missing adapter, stale observation, and changed policy return bounded evidence |
+| I05-E04 — Dev Container format | E02–E03 | validation of selected Development Container metadata and referenced image/build/Compose inputs; concrete CLI binding only when observed | existing definition reused byte-for-byte; schema/version incompatibility visible; generated definition remains an artifact until Edit/Patch |
+| I05-E05 — OCI and Podman build | E02–E03, I03 Process/Job | Containerfile/Dockerfile dialect evidence, Podman availability binding, bounded image build/run/probe/cleanup, and image identity capture | compatible build/run succeeds; absent Podman is unavailable rather than simulated; timeout/cancel/loss settles honestly; no secret enters build context |
+| I05-E06 — Multi-service lifecycle | E02–E03, I03 sessions | independently bound Compose provider and optional Podman Kubernetes YAML/Quadlet lifecycle adapters | provider compatibility is observed; unsupported semantics refuse; readiness differs from liveness; cleanup and residual resources are evidenced |
+| I05-E07 — Descriptor generation path | E02–E06, I03 Artifact/Edit | authorized request result contract accepts context-specific descriptor members as immutable artifacts and optionally produces exact-base change sets | no module-authored engineering outcome; no overwrite of compatible existing definitions; stale base conflicts; logical paths cannot escape project scope |
+| I05-E08 — Verification and invalidation | E01–E07 | location-bound verification profiles, settlement, dependency evidence, and context-fingerprint invalidation | parse/build/start/workspace/dependency/project-command/artifact/cleanup coverage is explicit; changed context invalidates only matching bindings |
+
+E01–E03 are format-neutral and complete first. E04–E06 are independent adapters and may proceed in
+parallel once their contracts are stable. E07 composes descriptor artifacts and project changes;
+it does not create another file writer. E08 consumes real effect results and is the only package
+that can produce a location-bound `verified` record. A descriptor adapter can report validation,
+not mission readiness.
+
+Initial application operations are versioned commands and queries for observation, candidate
+inspection, compatibility resolution, descriptor-set validation, materialization attempt,
+verification, invalidation, and bounded status/history. Their final transport names are frozen in
+I05 contract tests; CLI, SDK, HTTP, MCP, CrewAI tools, and later TUI clients call the same
+application semantics rather than implementing provider-specific control paths.
+
 ### I06 — Organization, missions, communication, and professional evolution
 
 **Runnable result:** PM and CTO agents turn a free-form CEO objective into a Mission Brief, compose a
@@ -302,6 +332,23 @@ revision pauses only its dependent task set. Tests also reject resolver-authored
 CrewAI authorship lineage, missing accountable owners, and silent substitution after an adapter
 incompatibility.
 
+#### I06 mission-environment work packages
+
+| Package | Accountable behavior | Durable output | Gate evidence |
+|---|---|---|---|
+| I06-M01 — Brief intent | PM/CTO clarification records locations, platforms, existing definitions, isolation, network, resources, credentials by reference, required checks, and known unknowns | Mission Brief environment-intent revision | omission of a required fact blocks only dependent planning; no default container format is inferred |
+| I06-M02 — Context partition | planning identifies materially distinct repositories, prospective workspaces, service groups, platforms, architectures, and execution locations | versioned `EnvironmentContext` set with task dependencies | multi-repository and mixed-location fixtures create separate contexts; equivalent contexts are not duplicated |
+| I06-M03 — CrewAI proposal | one contextually selected Mission Crew agent owns a bounded CrewAI task that compares eligible alternatives and requests one outcome per context | `MissionEnvironmentPlan` candidate with owner, CrewAI lineage, rationale, constraints, effects, verification, cleanup, alternatives, and unknowns | role, template, installed engine, or resolver alone cannot choose; consequential choices cross PLN-012–018 |
+| I06-M04 — Plan acceptance and binding | RSP-005 validates the proposal and RSP-025 resolves only compatible adapters/locations | accepted plan revision plus binding or precise incompatibility | resolver-authored proposal and silent fallback are rejected; replanning preserves compatible accepted work |
+| I06-M05 — Generation and verification tasks | CrewAI releases accountable descriptor, mutation, build/start/probe/cleanup, evaluation, and reporting tasks according to dependencies | accepted descriptor artifacts/change sets, attempts, verification, evaluation, and report references | producer cannot independently evaluate generated environment; description alone releases no runtime-dependent task |
+| I06-M06 — Revision and communication | mission governance exposes state and reacts to context, policy, adapter, or scope changes | binding revision, scoped pause/resume, conversation/event/escalation evidence | only dependent tasks pause; PM/CTO and CEO clients see identical state and can govern the same commands |
+
+The proposal owner is selected from the actual Mission Crew by competence, evidence, availability,
+conflict, and scope. `Platform_Engineer` or an architect may often be suitable, but no persistent
+identity receives a static environment-generator privilege. Contributors may supply product,
+architecture, security, delivery, reliability, developer-experience, or project evidence while one
+owner remains accountable and independent assurance remains separate.
+
 #### Environment delivery boundary across increments
 
 | Increment | Environment responsibility | Acceptance boundary |
@@ -318,6 +365,42 @@ runtime, or engineering decision-maker. I06 MUST NOT infer an environment from a
 optional mission template, or installed engine. The cross-increment chain is the agent-authored
 `MissionEnvironmentPlan`, its resolved `EnvironmentBinding`, and referenced artifacts, change sets,
 adapter evidence, and plan dependencies.
+
+#### Mission-environment acceptance scenario matrix
+
+| Scenario | Required mission decision | Required evidence before dependent work |
+|---|---|---|
+| Existing repository with compatible `.devcontainer` | `reuse_existing` unless an agent-authored consequential decision justifies otherwise | exact observed files and revisions, specification/CLI compatibility, location-bound build or up, readiness, project command, and cleanup |
+| Greenfield isolated development | `generate` or `propose_project_change` with bounded format constraints | mission-specific Dev Container and any referenced build input as artifacts; optional exact-base project change; verified target platform and declared lifecycle |
+| Podman image workflow | requested `generate`/`reuse_existing` bound to observed Podman | Containerfile/Dockerfile dialect and base image identity, build context, build result, bounded run, readiness/project checks, logs, image identity, cleanup settlement |
+| Podman service lifecycle | explicit service/lifecycle semantics | verified reason for Kubernetes YAML or Quadlet, supported Podman version and target, start/readiness/stop/cleanup evidence; no automatic generation beside every image build |
+| Existing Compose project | `reuse_existing` with an exact provider binding | Compose document revisions, observed Docker Compose/Podman Compose/provider compatibility, service readiness and cleanup; provider substitution requires replanning |
+| Host-native project toolchain | `host_native` | exact engine/toolchain versions, location, environment delta, required commands, limits, and evidence showing isolation requirements are still satisfied |
+| Multi-repository or mixed worker mission | one requested outcome and binding per material context | distinct context and location fingerprints, dependency mapping, no reuse of verification across incompatible locations |
+| Unsupported platform or absent engine | `unresolved` or explicit replanning | precise missing compatibility/adapter/authority evidence and scoped blocked tasks; no fabricated descriptor or readiness |
+| Changed repository base or descriptor | revised proposal/binding when material | stale-base conflict, preserved prior artifacts, new context fingerprint, and invalidation of only affected task bindings |
+| Secret-bearing dependency acquisition | any compatible outcome using references only | late credential resolution, no secret in plan/descriptor/build context/log, redaction evidence, and cleanup of temporary credential exposure |
+| Interrupted build/start/cleanup | unchanged decision until reconciliation proves otherwise | `cancelled` or `uncertain` attempt, bounded logs/artifacts, observed residual resources, reconciliation action, and no blind retry of an uncertain effect |
+
+Acceptance uses real adapters when the scenario claims support. A skipped engine-specific fixture can
+prove only truthful unavailability, not adapter conformance. Supported Dev Container, Podman,
+Compose, platform, and architecture combinations are published from these measured fixtures in I11
+rather than presumed by the design.
+
+#### Exact requirement-to-package trace for mission environments
+
+| Requirement or invariant | Primary implementation package | Acceptance evidence |
+|---|---|---|
+| PLN-021 — agent-authored proposal | I06-M03–M04 | CrewAI lineage, accountable owner, alternatives/unknowns, descriptor constraints, affected tasks, verification and cleanup criteria; deterministic resolver cannot originate it |
+| MSN-016 — Brief intent and eligibility dependency | I06-M01–M02, I06-M06 | complete intent or explicit unknown; context partition; unresolved dependency and scoped pause; no environment-dependent task released early |
+| ENG-009 — per-context requested outcome and binding | I05-E01–E03, I06-M04 | one of five outcomes per material context, compatible versioned binding or precise incompatibility, no silent substitution |
+| ENG-010 — truthful descriptor selection | I05-E03–E06, I06-M03 | format/engine/specification versions selected only for requested semantics and observed compatible adapters |
+| ENG-011 — descriptor evidence | I05-E02, I05-E07 | immutable member artifacts preserve applicable base, platform, image, build, mount, user, network/resource, credential-reference, lifecycle, artifact, and limitation fields |
+| ENG-012 — governed mutation | I05-E07 with I03 Edit/Artifact | artifact-first generation, exact-base preview/application, authorization, recovery, rollback, and existing-definition protection |
+| ENG-013 — verification and settlement | I05-E05–E08, I06-M05 | location-bound coverage and `verified`/`failed`/`cancelled`/`uncertain` settlement with logs, identities, effects, limitations, and cleanup |
+| CTR-020 / INV-038–039 — contextual truth and fallback | I05-E01–E03, I05-E08 | independent states, concrete adapter, visible degradation, semantics-preserving fallback only |
+| INV-042 — description is not readiness | I05-E04–E08, I06-M05 | generated or parsed descriptors cannot release runtime-dependent tasks without matching verification |
+| RSP-005/008/022/025 separation | I06-M01–M06 | PM/CTO intent, CrewAI proposal, plan validation, compatibility resolution, effects, evaluation, and acceptance remain separately attributable |
 
 ### I07 — Attributed knowledge and degraded operation
 
@@ -447,7 +530,10 @@ to every affected gate.
 2. D-033 accepts Contract 1.4.
 3. D-034 accepts Responsibility Map 1.2.
 4. D-035 accepts System Model 1.2 and Architecture 1.2 and supersedes D-030.
-5. D-036 accepts this plan and explicitly authorizes resumption of I02.
+5. D-036 accepts Implementation Plan 1.4 and explicitly authorizes resumption of I02.
+6. D-037 proposes the Model 1.3, Architecture 1.3, and Implementation Plan 1.5 mission-environment
+   detail amendment; it does not replace D-035–D-036 unless explicitly accepted.
 
-All five decisions were accepted in order on 2026-08-25. D-036 therefore resumes I02 only; it does
-not accept I02 evidence in advance or authorize later increments outside their declared gates.
+The first five decisions were accepted in order on 2026-08-25. D-036 therefore resumes I02 only;
+it does not accept I02 evidence in advance or authorize later increments outside their declared
+gates. D-037 is a proposed design/delivery clarification and does not suspend I02.

@@ -14,6 +14,12 @@ add truthful File/Read/Search, process, and full Bash execution. The rejected un
 outcome catalogue, capability-family matrix, static role/tool matrix, competing runtime, and
 private operational deny-list must not return.
 
+D-037 is a proposed detail amendment for System Model 1.3, Architecture 1.3, and Implementation
+Plan 1.5. It clarifies agent-authored mission environment planning, per-context bindings,
+Dev Container/Podman/Compose descriptor generation, ordinary effect boundaries, and acceptance
+work packages. It neither supersedes D-035–D-036 nor expands implementation beyond I02 until the
+engineer explicitly accepts it and later increment gates are reached.
+
 ## Mandatory method
 
 Follow the numbered `SWE-BASICS-BEFORE-CODE` chain without skipping or reordering stages:
