@@ -218,10 +218,11 @@ enforced by RSP-011 rather than expanded into synthetic per-command tools.
 
 Turn mission origins into PM/CTO-confirmed Mission Briefs; compose and revise temporary Mission
 Crews; preserve mission lifecycle and durable channel classes; distinguish messages, commands,
-decisions, and escalations; and validate CEO interventions and scoped pauses.
+decisions, and escalations; validate CEO interventions and scoped pauses; and require an explicit
+execution-environment intent and dependency state for environment-dependent mission work.
 
-**Owns:** Mission Brief, crew revision, accountable assignment, mission state, conversation and
-escalation records, intervention validation, and PM/CTO confirmation evidence.
+**Owns:** Mission Brief, environment intent, crew revision, accountable assignment, mission state,
+conversation and escalation records, intervention validation, and PM/CTO confirmation evidence.
 
 ### RSP-023 — Preserve artifacts and working references
 
@@ -245,10 +246,13 @@ decision, transport lifecycle, and application-command translation.
 
 Preserve independent observed engine states; match adapters, execution locations, project evidence,
 technical packs, and reproducible environments; reject incompatible candidates; and declare
-truthful fallback degradation.
+truthful fallback degradation. Derive one versioned environment decision per materially distinct
+mission context, generate only compatible descriptor artifacts or change sets, and settle
+location-bound verification without owning their project mutation or process effects.
 
-**Owns:** engine and environment observations, compatibility decision, adapter/location binding,
-pack resolution, materialization evidence, and degradation record.
+**Owns:** engine and environment observations, mission environment decision, descriptor-set
+identity and provenance, compatibility decision, adapter/location binding, pack resolution,
+materialization and verification evidence, and degradation record.
 
 ### RSP-026 — Govern professional evolution and organizational learning
 
@@ -286,10 +290,10 @@ Each range is inclusive. No requirement appears in more than one row.
 | RSP-019 | TC-001–009 |
 | RSP-020 | SKL-001–005, SKL-009–015 |
 | RSP-021 | TOL-001–011, TOL-023–025, TOL-027 |
-| RSP-022 | MSN-001–015 |
+| RSP-022 | MSN-001–016 |
 | RSP-023 | ART-001–008 |
 | RSP-024 | MCP-001–009 |
-| RSP-025 | CTX-004–008, ENG-001–008 |
+| RSP-025 | CTX-004–008, ENG-001–013 |
 | RSP-026 | ORG-015–016 |
 
 ## 5. Error ownership matrix
@@ -342,7 +346,7 @@ Each range is inclusive. No requirement appears in more than one row.
 | RSP-022 | CTR-015–016, INV-032–034 |
 | RSP-023 | CTR-017, INV-036–037 |
 | RSP-024 | CTR-019, INV-040–041 |
-| RSP-025 | CTR-020, INV-038–039 |
+| RSP-025 | CTR-020, INV-038–039, INV-042 |
 | RSP-026 | CTR-018, INV-035 |
 
 `INV-003` is primarily enforced at the capability boundary by RSP-011; RSP-006 supplies the
@@ -371,10 +375,10 @@ authorization decision but does not enforce its own decision.
 | RSP-016 | RSP-005, RSP-008 | Idempotent run trigger and schedule context |
 | RSP-017 | RSP-008, RSP-010 | Remote execution and completion-delivery evidence |
 | RSP-018–019 | Release decision | Acceptance and conformance evidence |
-| RSP-022 | RSP-005, RSP-008–010, RSP-015 | Mission Brief, crew revision, assignments, authorized commands, and escalation state |
-| RSP-023 | RSP-010, RSP-012, RSP-015 | Immutable artifact manifest, validation state, reference revision, and recovery evidence |
+| RSP-022 | RSP-005, RSP-008–010, RSP-015, RSP-025 | Mission Brief, environment intent, crew revision, assignments, authorized commands, and escalation state |
+| RSP-023 | RSP-010, RSP-012, RSP-015, RSP-025 | Immutable artifact manifest, validation state, reference revision, and recovery evidence |
 | RSP-024 | RSP-003, RSP-005, RSP-008, RSP-011 | External-client identity, mediated application request, negotiated schema, and session evidence |
-| RSP-025 | RSP-005, RSP-008, RSP-011, RSP-021 | Observed engine states, compatible adapter/location binding, environment, pack, and degradation evidence |
+| RSP-025 | RSP-005, RSP-008, RSP-011, RSP-021, RSP-023 | Versioned mission environment decision, descriptor artifacts or change sets, observed engine states, compatible adapter/location binding, verification, pack, and degradation evidence |
 | RSP-026 | RSP-007, RSP-005, RSP-020 | Scoped profile evidence, demonstrated competence, freshness, contradiction, and promotion request |
 
 ## 8. Cohesion candidates for Sequence 05

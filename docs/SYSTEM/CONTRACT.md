@@ -203,7 +203,10 @@ state, inherit a server's authority, or dispatch an effect outside policy.
 
 Native capabilities, skills, adapters, engines, environments, and packs are selected from observed
 project and execution-location facts. Inventory, installation, health, eligibility, and authority
-remain distinct, and only compatible fallbacks may run with an explicit degradation record.
+remain distinct, and only compatible fallbacks may run with an explicit degradation record. Every
+environment-dependent mission carries a versioned decision that either binds verified existing
+state, selects authorized native execution, produces governed reproducible descriptors, proposes a
+project change, or identifies the unresolved dependency without fabricating readiness.
 
 ## 7. Integrity invariants
 
@@ -445,6 +448,14 @@ No external harness or client can select a production runtime, address an intern
 authorized mission or direct request, mutate authoritative projections, or bypass CrewAI,
 acceptance, policy, and effect enforcement.
 
+### INV-042 — Environment description is not readiness
+
+A Dev Container file, Containerfile, Dockerfile, Compose document, Kubernetes YAML, Quadlet, Nix
+definition, or other environment description is an attributable candidate input. Its existence or
+successful generation proves neither adapter compatibility, authorization, successful
+materialization, runtime readiness, project acceptance, nor task completion. Only location-bound
+verification evidence can satisfy the corresponding mission dependency.
+
 ## 8. Policy decision contract
 
 ### 8.1 Capability request
@@ -583,6 +594,14 @@ and CTO. Crew composition is contextual and drawn from the exact persistent orga
 guidance only. Assignments identify one accountable owner, contributors, evidence, authority, and
 handoff. Production, evaluation, reporting, and evidence audit remain independently attributable.
 
+The Mission Brief records environment intent and known constraints, while RSP-025 owns the derived
+mission environment decision for each distinct repository, greenfield workspace, service group, or
+execution location. The accepted task plan references exact verified existing bindings or
+attributable generated descriptor artifacts and change sets. A project mutation remains a separate
+Edit/Patch effect; building, starting, probing, and cleaning an environment remain separate
+Terminal/Process or adapter effects. A mission revision preserves prior decisions and invalidates
+only dependent bindings whose context changed.
+
 The durable communication domain distinguishes channel, message, command, decision, escalation,
 and intervention records. PM and CTO resolve ordinary disagreement within their declared authority;
 otherwise only dependent work pauses and the CEO receives an actionable escalation. Every accepted
@@ -661,7 +680,7 @@ These are integrity failures, not a hardcoded list of business operations:
 | REF-023 | Artifact content, manifest, provenance, integrity, or retention state is invalid | Keep it unaccepted and preserve recoverable evidence |
 | REF-024 | A working-reference expected revision does not match | Preserve both revisions and return a deterministic conflict |
 | REF-025 | MCP or harness identity, schema, mediation, session, or requested authority is invalid | Refuse the request before CrewAI binding or effect dispatch |
-| REF-026 | An engine, environment, adapter, or fallback lacks required observed compatibility or availability | Block only affected work and record truthful degraded or unavailable state |
+| REF-026 | An engine, environment descriptor, adapter, verification, or fallback lacks required observed compatibility or availability | Block only affected work and record truthful degraded, failed, uncertain, or unavailable state |
 
 ## 17. Permitted exceptions
 
@@ -740,12 +759,12 @@ Dependencies describe required capabilities, not component ownership or topology
 | DEP-016 | Current-state monitoring projection | Optional for execution | Execution continues; monitor reconnects from durable state | RUN-012, OBS-004–006 |
 | DEP-017 | External effect surface | Required only by a requested capability | Apply the policy decision; never bypass external protection | SAF-003–008 |
 | DEP-018 | Tool registry, discovery, and adapters | Required per tool-using task | Do not bind or dispatch the unavailable tool; expose configured fallback eligibility | TOL-001–027 |
-| DEP-019 | Mission, organization, and conversation persistence | Core required | Do not launch or mutate a mission whose Brief, crew, command, or decision cannot be made durable | ORG-001–016, MSN-001–015 |
+| DEP-019 | Mission, organization, and conversation persistence | Core required | Do not launch or mutate a mission whose Brief, crew, command, or decision cannot be made durable | ORG-001–016, MSN-001–016 |
 | DEP-020 | Artifact and working-reference storage | Required per artifact-producing task | Do not accept missing content; retain recovery and conflict evidence | ART-001–008 |
 | DEP-021 | Native execution and session adapters | Required per selected capability | Refuse unavailable modes and preserve uncertain effects for reconciliation | FIL-001–007, EDT-001–008, EXE-001–008, BRW-001–008 |
 | DEP-022 | Web retrieval surfaces | Optional unless required by the accepted task | Use only a contract-compatible configured fallback and expose provenance loss | WEB-001–007 |
 | DEP-023 | MCP mediation and external-client identity | Required only for MCP or harness use | Other clients remain available; affected request receives stable refusal | MCP-001–009 |
-| DEP-024 | Engineering engine and environment resolution | Required per selected technical action | Do not claim readiness or execute without a concrete verified adapter at the location | CTX-004–008, ENG-001–008 |
+| DEP-024 | Engineering engine and mission-environment resolution | Required per selected technical action | Do not claim readiness or execute without a concrete verified adapter and settled environment decision at the location | CTX-004–008, ENG-001–013, MSN-016 |
 
 Every plan identifies its required dependencies. Required dependencies cannot silently become
 optional; optional failures remain visible. Concrete products, protocols, processes, and topology
@@ -758,7 +777,7 @@ are assigned only after the responsibility and architecture stages.
 | Operating context and identity | SYS-001–007, PRJ-001–010, CTX-001–008 |
 | Adaptive planning and policy | PRJ-007–010, PLN-001–020, SAF-003–006 |
 | Organization and separation | ORG-001–016 |
-| Mission governance and communication | MSN-001–015 |
+| Mission governance and communication | MSN-001–016 |
 | Execution and recovery | RUN-001–012 |
 | Enforcement and evidence | SAF-001–013, OBS-001–008 |
 | Knowledge | KNW-001–006 |
@@ -771,7 +790,7 @@ are assigned only after the responsibility and architecture stages.
 | Browser sessions | BRW-001–008 |
 | Artifacts and working references | ART-001–008 |
 | MCP and external harnesses | MCP-001–009 |
-| Engineering engines and environments | ENG-001–008 |
+| Engineering engines and environments | ENG-001–013 |
 | Headless scheduling | AUT-001–007 |
 | Distributed preservation | DST-001–010 |
 | Performance and compatibility | NFR-001–010 |
