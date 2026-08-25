@@ -8,8 +8,10 @@ import hashlib
 import json
 import os
 import platform
+import selectors
 import stat
 import subprocess
+import time
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
 from pathlib import Path
@@ -596,6 +598,242 @@ class SearchFilesAdapter:
             actual_targets=call.targets,
             evidence={"selection": "bounded native traversal"},
         )
+
+
+class RipgrepTextSearchAdapter:
+    adapter_id = "ripgrep.search.text"
+
+    def __init__(
+        self,
+        executable: Path,
+        version: str,
+        *,
+        max_results: int,
+        max_output_bytes: int,
+        timeout_seconds: float,
+    ) -> None:
+        if not executable.is_absolute():
+            raise ValueError("ripgrep executable must be an absolute path")
+        self._executable = executable
+        self._version = version
+        self._max_results = max_results
+        self._max_output_bytes = max_output_bytes
+        self._timeout_seconds = timeout_seconds
+
+    def invoke(self, call: AdapterCall) -> AdapterResult:
+        target = call.targets.paths[0]
+        if not target.absolute.is_dir():
+            raise MishkanError(
+                ErrorCode.FILE,
+                "text search root must be a directory",
+                details={"category": "unsupported_type", "path": target.relative},
+            )
+        result_limit = int(call.arguments.get("max_results", self._max_results))
+        if result_limit < 1 or result_limit > self._max_results:
+            raise MishkanError(
+                ErrorCode.FILE,
+                "requested text-search bound exceeds the configured limit",
+                details={"category": "result_limit", "limit": self._max_results},
+            )
+        argv = self._argv(call.arguments)
+        started = time.monotonic()
+        process = subprocess.Popen(
+            argv,
+            cwd=target.absolute,
+            env={"LC_ALL": "C.UTF-8", "RIPGREP_CONFIG_PATH": ""},
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        matches: list[dict[str, Any]] = []
+        failures: list[str] = []
+        output_bytes = 0
+        truncated = False
+        partial_reason: str | None = None
+        selector = selectors.DefaultSelector()
+        assert process.stdout is not None
+        assert process.stderr is not None
+        selector.register(process.stdout, selectors.EVENT_READ, "stdout")
+        selector.register(process.stderr, selectors.EVENT_READ, "stderr")
+        buffers = {"stdout": bytearray(), "stderr": bytearray()}
+        try:
+            while selector.get_map():
+                remaining = self._timeout_seconds - (time.monotonic() - started)
+                if remaining <= 0:
+                    truncated = True
+                    partial_reason = "timeout"
+                    self._stop(process)
+                    break
+                events = selector.select(min(remaining, 0.1))
+                if not events and process.poll() is not None:
+                    break
+                for key, _ in events:
+                    descriptor = (
+                        key.fileobj if isinstance(key.fileobj, int) else key.fileobj.fileno()
+                    )
+                    chunk = os.read(descriptor, 8192)
+                    if not chunk:
+                        selector.unregister(key.fileobj)
+                        continue
+                    output_bytes += len(chunk)
+                    if output_bytes > self._max_output_bytes:
+                        truncated = True
+                        partial_reason = "output_limit"
+                        self._stop(process)
+                        break
+                    channel = str(key.data)
+                    buffers[channel].extend(chunk)
+                    if channel == "stdout":
+                        self._consume_json_lines(buffers[channel], matches)
+                        if len(matches) >= result_limit:
+                            del matches[result_limit:]
+                            truncated = True
+                            partial_reason = "result_limit"
+                            self._stop(process)
+                            break
+                    else:
+                        self._consume_error_lines(buffers[channel], failures)
+                if truncated:
+                    break
+            if process.poll() is None:
+                process.wait(timeout=1)
+        finally:
+            selector.close()
+            if process.poll() is None:
+                self._stop(process)
+        self._consume_json_lines(buffers["stdout"], matches, final=True)
+        self._consume_error_lines(buffers["stderr"], failures, final=True)
+        if len(matches) > result_limit:
+            del matches[result_limit:]
+            truncated = True
+            partial_reason = partial_reason or "result_limit"
+        exit_code = process.returncode if process.returncode is not None else -1
+        if exit_code not in {0, 1} and partial_reason is None:
+            partial_reason = "engine_failure"
+        query_digest = hashlib.sha256(
+            json.dumps(call.arguments, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        return AdapterResult(
+            output={
+                "root": target.relative,
+                "matches": matches,
+                "engine": "ripgrep",
+                "engine_version": self._version,
+                "query_digest": query_digest,
+                "search_options": {
+                    "semantics": str(call.arguments.get("semantics", "literal")),
+                    "case": str(call.arguments.get("case", "smart")),
+                    "include_hidden": bool(call.arguments.get("include_hidden", False)),
+                    "include_ignored": bool(call.arguments.get("include_ignored", False)),
+                    "binary_policy": str(call.arguments.get("binary_policy", "skip")),
+                },
+                "failures": failures,
+                "truncated": truncated,
+                "partial_reason": partial_reason,
+                "continuation_cursor": None,
+                "exit_code": exit_code,
+            },
+            actual_targets=call.targets,
+            evidence={
+                "executable": str(self._executable),
+                "captured_bytes": output_bytes,
+                "shell": False,
+            },
+        )
+
+    def _argv(self, arguments: dict[str, Any]) -> list[str]:
+        argv = [
+            str(self._executable),
+            "--json",
+            "--no-config",
+            "--color=never",
+            "--sort=path",
+        ]
+        if str(arguments.get("semantics", "literal")) == "literal":
+            argv.append("--fixed-strings")
+        case = str(arguments.get("case", "smart"))
+        argv.append(
+            {
+                "smart": "--smart-case",
+                "sensitive": "--case-sensitive",
+                "insensitive": "--ignore-case",
+            }[case]
+        )
+        if bool(arguments.get("word", False)):
+            argv.append("--word-regexp")
+        if bool(arguments.get("multiline", False)):
+            argv.extend(("--multiline", "--multiline-dotall"))
+        if bool(arguments.get("include_hidden", False)):
+            argv.append("--hidden")
+        if bool(arguments.get("include_ignored", False)):
+            argv.append("--no-ignore")
+        if str(arguments.get("binary_policy", "skip")) == "text":
+            argv.append("--text")
+        for pattern in arguments.get("include", ()):
+            argv.extend(("--glob", str(pattern)))
+        for pattern in arguments.get("exclude", ()):
+            argv.extend(("--glob", f"!{pattern}"))
+        argv.extend(("--", str(arguments["query"]), "."))
+        return argv
+
+    @staticmethod
+    def _consume_json_lines(
+        buffer: bytearray,
+        matches: list[dict[str, Any]],
+        *,
+        final: bool = False,
+    ) -> None:
+        while b"\n" in buffer or (final and buffer):
+            raw, separator, remainder = buffer.partition(b"\n")
+            if not separator and not final:
+                break
+            buffer[:] = remainder
+            try:
+                event = json.loads(raw)
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                continue
+            if event.get("type") != "match":
+                continue
+            data = event["data"]
+            matches.append(
+                {
+                    "path": data["path"].get("text"),
+                    "line_number": data.get("line_number"),
+                    "absolute_offset": data.get("absolute_offset"),
+                    "line": data["lines"].get("text"),
+                    "submatches": [
+                        {
+                            "text": item["match"].get("text"),
+                            "start": item["start"],
+                            "end": item["end"],
+                        }
+                        for item in data.get("submatches", ())
+                    ],
+                }
+            )
+
+    @staticmethod
+    def _consume_error_lines(
+        buffer: bytearray,
+        failures: list[str],
+        *,
+        final: bool = False,
+    ) -> None:
+        while b"\n" in buffer or (final and buffer):
+            raw, separator, remainder = buffer.partition(b"\n")
+            if not separator and not final:
+                break
+            buffer[:] = remainder
+            failures.append(raw.decode("utf-8", errors="replace"))
+
+    @staticmethod
+    def _stop(process: subprocess.Popen[bytes]) -> None:
+        process.terminate()
+        try:
+            process.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=1)
 
 
 class ReadFileAdapter:

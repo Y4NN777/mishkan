@@ -32,6 +32,7 @@ TEST_ADAPTERS = frozenset(
         "native.file.read",
         "native.file.list",
         "native.search.files",
+        "ripgrep.search.text",
         "native.repository.write_file",
         "isolation.command",
         "native.git.commit",
@@ -135,6 +136,7 @@ def context_for(
         (source_uri,),
         root,
         runtime=runtime,
+        available_dependencies=frozenset({"rg"}),
         available_adapters=TEST_ADAPTERS,
     )
     snapshot = catalog.snapshot((tool_id,))
