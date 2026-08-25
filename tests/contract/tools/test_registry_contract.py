@@ -9,6 +9,9 @@ from mishkan.tools.catalog import ToolCatalog
 from mishkan.tools.models import AvailabilityState
 
 CATALOG_URI = "package://mishkan.resources.tools/i02-catalog.yaml"
+MECHANISM_CATALOG_URI = str(
+    Path(__file__).parents[2] / "fixtures" / "tools" / "i02-mechanism-catalog.yaml"
+)
 READ_ADAPTER = "native.repository.read_file"
 
 
@@ -41,44 +44,57 @@ tools:
 
 
 def test_nested_toolsets_resolve_to_exact_immutable_snapshot_and_binding(tmp_path: Path) -> None:
-    catalog = ToolCatalog(
-        (CATALOG_URI,),
-        tmp_path,
-        available_adapters=frozenset(
-            {
-                READ_ADAPTER,
-                "native.repository.write_file",
-                "native.git.commit",
-                "native.git.push",
-                "operator.deployment.apply",
-                "operator.release.publish",
-            }
-        ),
+    index = tmp_path / "nested.yaml"
+    index.write_text(
+        """schema_version: '1.0'
+source_id: bundled.core
+source_kind: native
+revision: test-only
+adoption_authority: MISHKAN test suite
+tools:
+  - tool_id: repository.read_file
+    version: 1.0.0
+    summary: Test nested resolution with one runnable tool.
+    effect_class: read
+    source_id: bundled.core
+    source_kind: native
+    contract_uri: package://mishkan.resources.tools/contracts/read-file.yaml
+toolsets:
+  - toolset_id: test.inner
+    version: 1.0.0
+    summary: Inner test toolset.
+    tools: [repository.read_file]
+  - toolset_id: test.outer
+    version: 1.0.0
+    summary: Outer test toolset.
+    toolsets: [test.inner]
+""",
+        encoding="utf-8",
     )
-    snapshot = catalog.snapshot(("engineering.standard",))
+    catalog = ToolCatalog(
+        (str(index),),
+        tmp_path,
+        available_adapters=frozenset({READ_ADAPTER}),
+    )
+    snapshot = catalog.snapshot(("test.outer",))
     binding = catalog.bind(
         snapshot,
-        task_id="delivery-task",
+        task_id="read-task",
         role="Engineer",
-        tool_id="git.push",
-        allowed_targets=("origin", "develop"),
+        tool_id="repository.read_file",
+        allowed_targets=("README.md",),
     )
 
-    assert tuple(tool.tool_id for tool in snapshot.tools) == (
-        "repository.write_file",
-        "git.commit",
-        "repository.read_file",
-        "git.push",
-        "deployment.apply",
-        "release.publish",
-    )
-    assert "migration.apply" not in {tool.tool_id for tool in snapshot.tools}
+    assert tuple(tool.tool_id for tool in snapshot.tools) == ("repository.read_file",)
     assert binding.registry_fingerprint == snapshot.fingerprint
-    assert binding.contract_fingerprint == snapshot.require("git.push").provenance_fingerprint
+    assert (
+        binding.contract_fingerprint
+        == snapshot.require("repository.read_file").provenance_fingerprint
+    )
 
 
 def test_availability_is_visible_and_not_an_authorization_decision(tmp_path: Path) -> None:
-    catalog = ToolCatalog((CATALOG_URI,), tmp_path, runtime="python")
+    catalog = ToolCatalog((MECHANISM_CATALOG_URI,), tmp_path, runtime="python")
     command = next(tool for tool in catalog.list_metadata() if tool.tool_id == "command.run")
 
     availability = catalog.availability(command)
@@ -88,6 +104,18 @@ def test_availability_is_visible_and_not_an_authorization_decision(tmp_path: Pat
     with pytest.raises(MishkanError) as caught:
         catalog.snapshot(("command.run",))
     assert caught.value.envelope.code is ErrorCode.TOOL_UNAVAILABLE
+
+
+def test_bundled_catalog_advertises_only_its_runnable_read_adapter(tmp_path: Path) -> None:
+    catalog = ToolCatalog(
+        (CATALOG_URI,),
+        tmp_path,
+        available_adapters=frozenset({READ_ADAPTER}),
+    )
+
+    assert tuple(tool.tool_id for tool in catalog.list_metadata()) == ("repository.read_file",)
+    snapshot = catalog.snapshot(("repository.readonly",))
+    assert tuple(tool.tool_id for tool in snapshot.tools) == ("repository.read_file",)
 
 
 def test_contract_without_an_installed_adapter_cannot_enter_snapshot(tmp_path: Path) -> None:

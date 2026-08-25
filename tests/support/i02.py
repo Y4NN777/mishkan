@@ -19,6 +19,9 @@ from mishkan.tools.gateway_models import AdapterResult, InvocationContext
 from mishkan.tools.inspection import ContentInspector, InspectionProfileLoader
 
 CATALOG_URI = "package://mishkan.resources.tools/i02-catalog.yaml"
+MECHANISM_CATALOG_URI = str(
+    Path(__file__).parents[1] / "fixtures" / "tools" / "i02-mechanism-catalog.yaml"
+)
 POLICY_URI = "package://mishkan.resources.policies/i02-local.yaml"
 INSPECTION_URI = "package://mishkan.resources.inspection/i02-default.yaml"
 TEST_ADAPTERS = frozenset(
@@ -116,8 +119,9 @@ def context_for(
     network: bool = False,
     isolation_profile: str | None = None,
 ) -> InvocationContext:
+    source_uri = CATALOG_URI if tool_id == "repository.read_file" else MECHANISM_CATALOG_URI
     catalog = ToolCatalog(
-        (CATALOG_URI,),
+        (source_uri,),
         root,
         runtime=runtime,
         available_adapters=TEST_ADAPTERS,

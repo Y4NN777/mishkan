@@ -11,74 +11,8 @@ tools:
     source_id: bundled.core
     source_kind: native
     contract_uri: package://mishkan.resources.tools/contracts/read-file.yaml
-  - tool_id: repository.write_file
-    version: 1.0.0
-    summary: Write one exact repository-relative file bound to the accepted task.
-    effect_class: filesystem_write
-    source_id: bundled.core
-    source_kind: native
-    contract_uri: package://mishkan.resources.tools/contracts/write-file.yaml
-  - tool_id: command.run
-    version: 1.0.0
-    summary: Run an argument-vector command through a configured isolation profile.
-    effect_class: command
-    source_id: bundled.core
-    source_kind: native
-    contract_uri: package://mishkan.resources.tools/contracts/command-run.yaml
-    availability:
-      runtimes: [container]
-  - tool_id: git.commit
-    version: 1.0.0
-    summary: Create a repository commit within exact revision and branch scope.
-    effect_class: repository_write
-    source_id: bundled.core
-    source_kind: native
-    contract_uri: package://mishkan.resources.tools/contracts/git-commit.yaml
-  - tool_id: git.push
-    version: 1.0.0
-    summary: Push one exact local branch to one exact configured remote branch.
-    effect_class: repository_remote_write
-    source_id: bundled.core
-    source_kind: native
-    contract_uri: package://mishkan.resources.tools/contracts/git-push.yaml
-  - tool_id: deployment.apply
-    version: 1.0.0
-    summary: Apply one deployment plan to one exact environment.
-    effect_class: deployment
-    source_id: bundled.core
-    source_kind: operator
-    contract_uri: package://mishkan.resources.tools/contracts/deployment-apply.yaml
-  - tool_id: release.publish
-    version: 1.0.0
-    summary: Publish one exact release artifact and version to a configured target.
-    effect_class: release
-    source_id: bundled.core
-    source_kind: operator
-    contract_uri: package://mishkan.resources.tools/contracts/release-publish.yaml
-  - tool_id: migration.apply
-    version: 1.0.0
-    summary: Apply one validated migration plan to one exact environment.
-    effect_class: migration
-    source_id: bundled.core
-    source_kind: operator
-    contract_uri: package://mishkan.resources.tools/contracts/migration-apply.yaml
 toolsets:
   - toolset_id: repository.readonly
     version: 1.0.0
     summary: Repository inspection capabilities.
     tools: [repository.read_file]
-  - toolset_id: repository.change
-    version: 1.0.0
-    summary: Repository read, edit, and local revision capabilities.
-    tools: [repository.write_file, git.commit]
-    toolsets: [repository.readonly]
-  - toolset_id: delivery.stateful
-    version: 1.0.0
-    summary: Explicit remote delivery capabilities excluding migrations.
-    tools: [git.push, deployment.apply, release.publish, migration.apply]
-    exclude_tools: [migration.apply]
-  - toolset_id: engineering.standard
-    version: 1.0.0
-    summary: Nested standard engineering capability set.
-    toolsets: [repository.change, delivery.stateful]
-    max_depth: 8
