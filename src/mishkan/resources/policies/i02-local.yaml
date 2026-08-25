@@ -17,6 +17,7 @@ rules:
       effect_classes: [read]
       paths: ["*"]
       executables: ["*"]
+      arguments: ["*"]
       network_destinations: ["*"]
       remotes: ["*"]
       branches: ["*"]

@@ -127,6 +127,7 @@ target_arguments:
   environment: [environment.@keys, credential_environment.@keys]
   external_resource: [declared_effects]
 credential_arguments: [credential_environment.*]
+policy_arguments: [args.*]
 resources: {timeout_seconds: 30, memory_mb: 512, network: true, concurrency: 1}
 adapter_config:
   max_output_bytes: 2097152

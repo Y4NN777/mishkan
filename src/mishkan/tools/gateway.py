@@ -109,6 +109,17 @@ def credential_references_for(
     return tuple(dict.fromkeys((*contract.credential_refs, *dynamic)))
 
 
+def policy_argument_values_for(
+    contract: ToolContract,
+    arguments: dict[str, Any],
+) -> tuple[str, ...]:
+    return tuple(
+        value
+        for selector in contract.policy_arguments
+        for value in _select_argument_values(arguments, selector)
+    )
+
+
 class CredentialResolver(Protocol):
     def resolve(self, references: tuple[str, ...]) -> dict[str, str]: ...
 
@@ -191,6 +202,7 @@ class CapabilityGateway:
             self._validate_binding(context, contract.provenance_fingerprint)
             self._validate_schema(contract.input_schema, arguments, "input")
             credential_references = credential_references_for(contract, arguments)
+            policy_arguments = policy_argument_values_for(contract, arguments)
             resolved = self._resolve_targets(declared_targets)
             self._validate_declared_arguments(contract, arguments, resolved)
             self._validate_bound_targets(context.binding.allowed_targets, resolved)
@@ -205,6 +217,7 @@ class CapabilityGateway:
                 effect_class=contract.effect_class.value,
                 paths=tuple(path.relative for path in resolved.paths),
                 executables=resolved.executables,
+                arguments=policy_arguments,
                 network_destinations=resolved.network_destinations,
                 remotes=resolved.remotes,
                 branches=resolved.branches,

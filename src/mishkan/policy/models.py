@@ -59,6 +59,7 @@ class PolicyScope(PolicyModel):
     effect_classes: tuple[str, ...] = ("*",)
     paths: tuple[str, ...] = ("*",)
     executables: tuple[str, ...] = ("*",)
+    arguments: tuple[str, ...] = ("*",)
     network_destinations: tuple[str, ...] = ("*",)
     remotes: tuple[str, ...] = ("*",)
     branches: tuple[str, ...] = ("*",)
@@ -94,6 +95,13 @@ class PolicyScope(PolicyModel):
         if not value or len(value) != len(set(value)):
             raise ValueError("policy selectors must be non-empty and unique")
         return tuple(security_identifier(item) for item in value)
+
+    @field_validator("arguments")
+    @classmethod
+    def argument_selectors_are_literal(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if not value or len(value) != len(set(value)) or any("\x00" in item for item in value):
+            raise ValueError("policy argument selectors must be non-empty, unique, and NUL-free")
+        return value
 
 
 class PolicyRule(PolicyModel):
@@ -162,6 +170,7 @@ class AuthorizationRequest(PolicyModel):
     effect_class: str = Field(min_length=1)
     paths: tuple[str, ...] = ()
     executables: tuple[str, ...] = ()
+    arguments: tuple[str, ...] = ()
     network_destinations: tuple[str, ...] = ()
     remotes: tuple[str, ...] = ()
     branches: tuple[str, ...] = ()
@@ -199,6 +208,13 @@ class AuthorizationRequest(PolicyModel):
         if len(value) != len(set(value)):
             raise ValueError("authorization scopes must be unique")
         return tuple(security_identifier(item) for item in value)
+
+    @field_validator("arguments")
+    @classmethod
+    def arguments_are_literal(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if any("\x00" in item for item in value):
+            raise ValueError("authorization arguments must be NUL-free")
+        return value
 
     @field_validator("isolation_profile")
     @classmethod

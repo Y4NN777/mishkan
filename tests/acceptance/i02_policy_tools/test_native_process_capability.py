@@ -77,6 +77,7 @@ def process_context(
     value: dict[str, Any],
     *,
     credential_scope: tuple[str, ...] = ("*",),
+    argument_scope: tuple[str, ...] = ("*",),
     decision: Decision = Decision.ALLOW,
 ) -> InvocationContext:
     environment_names = tuple(
@@ -88,6 +89,7 @@ def process_context(
         effect_class="command",
         paths=(str(value["cwd"]),),
         executables=(str(value["executable"]),),
+        arguments=argument_scope,
         environments=environment_names or ("*",),
         credentials=credential_scope,
         external_resources=tuple(value["declared_effects"]) or ("*",),
@@ -239,6 +241,21 @@ def test_process_credential_scope_is_denied_before_resolution(tmp_path: Path) ->
     assert result.status is CallStatus.REFUSED
     assert result.error_code == "ERR-POL-001"
     assert credentials.calls == 0
+
+
+@pytest.mark.commands
+def test_process_argument_policy_refuses_before_dispatch(tmp_path: Path) -> None:
+    marker = tmp_path / "must-not-exist"
+    value = arguments("-c", f"from pathlib import Path;Path({str(marker)!r}).touch()")
+    result = gateway(tmp_path).invoke(
+        process_context(tmp_path, value, argument_scope=("-c", "print-only")),
+        value,
+        targets(value),
+    )
+
+    assert result.status is CallStatus.REFUSED
+    assert result.error_code == "ERR-POL-001"
+    assert not marker.exists()
 
 
 @pytest.mark.commands

@@ -117,6 +117,7 @@ class PolicyAuthority:
         collection_pairs = (
             (request.paths, scope.paths),
             (request.executables, scope.executables),
+            (request.arguments, scope.arguments),
             (request.network_destinations, scope.network_destinations),
             (request.remotes, scope.remotes),
             (request.branches, scope.branches),
@@ -163,6 +164,7 @@ class PolicyAuthority:
             scope.effect_classes,
             scope.paths,
             scope.executables,
+            scope.arguments,
             scope.network_destinations,
             scope.remotes,
             scope.branches,
