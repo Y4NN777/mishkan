@@ -42,6 +42,9 @@ def arguments_model(contract: ToolContract) -> type[BaseModel]:
 
 def _python_type(schema: dict[str, Any]) -> Any:
     value = schema.get("type")
+    if isinstance(value, list) and len(value) == 2 and "null" in value:
+        concrete = next(item for item in value if item != "null")
+        return _python_type({**schema, "type": concrete}) | None
     if value == "string":
         return str
     if value == "integer":

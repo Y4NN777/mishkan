@@ -69,22 +69,44 @@ def declared_targets_for(
 
 
 def _select_argument_values(arguments: dict[str, Any], selector: str) -> tuple[str, ...]:
-    current: Any = arguments
+    current: list[Any] = [arguments]
     for part in selector.split("."):
-        if isinstance(current, dict):
-            current = current.get(part)
-        elif isinstance(current, list) and part.isdigit():
-            index = int(part)
-            current = current[index] if index < len(current) else None
-        else:
-            current = None
-        if current is None:
+        selected: list[Any] = []
+        for value in current:
+            if isinstance(value, dict) and part == "@keys":
+                selected.extend(value)
+            elif isinstance(value, dict) and part == "*":
+                selected.extend(value.values())
+            elif isinstance(value, list) and part == "*":
+                selected.extend(value)
+            elif isinstance(value, dict) and part in value:
+                selected.append(value[part])
+            elif isinstance(value, list) and part.isdigit():
+                index = int(part)
+                if index < len(value):
+                    selected.append(value[index])
+        current = selected
+        if not current:
             return ()
-    if isinstance(current, str):
-        return (current,)
-    if isinstance(current, list) and all(isinstance(item, str) for item in current):
-        return tuple(current)
-    return ()
+    flattened: list[str] = []
+    for value in current:
+        if isinstance(value, str):
+            flattened.append(value)
+        elif isinstance(value, list) and all(isinstance(item, str) for item in value):
+            flattened.extend(value)
+    return tuple(flattened)
+
+
+def credential_references_for(
+    contract: ToolContract,
+    arguments: dict[str, Any],
+) -> tuple[str, ...]:
+    dynamic = (
+        reference
+        for selector in contract.credential_arguments
+        for reference in _select_argument_values(arguments, selector)
+    )
+    return tuple(dict.fromkeys((*contract.credential_refs, *dynamic)))
 
 
 class CredentialResolver(Protocol):
@@ -168,6 +190,7 @@ class CapabilityGateway:
         try:
             self._validate_binding(context, contract.provenance_fingerprint)
             self._validate_schema(contract.input_schema, arguments, "input")
+            credential_references = credential_references_for(contract, arguments)
             resolved = self._resolve_targets(declared_targets)
             self._validate_declared_arguments(contract, arguments, resolved)
             self._validate_bound_targets(context.binding.allowed_targets, resolved)
@@ -186,7 +209,7 @@ class CapabilityGateway:
                 remotes=resolved.remotes,
                 branches=resolved.branches,
                 environments=resolved.environments,
-                credentials=contract.credential_refs,
+                credentials=credential_references,
                 external_resources=resolved.external_resources,
                 isolation_profile=context.isolation_profile,
                 resources=context.resources,
@@ -244,7 +267,7 @@ class CapabilityGateway:
             )
             if self._cancellation.requested(context.run_id, context.task_attempt_id):
                 raise CapabilityCancelled("cancellation requested before dispatch")
-            credentials = self._credentials.resolve(contract.credential_refs)
+            credentials = self._credentials.resolve(credential_references)
             adapter = self._adapters.get(contract.adapter)
             if adapter is None:
                 raise MishkanError(
@@ -252,13 +275,27 @@ class CapabilityGateway:
                     "bound tool adapter is unavailable",
                     details={"adapter": contract.adapter},
                 )
-            adapter_result = adapter.invoke(AdapterCall(arguments, resolved, credentials))
+            adapter_result = adapter.invoke(
+                AdapterCall(
+                    arguments=arguments,
+                    targets=resolved,
+                    credentials=credentials,
+                    execution_id=call_id,
+                    resources=context.resources,
+                    isolation_profile=context.isolation_profile,
+                    cancellation_requested=lambda: self._cancellation.requested(
+                        context.run_id, context.task_attempt_id
+                    ),
+                )
+            )
             if adapter_result.actual_targets != resolved:
                 raise MishkanError(
                     ErrorCode.TOOL_EFFECT,
                     "adapter-reported actual targets differ from the authorized targets",
                 )
             secret_values = tuple(credentials.values())
+            for content in adapter_result.inspection_content:
+                self._inspector.inspect(content, secret_values)
             inspected = self._inspector.inspect(
                 json.dumps(
                     {
@@ -295,21 +332,27 @@ class CapabilityGateway:
                 task_attempt_id=context.task_attempt_id,
                 tool_id=contract.tool_id,
                 tool_version=contract.version,
-                status=CallStatus.COMPLETED,
+                status=adapter_result.call_status,
                 started_at=started,
                 completed_at=utc_now(),
                 output=inspected_output,
                 actual_targets=adapter_result.actual_targets,
                 external_references=tuple(external_references),
-                retryable=False,
+                retryable=adapter_result.retryable,
                 adapter_evidence=adapter_evidence,
-                reason="validated authorized tool result",
+                error_code=adapter_result.error_code,
+                reason=adapter_result.reason or "validated authorized tool result",
             )
+            event_type = {
+                CallStatus.CANCELLED: "tool.call_cancelled",
+                CallStatus.UNCERTAIN: "tool.call_uncertain",
+                CallStatus.FAILED: "tool.call_failed",
+            }.get(completed.status, "tool.call_completed")
             self._audit(
                 context,
                 call_id,
-                "tool.call_completed",
-                "allow",
+                event_type,
+                completed.status.value,
                 completed.reason,
                 {"result_id": str(completed.id), "status": completed.status.value},
             )

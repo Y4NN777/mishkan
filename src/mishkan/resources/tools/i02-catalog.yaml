@@ -1,7 +1,7 @@
 schema_version: "1.0"
 source_id: bundled.core
 source_kind: native
-revision: "5"
+revision: "6"
 adoption_authority: MISHKAN release
 tools:
   - tool_id: file.resolve
@@ -54,6 +54,14 @@ tools:
     source_id: bundled.core
     source_kind: native
     contract_uri: package://mishkan.resources.tools/contracts/read-file.yaml
+  - tool_id: core.process.exec
+    version: 1.0.0
+    summary: Execute one canonical executable and literal argument vector without a shell.
+    effect_class: command
+    source_id: bundled.core
+    source_kind: native
+    contract_uri: package://mishkan.resources.tools/contracts/process-exec.yaml
+    availability: {platforms: [linux, darwin], runtimes: [python]}
 toolsets:
   - toolset_id: file.readonly
     version: 1.0.0
@@ -67,3 +75,7 @@ toolsets:
     version: 1.0.0
     summary: Concretely available non-mutating search capabilities.
     tools: [search.files, search.text]
+  - toolset_id: execution.process
+    version: 1.0.0
+    summary: Direct process execution without shell interpretation.
+    tools: [core.process.exec]

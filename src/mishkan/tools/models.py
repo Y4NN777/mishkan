@@ -90,6 +90,7 @@ class ToolContract(ToolModel):
     target_scopes: tuple[str, ...] = Field(min_length=1)
     target_arguments: dict[str, tuple[str, ...]]
     credential_refs: tuple[str, ...] = ()
+    credential_arguments: tuple[str, ...] = ()
     availability: AvailabilityConditions = Field(default_factory=AvailabilityConditions)
     resources: ResourceRequest
     adapter_config: dict[str, Any] = Field(default_factory=dict)

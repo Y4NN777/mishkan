@@ -33,6 +33,7 @@ TEST_ADAPTERS = frozenset(
         "native.file.list",
         "native.search.files",
         "ripgrep.search.text",
+        "native.process.exec",
         "native.repository.write_file",
         "isolation.command",
         "native.git.commit",
@@ -123,6 +124,7 @@ def context_for(
     *,
     runtime: str = "python",
     network: bool = False,
+    memory_mb: int | None = 512,
     isolation_profile: str | None = None,
 ) -> InvocationContext:
     source_uri = (
@@ -130,6 +132,7 @@ def context_for(
         if tool_id == "repository.read_file"
         or tool_id.startswith("file.")
         or tool_id.startswith("search.")
+        or tool_id.startswith("core.process.")
         else MECHANISM_CATALOG_URI
     )
     catalog = ToolCatalog(
@@ -161,7 +164,7 @@ def context_for(
         policy=policy,
         resources=ResourceRequest(
             timeout_seconds=30,
-            memory_mb=512,
+            memory_mb=memory_mb,
             network=network,
         ),
         isolation_profile=isolation_profile,

@@ -98,6 +98,11 @@ class AdapterResult(GatewayModel):
     actual_targets: ResolvedTargets
     external_references: tuple[str, ...] = ()
     evidence: dict[str, Any] = Field(default_factory=dict)
+    inspection_content: tuple[str, ...] = Field(default=(), exclude=True)
+    call_status: CallStatus = CallStatus.COMPLETED
+    retryable: bool = False
+    error_code: str | None = None
+    reason: str | None = None
 
 
 class ToolResultEnvelope(DomainRecord):

@@ -8,17 +8,33 @@ import hashlib
 import json
 import os
 import platform
+import resource
 import selectors
+import signal
 import stat
 import subprocess
 import time
-from dataclasses import dataclass
+from collections.abc import Callable
+from contextlib import suppress
+from dataclasses import dataclass, replace
 from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import Any, Protocol
+from uuid import UUID
+
+from pydantic import ValidationError
 
 from mishkan.domain.errors import ErrorCode, MishkanError
-from mishkan.tools.gateway_models import AdapterResult, ResolvedTargets
+from mishkan.domain.time import utc_now
+from mishkan.policy.models import ResourceRequest
+from mishkan.tools.execution import (
+    EffectSettlement,
+    ExecutionMode,
+    ExecutionRequest,
+    ExecutionResult,
+    ExecutionStatus,
+)
+from mishkan.tools.gateway_models import AdapterResult, CallStatus, ResolvedTargets
 from mishkan.tools.isolation import ContainerCommand
 
 
@@ -27,6 +43,10 @@ class AdapterCall:
     arguments: dict[str, Any]
     targets: ResolvedTargets
     credentials: dict[str, str]
+    execution_id: str
+    resources: ResourceRequest
+    isolation_profile: str | None
+    cancellation_requested: Callable[[], bool]
 
 
 class CapabilityAdapter(Protocol):
@@ -572,13 +592,7 @@ class SearchFilesAdapter:
         }
         if "cursor" in call.arguments:
             translated["cursor"] = call.arguments["cursor"]
-        listed = self._listing.invoke(
-            AdapterCall(
-                arguments=translated,
-                targets=call.targets,
-                credentials=call.credentials,
-            )
-        )
+        listed = self._listing.invoke(replace(call, arguments=translated))
         output = listed.output
         return AdapterResult(
             output={
@@ -852,6 +866,397 @@ class ReadFileAdapter:
             actual_targets=call.targets,
             evidence={"bytes_read": len(content)},
         )
+
+
+class DirectProcessAdapter:
+    """Execute one canonical absolute executable with a literal argv and no shell."""
+
+    adapter_id = "native.process.exec"
+
+    def __init__(
+        self,
+        *,
+        max_output_bytes: int,
+        max_stdin_bytes: int,
+        max_environment_entries: int,
+        execution_location: str = "local",
+    ) -> None:
+        if min(max_output_bytes, max_stdin_bytes, max_environment_entries) < 1:
+            raise ValueError("direct process bounds must be positive")
+        self._max_output_bytes = max_output_bytes
+        self._max_stdin_bytes = max_stdin_bytes
+        self._max_environment_entries = max_environment_entries
+        self._execution_location = execution_location
+
+    def invoke(self, call: AdapterCall) -> AdapterResult:
+        request = self._request(call)
+        self._validate_constraints(request, call)
+        stdin = request.stdin.encode("utf-8") if request.stdin is not None else b""
+        executable = self._executable(request, call)
+        cwd = self._cwd(call)
+        environment = self._environment(request, call)
+        started_at = utc_now()
+        started_monotonic = time.monotonic()
+        try:
+            process = subprocess.Popen(
+                (str(executable), *request.args),
+                cwd=cwd,
+                env=environment,
+                stdin=subprocess.PIPE if stdin else subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                start_new_session=True,
+                preexec_fn=self._resource_limiter(call.resources.memory_mb),
+            )
+        except (OSError, ValueError) as exc:
+            raise MishkanError(
+                ErrorCode.EXECUTION,
+                "direct process could not be spawned",
+                details={"category": "spawn_failure", "reason": type(exc).__name__},
+            ) from exc
+        stdout, stderr, termination_cause = self._communicate(
+            process,
+            stdin,
+            timeout_seconds=request.timeout_seconds,
+            started_monotonic=started_monotonic,
+            cancellation_requested=call.cancellation_requested,
+        )
+        return_code = process.returncode
+        if return_code is None:
+            raise MishkanError(
+                ErrorCode.EXECUTION,
+                "direct process did not settle after termination",
+                details={"category": "lost_process"},
+            )
+        status = self._status(termination_cause, return_code, request.expected_exit_codes)
+        effect_settlement = (
+            EffectSettlement.ABSENT if not request.declared_effects else EffectSettlement.UNCERTAIN
+        )
+        outer_status = self._outer_status(status, termination_cause, request.declared_effects)
+        result = ExecutionResult(
+            execution_id=UUID(call.execution_id),
+            mode=ExecutionMode.PROCESS,
+            status=status,
+            executable=str(executable),
+            args=request.args,
+            cwd=call.targets.paths[0].relative,
+            exit_code=return_code if return_code >= 0 else None,
+            signal=-return_code if return_code < 0 else None,
+            started_at=started_at,
+            finished_at=utc_now(),
+            stdout_preview=self._preview(stdout, request.output_policy.preview_bytes),
+            stderr_preview=self._preview(stderr, request.output_policy.preview_bytes),
+            stdout_bytes=len(stdout),
+            stderr_bytes=len(stderr),
+            stdout_digest=f"sha256:{hashlib.sha256(stdout).hexdigest()}",
+            stderr_digest=f"sha256:{hashlib.sha256(stderr).hexdigest()}",
+            truncated=(
+                len(stdout) > request.output_policy.preview_bytes
+                or len(stderr) > request.output_policy.preview_bytes
+                or termination_cause == "output_limit"
+            ),
+            termination_cause=termination_cause,
+            expected_exit_codes=request.expected_exit_codes,
+            environment_names=tuple(sorted(request.environment)),
+            credential_environment_names=tuple(sorted(request.credential_environment)),
+            declared_effects=request.declared_effects,
+            effect_settlement=effect_settlement,
+            execution_location=self._execution_location,
+            error=self._error(status, termination_cause, return_code),
+        )
+        return AdapterResult(
+            output=result.model_dump(mode="json"),
+            actual_targets=call.targets,
+            evidence={
+                "adapter": self.adapter_id,
+                "shell": False,
+                "argv_count": len(request.args) + 1,
+                "process_group": "isolated",
+                "ambient_environment": False,
+                "memory_limit_mb": call.resources.memory_mb,
+                "network_denial_enforced": False,
+            },
+            inspection_content=(
+                stdout.decode("utf-8", errors="replace"),
+                stderr.decode("utf-8", errors="replace"),
+            ),
+            call_status=outer_status,
+            retryable=False,
+            error_code=(
+                ErrorCode.EXECUTION.value if outer_status is not CallStatus.COMPLETED else None
+            ),
+            reason=f"direct process settled as {status.value}",
+        )
+
+    def _validate_constraints(self, request: ExecutionRequest, call: AdapterCall) -> None:
+        if request.mode is not ExecutionMode.PROCESS:
+            raise MishkanError(
+                ErrorCode.EXECUTION,
+                "direct process adapter received a non-process execution mode",
+                details={"category": "invalid_mode"},
+            )
+        if not call.resources.network:
+            raise MishkanError(
+                ErrorCode.TOOL_UNAVAILABLE,
+                "direct process adapter cannot enforce the requested network denial",
+                details={"constraint": "network:false"},
+            )
+        if request.timeout_seconds > call.resources.timeout_seconds:
+            raise MishkanError(
+                ErrorCode.EXECUTION,
+                "requested process timeout exceeds the authorized resource bound",
+                details={"category": "resource_limit"},
+            )
+        if request.output_policy.preview_bytes > self._max_output_bytes:
+            raise MishkanError(
+                ErrorCode.EXECUTION,
+                "requested process preview exceeds the configured output bound",
+                details={"category": "output_limit"},
+            )
+        if len(request.environment) + len(request.credential_environment) > (
+            self._max_environment_entries
+        ):
+            raise MishkanError(
+                ErrorCode.EXECUTION,
+                "requested process environment exceeds the configured entry bound",
+                details={"category": "environment_limit"},
+            )
+        stdin_bytes = request.stdin.encode("utf-8") if request.stdin is not None else b""
+        if len(stdin_bytes) > self._max_stdin_bytes:
+            raise MishkanError(
+                ErrorCode.EXECUTION,
+                "requested process stdin exceeds the configured input bound",
+                details={"category": "input_limit"},
+            )
+
+    @staticmethod
+    def _request(call: AdapterCall) -> ExecutionRequest:
+        try:
+            return ExecutionRequest.model_validate(
+                {**call.arguments, "execution_id": call.execution_id}
+            )
+        except ValidationError as exc:
+            raise MishkanError(
+                ErrorCode.EXECUTION,
+                "direct process request is invalid",
+                details={"category": "validation", "violations": len(exc.errors())},
+            ) from exc
+
+    @staticmethod
+    def _executable(request: ExecutionRequest, call: AdapterCall) -> Path:
+        assert request.executable is not None
+        requested = Path(request.executable)
+        try:
+            resolved = requested.resolve(strict=True)
+        except OSError as exc:
+            raise MishkanError(
+                ErrorCode.TOOL_UNAVAILABLE,
+                "direct process executable is unavailable",
+                details={"executable": request.executable},
+            ) from exc
+        if resolved != requested or call.targets.executables != (str(resolved),):
+            raise MishkanError(
+                ErrorCode.AUTHORITY_NOT_GRANTED,
+                "direct process executable differs from its authorized canonical target",
+                details={"executable": request.executable},
+            )
+        if not resolved.is_file() or not os.access(resolved, os.X_OK):
+            raise MishkanError(
+                ErrorCode.TOOL_UNAVAILABLE,
+                "direct process target is not an executable regular file",
+                details={"executable": request.executable},
+            )
+        return resolved
+
+    @staticmethod
+    def _cwd(call: AdapterCall) -> Path:
+        if len(call.targets.paths) != 1 or not call.targets.paths[0].absolute.is_dir():
+            raise MishkanError(
+                ErrorCode.EXECUTION,
+                "direct process requires one existing workspace directory",
+                details={"category": "invalid_cwd"},
+            )
+        return call.targets.paths[0].absolute
+
+    def _environment(self, request: ExecutionRequest, call: AdapterCall) -> dict[str, str]:
+        environment = dict(request.environment)
+        for name, reference in request.credential_environment.items():
+            value = call.credentials.get(reference)
+            if value is None:
+                raise MishkanError(
+                    ErrorCode.TOOL_UNAVAILABLE,
+                    "authorized process credential could not be resolved",
+                    details={"reference": reference},
+                )
+            environment[name] = value
+        if any("\x00" in name or "\x00" in value for name, value in environment.items()):
+            raise MishkanError(
+                ErrorCode.EXECUTION,
+                "direct process environment contains a null byte",
+                details={"category": "invalid_environment"},
+            )
+        return environment
+
+    def _communicate(
+        self,
+        process: subprocess.Popen[bytes],
+        stdin: bytes,
+        *,
+        timeout_seconds: int,
+        started_monotonic: float,
+        cancellation_requested: Callable[[], bool],
+    ) -> tuple[bytes, bytes, str | None]:
+        selector = selectors.DefaultSelector()
+        assert process.stdout is not None
+        assert process.stderr is not None
+        buffers = {"stdout": bytearray(), "stderr": bytearray()}
+        for stream, channel in ((process.stdout, "stdout"), (process.stderr, "stderr")):
+            os.set_blocking(stream.fileno(), False)
+            selector.register(stream, selectors.EVENT_READ, channel)
+        stdin_offset = 0
+        if stdin:
+            assert process.stdin is not None
+            os.set_blocking(process.stdin.fileno(), False)
+            selector.register(process.stdin, selectors.EVENT_WRITE, "stdin")
+        termination_cause: str | None = None
+        captured = 0
+        try:
+            while selector.get_map():
+                if termination_cause is None and cancellation_requested():
+                    termination_cause = "cancellation"
+                    self._stop(process)
+                if (
+                    termination_cause is None
+                    and time.monotonic() - started_monotonic >= timeout_seconds
+                ):
+                    termination_cause = "timeout"
+                    self._stop(process)
+                events = selector.select(0.05)
+                for key, _ in events:
+                    channel = str(key.data)
+                    file_object: Any = key.fileobj
+                    if channel == "stdin":
+                        descriptor = self._fileno(file_object)
+                        try:
+                            written = os.write(
+                                descriptor, stdin[stdin_offset : stdin_offset + 8192]
+                            )
+                        except BrokenPipeError:
+                            written = len(stdin) - stdin_offset
+                        stdin_offset += written
+                        if stdin_offset >= len(stdin):
+                            self._unregister_and_close(selector, file_object)
+                        continue
+                    descriptor = self._fileno(file_object)
+                    chunk = os.read(descriptor, 8192)
+                    if not chunk:
+                        self._unregister_and_close(selector, file_object)
+                        continue
+                    remaining = max(0, self._max_output_bytes - captured)
+                    buffers[channel].extend(chunk[:remaining])
+                    captured += min(len(chunk), remaining)
+                    if len(chunk) > remaining and termination_cause is None:
+                        termination_cause = "output_limit"
+                        self._stop(process)
+                if process.poll() is not None and not events:
+                    for key in tuple(selector.get_map().values()):
+                        if str(key.data) == "stdin":
+                            self._unregister_and_close(selector, key.fileobj)
+            if process.poll() is None:
+                process.wait(timeout=1)
+        finally:
+            selector.close()
+            if process.poll() is None:
+                self._stop(process)
+        return bytes(buffers["stdout"]), bytes(buffers["stderr"]), termination_cause
+
+    @staticmethod
+    def _fileno(file_object: Any) -> int:
+        return file_object if isinstance(file_object, int) else int(file_object.fileno())
+
+    @staticmethod
+    def _unregister_and_close(
+        selector: selectors.BaseSelector,
+        file_object: Any,
+    ) -> None:
+        selector.unregister(file_object)
+        if not isinstance(file_object, int):
+            file_object.close()
+
+    @staticmethod
+    def _stop(process: subprocess.Popen[bytes]) -> None:
+        if process.poll() is not None:
+            return
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+            process.wait(timeout=0.5)
+        except ProcessLookupError:
+            return
+        except subprocess.TimeoutExpired:
+            with suppress(ProcessLookupError):
+                os.killpg(process.pid, signal.SIGKILL)
+            process.wait(timeout=1)
+
+    @staticmethod
+    def _resource_limiter(memory_mb: int | None) -> Callable[[], None] | None:
+        if memory_mb is None:
+            return None
+
+        def apply_limit() -> None:
+            memory_bytes = memory_mb * 1024 * 1024
+            resource.setrlimit(resource.RLIMIT_AS, (memory_bytes, memory_bytes))
+
+        return apply_limit
+
+    @staticmethod
+    def _preview(content: bytes, limit: int) -> str:
+        return content[:limit].decode("utf-8", errors="replace")
+
+    @staticmethod
+    def _status(
+        cause: str | None,
+        return_code: int,
+        expected_exit_codes: tuple[int, ...],
+    ) -> ExecutionStatus:
+        if cause == "cancellation":
+            return ExecutionStatus.CANCELLED
+        if cause == "timeout":
+            return ExecutionStatus.TIMED_OUT
+        if cause == "output_limit":
+            return ExecutionStatus.FAILED
+        return (
+            ExecutionStatus.COMPLETED
+            if return_code in expected_exit_codes
+            else ExecutionStatus.FAILED
+        )
+
+    @staticmethod
+    def _outer_status(
+        status: ExecutionStatus,
+        cause: str | None,
+        declared_effects: tuple[str, ...],
+    ) -> CallStatus:
+        if status is ExecutionStatus.CANCELLED:
+            return CallStatus.CANCELLED
+        if (
+            cause in {"timeout", "output_limit"}
+            or declared_effects
+            or status in {ExecutionStatus.LOST, ExecutionStatus.UNCERTAIN}
+        ):
+            return CallStatus.UNCERTAIN
+        if status is ExecutionStatus.FAILED:
+            return CallStatus.FAILED
+        return CallStatus.COMPLETED
+
+    @staticmethod
+    def _error(status: ExecutionStatus, cause: str | None, return_code: int) -> str | None:
+        if status is ExecutionStatus.COMPLETED:
+            return None
+        if cause is not None:
+            return cause
+        if return_code < 0:
+            return "signal_termination"
+        return "unexpected_exit_code"
 
 
 class WriteFileAdapter:
