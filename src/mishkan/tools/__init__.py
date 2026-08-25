@@ -12,6 +12,12 @@ from mishkan.tools.execution import (
     ShellProfile,
 )
 from mishkan.tools.models import RegistrySnapshot, ToolBinding, ToolContract
+from mishkan.tools.native import (
+    NativeCapabilityEnvironment,
+    available_contracts,
+    build_native_adapters,
+    discover_native_environment,
+)
 
 __all__ = [
     "ExecutionMode",
@@ -19,6 +25,7 @@ __all__ = [
     "ExecutionResult",
     "ExecutionStatus",
     "GatewayCrewAITool",
+    "NativeCapabilityEnvironment",
     "RegistrySnapshot",
     "ShellDialect",
     "ShellOptions",
@@ -26,4 +33,7 @@ __all__ = [
     "ToolBinding",
     "ToolCatalog",
     "ToolContract",
+    "available_contracts",
+    "build_native_adapters",
+    "discover_native_environment",
 ]

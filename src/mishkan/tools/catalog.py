@@ -172,6 +172,7 @@ class ToolCatalog:
         role: str,
         tool_id: str,
         allowed_targets: tuple[str, ...],
+        allowed_call_fingerprints: tuple[str, ...] = (),
     ) -> ToolBinding:
         tool = snapshot.require(tool_id)
         return ToolBinding(
@@ -182,6 +183,7 @@ class ToolCatalog:
             contract_fingerprint=tool.provenance_fingerprint,
             registry_fingerprint=snapshot.fingerprint,
             allowed_targets=allowed_targets,
+            allowed_call_fingerprints=allowed_call_fingerprints,
         )
 
     def _resolve_requested(self, requested: tuple[str, ...]) -> tuple[str, ...]:

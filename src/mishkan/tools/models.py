@@ -12,6 +12,16 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from mishkan.policy.models import ResourceRequest, security_identifier
 
 
+def argument_fingerprint(arguments: dict[str, Any]) -> str:
+    payload = json.dumps(
+        arguments,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+    ).encode()
+    return hashlib.sha256(payload).hexdigest()
+
+
 class ToolModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -198,3 +208,11 @@ class ToolBinding(ToolModel):
     contract_fingerprint: str = Field(min_length=64, max_length=64)
     registry_fingerprint: str = Field(min_length=64, max_length=64)
     allowed_targets: tuple[str, ...]
+    allowed_call_fingerprints: tuple[str, ...] = ()
+
+    @field_validator("allowed_targets", "allowed_call_fingerprints")
+    @classmethod
+    def binding_values_are_unique(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if len(value) != len(set(value)):
+            raise ValueError("tool binding values must be unique")
+        return value

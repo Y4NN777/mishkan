@@ -113,23 +113,21 @@ class CrewAIInitializationFlow(Flow[InitializationFlowState]):
                 if task.task_id in pending and set(task.depends_on).issubset(completed)
             ]
             for task in ready:
-                review_feedback: ReviewDecision | None = None
-                verified: InitializationResult | None = None
+                proposed = self._coordinator.execute_task(
+                    self.state.run_id,
+                    plan,
+                    self.state.discovery,
+                    task,
+                )
+                verified = self._result_validator.verify(
+                    proposed,
+                    task,
+                    self.state.discovery,
+                )
                 accepted_review: ReviewDecision | None = None
+                last_review: ReviewDecision | None = None
                 attempts = self._coordinator.review_retries + 1
                 for _attempt in range(attempts):
-                    proposed = self._coordinator.execute_task(
-                        self.state.run_id,
-                        plan,
-                        self.state.discovery,
-                        task,
-                        review_feedback,
-                    )
-                    verified = self._result_validator.verify(
-                        proposed,
-                        task,
-                        self.state.discovery,
-                    )
                     proposed_review = self._coordinator.review_task(
                         self.state.run_id,
                         plan,
@@ -137,17 +135,17 @@ class CrewAIInitializationFlow(Flow[InitializationFlowState]):
                         task,
                         verified,
                     )
+                    last_review = proposed_review
                     if proposed_review.verdict == "accepted":
                         accepted_review = self._result_validator.accept_review(
                             proposed_review,
                             verified,
                         )
                         break
-                    review_feedback = proposed_review
-                if verified is None or accepted_review is None:
-                    if review_feedback is None or verified is None:
+                if accepted_review is None:
+                    if last_review is None:
                         raise RuntimeError("review loop produced no result")
-                    self._result_validator.accept_review(review_feedback, verified)
+                    self._result_validator.accept_review(last_review, verified)
                     raise RuntimeError("rejected review was unexpectedly accepted")
                 self._repository.accept_result(
                     self.state.run_id,

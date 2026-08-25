@@ -13,7 +13,7 @@ from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.policy import ApprovalEvidence
 from mishkan.tools.gateway import CapabilityGateway, declared_targets_for
 from mishkan.tools.gateway_models import CallStatus, DeclaredTargets, InvocationContext
-from mishkan.tools.models import ToolContract
+from mishkan.tools.models import ToolContract, argument_fingerprint
 
 TargetBuilder = Callable[[dict[str, Any]], DeclaredTargets]
 
@@ -70,6 +70,9 @@ class GatewayCrewAITool(BaseTool):
     _context: InvocationContext = PrivateAttr()
     _targets: TargetBuilder = PrivateAttr()
     _approval: ApprovalEvidence | tuple[ApprovalEvidence, ...] | None = PrivateAttr()
+    _enforce_exact_calls: bool = PrivateAttr()
+    _remaining_call_fingerprints: set[str] = PrivateAttr()
+    _completed_call_fingerprints: set[str] = PrivateAttr()
 
     def __init__(
         self,
@@ -90,8 +93,30 @@ class GatewayCrewAITool(BaseTool):
             lambda arguments: declared_targets_for(contract, arguments)
         )
         self._approval = approval
+        self._enforce_exact_calls = bool(context.binding.allowed_call_fingerprints)
+        self._remaining_call_fingerprints = set(context.binding.allowed_call_fingerprints)
+        self._completed_call_fingerprints = set()
+
+    @property
+    def pending_call_fingerprints(self) -> frozenset[str]:
+        return frozenset(self._remaining_call_fingerprints)
+
+    @property
+    def completed_call_fingerprints(self) -> frozenset[str]:
+        return frozenset(self._completed_call_fingerprints)
 
     def _run(self, **kwargs: Any) -> str:
+        fingerprint = argument_fingerprint(kwargs)
+        if self._enforce_exact_calls:
+            if fingerprint not in self._remaining_call_fingerprints:
+                raise MishkanError(
+                    ErrorCode.AUTHORITY_NOT_GRANTED,
+                    "CrewAI attempted an unplanned or already attempted tool call",
+                    details={"argument_fingerprint": fingerprint},
+                )
+            # Reserve before dispatch: a failed or uncertain non-idempotent call is never
+            # repeated automatically through the same accepted task binding.
+            self._remaining_call_fingerprints.remove(fingerprint)
         result = self._gateway.invoke(
             self._context,
             kwargs,
@@ -101,4 +126,5 @@ class GatewayCrewAITool(BaseTool):
         if result.status is not CallStatus.COMPLETED or result.output is None:
             code = ErrorCode(result.error_code) if result.error_code else ErrorCode.TOOL_EFFECT
             raise MishkanError(code, result.reason)
+        self._completed_call_fingerprints.add(fingerprint)
         return json.dumps(result.output, sort_keys=True)

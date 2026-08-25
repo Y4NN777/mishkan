@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from mishkan.artifacts import FilesystemArtifactStore
 from mishkan.config.models import MishkanConfig
 from mishkan.crewai.environment import configure_crewai_environment
 from mishkan.domain.errors import ErrorCode, MishkanError
@@ -11,11 +12,15 @@ from mishkan.planning import PlanValidator
 from mishkan.planning.models import InitializationReport
 from mishkan.policy import PolicyAuthority, PolicyLoader
 from mishkan.repository import RepositoryInspector
-from mishkan.tools.adapters import ReadFileAdapter
 from mishkan.tools.catalog import ToolCatalog
 from mishkan.tools.gateway import CapabilityGateway, MappingCredentialResolver
 from mishkan.tools.inspection import ContentInspector, InspectionProfileLoader
 from mishkan.tools.isolation import IsolationProfileLoader
+from mishkan.tools.native import (
+    available_contracts,
+    build_native_adapters,
+    discover_native_environment,
+)
 
 
 class MishkanInitializer:
@@ -41,10 +46,12 @@ class MishkanInitializer:
 
         organization, outcome = load_initialization_definitions()
         state_repository = LocalRunRepository(discovery.binding.root / ".mishkan" / "mishkan.db")
+        native_environment = discover_native_environment()
         catalog = ToolCatalog(
             config.tool_sources,
             discovery.binding.root,
-            available_adapters=frozenset({ReadFileAdapter.adapter_id}),
+            available_dependencies=native_environment.dependencies,
+            available_adapters=native_environment.adapter_ids,
         )
         policy = PolicyLoader().load(config.policy_sources, discovery.binding.root)
         inspection_source = config.inspection_profile
@@ -68,15 +75,27 @@ class MishkanInitializer:
                 "configured isolation profile identities must be unique",
             )
         authority = PolicyAuthority()
-        init_registry = catalog.snapshot(outcome.allowed_tools)
-        read_contract = init_registry.require("repository.read_file")
+        contracts = available_contracts(catalog, outcome.allowed_tools)
+        adapters = build_native_adapters(catalog, outcome.allowed_tools, native_environment)
+        artifact_limit = max(
+            (
+                value
+                for contract in contracts
+                if isinstance((value := contract.adapter_config.get("max_output_bytes")), int)
+            ),
+            default=1,
+        )
         gateway = CapabilityGateway(
             discovery.binding.root,
             authority,
             MappingCredentialResolver({}),
             inspector,
-            {ReadFileAdapter.adapter_id: ReadFileAdapter(read_contract.max_bytes)},
+            adapters,
             state_repository,
+            artifact_store=FilesystemArtifactStore(
+                discovery.binding.root / ".mishkan" / "artifacts",
+                max_artifact_bytes=artifact_limit,
+            ),
         )
         snapshot = state_repository.start_or_resume(discovery, objective, outcome.outcome_id)
         state = InitializationFlowState(
@@ -94,6 +113,8 @@ class MishkanInitializer:
             outcome,
             gateway,
             policy,
+            available_tools=contracts,
+            available_executables=native_environment.executables,
         )
         flow = CrewAIInitializationFlow(
             state,
@@ -101,7 +122,7 @@ class MishkanInitializer:
             state_repository,
             organization,
             outcome,
-            PlanValidator(catalog, policy, authority),
+            PlanValidator(catalog, policy, authority, inspector),
             tracing=config.crewai.tracing,
         )
         output = flow.kickoff()

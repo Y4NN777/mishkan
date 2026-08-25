@@ -30,7 +30,7 @@ from mishkan.tools.gateway_models import (
     ToolResultEnvelope,
 )
 from mishkan.tools.inspection import ContentInspector
-from mishkan.tools.models import ToolContract
+from mishkan.tools.models import ToolContract, argument_fingerprint
 
 _TARGET_FIELDS = {
     "path": "paths",
@@ -211,6 +211,7 @@ class CapabilityGateway:
             self._validate_binding(context, contract.provenance_fingerprint)
             self._validate_schema(contract.input_schema, arguments, "input")
             serialized_arguments = json.dumps(arguments, sort_keys=True, separators=(",", ":"))
+            self._validate_bound_call(context.binding.allowed_call_fingerprints, arguments)
             if self._inspector.inspect(serialized_arguments) != serialized_arguments:
                 raise MishkanError(
                     ErrorCode.SECRET_CONTENT,
@@ -693,6 +694,18 @@ class CapabilityGateway:
                 ErrorCode.AUTHORITY_NOT_GRANTED,
                 "resolved target is outside the exact task binding",
                 details={"targets": refused},
+            )
+
+    @staticmethod
+    def _validate_bound_call(allowed: tuple[str, ...], arguments: dict[str, Any]) -> None:
+        if not allowed:
+            return
+        fingerprint = argument_fingerprint(arguments)
+        if fingerprint not in allowed:
+            raise MishkanError(
+                ErrorCode.AUTHORITY_NOT_GRANTED,
+                "tool arguments differ from every exact call accepted in the task plan",
+                details={"argument_fingerprint": fingerprint},
             )
 
     def _terminal(

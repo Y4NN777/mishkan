@@ -5,5 +5,14 @@ intent: Produce a repository-specific, evidence-cited initialization report with
 allowed_roles: [Repository_Investigator, Repository_Reviewer]
 task_roles: [Repository_Investigator]
 review_roles: [Repository_Reviewer]
-allowed_tools: [repository.read_file]
+allowed_tools:
+  - repository.read_file
+  - file.resolve
+  - file.stat
+  - file.read
+  - file.list
+  - search.files
+  - search.text
+  - core.process.exec
+  - core.shell.run
 max_tasks: 4

@@ -62,9 +62,17 @@ class FakeCoordinator:
     plan_validation_retries = 0
     review_retries = 0
 
-    def __init__(self, *, crash_on: str | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        crash_on: str | None = None,
+        rejected_reviews: int = 0,
+    ) -> None:
         self.crash_on = crash_on
+        self.review_retries = rejected_reviews
+        self.rejected_reviews = rejected_reviews
         self.executed: list[str] = []
+        self.reviewed = 0
 
     def execute_task(
         self,
@@ -94,6 +102,15 @@ class FakeCoordinator:
         task: PlanTask,
         _result: InitializationResult,
     ) -> ReviewDecision:
+        self.reviewed += 1
+        if self.reviewed <= self.rejected_reviews:
+            return ReviewDecision(
+                task_id=task.task_id,
+                verdict="rejected",
+                summary="Independent evidence check requested another review.",
+                checked_citations=("README.md",),
+                issues=("Review retry fixture",),
+            )
         return ReviewDecision(
             task_id=task.task_id,
             verdict="accepted",
@@ -159,4 +176,30 @@ def test_flow_resumes_after_last_accepted_task(tmp_path: Path) -> None:
 
     assert report.resumed is True
     assert resumed_coordinator.executed == ["inspect-details"]
+    assert report.completed_task_ids == ("inspect-overview", "inspect-details")
+
+
+def test_review_retry_never_reexecutes_the_production_task(tmp_path: Path) -> None:
+    (tmp_path / "README.md").write_text("evidence", encoding="utf-8")
+    discovery = _discovery(tmp_path)
+    repository = LocalRunRepository(tmp_path / ".mishkan" / "mishkan.db")
+    started = repository.start_or_resume(
+        discovery,
+        "Initialize after a forced crash",
+        "mishkan.init",
+    )
+    plan = _plan()
+    repository.accept_plan(started.run_id, plan)
+    coordinator = FakeCoordinator(rejected_reviews=1)
+    state = InitializationFlowState(
+        run_id=started.run_id,
+        objective=plan.objective,
+        discovery=discovery,
+        accepted_plan=plan,
+    )
+
+    report = _flow(state, coordinator, repository).execute_plan(plan)
+
+    assert coordinator.executed == ["inspect-overview", "inspect-details"]
+    assert coordinator.reviewed == 3
     assert report.completed_task_ids == ("inspect-overview", "inspect-details")

@@ -27,6 +27,8 @@ from mishkan.repository.models import DiscoverySnapshot
 from mishkan.tools.crewai_gateway import GatewayCrewAITool
 from mishkan.tools.gateway import CapabilityGateway
 from mishkan.tools.gateway_models import InvocationContext
+from mishkan.tools.models import EffectClass, ToolContract
+from mishkan.tools.native import ExecutableObservation
 
 OutputT = TypeVar("OutputT", bound=BaseModel)
 
@@ -41,12 +43,17 @@ class CrewAIInitializationCoordinator:
         outcome: OutcomeDefinition,
         gateway: CapabilityGateway | None = None,
         policy: EffectivePolicy | None = None,
+        *,
+        available_tools: tuple[ToolContract, ...] = (),
+        available_executables: tuple[ExecutableObservation, ...] = (),
     ) -> None:
         self._config = config
         self._organization = organization
         self._outcome = outcome
         self._gateway = gateway
         self._policy = policy
+        self._available_tools = available_tools
+        self._available_executables = available_executables
         self._models = CrewAIModelRouter(config)
 
     @property
@@ -73,8 +80,23 @@ A previous candidate was deterministically refused for these violations:
 {json.dumps(validation_feedback)}
 Correct every violation. Do not repeat the refused role, tool, path, or dependency values.
 """.strip()
+        tool_contracts = [
+            {
+                "tool_id": contract.tool_id,
+                "crewai_name": contract.crewai_name,
+                "summary": contract.summary,
+                "effect_class": contract.effect_class.value,
+                "input_schema": contract.input_schema,
+                "resources": contract.resources.model_dump(mode="json"),
+            }
+            for contract in self._available_tools
+        ]
+        executables = [
+            {"name": executable.name, "path": executable.path}
+            for executable in self._available_executables
+        ]
         description = f"""
-Propose exactly one read-only task for this repository initialization outcome.
+Propose exactly one bounded repository-specific task for this initialization outcome.
 
 Objective: {objective}
 Outcome ID: {self._outcome.outcome_id}
@@ -83,15 +105,30 @@ Outcome intent: {self._outcome.intent}
 Discovery fingerprint: {discovery.fingerprint}
 Discovery facts: {json.dumps(evidence, sort_keys=True)}
 Unknowns: {json.dumps(discovery.unknowns)}
+Runnable tool contracts at this location: {json.dumps(tool_contracts, sort_keys=True)}
+Observed executable inventory: {json.dumps(executables, sort_keys=True)}
 
 Rules:
+- Return schema_version "1.1".
 - Return the exact objective, outcome ID, and repository revision above.
 - Create exactly one task whose ID, title, and purpose are specific to the evidence.
 - assigned_role must be Repository_Investigator.
-- tools must be ["repository.read_file"].
+- Select exact tools only from the runnable contracts above.
+- Include repository.read_file and exactly one of core.process.exec or core.shell.run.
+- tool_calls must contain at least one exact call for every selected tool.
+- Give every tool call a unique repository-specific call_id.
+- Arguments must match the selected tool input schema exactly, including required fields.
+- Read every cited evidence path through repository.read_file.
+- For process mode, use an absolute executable from the observed inventory and literal arguments
+  useful for the detected project rather than a universal probe.
+- For shell mode, use exact observed paths for the interpreter and declared executables.
+- Keep the probe non-mutating: use empty declared effects, credentials, environment additions,
+  network destinations, and stdin unless the objective explicitly requires them.
+- Use cwd ".", honor the selected contract's resource limits, choose appropriate expected exit
+  codes and bounded previews, and request no complete-output artifact unless it is necessary.
 - evidence_paths must contain one or more values from: {json.dumps(cited_paths)}.
 - depends_on must be empty.
-- Never invent a path or use a universal task title.
+- Never invent a path, executable, tool, or universal task title.
 
 {feedback}
 """.strip()
@@ -131,19 +168,22 @@ Review summary: {review_feedback.summary}
 Issues to correct: {json.dumps(review_feedback.issues)}
 Re-read the evidence and do not repeat unsupported claims.
 """.strip()
+        planned_calls = self._planned_calls(plan, task_contract)
         description = f"""
-Execute this accepted read-only repository task:
+Execute this accepted bounded repository task:
 {task_contract.model_dump_json()}
 
 Repository revision: {discovery.binding.base_revision}
-You MUST call repository_read_file for every evidence path before answering.
+You MUST perform every accepted planned call exactly once using the named CrewAI tool and exact
+arguments shown here: {json.dumps(planned_calls, sort_keys=True)}
+Do not make an unplanned call or alter any argument. Use the returned tool envelopes as evidence.
 Return task_id exactly as {task_contract.task_id!r} and repository_revision exactly as
 {discovery.binding.base_revision!r}. Cite only the bound evidence paths. Report at least one
-concrete finding grounded in the file content. Do not modify anything.
+concrete finding grounded in the file content and execution output. Do not modify anything.
 
 {feedback}
 """.strip()
-        return self._kickoff_structured(
+        result = self._kickoff_structured(
             route_name=role.model_route,
             role=role,
             description=description,
@@ -151,6 +191,8 @@ concrete finding grounded in the file content. Do not modify anything.
             output_model=InitializationResult,
             tools=tools,
         )
+        self._require_completed_calls(task_contract, tools, task_contract.tools)
+        return result
 
     def review_task(
         self,
@@ -162,26 +204,37 @@ concrete finding grounded in the file content. Do not modify anything.
     ) -> ReviewDecision:
         role_name = self._outcome.review_roles[0]
         role = self._role(role_name)
+        review_tool_ids = self._review_tool_ids(
+            plan,
+            task_contract.tools,
+            role.allowed_tools,
+        )
         tools = self._governed_tools(
             run_id,
             plan,
             discovery,
             f"review-{task_contract.task_id}",
             role.name,
-            task_contract.tools,
+            review_tool_ids,
         )
+        review_calls = [
+            call
+            for call in self._planned_calls(plan, task_contract)
+            if call["tool_id"] in review_tool_ids
+        ]
         description = f"""
 Independently review this result against its accepted task and repository evidence.
 
 Accepted task: {task_contract.model_dump_json()}
 Proposed result: {result.model_dump_json()}
 
-You MUST call repository_read_file for every cited path. Return task_id exactly as
+You MUST independently perform only these accepted read calls: {json.dumps(review_calls)}
+Do not re-run Process or Bash commands during review. Return task_id exactly as
 {task_contract.task_id!r}. checked_citations must include every result citation. Set verdict to
 accepted only when the findings are supported by the file content and the result obeys the task;
 otherwise set verdict to rejected and list concrete issues. You are reviewing another role's work.
 """.strip()
-        return self._kickoff_structured(
+        review = self._kickoff_structured(
             route_name=role.model_route,
             role=role,
             description=description,
@@ -189,6 +242,63 @@ otherwise set verdict to rejected and list concrete issues. You are reviewing an
             output_model=ReviewDecision,
             tools=tools,
         )
+        self._require_completed_calls(task_contract, tools, review_tool_ids)
+        return review
+
+    @staticmethod
+    def _planned_calls(plan: AcceptedPlan, task: PlanTask) -> list[dict[str, object]]:
+        if plan.registry is None:
+            return []
+        return [
+            {
+                "call_id": call.call_id,
+                "tool_id": call.tool_id,
+                "crewai_name": plan.registry.require(call.tool_id).crewai_name,
+                "arguments": call.arguments,
+            }
+            for call in task.tool_calls
+        ]
+
+    @staticmethod
+    def _review_tool_ids(
+        plan: AcceptedPlan,
+        tool_ids: tuple[str, ...],
+        role_tools: tuple[str, ...],
+    ) -> tuple[str, ...]:
+        if plan.registry is None:
+            return ()
+        eligible = set(role_tools)
+        return tuple(
+            tool_id
+            for tool_id in tool_ids
+            if tool_id in eligible
+            and plan.registry.require(tool_id).effect_class is EffectClass.READ
+        )
+
+    @staticmethod
+    def _require_completed_calls(
+        task: PlanTask,
+        tools: list[BaseTool],
+        tool_ids: tuple[str, ...],
+    ) -> None:
+        expected = {
+            call.argument_fingerprint for call in task.tool_calls if call.tool_id in tool_ids
+        }
+        completed = {
+            fingerprint
+            for tool in tools
+            if isinstance(tool, GatewayCrewAITool)
+            for fingerprint in tool.completed_call_fingerprints
+        }
+        if completed != expected:
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT,
+                "CrewAI result did not complete every exact tool call in the accepted plan",
+                details={
+                    "missing_call_fingerprints": sorted(expected - completed),
+                    "unexpected_call_fingerprints": sorted(completed - expected),
+                },
+            )
 
     def _governed_tools(
         self,
