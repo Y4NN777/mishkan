@@ -1,7 +1,7 @@
 schema_version: "1.0"
 source_id: bundled.core
 source_kind: native
-revision: "3"
+revision: "4"
 adoption_authority: MISHKAN release
 tools:
   - tool_id: file.resolve
@@ -32,6 +32,13 @@ tools:
     source_id: bundled.core
     source_kind: native
     contract_uri: package://mishkan.resources.tools/contracts/file-list.yaml
+  - tool_id: search.files
+    version: 1.0.0
+    summary: Find scoped filesystem objects by glob and type with bounded pagination.
+    effect_class: read
+    source_id: bundled.core
+    source_kind: native
+    contract_uri: package://mishkan.resources.tools/contracts/search-files.yaml
   - tool_id: repository.read_file
     version: 1.0.0
     summary: Read one exact repository-relative file bound to the accepted task.
@@ -48,3 +55,7 @@ toolsets:
     version: 1.0.0
     summary: Repository inspection capabilities.
     tools: [repository.read_file]
+  - toolset_id: search.basic
+    version: 1.0.0
+    summary: Concretely available non-mutating search capabilities.
+    tools: [search.files]

@@ -114,6 +114,7 @@ def test_bundled_catalog_advertises_only_runnable_native_read_adapters(tmp_path:
             "native.file.stat",
             "native.file.read",
             "native.file.list",
+            "native.search.files",
         }
     )
     catalog = ToolCatalog(
@@ -127,6 +128,7 @@ def test_bundled_catalog_advertises_only_runnable_native_read_adapters(tmp_path:
         "file.stat",
         "file.read",
         "file.list",
+        "search.files",
         "repository.read_file",
     )
     snapshot = catalog.snapshot(("file.readonly",))
@@ -136,6 +138,8 @@ def test_bundled_catalog_advertises_only_runnable_native_read_adapters(tmp_path:
         "file.read",
         "file.list",
     )
+    search_snapshot = catalog.snapshot(("search.basic",))
+    assert tuple(tool.tool_id for tool in search_snapshot.tools) == ("search.files",)
 
 
 def test_contract_without_an_installed_adapter_cannot_enter_snapshot(tmp_path: Path) -> None:

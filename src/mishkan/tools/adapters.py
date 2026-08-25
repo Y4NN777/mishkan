@@ -549,6 +549,55 @@ class FileListAdapter:
         return entries, inaccessible, traversal_limited
 
 
+class SearchFilesAdapter:
+    adapter_id = "native.search.files"
+
+    def __init__(self, max_results: int, max_traversal_entries: int) -> None:
+        self._max_results = max_results
+        self._listing = FileListAdapter(max_results, max_traversal_entries)
+
+    def invoke(self, call: AdapterCall) -> AdapterResult:
+        translated = {
+            "path": call.arguments["path"],
+            "recursive": True,
+            "max_depth": call.arguments.get("max_depth", 32),
+            "include": call.arguments.get("patterns", ["*"]),
+            "exclude": call.arguments.get("exclude", []),
+            "include_hidden": call.arguments.get("include_hidden", False),
+            "follow_links": False,
+            "object_types": call.arguments.get("object_types", ["file"]),
+            "max_results": call.arguments.get("max_results", self._max_results),
+        }
+        if "cursor" in call.arguments:
+            translated["cursor"] = call.arguments["cursor"]
+        listed = self._listing.invoke(
+            AdapterCall(
+                arguments=translated,
+                targets=call.targets,
+                credentials=call.credentials,
+            )
+        )
+        output = listed.output
+        return AdapterResult(
+            output={
+                "root": output["root"],
+                "matches": output["entries"],
+                "ordering": output["ordering"],
+                "query_digest": output["query_digest"],
+                "view_digest": output["view_digest"],
+                "engine": output["engine"],
+                "engine_version": output["engine_version"],
+                "ignore_evidence": output["ignore_evidence"],
+                "inaccessible": output["inaccessible"],
+                "truncated": output["truncated"],
+                "continuation_cursor": output["continuation_cursor"],
+                "changed_during_search": output["changed_during_list"],
+            },
+            actual_targets=call.targets,
+            evidence={"selection": "bounded native traversal"},
+        )
+
+
 class ReadFileAdapter:
     adapter_id = "native.repository.read_file"
 

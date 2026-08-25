@@ -31,6 +31,7 @@ TEST_ADAPTERS = frozenset(
         "native.file.stat",
         "native.file.read",
         "native.file.list",
+        "native.search.files",
         "native.repository.write_file",
         "isolation.command",
         "native.git.commit",
@@ -125,7 +126,9 @@ def context_for(
 ) -> InvocationContext:
     source_uri = (
         CATALOG_URI
-        if tool_id == "repository.read_file" or tool_id.startswith("file.")
+        if tool_id == "repository.read_file"
+        or tool_id.startswith("file.")
+        or tool_id.startswith("search.")
         else MECHANISM_CATALOG_URI
     )
     catalog = ToolCatalog(
