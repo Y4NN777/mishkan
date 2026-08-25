@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 from collections.abc import Mapping
 from datetime import timedelta
 from fnmatch import fnmatchcase
@@ -586,10 +587,13 @@ class CapabilityGateway:
         for part in lexical.relative_to(self._root).parts:
             current = current / part
             try:
-                if current.is_symlink():
+                if stat.S_ISLNK(current.lstat().st_mode):
                     chain.append(
                         f"{current.relative_to(self._root).as_posix()}->{os.readlink(current)}"
                     )
+                    self._assert_acyclic_symlink(current, lexical)
+            except FileNotFoundError:
+                continue
             except OSError as exc:
                 raise MishkanError(
                     ErrorCode.FILE,
@@ -597,6 +601,33 @@ class CapabilityGateway:
                     details={"category": "permission_denied", "path": lexical.as_posix()},
                 ) from exc
         return tuple(chain)
+
+    @staticmethod
+    def _assert_acyclic_symlink(link: Path, requested: Path) -> None:
+        seen: set[Path] = set()
+        current = link
+        while True:
+            canonical_lexical = Path(os.path.abspath(current))
+            if canonical_lexical in seen:
+                raise MishkanError(
+                    ErrorCode.FILE,
+                    "filesystem target link chain contains a cycle",
+                    details={"category": "symlink_cycle", "path": requested.as_posix()},
+                )
+            try:
+                if not stat.S_ISLNK(canonical_lexical.lstat().st_mode):
+                    return
+                seen.add(canonical_lexical)
+                target = Path(os.readlink(canonical_lexical))
+            except FileNotFoundError:
+                return
+            except OSError as exc:
+                raise MishkanError(
+                    ErrorCode.FILE,
+                    "filesystem target link chain cannot be inspected",
+                    details={"category": "permission_denied", "path": requested.as_posix()},
+                ) from exc
+            current = target if target.is_absolute() else canonical_lexical.parent / target
 
     @staticmethod
     def _validate_binding(context: InvocationContext, contract_fingerprint: str) -> None:

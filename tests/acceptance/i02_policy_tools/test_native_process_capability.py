@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import resource
 import sys
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,29 @@ from mishkan.tools.adapters import DirectProcessAdapter
 from mishkan.tools.crewai_gateway import GatewayCrewAITool
 from mishkan.tools.gateway import CapabilityGateway, MappingCredentialResolver, MemoryEvidenceSink
 from mishkan.tools.gateway_models import CallStatus, DeclaredTargets, InvocationContext
+
+
+@pytest.mark.parametrize(
+    ("system_name", "expected_limit"),
+    (("Linux", resource.RLIMIT_AS), ("Darwin", resource.RLIMIT_DATA)),
+)
+def test_memory_limiter_uses_the_supported_platform_resource(
+    monkeypatch: pytest.MonkeyPatch,
+    system_name: str,
+    expected_limit: int,
+) -> None:
+    observed: list[tuple[int, tuple[int, int]]] = []
+    monkeypatch.setattr("mishkan.tools.adapters.platform.system", lambda: system_name)
+    monkeypatch.setattr(
+        "mishkan.tools.adapters.resource.setrlimit",
+        lambda kind, bounds: observed.append((kind, bounds)),
+    )
+
+    limiter = DirectProcessAdapter._resource_limiter(512)
+
+    assert limiter is not None
+    limiter()
+    assert observed == [(expected_limit, (512 * 1024 * 1024, 512 * 1024 * 1024))]
 
 
 def executable() -> str:
