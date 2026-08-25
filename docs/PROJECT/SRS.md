@@ -1,8 +1,8 @@
 # MISHKAN Software Requirements Specification
 
-**Status:** Proposed amendment — awaiting D-032
+**Status:** Accepted by D-032 on 2026-08-25
 **Version:** 1.6
-**Derived from:** Proposed PRD 1.4
+**Derived from:** PRD 1.4 accepted by D-032
 **Normative vocabulary:** MUST, MUST NOT, SHOULD, MAY follow RFC 2119 meanings
 
 Version 1.6 replaces the historical 32-identity/15-outcome assumptions and promotes the validated

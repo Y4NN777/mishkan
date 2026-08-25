@@ -1,8 +1,9 @@
 # MISHKAN Architecture
 
-**Status:** Proposed amendment — awaiting D-035
+**Status:** Accepted by D-035 on 2026-08-25
 **Version:** 1.2
-**Derived from:** Proposed System Model 1.2, Responsibility Map 1.2, and retained decisions D-015, D-016, D-021, D-022, D-029
+**Derived from:** System Model 1.2 and Responsibility Map 1.2 accepted by D-034–D-035, plus retained
+decisions D-015, D-016, D-021, D-022, and D-029
 
 ## 1. Scope and non-negotiable boundaries
 
@@ -272,7 +273,7 @@ completion semantics.
 
 ### ADR-001 — Transactional modular monolith
 
-**Status:** Retained from D-021; version 1.2 boundary amendment proposed
+**Status:** Accepted by D-035; retains D-021
 
 Keep relational current state authoritative and append an outbox fact in the same short
 transaction. Keep all application authority in `mishkand`; split processes only for clients,
@@ -280,7 +281,7 @@ workers, or justified isolation.
 
 ### ADR-002 — Persistence and artifact profiles
 
-**Status:** Metadata decision retained from D-015; artifact amendment proposed
+**Status:** Accepted by D-035; retains D-015
 
 Use SQLite/WAL plus filesystem CAS locally and PostgreSQL plus S3-compatible blobs in distributed
 mode. Engineer-executed migrations implement one explicit repository contract; startup never
@@ -288,21 +289,21 @@ silently mutates an unsupported schema.
 
 ### ADR-003 — One operational application interface
 
-**Status:** HTTP/SSE basis retained from D-016; chat, TUI commands, and MCP amendment proposed
+**Status:** Accepted by D-035; retains the HTTP/SSE basis from D-016
 
 Expose the same commands and queries through CLI, SDK, chat, TUI, HTTP/OpenAPI, SSE, and the MCP
 facade. The local STDIO bridge remains non-authoritative. There is no version 1 Web dashboard.
 
 ### ADR-004 — Direct CrewAI production integration
 
-**Status:** Retained from D-002 and D-016; clarified
+**Status:** Accepted by D-035; retains D-002 and D-016
 
 Integrate CrewAI 1.x directly. Do not expose a production runtime selector or introduce an
 `AgentRuntime` abstraction that competes with CrewAI coordination.
 
 ### ADR-005 — Contextual registries and typed adapters
 
-**Status:** Tool basis retained from D-029; engine, pack, session, Web, Browser, and MCP amendment proposed
+**Status:** Accepted by D-035; retains the general-tool basis from D-029
 
 Resolve native capabilities, skills, tools, engines, environments, packs, and external protocols
 from configured sources and observed project/location evidence. Bind only concrete runnable
@@ -314,6 +315,6 @@ generated files grant no authority.
 
 ## 10. Gate effect
 
-System Model 1.2 and Architecture 1.2 supersede the active version 1.1 amendments and D-030 only if
-D-035 is accepted. Until then they are reviewable proposals, I02 remains paused, and no production
-code is authorized by this document.
+System Model 1.2 and Architecture 1.2 supersede the version 1.1 amendments and D-030 under D-035.
+Architecture alone grants no effect authority; D-036 resumes I02 under the accepted plan, policy,
+and increment gates.

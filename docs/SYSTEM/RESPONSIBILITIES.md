@@ -1,13 +1,13 @@
 # MISHKAN Requirement-to-Responsibility Map
 
-**Status:** Proposed amendment — awaiting D-034
+**Status:** Accepted by D-034 on 2026-08-25
 **Version:** 1.2
 **Sequence:** SWE-BASICS-BEFORE-CODE 04
-**Derived from:** Proposed PRD 1.4, SRS 1.6, System Contract 1.4
+**Derived from:** PRD 1.4, SRS 1.6, and System Contract 1.4 accepted by D-032–D-033
 
 ## 1. Purpose
 
-This proposed amendment assigns every SRS 1.6 guarantee to one primary responsibility before
+This accepted map assigns every SRS 1.6 guarantee to one primary responsibility before
 components are designed. A responsibility describes logic and state ownership. It is not yet a
 Python module, service, daemon, database, or deployment unit.
 

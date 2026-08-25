@@ -6,12 +6,11 @@ These instructions apply to the entire repository.
 
 MISHKAN has completed the framework's final pre-code stage, Sequence 05. Increments I00 and I01
 have passed their local and remote acceptance gates and their code and evidence remain unchanged.
-Production implementation is paused while proposed PRD 1.4, SRS 1.6, Contract 1.4,
-Responsibilities 1.2, System Model 1.2, Architecture 1.2, and Implementation Plan 1.4 pass decisions
-D-032 through D-036 in that order. D-036 is the only decision that resumes I02 on
-`feat/i02-policy-tools`. The existing registry, policy, gateway, and deterministic enforcement
-mechanisms remain accepted narrow evidence; I02 must remove false adapter bindings and add truthful
-File/Read/Search, process, and full Bash execution. The rejected universal workflow, mandatory
+PRD 1.4, SRS 1.6, Contract 1.4, Responsibilities 1.2, System Model 1.2, Architecture 1.2, and
+Implementation Plan 1.4 were accepted in order by D-032 through D-036 on 2026-08-25. D-036 resumes
+I02 on `feat/i02-policy-tools`. The existing registry, policy, gateway, and deterministic
+enforcement mechanisms remain accepted narrow evidence; I02 must remove false adapter bindings and
+add truthful File/Read/Search, process, and full Bash execution. The rejected universal workflow, mandatory
 outcome catalogue, capability-family matrix, static role/tool matrix, competing runtime, and
 private operational deny-list must not return.
 
@@ -35,10 +34,8 @@ not silently turn them into approved architecture.
 ## Source authority
 
 - The original MISHKAN SPEC and SRS attachments are historical discovery sources.
-- `docs/PROJECT/PRD.md` is product authority at the version accepted in the decision log; proposed
-  PRD 1.4 is non-authoritative until D-032.
-- `docs/PROJECT/SRS.md` is behavioral authority at the version accepted in the decision log;
-  proposed SRS 1.6 is non-authoritative until D-032.
+- `docs/PROJECT/PRD.md` 1.4 is the product authority accepted by D-032.
+- `docs/PROJECT/SRS.md` 1.6 is the behavioral authority accepted by D-032.
 - `docs/PROJECT/DECISION_LOG.md` is the only decision-status registry.
 - `docs/SYSTEM/CONTRACT.md` owns invariants and refusals after Gate G3 approval.
 - ADRs own durable implementation decisions.

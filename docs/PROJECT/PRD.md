@@ -1,6 +1,6 @@
 # MISHKAN Product Requirements Document
 
-**Status:** Proposed amendment — awaiting D-032
+**Status:** Accepted by D-032 on 2026-08-25
 **Version:** 1.4
 **Scope:** Product problem and outcomes only
 
@@ -419,10 +419,10 @@ The PRD intentionally does not decide:
 
 Those decisions follow only after this product problem and scope are approved.
 
-## 8. Product decision baseline proposed for D-032
+## 8. Product decision baseline accepted by D-032
 
-This list combines retained prior decisions with the amendments proposed by version 1.4. The
-combined baseline becomes authoritative only if D-032 is accepted.
+This list combines retained prior decisions with the amendments accepted in version 1.4. The
+combined baseline is authoritative under D-032.
 
 1. One run binds one execution context: one repository and immutable base revision, or one
    prospective workspace before a greenfield repository exists. Authorized establishment and later

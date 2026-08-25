@@ -1,9 +1,9 @@
 # MISHKAN System Contract and Invariants
 
-**Status:** Proposed amendment — awaiting D-033
+**Status:** Accepted by D-033 on 2026-08-25
 **Version:** 1.4
 **Sequence:** SWE-BASICS-BEFORE-CODE 03
-**Derived from:** Proposed PRD 1.4 and SRS 1.6
+**Derived from:** PRD 1.4 and SRS 1.6 accepted by D-032
 
 ## 1. Contract boundary
 

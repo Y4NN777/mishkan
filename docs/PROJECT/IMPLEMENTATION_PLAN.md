@@ -1,9 +1,9 @@
 # MISHKAN Implementation and Acceptance Plan
 
-**Status:** Proposed amendment — awaiting D-036
+**Status:** Accepted by D-036 on 2026-08-25
 **Version:** 1.4
-**Derived from:** Proposed PRD 1.4, SRS 1.6, Contract 1.4, Responsibility Map 1.2,
-System Model 1.2, and Architecture 1.2
+**Derived from:** PRD 1.4, SRS 1.6, Contract 1.4, Responsibility Map 1.2, System Model 1.2, and
+Architecture 1.2 accepted by D-032–D-035
 
 ## 1. Purpose and gate authority
 
@@ -12,8 +12,9 @@ This post-architecture plan defines vertical delivery increments and their accep
 framework stage.
 
 I00 and I01 remain accepted exactly as implemented and evidenced. Their code, historical commits,
-and validation records are not rewritten. I02 remains paused until D-032 through D-036 accept the
-complete documentary baseline. This proposed plan grants no production-code authority by itself.
+and validation records are not rewritten. D-032 through D-036 accepted the complete documentary
+baseline in order on 2026-08-25. D-036 resumes I02; every later increment remains subject to its
+own dependencies, scope, and acceptance gate.
 
 ## 2. Delivery laws
 
@@ -448,5 +449,5 @@ to every affected gate.
 4. D-035 accepts System Model 1.2 and Architecture 1.2 and supersedes D-030.
 5. D-036 accepts this plan and explicitly authorizes resumption of I02.
 
-Until all five decisions are accepted, the four documentation commits are review artifacts and no
-production code changes. Approval of D-032 through D-035 does not implicitly approve D-036.
+All five decisions were accepted in order on 2026-08-25. D-036 therefore resumes I02 only; it does
+not accept I02 evidence in advance or authorize later increments outside their declared gates.
