@@ -197,8 +197,11 @@ def test_production_path_accepts_different_exact_native_commands_for_different_r
         "module example.invalid/go-project\n",
     )
     git_path = shutil.which("git")
+    bash_path = shutil.which("bash")
     assert git_path is not None
+    assert bash_path is not None
     executable = str(Path(git_path).resolve())
+    bash_executable = str(Path(bash_path).resolve())
 
     def kickoff(crew: Crew, *_args: Any, **_kwargs: Any) -> SimpleNamespace:
         task = crew.tasks[0]
@@ -206,22 +209,58 @@ def test_production_path_accepts_different_exact_native_commands_for_different_r
         is_python = "pyproject.toml" in task.description
         manifest = "pyproject.toml" if is_python else "go.mod"
         task_id = "inspect-python-manifest" if is_python else "inspect-go-module"
-        process_arguments = {
-            "mode": "process",
-            "executable": executable,
-            "args": ["show", f"HEAD:{manifest}"],
-            "cwd": ".",
-            "environment": {},
-            "credential_environment": {},
-            "stdin": None,
-            "timeout_seconds": 10,
-            "expected_exit_codes": [0],
-            "declared_effects": [],
-            "output_policy": {
-                "preview_bytes": 4096,
-                "preserve_full_output_as_artifact": False,
-            },
-        }
+        execution_tool = "core.process.exec" if is_python else "core.shell.run"
+        execution_arguments = (
+            {
+                "mode": "process",
+                "executable": executable,
+                "args": ["show", f"HEAD:{manifest}"],
+                "cwd": ".",
+                "environment": {},
+                "credential_environment": {},
+                "stdin": None,
+                "timeout_seconds": 10,
+                "expected_exit_codes": [0],
+                "declared_effects": [],
+                "output_policy": {
+                    "preview_bytes": 4096,
+                    "preserve_full_output_as_artifact": False,
+                },
+            }
+            if is_python
+            else {
+                "mode": "shell",
+                "shell_profile": {
+                    "schema_version": "1.0",
+                    "profile_id": "i02.fixture-bash",
+                    "revision": "1",
+                    "dialect": "bash",
+                    "interpreter": bash_executable,
+                    "startup_files": [],
+                    "options": {
+                        "pipefail": True,
+                        "errexit": True,
+                        "nounset": True,
+                        "inherit_errexit": True,
+                    },
+                },
+                "script": f"{executable} show HEAD:{manifest}",
+                "cwd": ".",
+                "environment": {},
+                "credential_environment": {},
+                "stdin": None,
+                "timeout_seconds": 10,
+                "expected_exit_codes": [0],
+                "declared_paths": [],
+                "declared_executables": [executable],
+                "network_destinations": [],
+                "declared_effects": [],
+                "output_policy": {
+                    "preview_bytes": 4096,
+                    "preserve_full_output_as_artifact": False,
+                },
+            }
+        )
         value: PlanCandidate | InitializationResult | ReviewDecision
         if output_model is PlanCandidate:
             revision = task.description.split("Repository revision: ", 1)[1].splitlines()[0]
@@ -240,7 +279,7 @@ def test_production_path_accepts_different_exact_native_commands_for_different_r
                         ),
                         purpose="Combine bounded file evidence with a repository-specific command.",
                         assigned_role="Repository_Investigator",
-                        tools=("repository.read_file", "core.process.exec"),
+                        tools=("repository.read_file", execution_tool),
                         tool_calls=(
                             PlannedToolCall(
                                 call_id=f"read-{manifest.replace('.', '-')}",
@@ -248,9 +287,9 @@ def test_production_path_accepts_different_exact_native_commands_for_different_r
                                 arguments={"path": manifest},
                             ),
                             PlannedToolCall(
-                                call_id=f"show-{manifest.replace('.', '-')}",
-                                tool_id="core.process.exec",
-                                arguments=process_arguments,
+                                call_id=f"probe-{manifest.replace('.', '-')}",
+                                tool_id=execution_tool,
+                                arguments=execution_arguments,
                             ),
                         ),
                         evidence_paths=(manifest,),
@@ -263,7 +302,7 @@ def test_production_path_accepts_different_exact_native_commands_for_different_r
             read_output = json.loads(tools[0].run(path=manifest))
             assert manifest in read_output["path"]
             if output_model is InitializationResult:
-                command_output = json.loads(tools[1].run(**process_arguments))
+                command_output = json.loads(tools[1].run(**execution_arguments))
                 assert command_output["stdout_preview"] == read_output["content"]
                 revision = task.description.split("Repository revision: ", 1)[1].splitlines()[0]
                 value = InitializationResult(
@@ -315,6 +354,8 @@ def test_production_path_accepts_different_exact_native_commands_for_different_r
     assert plans[0] is not None and plans[1] is not None
     python_call = plans[0].tasks[0].tool_calls[1]
     go_call = plans[1].tasks[0].tool_calls[1]
+    assert python_call.tool_id == "core.process.exec"
     assert python_call.arguments["args"] == ["show", "HEAD:pyproject.toml"]
-    assert go_call.arguments["args"] == ["show", "HEAD:go.mod"]
+    assert go_call.tool_id == "core.shell.run"
+    assert go_call.arguments["script"] == f"{executable} show HEAD:go.mod"
     assert python_call.argument_fingerprint != go_call.argument_fingerprint
