@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import resource
 import sys
 from pathlib import Path
 from typing import Any
@@ -15,37 +14,6 @@ from mishkan.tools.adapters import DirectProcessAdapter
 from mishkan.tools.crewai_gateway import GatewayCrewAITool
 from mishkan.tools.gateway import CapabilityGateway, MappingCredentialResolver, MemoryEvidenceSink
 from mishkan.tools.gateway_models import CallStatus, DeclaredTargets, InvocationContext
-
-
-@pytest.mark.parametrize(
-    ("system_name", "expected_limit"),
-    (("Linux", resource.RLIMIT_AS), ("Darwin", resource.RLIMIT_DATA)),
-)
-def test_memory_limiter_uses_the_supported_platform_resource(
-    monkeypatch: pytest.MonkeyPatch,
-    system_name: str,
-    expected_limit: int,
-) -> None:
-    observed: list[tuple[int, tuple[int, int]]] = []
-    monkeypatch.setattr("mishkan.tools.adapters.platform.system", lambda: system_name)
-    monkeypatch.setattr(
-        "mishkan.tools.adapters.resource.getrlimit",
-        lambda _kind: (resource.RLIM_INFINITY, resource.RLIM_INFINITY),
-    )
-    monkeypatch.setattr(
-        "mishkan.tools.adapters.resource.setrlimit",
-        lambda kind, bounds: observed.append((kind, bounds)),
-    )
-
-    limiter = DirectProcessAdapter._resource_limiter(512)
-
-    assert limiter is not None
-    limiter()
-    memory_bytes = 512 * 1024 * 1024
-    assert observed == [
-        (expected_limit, (memory_bytes, resource.RLIM_INFINITY)),
-        (expected_limit, (memory_bytes, memory_bytes)),
-    ]
 
 
 def executable() -> str:
@@ -117,6 +85,7 @@ def process_context(
     credential_scope: tuple[str, ...] = ("*",),
     argument_scope: tuple[str, ...] = ("*",),
     decision: Decision = Decision.ALLOW,
+    memory_mb: int | None = None,
 ) -> InvocationContext:
     environment_names = tuple(
         dict.fromkeys((*value["environment"].keys(), *value["credential_environment"].keys()))
@@ -149,7 +118,22 @@ def process_context(
         policy,
         allowed,
         network=True,
+        memory_mb=memory_mb,
     )
+
+
+@pytest.mark.commands
+def test_native_process_refuses_an_unenforceable_strict_memory_limit(
+    tmp_path: Path,
+) -> None:
+    value = arguments("-c", "print('must not run')")
+
+    result = gateway(tmp_path).invoke(
+        process_context(tmp_path, value, memory_mb=512), value, targets(value)
+    )
+
+    assert result.status is CallStatus.REFUSED
+    assert result.error_code == "ERR-TOL-002"
 
 
 @pytest.mark.commands

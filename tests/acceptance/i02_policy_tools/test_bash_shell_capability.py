@@ -118,6 +118,7 @@ def shell_context(
     argument_scope: tuple[str, ...] = ("*",),
     credential_scope: tuple[str, ...] = ("*",),
     allow_network: bool = True,
+    memory_mb: int | None = None,
 ) -> InvocationContext:
     declared = targets(value)
     policy = policy_for(
@@ -150,6 +151,7 @@ def shell_context(
         policy,
         allowed,
         network=allow_network,
+        memory_mb=memory_mb,
         isolation_profile="host.explicit",
     )
 
@@ -321,6 +323,17 @@ def test_native_bash_refuses_network_denial_it_cannot_enforce(tmp_path: Path) ->
         shell_context(tmp_path, value, allow_network=False),
         value,
         targets(value),
+    )
+
+    assert result.status is CallStatus.REFUSED
+    assert result.error_code == "ERR-TOL-002"
+
+
+@pytest.mark.commands
+def test_native_bash_refuses_an_unenforceable_strict_memory_limit(tmp_path: Path) -> None:
+    value = arguments("printf must-not-run")
+    result = gateway(tmp_path).invoke(
+        shell_context(tmp_path, value, memory_mb=512), value, targets(value)
     )
 
     assert result.status is CallStatus.REFUSED

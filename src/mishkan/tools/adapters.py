@@ -8,7 +8,6 @@ import hashlib
 import json
 import os
 import platform
-import resource
 import selectors
 import shlex
 import signal
@@ -913,9 +912,8 @@ class DirectProcessAdapter:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 start_new_session=True,
-                preexec_fn=self._resource_limiter(call.resources.memory_mb),
             )
-        except (OSError, ValueError) as exc:
+        except (OSError, ValueError, subprocess.SubprocessError) as exc:
             raise MishkanError(
                 ErrorCode.EXECUTION,
                 "direct process could not be spawned",
@@ -1013,6 +1011,16 @@ class DirectProcessAdapter:
                 ErrorCode.TOOL_UNAVAILABLE,
                 "native execution adapter cannot enforce the requested network denial",
                 details={"constraint": "network:false"},
+            )
+        if call.resources.memory_mb is not None:
+            raise MishkanError(
+                ErrorCode.TOOL_UNAVAILABLE,
+                "native execution adapter cannot enforce the requested strict memory limit",
+                details={
+                    "constraint": "memory_mb",
+                    "platform": platform.system(),
+                    "required_adapter": "isolated execution adapter",
+                },
             )
         if request.timeout_seconds > call.resources.timeout_seconds:
             raise MishkanError(
@@ -1235,27 +1243,6 @@ class DirectProcessAdapter:
             process.wait(timeout=1)
 
     @staticmethod
-    def _resource_limiter(memory_mb: int | None) -> Callable[[], None] | None:
-        if memory_mb is None:
-            return None
-
-        def apply_limit() -> None:
-            memory_bytes = memory_mb * 1024 * 1024
-            limit_kind = (
-                resource.RLIMIT_DATA if platform.system() == "Darwin" else resource.RLIMIT_AS
-            )
-            _, current_hard = resource.getrlimit(limit_kind)
-            effective_limit = (
-                memory_bytes
-                if current_hard == resource.RLIM_INFINITY
-                else min(memory_bytes, current_hard)
-            )
-            resource.setrlimit(limit_kind, (effective_limit, current_hard))
-            resource.setrlimit(limit_kind, (effective_limit, effective_limit))
-
-        return apply_limit
-
-    @staticmethod
     def _preview(content: bytes, limit: int) -> str:
         return content[:limit].decode("utf-8", errors="replace")
 
@@ -1377,9 +1364,8 @@ class BashShellAdapter(DirectProcessAdapter):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 start_new_session=True,
-                preexec_fn=self._resource_limiter(call.resources.memory_mb),
             )
-        except (OSError, ValueError) as exc:
+        except (OSError, ValueError, subprocess.SubprocessError) as exc:
             raise MishkanError(
                 ErrorCode.EXECUTION,
                 "Bash shell could not be spawned",

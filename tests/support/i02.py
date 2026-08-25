@@ -127,7 +127,7 @@ def context_for(
     *,
     runtime: str = "python",
     network: bool = False,
-    memory_mb: int | None = 512,
+    memory_mb: int | None = None,
     isolation_profile: str | None = None,
 ) -> InvocationContext:
     source_uri = (

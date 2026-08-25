@@ -130,7 +130,7 @@ target_arguments:
 credential_arguments: [credential_environment.*]
 policy_arguments: [args.*]
 artifact_output_argument: output_policy.preserve_full_output_as_artifact
-resources: {timeout_seconds: 30, memory_mb: 512, network: true, concurrency: 1}
+resources: {timeout_seconds: 30, memory_mb: null, network: true, concurrency: 1}
 adapter_config:
   max_output_bytes: 2097152
   max_stdin_bytes: 65536
