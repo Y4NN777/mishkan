@@ -1244,7 +1244,14 @@ class DirectProcessAdapter:
             limit_kind = (
                 resource.RLIMIT_DATA if platform.system() == "Darwin" else resource.RLIMIT_AS
             )
-            resource.setrlimit(limit_kind, (memory_bytes, memory_bytes))
+            _, current_hard = resource.getrlimit(limit_kind)
+            effective_limit = (
+                memory_bytes
+                if current_hard == resource.RLIM_INFINITY
+                else min(memory_bytes, current_hard)
+            )
+            resource.setrlimit(limit_kind, (effective_limit, current_hard))
+            resource.setrlimit(limit_kind, (effective_limit, effective_limit))
 
         return apply_limit
 

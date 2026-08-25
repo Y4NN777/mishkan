@@ -29,6 +29,10 @@ def test_memory_limiter_uses_the_supported_platform_resource(
     observed: list[tuple[int, tuple[int, int]]] = []
     monkeypatch.setattr("mishkan.tools.adapters.platform.system", lambda: system_name)
     monkeypatch.setattr(
+        "mishkan.tools.adapters.resource.getrlimit",
+        lambda _kind: (resource.RLIM_INFINITY, resource.RLIM_INFINITY),
+    )
+    monkeypatch.setattr(
         "mishkan.tools.adapters.resource.setrlimit",
         lambda kind, bounds: observed.append((kind, bounds)),
     )
@@ -37,7 +41,11 @@ def test_memory_limiter_uses_the_supported_platform_resource(
 
     assert limiter is not None
     limiter()
-    assert observed == [(expected_limit, (512 * 1024 * 1024, 512 * 1024 * 1024))]
+    memory_bytes = 512 * 1024 * 1024
+    assert observed == [
+        (expected_limit, (memory_bytes, resource.RLIM_INFINITY)),
+        (expected_limit, (memory_bytes, memory_bytes)),
+    ]
 
 
 def executable() -> str:
