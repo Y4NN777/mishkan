@@ -1,20 +1,20 @@
 # MISHKAN Software Requirements Specification
 
-**Status:** Approved — Gate G2
-**Version:** 1.5
-**Derived from:** Approved PRD 1.3
+**Status:** Proposed amendment — awaiting D-032
+**Version:** 1.6
+**Derived from:** Proposed PRD 1.4
 **Normative vocabulary:** MUST, MUST NOT, SHOULD, MAY follow RFC 2119 meanings
 
-Version 1.5 adds observable decision-quality assistance without assigning its implementation. It
-requires evidence-grounded context, credible alternatives, explicit uncertainty, validation,
-independent challenge, and engineer-controlled acceptance. Version 1.4 clarified the general-tool
-model and remains incorporated without change.
+Version 1.6 replaces the historical 32-identity/15-outcome assumptions and promotes the validated
+mission, engineering-context, native-capability, artifact, MCP, harness, skills, communication,
+intervention, and professional-evolution behavior in WD-001–WD-027. Version 1.5 decision-quality
+assistance and the 1.4 general-tool model remain incorporated.
 
 ## 1. Purpose and scope
 
 This SRS defines the observable behavior and constraints of MISHKAN product version 1. It does not
 assign responsibilities to components or prescribe an implementation except where an explicit
-engineer-selected technical constraint is recorded in §17.
+engineer-selected technical constraint is recorded in §27.
 
 Core release requirements cover local, interactive, and headless operation on one machine.
 Distributed requirements are identified as post-core and do not block acceptance of the core
@@ -24,9 +24,10 @@ release.
 
 | Actor | Description |
 |---|---|
-| Engineer | Submits objectives, controls authorization policy, provides approval where policy requires it, and reviews work |
+| Human CEO / engineer | Submits objectives, controls durable authority, converses with PM and CTO, intervenes where necessary, and reviews work |
 | Engineering lead | Reviews organization-wide progress, evidence, policy compliance, and outcomes |
 | Operator | Configures execution resources, credentials, schedules, retention, and approved remote capacity |
+| External harness | Uses versioned HTTP or MCP application contracts as a governed MISHKAN client |
 | External scheduler | Requests an already defined run through an idempotent interface |
 | Remote worker | Executes an assigned immutable task under coordinator-issued identity and policy |
 | External service | Provides optional inference, context, knowledge, or structure capabilities |
@@ -110,6 +111,12 @@ discovery revision rather than overwriting prior discovery evidence.
 
 Two repositories with materially different discovered characteristics MUST be permitted to produce
 different plans for the same named organizational outcome.
+
+### PRJ-008 — Multi-repository mission binding
+
+A mission MAY coordinate multiple repository-bound runs. Each run MUST still satisfy PRJ-001 and
+MUST record the mission-level dependency, revision, result, and acceptance relationship without
+granting one repository's paths or authority to another repository implicitly.
 
 ## 5. Planning and approval
 
@@ -241,17 +248,21 @@ the accepted plan.
 
 ### ORG-002 — Version 1 roster
 
-Organization version 1 MUST contain exactly the 32 identities listed in Appendix A.
+Organization version 1 MUST contain exactly the 59 persistent identities listed in Appendix A.
+`Mission_Lead` MUST be a temporary responsibility assigned to one of those identities and MUST NOT
+be represented as a sixtieth persistent identity.
 
 ### ORG-003 — Stable roles, adaptive participation
 
 The organization roster MUST remain stable within version 1, while a plan MUST include only roles
-relevant to the repository and objective.
+relevant to the mission, repository or greenfield context, risks, evidence, demonstrated
+competence, availability, conflicts of interest, and independence requirements.
 
-### ORG-004 — Functional roles
+### ORG-004 — Persistent professional profiles
 
-Every identity MUST have exactly one functional role: Orchestrator, Specialist, Evaluator,
-Reporter, or Advisor.
+Every identity MUST declare one stable professional responsibility, branch, independence class,
+authority limits, and profile version. Languages, tools, project knowledge, and demonstrated
+competencies MUST evolve as attributable profile evidence rather than new implicit identities.
 
 ### ORG-005 — Production and evaluation separation
 
@@ -273,8 +284,10 @@ Every completed multi-task run MUST produce a report conforming to a versioned r
 
 ### ORG-009 — Delegation authority
 
-Only an Orchestrator MAY delegate or reassign planned work, and any reassignment MUST remain within
-the accepted plan or trigger replanning.
+Delegation and reassignment MUST identify the accountable owner, bounded result, context, evidence,
+and authority. The Mission Lead MAY make an in-plan local assignment change; the PM MUST confirm
+formal composition or reassignment after the CTO confirms required technical, security, and
+quality coverage. A change outside the accepted plan MUST trigger replanning.
 
 ### ORG-010 — Explicit tool authority
 
@@ -282,16 +295,191 @@ Every participating identity MUST receive an exact resolved set of available too
 versions. A configured shorthand or toolset MAY expand before plan acceptance, but the expansion
 MUST be recorded in the plan fingerprint and MUST NOT include tools discovered later.
 
-### ORG-011 — Catalogue outcomes
+### ORG-011 — Free-form objectives and optional templates
 
-Organization version 1 MUST expose exactly the 15 named outcomes listed in Appendix B.
+The system MUST accept a free-form mission objective without requiring membership in a finite
+outcome catalogue. It MAY load a versioned optional mission template from configured sources.
 
-### ORG-012 — Adaptive outcome templates
+### ORG-012 — Adaptive mission templates
 
-A catalogue outcome MUST define intent, admissible roles, constraints, approvals, inputs, outputs,
-and a composition pattern. It MUST NOT require one universal repository-independent task list.
+A mission template MUST define reusable intent, constraints, evidence, and completion guidance. It
+MUST NOT define a mandatory repository-independent task list, fixed crew, implicit authority, or
+static role/tool matrix. The accepted plan MUST remain specific to the objective and context.
 
-## 7. Run execution and recovery
+### ORG-013 — PM and CTO executive roles
+
+PM and CTO MUST be permanent organization agents. PM MUST own product purpose, functional
+acceptance, priorities, and formal crew composition. CTO MUST own technical direction, feasibility,
+risk coverage, and technical readiness. Neither identity MAY replace independent evaluation or
+reporting.
+
+### ORG-014 — Permanent branches and explicit pools
+
+The organization definition MUST preserve the Product and Experience; Architecture and System
+Design; Software Engineering; Data and AI; Platform, Delivery, and Reliability; Security and
+Supply Chain; Independent Assurance; Research and Decision Support; and Documentation and
+Organizational Learning branches and the explicit evaluation, reporting, documentation, and
+engineering pools listed in Appendix A.
+
+### ORG-015 — Evidence-based professional evolution
+
+An agent profile MAY gain project knowledge, tool mastery, skill associations, or demonstrated
+competence only from attributable evidence identifying scope, source, evaluation, time, and
+freshness. An identity MUST NOT self-certify critical mastery, change its own authority or
+independence, or erase failure evidence.
+
+### ORG-016 — Scoped learning promotion
+
+Learned information MUST remain at the narrowest justified mission, project, agent, branch, or
+organization scope. Promotion to a broader scope MUST use a durable policy decision and preserve
+the supporting and contradictory evidence.
+
+## 7. Engineering context and reconnaissance
+
+### CTX-001 — Layered engineering context
+
+The system MUST distinguish a confirmed portable engineer profile, cited project/repository
+evidence, and machine- or run-local observations. It MUST NOT persist an inferred preference or
+weakness as a confirmed profile fact without attributable confirmation.
+
+### CTX-002 — Privacy-safe inspection
+
+Default reconnaissance MUST inspect bounded non-secret metadata such as manifests, declared
+scripts, CI configuration, documentation, services, and tool configuration. Reading credential
+values, shell history, or unrelated private content MUST require separate explicit authority.
+
+### CTX-003 — Safe probes
+
+When inspection policy permits, the system MAY execute read-only version, help, capability, and
+health probes. It MUST record the exact command or request, execution location, time, and result and
+MUST NOT represent a failed probe as availability.
+
+### CTX-004 — Independent observation states
+
+For an engine, service, skill, or extension, the system MUST represent inventoried, detected,
+installed, executable, authenticated, healthy, project-used, eligible, and authorized as
+independent states. No earlier state MUST imply a later state.
+
+### CTX-005 — Local observation provenance
+
+Machine paths, versions, health, and credential-reference presence MUST remain machine-scoped and
+carry observation time, freshness, source, and sensitivity. Portable export MUST exclude them
+unless explicitly selected and safe.
+
+### CTX-006 — Contextual recommendation
+
+The system MUST reject candidates that fail mandatory compatibility, policy, trust, or execution
+constraints before comparing remaining candidates using explicit project-relevant criteria. The
+result MUST expose evidence, uncertainty, material alternatives, and criterion-level reasoning.
+
+### CTX-007 — Community catalogue
+
+Community discovery MUST use versioned configured catalogues or cited official documentation,
+registries, maintained repositories, and hubs. A candidate record MUST include source, resolved
+version or revision, observation time, compatibility, prerequisites, maintenance and trust
+evidence, and overlap with existing capabilities.
+
+### CTX-008 — Recommendation is not activation
+
+Discovering or recommending an external tool, MCP server, plugin, skill, or pack MUST create only
+an inspectable candidate. Installation, trust, enablement, binding, and execution MUST remain
+separate policy-governed actions. Existing native skill maintenance follows SKL requirements and
+MUST NOT inherit a universal human-review requirement from this rule.
+
+## 8. Mission governance and communication
+
+### MSN-001 — Mission origins
+
+A mission MUST be able to originate from the CEO, PM, CTO, an incident, project evidence, an
+independent finding, a dependency, a maintenance need, or an authorized organizational proposal.
+It MUST support existing repositories, greenfield work, multi-repository systems, research,
+incidents, modernization, platform work, and operations.
+
+### MSN-002 — Mission Brief
+
+Before mission planning, PM and CTO MUST jointly produce a versioned Mission Brief identifying the
+problem, desired outcome, scope, exclusions, acceptance criteria, constraints, risks, authority,
+proposed crew, evidence requirements, and escalation conditions.
+
+### MSN-003 — Executive agreement and launch
+
+Within an already authorized strategic, budget, project, and policy envelope, PM and CTO MAY launch
+a non-strategic mission without a new CEO decision. The launch MUST record PM composition
+confirmation and CTO technical, security, and quality coverage confirmation.
+
+### MSN-004 — Disagreement behavior
+
+When PM and CTO cannot agree, the system MUST record the options, evidence, uncertainty, risks,
+consequences, and recommendations; pause only the disputed work; continue independent eligible
+work; and create an actionable CEO escalation when the decision exceeds their authority or remains
+unresolved.
+
+### MSN-005 — Mission lifecycle
+
+A mission MUST expose at least `proposed`, `clarifying`, `planned`, `active`, `paused`, `blocked`,
+`evaluating`, `remediating`, `completed`, `failed`, and `cancelled`. Every transition MUST identify
+its actor or cause, reason, applicable decision, and evidence.
+
+### MSN-006 — Contextual crew composition
+
+The Mission Crew MUST contain only the persistent identities needed for the concrete mission plus
+independent evaluators and a reporter where required. Composition MUST record the project,
+competence, availability, conflict, risk, and independence evidence used.
+
+### MSN-007 — Accountable task assignment
+
+Every mission task MUST identify one accountable owner, optional contributors, expected result,
+completion criteria, dependencies, authority, exact tools, paths, limits, and required evidence.
+
+### MSN-008 — Collaboration primitives
+
+The system MUST support bounded delegation, collaboration, consultation, handoff, review,
+evidence-based challenge, and escalation without encoding those interactions as one fixed workflow.
+Agents MAY communicate directly when policy and mission scope permit.
+
+### MSN-009 — Durable channel classes
+
+The system MUST maintain persistent Executive, Mission, Branch, and authorized Direct channels.
+The Executive channel MUST preserve the CEO conversation with PM and CTO across restart, client
+change, and disconnected periods.
+
+### MSN-010 — Message and command separation
+
+Messages, events, commands, decisions, and escalations MUST have distinct versioned contracts. A
+recommendation or natural-language statement MUST NOT change mission state until translated into
+an explicit authorized command.
+
+### MSN-011 — Escalation contract
+
+An escalation MUST identify what is blocked, why a decision is required, available options,
+consequences, risks, PM/CTO recommendations, deadline where applicable, and independent work that
+continues while awaiting the decision.
+
+### MSN-012 — CEO intervention
+
+The CEO MUST be able, subject to effective policy, to comment, answer an escalation, accept or
+reject a proposal, suspend or resume work, request or confirm reassignment, stop a task or mission,
+and explicitly accept a risk. Every intervention MUST record actor, reason, scope, confirmation,
+effect, and resulting state.
+
+### MSN-013 — Complete drill-down transparency
+
+An authorized client MUST expose drill-down from organization and branch status to missions,
+crews, agents, conversations, decisions, plans, tasks, artifacts, evidence, risks, failures, costs,
+schedules, and events without treating a projection as authoritative state.
+
+### MSN-014 — Notification severity
+
+Notifications MUST distinguish information, attention, action-required, and urgent conditions and
+apply configured delivery or silence rules without hiding durable events or pending decisions.
+
+### MSN-015 — Client-equivalent communication
+
+`mishkan chat`, TUI, CLI/SDK commands, HTTP/SSE, and MCP MUST use the same durable conversation,
+command, permission, error, and state contracts. No client MUST receive stronger authority because
+of its transport.
+
+## 9. Run execution and recovery
 
 ### RUN-001 — Run lifecycle
 
@@ -351,7 +539,7 @@ accepted results, and produce a terminal audit record.
 The engineer MUST be able to observe run and task state changes as they occur and query the latest
 state after reconnecting.
 
-## 8. Workspace and safety
+## 10. Workspace and safety
 
 ### SAF-001 — Approved workspace
 
@@ -420,7 +608,7 @@ identity, attempted capability, policy decision, and non-secret reason.
 A safety invariant MUST be enforced by a deterministic boundary. An instruction to an AI actor is
 not sufficient enforcement.
 
-## 9. Knowledge
+## 11. Knowledge
 
 ### KNW-001 — Context classes
 
@@ -451,7 +639,7 @@ system MUST expose the unavailable source and resulting limitation.
 
 Knowledge MUST NOT become permanent cross-project guidance without engineer approval and provenance.
 
-## 10. Skills and procedural memory
+## 12. Skills and procedural memory
 
 ### SKL-001 — Skill contract
 
@@ -508,9 +696,9 @@ evidence.
 
 ### SKL-010 — Composable bundles
 
-The system MUST support versioned named bundles of skills and MUST validate the configured maximum
-stack size, order, compatibility, and conflicts before applying a bundle. Bundles enrich a task;
-they MUST NOT become hidden static workflow definitions.
+The system MUST support versioned named bundles using configured `all` or contextual `select`
+behavior and MUST validate compatibility and conflicts before use. A bundle MUST refer to existing
+skills and MUST NOT encode task dependencies, delegation, retries, or workflow state.
 
 ### SKL-011 — Usage outcomes
 
@@ -526,8 +714,10 @@ aggregates by task class without silently turning a configured threshold into an
 
 The engineer MUST be able to request learning through a documented `/learn <source>` interaction
 and an equivalent programmatic interface using supplied text, files, URLs, repository evidence, or
-execution evidence. The result MUST be a staged proposal or an attributable refusal, never an
-immediately trusted active skill.
+execution evidence. The request MUST execute as governed CrewAI work, update an applicable existing
+package before creating a duplicate, and return an attributable mutation, staged proposal, or
+refusal according to effective policy. New or changed executable material MUST obtain independent
+execution authority before use.
 
 ### SKL-014 — Evidence-triggered proposal
 
@@ -544,19 +734,22 @@ the entire source.
 ### SKL-016 — Staged mutations
 
 Create, patch, edit, delete, archive, restore, and supporting-file changes MUST execute as typed
-stateful capabilities under effective policy. A proposed mutation MUST remain staged and durable
-across restart until allowed, approved, denied, rejected, superseded, or expired.
+stateful capabilities under effective policy. Policy MUST be able to allow a routine mutation
+directly, allow it with later review, stage it pending approval, or deny it. A staged mutation MUST
+remain durable across restart until resolved.
 
-### SKL-017 — Patch-first evolution
+### SKL-017 — Coherent package evolution
 
-An AI-authored update SHOULD express the smallest reviewable patch against an identified base
-version. A full replacement MUST identify why a patch is insufficient and MUST preserve recoverable
-lineage.
+An update MUST read and identify its base package first. It SHOULD use a focused patch when that
+preserves a coherent capability and MAY use a full edit when required. Both paths MUST preserve an
+inspectable diff, base and result hashes, provenance, validation, and recoverable lineage.
 
 ### SKL-018 — Atomic activation
 
 A skill version and all content it references MUST become active atomically after required
-validation, inspection, and policy decision. Failure MUST leave the previously active version
+validation, inspection, and policy decision. When policy authorizes immediate use, the next safe
+action MAY use the refreshed complete package without process restart; an already dispatched model
+or process MUST retain its original snapshot. Failure MUST leave the previously active version
 unchanged.
 
 ### SKL-019 — Provenance lock
@@ -601,7 +794,7 @@ Core skill discovery, creation, review, activation, use, and restoration MUST op
 MISHKAN-hosted marketplace. Community acquisition MAY use configured repositories, URLs, or hubs
 but MUST pass the same provenance, inspection, and policy path as every other external source.
 
-## 11. Tools and atomic capabilities
+## 13. Tools and atomic capabilities
 
 ### TOL-001 — Distinct semantics
 
@@ -767,7 +960,396 @@ candidate only through a configured source and declared trust path. Repository c
 activate its own extension, approve its own lifecycle change, expand an existing task binding, or
 modify effective policy without the normal validation and authorization decisions.
 
-## 12. Events, evidence, and retention
+## 14. File, read, and search capabilities
+
+### FIL-001 — Non-mutating family
+
+File, Read, and Search operations MUST NOT modify project or repository state, refresh an index,
+or perform an implicit Git network operation. Mutation MUST use a separate authorized capability.
+
+### FIL-002 — Safe object resolution
+
+Every filesystem operation MUST resolve its root, lexical path, actual opened object, link chain,
+and scope before content access. Traversal, symlink escape, cycles, unsafe special files, and
+detectable path-replacement races MUST produce a refusal or explicit partial evidence.
+
+### FIL-003 — Bounded metadata, listing, and reads
+
+The system MUST provide bounded metadata inspection, deterministic paginated listing, and byte,
+text, line, range, head, and tail reads with explicit encoding, binary, link, ignore, truncation,
+continuation, and changed-during-read behavior.
+
+### FIL-004 — Distinct search semantics
+
+The system MUST expose distinct file, literal/regular-expression text, structural, symbol/reference,
+and repository-history search operations. A result MUST NOT claim semantic coverage when only text
+or syntax was examined.
+
+### FIL-005 — Search provenance and partial coverage
+
+Every read or search result MUST record workspace and revision identity, dirty-state evidence,
+scope, engine and version, normalized query, freshness, limits, omissions, failures, truncation,
+and continuation. A partial result MUST identify both successful and unexamined coverage.
+
+### FIL-006 — Mutation base evidence
+
+A read intended to precede mutation MUST be able to produce a project- and content-bound base
+revision token. A later edit MUST reject or explicitly reconcile a stale token.
+
+### FIL-007 — Contextual adapters and native commands
+
+Filesystem primitives, ripgrep, Git, AST engines, language servers, and configured MCP extensions
+MAY satisfy these contracts when concretely available. Bash and native commands MUST remain usable
+under the same path, policy, event, and artifact boundaries.
+
+## 15. Edit and patch capabilities
+
+### EDT-001 — Structured change set
+
+The system MUST support typed create, write, replace, patch, rewrite, move, copy, delete, and
+directory-creation operations in one versioned change-set contract. A structured change set MUST
+NOT imply mandatory human approval.
+
+### EDT-002 — Explicit base preconditions
+
+Every affected path MUST declare a non-existence, digest, revision-token, Git-blob, or metadata
+precondition. Concurrent mismatch MUST produce conflict, replanning, explicit merge, human
+resolution, or separately authorized force behavior rather than silent overwrite.
+
+### EDT-003 — Precise replacement and patching
+
+Targeted replacement MUST declare match semantics and expected occurrence count. Unified patches
+MUST validate paths, base files, hunks, context, encoding, permissions, and result. Offset, fuzzy,
+three-way, or interactive interpretation MUST be explicitly selected and reported.
+
+### EDT-004 — Structural rewrite truthfulness
+
+A structural rewrite MUST record engine, version, rule, language, scope, matches, parse failures,
+ignored files, formatting, and limits. It MUST NOT claim semantic preservation beyond the selected
+engine's evidence.
+
+### EDT-005 — Recoverable application
+
+Single-file replacement SHOULD use same-filesystem atomic replacement where supported. Multi-file
+application MUST use a durable recovery journal, report its actual atomicity, preserve applied and
+unapplied operations, and support restart reconciliation.
+
+### EDT-006 — Verification and conditional rollback
+
+Applied changes MUST be verified against expected content, paths, permissions, scopes, and selected
+validation. Rollback MUST have its own preconditions and MUST NOT overwrite later unrelated work.
+
+### EDT-007 — Command-driven mutation
+
+Bash, codemods, generators, formatters, package managers, and project scripts MAY perform authorized
+mutations through Terminal/Process. MISHKAN MUST capture the base, actual changed paths, resulting
+diff, scope deviations, validation, events, and artifacts.
+
+### EDT-008 — Separate Git effects
+
+Stage, commit, push, force-with-lease, and force-push MUST be distinct typed configurable effects.
+When authorized they MUST verify identity, repository, remote, branch, target, and applicable
+validation. MISHKAN's delivery sequence remains topic to `develop` to `main`.
+
+## 16. Terminal and process capabilities
+
+### EXE-001 — Unified execution contract
+
+The system MUST define one versioned ExecutionRequest/ExecutionResult contract with direct process,
+full shell, interactive PTY, and managed-job modes and expose precise operations for each mode.
+
+### EXE-002 — Direct process semantics
+
+Direct process mode MUST execute one executable and argument vector without shell expansion,
+redirection, globbing, substitution, separators, or quoting interpretation.
+
+### EXE-003 — Full shell semantics
+
+Shell mode MUST preserve the selected Bash or configured POSIX semantics, including pipelines,
+redirections, substitutions, globbing, arrays where supported, functions, conditions, loops,
+traps, and bounded concurrency. Interpreter, startup files, environment, and options MUST be
+versioned profile values and personal startup files MUST NOT be inherited silently.
+
+### EXE-004 — PTY lifecycle
+
+Interactive sessions MUST provide bounded open, send, cursor-read, resize, signal, and close
+operations. A session MUST be owned by one run or task, have an expiry and process group, preserve
+bounded transcript evidence, and settle rather than disappear when its handle closes.
+
+### EXE-005 — Managed-job lifecycle
+
+Managed jobs MUST support start, readiness, status, cursor-based logs, signal, stop, and settlement.
+Readiness MUST remain distinct from liveness, and graceful-stop escalation MUST follow the selected
+execution profile.
+
+### EXE-006 — No implicit shared shell state
+
+Shell, PTY, and job state MUST NOT be shared globally among agents or projects. Reuse MUST occur
+only through an explicitly identified authorized session.
+
+### EXE-007 — Result and output evidence
+
+Every settled execution MUST identify status, timing, exit or signal, execution location, bounded
+stdout/stderr previews, complete-output artifacts when retained, produced artifacts, observed
+effects, error, and retryability.
+
+### EXE-008 — Cancellation and uncertain effects
+
+Cancellation and timeout MUST act on the process group where possible, preserve output, and record
+whether an external effect is absent, completed, or uncertain. An uncertain state-changing command
+MUST NOT be retried blindly.
+
+## 17. Web capabilities
+
+### WEB-001 — Typed Web surface
+
+The system MUST expose distinct search, fetch, HTTP-request, extract, map, and crawl operations.
+Search discovery MUST remain distinguishable from retrieval, extraction, and generated synthesis.
+
+### WEB-002 — Truthful component roles
+
+Direct search sources, metasearch brokers, composite gateways, HTTP transports, extractors, and
+crawlers MUST declare different roles and guarantees. A broker MUST NOT be represented as an
+index-owning direct source, and its upstream list MUST be reported as unknown when unavailable.
+
+### WEB-003 — Search selection and provenance
+
+Search MUST support explicit direct, aggregate, verification, and automatic strategies. It MUST
+honor an executable explicit source pin, preserve every route and upstream origin available, avoid
+hidden duplicate querying, and never compare source-specific scores as universal values.
+
+### WEB-004 — Bounded retrieval
+
+Fetch and HTTP request MUST represent method, normalized URL, redirect policy, credential
+references, body or artifact, network profile, accepted media, timeout, status, size, decompression,
+and cache constraints. Stateful methods MUST use policy rather than a global prohibition.
+
+### WEB-005 — Network safety
+
+Every request and redirect MUST validate scheme, normalized host, DNS answer, actual connected
+address, credential origin, and configured public/private network policy. SSRF, DNS-rebinding,
+redirect, decompression, concurrency, depth, and retained-content controls MUST execute outside
+prompt instructions.
+
+### WEB-006 — Extraction and citation evidence
+
+Extraction MUST record input hash, engine/version, configuration, output hash, quality warnings,
+canonical links, and source spans. A citation MUST bind a claim or passage to URL, retrieval time,
+content hash, and exact span; a search snippet alone MUST NOT prove a page's claim.
+
+### WEB-007 — Map, crawl, cache, and degradation
+
+Map and crawl MUST be bounded by scope, depth, count, concurrency, delay, robots profile, render
+mode, and stop conditions. Cached or stale results MUST expose freshness. A fallback MUST preserve
+the required semantics and disclose lost coverage or block the affected operation.
+
+## 18. Browser capabilities
+
+### BRW-001 — Distinct stateful family
+
+Browser operations MUST remain distinct from content-oriented Web operations. Escalation from Web
+to an authenticated or stateful browser MUST be explicit and authorized.
+
+### BRW-002 — Stable capability surface
+
+The system MUST expose session management, observation, action, runtime inspection, and evidence
+capture with only the selected operation schema loaded into task context.
+
+### BRW-003 — Profile sensitivity
+
+Isolated, project-persistent, and attached-existing browser profiles MUST have distinct scope,
+sensitivity, retention, and policy. An attached user browser MUST require explicit selection and
+MUST NOT become an implicit shared session.
+
+### BRW-004 — Observation-bound targets
+
+UI actions MUST identify session, page, and the observation on which a target is based. A stale
+reference MUST require re-observation rather than approximate selection. Coordinate or pixel-based
+actions MUST be explicit fallbacks with compatible visual capability evidence.
+
+### BRW-005 — Resolved interaction effects
+
+Authorization MUST evaluate the resolved effect of an interaction rather than the generic click,
+fill, or press verb. Navigation, submissions, uploads, downloads, permissions, JavaScript,
+interception, and persistence MUST be separately governable.
+
+### BRW-006 — Authentication and sensitive state
+
+Credentials MUST be resolved late for an authorized origin. Cookies, tokens, sensitive fields,
+storage state, profiles, traces, HAR, downloads, screenshots, and video MUST follow typed artifact,
+redaction, retention, and cross-origin controls.
+
+### BRW-007 — Runtime diagnosis and evidence limits
+
+Console, network, performance, storage, and service-worker evidence MUST be bounded, filtered,
+cursor-based, attributable to engine/browser versions, and secret-safe. A screenshot MUST NOT be
+treated as proof of backend, authorization, or performance behavior it cannot establish.
+
+### BRW-008 — Session failure and uncertainty
+
+Browser operations MUST expose page/session crash, adapter loss, timeout, cancellation, stale
+target, and uncertain state. Loss after a potentially non-idempotent submission MUST require safe
+observation or reconciliation before retry.
+
+## 19. Artifact capabilities
+
+### ART-001 — Immutable content identity
+
+Committed artifact content MUST be immutable and identified by UUID, digest, size, media evidence,
+creation time, producer lineage, sensitivity, retention, validation, and internal storage reference.
+A transformation MUST create a new artifact with derivation provenance.
+
+### ART-002 — Scoped working references
+
+A mutable working reference MUST identify its scope, logical name, revision, current artifact, and
+prior revision. Updating it MUST use compare-and-swap and MUST refuse a stale expected revision.
+
+### ART-003 — Collections and safe logical paths
+
+Multi-file outputs MUST be representable as immutable collection manifests with member identities,
+ordering where relevant, and logical paths that cannot escape the collection namespace.
+
+### ART-004 — Streaming and atomic visibility
+
+Artifact put/get MUST support bounded streaming and backpressure. Incomplete or unverified content
+MUST NOT become available. Artifact commit and working-reference update MUST have separate durable
+identities even when one local transaction can settle both.
+
+### ART-005 — Validation, trust, and authority separation
+
+Integrity, detected type, security scan, schema validity, rendering, trust, sensitivity,
+availability, and authorization MUST remain distinct facts. Invalid or quarantined artifacts MAY
+remain inspectable to authorized actors but MUST NOT be ordinary trusted inputs.
+
+### ART-006 — Storage profiles
+
+Local mode MUST support relational metadata and filesystem content-addressed blobs. Distributed
+mode MUST support PostgreSQL metadata and an S3-compatible blob-store contract. Workers MUST
+receive only short-lived artifact-scoped transfer authority rather than permanent listing access.
+
+### ART-007 — Lifecycle and retention
+
+Lifecycle MUST distinguish staging, validating, available, quarantined, rejected, expired,
+tombstoned, deleted, missing, and corrupt. Retention, holds, pins, references, collections, run
+evidence, and provenance roots MUST govern resumable reachability-based garbage collection.
+
+### ART-008 — Derived previews and recovery
+
+Previews and conversions MUST be isolated derived artifacts with engine/configuration provenance
+and declared loss. Recovery MUST detect missing blobs, orphan blobs, digest mismatch, invalid
+references, and incomplete collections and MUST produce an inspectable reconciliation plan rather
+than silently delete or invent data.
+
+## 20. MCP connectivity
+
+### MCP-001 — Bidirectional application boundary
+
+MISHKAN MUST act as an MCP client for configured external capabilities and as an MCP server exposing
+approved application operations. MCP MUST NOT be an internal agent runtime or expose raw CrewAI,
+database, credential, policy, or unrestricted shell objects.
+
+### MCP-002 — Versioned compatibility
+
+Each connection MUST use an explicit pinned, compatible-set, or isolated legacy protocol strategy.
+Wire revisions MUST be normalized through versioned codecs and MUST NOT silently change a bound
+MISHKAN capability contract.
+
+### MCP-003 — Connection identity and transport
+
+Every connection MUST identify direction, server, transport, protocol strategy, trust, credential
+reference, exposure profile, policy, health, and lifecycle. STDIO child processes and Streamable
+HTTP connections MUST use bounded process/network/credential controls.
+
+### MCP-004 — Discovery and normalization
+
+Only negotiated primitives and extensions MAY be discovered. Server names, descriptions,
+annotations, prompts, resources, and schemas MUST remain untrusted claims. Normalized catalogue
+records MUST preserve server, protocol, schema hashes, effects, sensitivity, freshness, health, and
+provenance.
+
+### MCP-005 — Independent authority states
+
+Discovered, configured, trusted, eligible, authorized, approved, executed, validated, and accepted
+MCP states MUST remain independent. Caller, harness, project, task, agent, connection, and
+credential principal identities MUST NOT collapse into one ambient identity.
+
+### MCP-006 — Bounded invocation and long work
+
+Outbound calls MUST validate schema, effects, deadlines, idempotency, and authority before dispatch
+and validate returned envelopes afterward. Multi-round input and long-running Tasks MUST persist in
+MISHKAN state and survive daemon restart without relying on a transport session.
+
+### MCP-007 — Controlled mediation
+
+An inbound harness request that uses an outbound MCP capability MUST settle as two distinct
+authorized operations. Client tokens, third-party credentials, prompts, context, and results MUST
+NOT pass transparently between security domains.
+
+### MCP-008 — Indeterminate completion and drift
+
+Protocol incompatibility, schema drift, credential change, connection loss, unsupported
+cancellation, and unknown remote completion MUST remain visible. Non-idempotent indeterminate work
+MUST be reconciled through remote identity or task evidence before retry.
+
+### MCP-009 — External harness requests
+
+An external harness MAY submit an organizational objective, targeted task, direct-agent request,
+skill operation, or authorized intervention. Work requests MUST become governed CrewAI runs or
+mini-runs with plan, tool, policy, evidence, validation, and acceptance identity; a harness MUST NOT
+receive a raw internal agent object.
+
+## 21. Engineering tools and environments
+
+### ENG-001 — Composed engineering surface
+
+Engineering Tools MUST compose File/Read/Search, Edit/Patch, Terminal/Process, Web, Browser,
+Artifact, MCP, and governed Git effects rather than create a competing execution or policy system.
+
+### ENG-002 — Adapter justification
+
+A specialized adapter MUST provide a concrete typed, safety, session, effect-analysis, or evidence
+benefit over a general process invocation. Otherwise the project command MUST remain a governed
+Terminal/Process input.
+
+### ENG-003 — Contextual engine resolution
+
+Engine resolution MUST consider explicit configuration, project declarations, verified execution
+environment, active packs, authorized isolated materialization, external API/MCP capability,
+compatible fallback, and visible degradation in that order unless configured policy selects
+another explicit order.
+
+### ENG-004 — Versioned technical packs
+
+The system MUST support discoverable, inspectable, enableable, disableable, and upgradeable
+versioned technical packs containing guidance and concrete adapters. Pack membership MUST NOT prove
+installation, health, relevance, trust, or authority.
+
+### ENG-005 — Priority ecosystem coverage
+
+Acceptance fixtures MUST cover at least Go, TypeScript/JavaScript, Java/Kotlin, Android, Python,
+Rust, C, and Swift. This priority controls initial depth and MUST NOT prohibit other configured
+languages or platforms.
+
+### ENG-006 — Reproducible environment materialization
+
+When required tooling is absent, the system MUST be able to propose or create, under policy, the
+smallest compatible reproducible local, container, development-container, Nix, dependency, build,
+test, or CI environment without silently replacing an established project toolchain.
+
+### ENG-007 — Evidence formats and signals
+
+Engineering results MUST preserve applicable unified diff, JUnit, SARIF, coverage, SBOM, benchmark,
+structured-log, metric, trace, profile, error, screenshot, video, or platform-test artifacts and
+their engine/version provenance. Metrics, logs, traces, profiles, and application errors MUST
+remain semantically distinct.
+
+### ENG-008 — Honest fallback
+
+When an ideal engine is unavailable, the system MUST identify the missing engine, selected
+fallback, lost precision/coverage/evidence, and reliable remaining work. It MUST block only work
+whose required meaning cannot be preserved and MUST NOT infer success from absent evidence.
+
+## 22. Events, evidence, and retention
 
 ### OBS-001 — Typed events
 
@@ -808,7 +1390,7 @@ an active hold or incomplete run.
 Event and snapshot serialization MUST apply the same secret-handling guarantees as other persisted
 outputs.
 
-## 13. Headless operation and scheduling
+## 23. Headless operation and scheduling
 
 ### AUT-001 — Headless equivalence
 
@@ -844,7 +1426,7 @@ schedule, and inspect its run history.
 
 An external scheduler MUST be able to invoke the same idempotent run interface used internally.
 
-## 14. Distributed execution — post-core
+## 24. Distributed execution — post-core
 
 ### DST-001 — Explicit distributed mode
 
@@ -896,7 +1478,7 @@ and the effective policy decision permits it.
 The coordinator MUST accept at most one valid completion for a task attempt despite retries,
 duplicate delivery, worker loss, or partial network failure.
 
-## 15. Non-functional requirements
+## 25. Non-functional requirements
 
 ### NFR-001 — Supported core platforms
 
@@ -946,7 +1528,7 @@ loss, event-transport loss, and—when distributed mode is released—worker and
 Automated tests MUST verify that representative credentials cannot enter configuration output,
 events, logs, snapshots, artifacts, reports, or diffs.
 
-## 16. Error behavior
+## 26. Error behavior
 
 | Code | Condition | Required result |
 |---|---|---|
@@ -974,11 +1556,21 @@ events, logs, snapshots, artifacts, reports, or diffs.
 | ERR-TOL-003 | Tool arguments, result envelope, or result schema is invalid | Produce no effect for invalid input; contain invalid output and fail the call contract |
 | ERR-TOL-004 | Tool call failed, timed out, was cancelled, or has uncertain effect | Preserve attributable evidence; retry only when the contract and policy permit it |
 | ERR-TOL-005 | Tool identity collides or a bound external schema drifted | Block the conflicting or stale binding until registry reconciliation or replanning |
+| ERR-CTX-001 | Required context cannot be established without forbidden inspection or unsupported inference | Preserve unknown state; block only reasoning that requires the missing fact |
+| ERR-MSN-001 | Mission Brief, executive agreement, composition, or intervention is invalid or unauthorized | Preserve current mission state; expose the missing decision, coverage, or authority |
+| ERR-FIL-001 | A read/search target is outside scope, stale, unsafe, unsupported, or only partially covered | Produce no unauthorized read; return bounded attributable failure or partial evidence |
+| ERR-EDT-001 | A change has a stale base, ambiguous target, scope escape, partial application, or recovery conflict | Do not claim verified completion; preserve journal, diff, and recovery evidence |
+| ERR-EXE-001 | Execution cannot start, settle, cancel, satisfy isolation, or establish its external effect | Preserve output and state; report failed, lost, cancelled, timed out, or uncertain |
+| ERR-WEB-001 | Web routing, network policy, retrieval, extraction, crawl, or citation evidence is invalid | Produce no unauthorized request and expose route, limitation, and safe fallback eligibility |
+| ERR-BRW-001 | Browser session, target, origin, credential, action, or diagnostic evidence is invalid or stale | Refuse or re-observe; preserve uncertainty after a possible external effect |
+| ERR-ART-001 | Artifact integrity, storage, validation, reference revision, retention, or recovery is invalid | Keep incomplete content unavailable and return conflict, quarantine, missing, or corrupt evidence |
+| ERR-MCP-001 | MCP protocol, identity, discovery, schema, authority, transport, or completion is incompatible | Block the affected binding or call; preserve drift or indeterminate evidence |
+| ERR-ENG-001 | Required engine or environment cannot be truthfully materialized or replaced compatibly | Declare degradation and block only the unsatisfied operation |
 | ERR-SCH-001 | Schedule time or trigger is invalid | Reject schedule without partial creation |
 | ERR-WRK-001 | Worker identity, capability, revision, or lease is invalid | Reject claim or completion and preserve evidence |
 | ERR-VER-001 | Persisted schema version is unsupported | Refuse automatic mutation and identify required operator action |
 
-## 17. Approved and candidate technical constraints
+## 27. Approved and candidate technical constraints
 
 This section records implementation constraints separately from behavioral requirements. It does
 not assign component responsibilities.
@@ -1001,8 +1593,10 @@ selectable as a production execution mode.
 ### TC-004 — Interface scope
 
 The planned product interfaces are a Python command-line and programmatic interface, one headless
-control daemon, remote workers, and a separate initially read-only terminal monitor. No web
-dashboard is planned for version 1.
+control daemon, remote workers, durable chat, a separate terminal monitor, versioned HTTP/SSE, and
+an MCP facade. The terminal monitor MAY issue the same policy-governed intervention commands as
+other clients but MUST NOT own authoritative state or policy. No web dashboard is planned for
+version 1.
 
 ### TC-005 — Local and distributed metadata
 
@@ -1021,76 +1615,124 @@ Native tools use CrewAI's supported tool contract, and configured external proto
 supported integration boundary. MISHKAN may wrap these interfaces to enforce product contracts but
 MUST NOT replace CrewAI's production agent tool-calling runtime.
 
+### TC-008 — Harness and MCP transport direction
+
+The canonical remote application surface uses versioned HTTP/OpenAPI commands and resumable SSE.
+A thin MCP facade exposes the same application semantics; a local STDIO bridge delegates to the
+daemon and remote MCP uses Streamable HTTP. Transport choice MUST NOT change authority.
+
+### TC-009 — Artifact persistence direction
+
+Local artifact metadata uses the embedded relational profile with content-addressed filesystem
+blobs. Distributed artifact metadata uses PostgreSQL and a configured S3-compatible blob-store
+adapter. Concrete vendors remain deployment decisions.
+
 ## Appendix A — Organization version 1 roster
 
-### Orchestration
+### Executive agents
 
 `PM`, `CTO`
 
-### Frontend
+### Product and Experience
 
-`Frontend_Lead`, `Frontend_DesignLead`, `Frontend_UXExpert`, `Frontend_Engineer`,
-`Frontend_A11ySpec`, `Frontend_SecuritySpec`, `Frontend_QA`, `Frontend_Reporter`
+`Product_Analyst`, `UX_Researcher`, `Product_Designer`, `Accessibility_Specialist`
 
-### Backend
+### Architecture and System Design
 
-`Backend_Lead`, `Backend_ArchSpec`, `Backend_StandardsSpec`, `Backend_Engineer`,
-`Backend_DatabaseSpec`, `Backend_SecuritySpec`, `Backend_QA`, `Backend_Reporter`
+`System_Architect`, `Software_Architect`, `Integration_Architect`
 
-### Infrastructure
+### Software Engineering
 
-`Infra_Lead`, `Infra_PlatformSpec`, `Infra_DeliverySpec`, `Infra_ReliabilitySpec`,
-`Infra_SecuritySpec`, `Infra_QA`, `Infra_Reporter`
+`Software_EngineeringLead`, `Web_Application_Engineer`, `Android_Engineer`,
+`Apple_Platform_Engineer`, `Backend_Service_Engineer`, `Desktop_TUI_Engineer`,
+`Systems_Software_Engineer`, `Integration_SDK_Engineer`
 
-### Documentation
+### Data and AI Engineering
 
-`Doc_Specialist`
+`Data_Lead`, `Database_Engineer`, `Data_Engineer`, `AI_Engineer`
 
-### Research
+### Platform, Delivery, and Reliability
+
+`Platform_Lead`, `Platform_Engineer`, `Delivery_Engineer`, `Reliability_Engineer`
+
+### Security and Supply Chain
+
+`Security_Lead`, `Product_Security_Engineer`, `Platform_Security_Engineer`,
+`SupplyChain_Security_Engineer`
+
+### Independent Assurance
+
+`Quality_Lead`, `Product_Functional_Evaluator`, `Software_Technical_Evaluator`,
+`Mobile_Application_Evaluator`, `Accessibility_Evaluator`,
+`Performance_Resilience_Evaluator`, `Data_AI_Evaluator`, `Platform_Release_Evaluator`,
+`Application_Security_Evaluator`, `Platform_Infrastructure_Security_Evaluator`,
+`Identity_Access_Security_Evaluator`, `SupplyChain_Security_Evaluator`,
+`Data_AI_Security_Evaluator`, `Product_Delivery_Reporter`, `Technical_Change_Reporter`,
+`Incident_Operations_Reporter`, `Evidence_Auditor`
+
+### Research and Decision Support
 
 `Research_Clarificator`, `Research_Formulator`, `Research_Investigator`,
-`Research_Summarizer`, `Research_Evaluator`, `Research_Reporter`
+`Research_Synthesizer`, `Research_Evaluator`, `Research_Reporter`
 
-## Appendix B — Organization version 1 outcomes
+### Documentation and Organizational Learning
 
-### Organizational outcomes
+`Product_Documentation_Specialist`, `Developer_Documentation_Specialist`,
+`Architecture_Documentation_Specialist`, `Operations_Documentation_Specialist`,
+`Security_Documentation_Specialist`, `Knowledge_Curator`, `Skill_Curator`
 
-`mishkan-init`, `sprint-close`, `deep-research`, `codebase-audit`, `architecture-panel`,
-`blast-radius`, `release-readiness`, `dep-audit`, `standards-rollout`,
-`knowledge-gap-discovery`
+The roster contains exactly 59 persistent identities. Branches and pools are responsibility homes;
+they are not static mission teams.
 
-### Team outcomes
+## Appendix B — Optional mission-template contract
 
-`frontend-feature-ship`, `backend-api-version`, `backend-schema-migration`, `infra-deploy`,
-`infra-dr-drill`
+A template MAY provide:
 
-These names identify stable outcomes and constraints. Their executable task plans are generated for
-the specific objective and repository revision and are not fixed universal chains.
+- qualified identity, version, source, and provenance;
+- applicability signals and exclusions;
+- reusable objective, constraint, risk, evidence, and completion guidance;
+- compatible organization versions and required responsibility classes;
+- declared configuration, skills, tools, or execution conditions without granting them;
+- validation and reporting expectations.
+
+A template MUST NOT contain a mandatory task graph, fixed Mission Crew, implicit approval,
+repository-independent path or command assumption, or static role/tool assignment. Absence of a
+matching template MUST NOT prevent a valid free-form mission.
 
 ## Appendix C — PRD traceability
 
 | PRD item | Principal SRS coverage |
 |---|---|
-| UC-01 Establish organization | PRJ-001–007, ORG-001–003 |
+| UC-01 Establish organization | PRJ-001–008, ORG-001–003 |
 | UC-02 Delegate objective | PLN-001–011, RUN-001–012 |
-| UC-03 Coordinate work | ORG-004–012, RUN-003–007 |
+| UC-03 Coordinate work | ORG-004–016, MSN-001–008, RUN-003–007 |
 | UC-04 Enforce authority | SAF-001–013 |
-| UC-05 Review evidence | OBS-001–008, RUN-012 |
+| UC-05 Review evidence | MSN-009–015, OBS-001–008, RUN-012 |
 | UC-06 Survive interruption | RUN-008–011, OBS-003 |
 | UC-07 Preserve knowledge and grow skills | KNW-001–006, SKL-001–025 |
 | UC-08 Operate headlessly | AUT-001–007 |
 | UC-09 Use remote capacity | DST-001–010 |
-| UC-10 Extend controlled capabilities | TOL-001–027 |
+| UC-10 Extend controlled capabilities | CTX-004, TOL-001–027, ENG-001–008 |
 | UC-11 Make an evidence-based engineering decision | PLN-012–019, ORG-005–007 |
-| SC-01 Repository adaptation | PRJ-003–007, ORG-012 |
-| SC-02 End-to-end delegation | PLN, ORG, and RUN sections |
+| UC-12 Govern adaptive mission | PRJ-008, ORG-011–014, MSN-001–008 |
+| UC-13 Converse, inspect, intervene | MSN-009–015, SYS-006 |
+| UC-14 Use external harness | MCP-001–009, SYS-006, TC-008 |
+| UC-15 Evolve professional capability | ORG-015–016, SKL-013–024 |
+| SC-01 Repository adaptation | CTX-001–008, PRJ-003–008, ORG-012 |
+| SC-02 End-to-end delegation | PLN-001–019, ORG-001–016, MSN-001–008, RUN-001–012 |
 | SC-03 Human control | SAF-003–013 |
 | SC-04 Recovery | RUN-008–010 |
-| SC-05 Degraded usefulness | KNW-005, ERR-DEP-001 |
-| SC-06 Auditability | PLN-008–011, OBS-001–008 |
+| SC-05 Degraded usefulness | KNW-005, WEB-007, ENG-008, ERR-DEP-001 |
+| SC-06 Auditability | PLN-008–011, MSN-009–015, OBS-001–008 |
 | SC-07 Headless continuity | AUT-001–007 |
 | SC-08 Distributed recovery | DST-001–010, post-core |
 | SC-09 Local operation | NFR-001–003 |
 | SC-10 Skill learning loop | SKL-011–024 |
 | SC-11 Controlled tool extension | TOL-003–027 |
 | SC-12 Decision-quality assistance | PLN-012–019, ERR-DEC-001–002 |
+| SC-13 Adaptive mission operation | ORG-001–016, MSN-001–008 |
+| SC-14 Executive transparency and intervention | MSN-009–015, OBS-001–008 |
+| SC-15 Native engineering execution | FIL-001–007, EDT-001–008, EXE-001–008, ENG-001–008 |
+| SC-16 External harness integration | MCP-001–009, SYS-006, TC-008 |
+| SC-17 Artifact integrity | ART-001–008 |
+| SC-18 Evidence-based agent evolution | ORG-015–016, SKL-013–024, ART-001–008 |

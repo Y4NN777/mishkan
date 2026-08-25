@@ -1,10 +1,15 @@
 # MISHKAN Product Requirements Document
 
-**Status:** Approved — Gate G1
-**Version:** 1.3
+**Status:** Proposed amendment — awaiting D-032
+**Version:** 1.4
 **Scope:** Product problem and outcomes only
 
-**Approved:** 2026-08-23 by Y4NN777; decision-quality assistance amendment approved 2026-08-24
+**Prior approvals:** 2026-08-23 by Y4NN777; amendments through 1.3 approved 2026-08-24
+
+Version 1.4 replaces the historical fixed 32-identity and 15-outcome assumptions with an explicit
+59-identity professional organization, free-form missions, and optional versioned mission
+templates. It also incorporates the validated engineering-context, native-capability, skills,
+external-harness, communication, intervention, and agent-evolution decisions in WD-001–WD-027.
 
 ## 1. Problem
 
@@ -32,10 +37,11 @@ returns reviewable results while the engineer retains control over consequential
 
 ## 2. Target users
 
-### 2.1 Primary user: software engineer
+### 2.1 Primary user: human CEO and software engineer
 
-An engineer working alone or in a small team who needs to delegate multi-step engineering work
-without surrendering repository, release, or infrastructure authority.
+An engineer working alone or in a small team who acts as the organization's human CEO: they state
+problems, goals, priorities, and strategic constraints; confer primarily with the permanent PM and
+CTO agents; and delegate multi-step work without surrendering durable authority.
 
 ### 2.2 Secondary user: engineering lead
 
@@ -129,6 +135,41 @@ The result identifies risks, confidence limits, validation evidence, and reversa
 consequences in enough detail for the engineer to judge the choice. A recommendation does not
 silently become project authority merely because an AI actor produced it.
 
+### UC-12 — Govern an adaptive mission
+
+The CEO, PM, CTO, or authorized organizational evidence can originate a mission for an existing
+repository, greenfield product, multi-repository system, research question, incident,
+modernization, platform capability, or operational change. PM and CTO jointly clarify the desired
+outcome, produce a Mission Brief, and compose only the temporary Mission Crew required by the
+project, risks, evidence, competence, availability, and independence needs. Optional versioned
+templates may guide recurring mission classes but never restrict admissible objectives or embed a
+universal task chain.
+
+### UC-13 — Converse, inspect, and intervene
+
+The CEO can converse durably with PM and CTO, enter any authorized mission or branch channel, and
+drill down from organization-wide status to plans, tasks, agents, decisions, evidence, artifacts,
+risks, failures, costs, schedules, and events. The CEO can rarely comment, answer an escalation,
+accept or reject a proposal, suspend, resume, request or confirm reassignment, stop work, or accept
+a risk. Every intervention uses the same configured authorization and evidence rules regardless of
+client.
+
+### UC-14 — Use MISHKAN from an external harness
+
+Codex, Claude, and other compatible harnesses can inspect authorized organization metadata and
+submit an organizational objective, targeted task, direct-agent request, skill operation, or
+intervention through versioned machine interfaces. MISHKAN converts work requests into governed
+CrewAI runs and never exposes raw internal agents, policy state, credentials, or a bypass around
+accepted plans and effects.
+
+### UC-15 — Evolve professional capability
+
+Persistent agents can improve project knowledge, demonstrated competence, tool mastery, memory,
+and procedural skills from attributable execution and evaluation evidence. Corrections may be
+applied live and reversibly when policy allows; broader durable promotion depends on evidence,
+scope, trust, and risk. An agent cannot expand its own authority, change its independence, erase
+failure evidence, or self-certify critical mastery.
+
 ## 4. Out of scope
 
 MISHKAN will not:
@@ -145,6 +186,12 @@ MISHKAN will not:
 7. Hide failed, degraded, retried, rejected, or security-relevant actions from the engineer.
 8. Treat every repository as having the same teams, technologies, paths, or task sequence.
 9. Target Windows in the initial product scope.
+10. Limit missions to a mandatory finite catalogue or treat a mission template as a static
+    workflow.
+11. Replace CrewAI with an interchangeable internal agent runtime or permit an external harness to
+    become that runtime.
+12. Treat a known, installed, healthy, or recommended engine as authorized or usable without a
+    concrete adapter and an applicable policy decision.
 
 ## 5. Product principles
 
@@ -203,6 +250,30 @@ plan, and policy; their implementation source does not grant additional authorit
 The organization derives decision criteria from the objective and project context rather than a
 hidden universal scorecard. It explains alternatives, evidence, assumptions, uncertainty,
 trade-offs, and validation before asking the engineer to accept a consequential choice.
+
+### PP-12 — Permanent organization, temporary crews
+
+Professional identities, responsibility homes, competence, and learning persist. Mission Crews
+are temporary contextual compositions and activate only the identities needed for the concrete
+mission.
+
+### PP-13 — One authoritative application state
+
+CLI, SDK, chat, TUI, HTTP/SSE, MCP, schedules, and external harnesses operate on the same durable
+missions, conversations, commands, policy decisions, and evidence. No client owns a separate truth
+or stronger authority.
+
+### PP-14 — Native power with explicit effects
+
+MISHKAN preserves practical native file, editing, shell, browser, Web, artifact, MCP, Git, and
+engineering-tool behavior. Rich execution never creates ambient authority: actual paths,
+destinations, credentials, resources, and effects are resolved and governed at execution time.
+
+### PP-15 — Truthful capability and degradation
+
+Inventoried, detected, installed, executable, authenticated, healthy, project-used, eligible, and
+authorized are distinct facts. A compatible fallback declares lost precision or evidence; an
+incompatible fallback blocks only the affected operation rather than fabricating success.
 
 ## 6. Success criteria
 
@@ -279,6 +350,42 @@ identifies assumptions and unknowns, recommends one option or declares the evide
 states confidence and relevant consequences, proposes a validation method, and receives an
 independent challenge before the choice can become accepted authority.
 
+### SC-13 — Adaptive mission operation
+
+For materially different greenfield and existing-project objectives, PM and CTO produce different
+Mission Briefs, Crew compositions, plans, tools, and evidence requirements while preserving the
+same organization, authority, separation, and acceptance rules.
+
+### SC-14 — Executive transparency and intervention
+
+After a client disconnect and control-process restart, the CEO can recover the Executive
+conversation, inspect an active mission down to its evidence, answer an escalation, and issue an
+authorized pause or resume whose state and attribution are identical through TUI and API.
+
+### SC-15 — Native engineering execution
+
+The organization can inspect, modify, test, diagnose, document, and operate representative
+projects through general native capabilities and project-discovered commands without creating one
+synthetic tool per command or silently claiming a missing engine succeeded.
+
+### SC-16 — External harness integration
+
+A compatible harness can create or inspect governed work through HTTP or MCP, resume its events,
+and receive structured results without bypassing CrewAI, policy, identity separation, or accepted
+result semantics.
+
+### SC-17 — Artifact integrity
+
+Large and rich outputs remain inspectable as immutable artifacts with provenance. Concurrent
+updates to one scoped working reference detect conflict rather than silently overwriting a newer
+revision, and interrupted storage can be reconciled without inventing content or provenance.
+
+### SC-18 — Evidence-based agent evolution
+
+An evaluated mission can produce a scoped reversible improvement to an existing skill or agent
+profile, use it on a later safe action when policy permits, promote it only to the justified scope,
+and restore the prior version while preserving failure and evaluation evidence.
+
 ## 7. Product boundaries requiring later specification
 
 The PRD intentionally does not decide:
@@ -287,8 +394,9 @@ The PRD intentionally does not decide:
 - Which components own orchestration, persistence, security, or scheduling.
 - Which libraries, databases, protocols, or process model are used.
 - Exact performance thresholds.
-- Exact organization roster and workflow catalogue.
-- Exact configuration, event, report, skill, or worker schemas.
+- Exact machine-readable organization, mission-template, conversation, intervention, capability,
+  and professional-profile schemas.
+- Exact configuration, event, report, skill, artifact, or worker schemas.
 
 Those decisions follow only after this product problem and scope are approved.
 
@@ -301,8 +409,10 @@ Those decisions follow only after this product problem and scope are approved.
 3. Stateful capabilities, including commit and push, are configurable rather than universally
    forbidden. When granted, they are narrowly scoped, attributable, and reviewable.
 4. Distributed execution follows proof of local operation and is not a first-slice acceptance gate.
-5. The 32-agent organization is canonical for product version 1 and may evolve only through a new
-   versioned organization definition.
+5. Organization version 1 contains the explicitly approved 59 persistent identities. PM and CTO
+   are permanent agents; `Mission_Lead` is a temporary responsibility assigned to an existing
+   identity. Evolution requires a new versioned organization decision and never occurs silently
+   inside a running mission.
 6. MISHKAN provides a first-class, Hermes-inspired skills system for portable procedural memory,
    progressive disclosure, learning from experience, reviewed evolution, provenance, and
    recoverable lifecycle management. It does not operate a hosted marketplace or treat skills as a
@@ -314,3 +424,12 @@ Those decisions follow only after this product problem and scope are approved.
    relevant criteria from project context, compares credible alternatives, exposes evidence,
    assumptions, unknowns, trade-offs, risks, confidence, validation, and reversibility, and keeps
    durable acceptance under engineer-controlled authority.
+9. Missions accept free-form objectives. Optional configured templates supply reusable intent,
+   constraints, evidence, and completion guidance but never a mandatory catalogue or task graph.
+10. Codex, Claude, and compatible harnesses are governed clients of MISHKAN. CrewAI 1.x remains
+    the sole internal production runtime for agents and teams.
+11. The operational TUI is a transparent client of the same application commands and may issue
+    authorized interventions; it does not own policy, coordination, or authoritative state.
+12. Skills use concrete `SKILL.md` packages and may be corrected or maintained unattended when
+    effective policy allows. Newly discovered community extensions remain proposals until their
+    lifecycle action is explicitly authorized.
