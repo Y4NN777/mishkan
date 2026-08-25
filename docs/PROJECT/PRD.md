@@ -146,7 +146,10 @@ modernization, platform capability, or operational change. PM and CTO jointly cl
 outcome, produce a Mission Brief, and compose only the temporary Mission Crew required by the
 project, risks, evidence, competence, availability, and independence needs. Optional versioned
 templates may guide recurring mission classes but never restrict admissible objectives or embed a
-universal task chain.
+universal task chain. Planning also makes an explicit execution-environment decision for the
+mission: reuse what the project already establishes, use an authorized native location, generate
+or propose the smallest reproducible environment description, or expose why no honest environment
+can yet be provided.
 
 ### UC-13 — Converse, inspect, and intervene
 
@@ -279,6 +282,14 @@ Inventoried, detected, installed, executable, authenticated, healthy, project-us
 authorized are distinct facts. A compatible fallback declares lost precision or evidence; an
 incompatible fallback blocks only the affected operation rather than fabricating success.
 
+### PP-16 — Mission-scoped environments
+
+Development and execution environments are contextual mission inputs and outputs, not universal
+project templates. Native, isolated, containerized, declarative, or other reproducible
+representations are selected from actual project, platform, isolation, and verification needs.
+Existing project configuration is preferred when compatible; generated descriptions remain
+attributable, reviewable, testable, and governed like other project changes.
+
 ## 6. Success criteria
 
 The product succeeds when all of the following outcomes can be demonstrated:
@@ -358,7 +369,10 @@ independent challenge before the choice can become accepted authority.
 
 For materially different greenfield and existing-project objectives, PM and CTO produce different
 Mission Briefs, Crew compositions, plans, tools, and evidence requirements while preserving the
-same organization, authority, separation, and acceptance rules.
+same organization, authority, separation, and acceptance rules. Each mission records whether its
+execution environment is reused, generated, proposed, native, or unresolved; when generation is
+needed, the resulting descriptor set is specific to the mission and is verified on its intended
+execution location before dependent work is accepted.
 
 ### SC-14 — Executive transparency and intervention
 

@@ -501,6 +501,14 @@ apply configured delivery or silence rules without hiding durable events or pend
 command, permission, error, and state contracts. No client MUST receive stronger authority because
 of its transport.
 
+### MSN-016 — Mission execution-environment intent
+
+The Mission Brief MUST record known execution locations, platform and architecture constraints,
+project-established environment definitions, isolation and network needs, credential references,
+resource constraints, and required environment evidence. Before environment-dependent tasks become
+eligible, the mission plan MUST reference one versioned environment decision produced under ENG
+requirements or record the exact unresolved dependency and affected scope.
+
 ## 9. Run execution and recovery
 
 ### RUN-001 — Run lifecycle
@@ -1371,6 +1379,52 @@ When an ideal engine is unavailable, the system MUST identify the missing engine
 fallback, lost precision/coverage/evidence, and reliable remaining work. It MUST block only work
 whose required meaning cannot be preserved and MUST NOT infer success from absent evidence.
 
+### ENG-009 — Mission-scoped environment decision
+
+For each materially distinct repository, greenfield workspace, service group, or execution
+location used by a mission, the system MUST derive a versioned environment decision from the
+Mission Brief, project evidence, target platform, required engines, policy, and verification needs.
+The decision MUST state `reuse_existing`, `host_native`, `generate`, `propose_project_change`, or
+`unresolved`; identify affected tasks and locations; and MUST NOT treat one choice as a universal
+default.
+
+### ENG-010 — Truthful descriptor selection
+
+When ENG-009 selects `generate` or `propose_project_change`, the system MUST select only descriptor
+formats supported by a verified adapter at the target location and identify each format,
+specification or engine version, inputs, and intended lifecycle. Eligible outputs MAY include Dev
+Container metadata; OCI Containerfile or Dockerfile build inputs usable by the selected Podman or
+Docker adapter; a verified Compose definition; or Podman-supported Kubernetes YAML or Quadlet when
+the mission actually requires those semantics. No descriptor family MUST be generated when it does
+not fit the mission.
+
+### ENG-011 — Environment descriptor evidence
+
+Every generated descriptor set MUST preserve its mission and context identity, source evidence,
+base revisions, target platform and architecture, base image identities, build context, declared
+features or packages, workspace mounts, user model, network and resource profiles, credential
+references, lifecycle commands, expected artifacts, and known compatibility limits when those
+fields apply. Secret values MUST NOT be embedded, and an omitted or unknown required fact MUST
+remain visible rather than be invented.
+
+### ENG-012 — Governed descriptor mutation
+
+Generated environment descriptions MUST first exist as attributable immutable artifacts or typed
+change sets. Persisting them into a project MUST use the Edit/Patch base-revision, preview,
+authorization, verification, recovery, and rollback contracts. Generation availability MUST NOT
+overwrite, replace, or promote existing project configuration without an explicit compatible
+decision and the authority required for the concrete mutation.
+
+### ENG-013 — Environment verification and settlement
+
+Before an environment decision can satisfy dependent mission tasks, the selected adapter MUST
+verify applicable parse or schema validity, build or acquisition, startup and readiness, workspace
+and dependency access, required project commands, output artifacts, cleanup, and reproducibility
+on the intended location. The result MUST record engine and version, resolved inputs and image
+identities, timing, observed effects, logs or artifact references, limitations, and final
+`verified`, `failed`, `cancelled`, or `uncertain` settlement; a description alone MUST NOT prove a
+runnable environment.
+
 ## 22. Events, evidence, and retention
 
 ### OBS-001 — Typed events
@@ -1761,21 +1815,21 @@ matching template MUST NOT prevent a valid free-form mission.
 |---|---|
 | UC-01 Establish organization | PRJ-001–010, ORG-001–003 |
 | UC-02 Delegate objective | PLN-001–011, PLN-020, RUN-001–012 |
-| UC-03 Coordinate work | ORG-004–016, MSN-001–008, RUN-003–007 |
+| UC-03 Coordinate work | ORG-004–016, MSN-001–008, MSN-016, RUN-003–007 |
 | UC-04 Enforce authority | SAF-001–013 |
 | UC-05 Review evidence | MSN-009–015, OBS-001–008, RUN-012 |
 | UC-06 Survive interruption | RUN-008–011, OBS-003 |
 | UC-07 Preserve knowledge and grow skills | KNW-001–006, SKL-001–025 |
 | UC-08 Operate headlessly | AUT-001–007 |
 | UC-09 Use remote capacity | DST-001–010 |
-| UC-10 Extend controlled capabilities | CTX-004, TOL-001–027, ENG-001–008 |
+| UC-10 Extend controlled capabilities | CTX-004, TOL-001–027, ENG-001–013 |
 | UC-11 Make an evidence-based engineering decision | PLN-012–019, ORG-005–007 |
-| UC-12 Govern adaptive mission | PRJ-008–010, PLN-020, ORG-011–014, MSN-001–008 |
+| UC-12 Govern adaptive mission | PRJ-008–010, PLN-020, ORG-011–014, MSN-001–008, MSN-016, ENG-009–013 |
 | UC-13 Converse, inspect, intervene | MSN-009–015, SYS-006 |
 | UC-14 Use external harness | MCP-001–009, SYS-006, TC-008 |
 | UC-15 Evolve professional capability | ORG-015–016, SKL-013–024 |
 | SC-01 Repository adaptation | CTX-001–008, PRJ-003–010, ORG-012 |
-| SC-02 End-to-end delegation | PLN-001–020, ORG-001–016, MSN-001–008, RUN-001–012 |
+| SC-02 End-to-end delegation | PLN-001–020, ORG-001–016, MSN-001–008, MSN-016, RUN-001–012 |
 | SC-03 Human control | SAF-003–013 |
 | SC-04 Recovery | RUN-008–010 |
 | SC-05 Degraded usefulness | KNW-005, WEB-007, ENG-008, ERR-DEP-001 |
@@ -1786,9 +1840,9 @@ matching template MUST NOT prevent a valid free-form mission.
 | SC-10 Skill learning loop | SKL-011–024 |
 | SC-11 Controlled tool extension | TOL-003–027 |
 | SC-12 Decision-quality assistance | PLN-012–019, ERR-DEC-001–002 |
-| SC-13 Adaptive mission operation | ORG-001–016, MSN-001–008 |
+| SC-13 Adaptive mission operation | ORG-001–016, MSN-001–008, MSN-016, ENG-009–013 |
 | SC-14 Executive transparency and intervention | MSN-009–015, OBS-001–008 |
-| SC-15 Native engineering execution | FIL-001–007, EDT-001–008, EXE-001–008, ENG-001–008 |
+| SC-15 Native engineering execution | FIL-001–007, EDT-001–008, EXE-001–008, ENG-001–013 |
 | SC-16 External harness integration | MCP-001–009, SYS-006, TC-008 |
 | SC-17 Artifact integrity | ART-001–008 |
 | SC-18 Evidence-based agent evolution | ORG-015–016, SKL-013–024, ART-001–008 |
