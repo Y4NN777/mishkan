@@ -37,6 +37,7 @@ class ToolCatalog:
         available_services: frozenset[str] = frozenset(),
         available_dependencies: frozenset[str] = frozenset(),
         available_credentials: frozenset[str] = frozenset(),
+        available_adapters: frozenset[str] = frozenset(),
         memory_mb: int | None = None,
     ) -> None:
         if not source_uris:
@@ -50,6 +51,7 @@ class ToolCatalog:
         self._services = available_services
         self._dependencies = available_dependencies
         self._credentials = available_credentials
+        self._adapters = available_adapters
         self._memory_mb = memory_mb
         self._indices = tuple(self._load_index(uri) for uri in source_uris)
         self._validate_collisions()
@@ -129,6 +131,15 @@ class ToolCatalog:
                     ErrorCode.TOOL_DRIFT,
                     "tool contract differs from deferred catalogue metadata",
                     details={"tool_id": tool_id, "source_id": metadata.source_id},
+                )
+            if contract.adapter not in self._adapters:
+                raise MishkanError(
+                    ErrorCode.TOOL_UNAVAILABLE,
+                    "requested tool adapter is unavailable",
+                    details={
+                        "tool_id": tool_id,
+                        "missing_conditions": (f"adapter:{contract.adapter}",),
+                    },
                 )
             contracts.append(contract)
         resolved_toolsets = tuple(

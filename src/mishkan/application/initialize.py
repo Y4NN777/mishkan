@@ -41,7 +41,11 @@ class MishkanInitializer:
 
         organization, outcome = load_initialization_definitions()
         state_repository = LocalRunRepository(discovery.binding.root / ".mishkan" / "mishkan.db")
-        catalog = ToolCatalog(config.tool_sources, discovery.binding.root)
+        catalog = ToolCatalog(
+            config.tool_sources,
+            discovery.binding.root,
+            available_adapters=frozenset({ReadFileAdapter.adapter_id}),
+        )
         policy = PolicyLoader().load(config.policy_sources, discovery.binding.root)
         inspection_source = config.inspection_profile
         if inspection_source is None:
@@ -71,7 +75,7 @@ class MishkanInitializer:
             authority,
             MappingCredentialResolver({}),
             inspector,
-            {read_contract.adapter: ReadFileAdapter(read_contract.max_bytes)},
+            {ReadFileAdapter.adapter_id: ReadFileAdapter(read_contract.max_bytes)},
             state_repository,
         )
         snapshot = state_repository.start_or_resume(discovery, objective, outcome.outcome_id)

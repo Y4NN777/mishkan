@@ -23,6 +23,8 @@ class CapabilityAdapter(Protocol):
 
 
 class ReadFileAdapter:
+    adapter_id = "native.repository.read_file"
+
     def __init__(self, max_bytes: int) -> None:
         self._max_bytes = max_bytes
 
@@ -39,6 +41,8 @@ class ReadFileAdapter:
 
 
 class WriteFileAdapter:
+    adapter_id = "native.repository.write_file"
+
     def invoke(self, call: AdapterCall) -> AdapterResult:
         target = call.targets.paths[0]
         content = str(call.arguments["content"])
@@ -61,6 +65,8 @@ class WriteFileAdapter:
 
 
 class ContainerCommandAdapter:
+    adapter_id = "isolation.command"
+
     def __init__(self, command: ContainerCommand) -> None:
         self._command = command
 

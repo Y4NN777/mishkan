@@ -9,6 +9,7 @@ from mishkan.tools.catalog import ToolCatalog
 from mishkan.tools.models import AvailabilityState
 
 CATALOG_URI = "package://mishkan.resources.tools/i02-catalog.yaml"
+READ_ADAPTER = "native.repository.read_file"
 
 
 def test_level_zero_search_does_not_load_full_tool_schema(tmp_path: Path) -> None:
@@ -40,7 +41,20 @@ tools:
 
 
 def test_nested_toolsets_resolve_to_exact_immutable_snapshot_and_binding(tmp_path: Path) -> None:
-    catalog = ToolCatalog((CATALOG_URI,), tmp_path)
+    catalog = ToolCatalog(
+        (CATALOG_URI,),
+        tmp_path,
+        available_adapters=frozenset(
+            {
+                READ_ADAPTER,
+                "native.repository.write_file",
+                "native.git.commit",
+                "native.git.push",
+                "operator.deployment.apply",
+                "operator.release.publish",
+            }
+        ),
+    )
     snapshot = catalog.snapshot(("engineering.standard",))
     binding = catalog.bind(
         snapshot,
@@ -74,6 +88,31 @@ def test_availability_is_visible_and_not_an_authorization_decision(tmp_path: Pat
     with pytest.raises(MishkanError) as caught:
         catalog.snapshot(("command.run",))
     assert caught.value.envelope.code is ErrorCode.TOOL_UNAVAILABLE
+
+
+def test_contract_without_an_installed_adapter_cannot_enter_snapshot(tmp_path: Path) -> None:
+    catalog = ToolCatalog((CATALOG_URI,), tmp_path, available_adapters=frozenset())
+
+    with pytest.raises(MishkanError) as caught:
+        catalog.snapshot(("repository.read_file",))
+
+    assert caught.value.envelope.code is ErrorCode.TOOL_UNAVAILABLE
+    assert caught.value.envelope.details == {
+        "tool_id": "repository.read_file",
+        "missing_conditions": (f"adapter:{READ_ADAPTER}",),
+    }
+
+
+def test_contract_with_installed_adapter_enters_snapshot(tmp_path: Path) -> None:
+    catalog = ToolCatalog(
+        (CATALOG_URI,),
+        tmp_path,
+        available_adapters=frozenset({READ_ADAPTER}),
+    )
+
+    snapshot = catalog.snapshot(("repository.read_file",))
+
+    assert snapshot.require("repository.read_file").adapter == READ_ADAPTER
 
 
 def test_identity_collision_blocks_registry_snapshot(tmp_path: Path) -> None:

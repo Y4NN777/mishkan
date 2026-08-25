@@ -21,6 +21,18 @@ from mishkan.tools.inspection import ContentInspector, InspectionProfileLoader
 CATALOG_URI = "package://mishkan.resources.tools/i02-catalog.yaml"
 POLICY_URI = "package://mishkan.resources.policies/i02-local.yaml"
 INSPECTION_URI = "package://mishkan.resources.inspection/i02-default.yaml"
+TEST_ADAPTERS = frozenset(
+    {
+        "native.repository.read_file",
+        "native.repository.write_file",
+        "isolation.command",
+        "native.git.commit",
+        "native.git.push",
+        "operator.deployment.apply",
+        "operator.release.publish",
+        "operator.migration.apply",
+    }
+)
 
 
 class RecordingAdapter:
@@ -104,7 +116,12 @@ def context_for(
     network: bool = False,
     isolation_profile: str | None = None,
 ) -> InvocationContext:
-    catalog = ToolCatalog((CATALOG_URI,), root, runtime=runtime)
+    catalog = ToolCatalog(
+        (CATALOG_URI,),
+        root,
+        runtime=runtime,
+        available_adapters=TEST_ADAPTERS,
+    )
     snapshot = catalog.snapshot((tool_id,))
     binding = catalog.bind(
         snapshot,
@@ -140,6 +157,6 @@ def inspector(root: Path) -> ContentInspector:
 
 
 def plan_validator(root: Path) -> PlanValidator:
-    catalog = ToolCatalog((CATALOG_URI,), root)
+    catalog = ToolCatalog((CATALOG_URI,), root, available_adapters=TEST_ADAPTERS)
     policy = PolicyLoader().load((POLICY_URI,), root)
     return PlanValidator(catalog, policy, PolicyAuthority())
