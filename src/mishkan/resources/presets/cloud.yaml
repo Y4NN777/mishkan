@@ -46,3 +46,14 @@ artifacts:
   max_artifact_bytes: 536870912
   chunk_bytes: 1048576
   staging_ttl_seconds: 86400
+sessions:
+  spool_root: .mishkan/sessions
+  default_profile: standard
+  profiles:
+    standard:
+      cancellation_signals: [TERM, INT, KILL]
+      grace_seconds: 2.0
+      settle_timeout_seconds: 30.0
+      max_output_bytes: 536870912
+      read_chunk_bytes: 65536
+      readiness_poll_seconds: 0.1

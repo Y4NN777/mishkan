@@ -17,11 +17,12 @@ class DaemonPaths:
     database: Path
     token_file: Path
     artifacts: Path
+    sessions: Path
 
     @classmethod
     def from_config(cls, config: MishkanConfig) -> DaemonPaths:
         if config.schema_version != "1.2" or not all(
-            (config.daemon, config.persistence, config.artifacts)
+            (config.daemon, config.persistence, config.artifacts, config.sessions)
         ):
             raise MishkanError(
                 ErrorCode.VERSION,
@@ -31,25 +32,28 @@ class DaemonPaths:
         assert config.daemon is not None
         assert config.persistence is not None
         assert config.artifacts is not None
+        assert config.sessions is not None
         workspace = config.project.workspace.expanduser().resolve()
-        return cls(
+        paths = cls(
             workspace=workspace,
             database=(workspace / config.persistence.database).resolve(),
             token_file=(workspace / config.daemon.token_file).resolve(),
             artifacts=(workspace / config.artifacts.root).resolve(),
+            sessions=(workspace / config.sessions.spool_root).resolve(),
         )
-
-
-class DaemonBootstrap:
-    def setup(self, config: MishkanConfig, *, principal_id: str = "local-operator") -> DaemonPaths:
-        paths = DaemonPaths.from_config(config)
-        for path in (paths.database, paths.token_file, paths.artifacts):
-            if not path.is_relative_to(paths.workspace):
+        for path in (paths.database, paths.token_file, paths.artifacts, paths.sessions):
+            if not path.is_relative_to(workspace):
                 raise MishkanError(
                     ErrorCode.AUTHORITY_NOT_GRANTED,
                     "daemon metadata path escapes the configured workspace",
                     details={"path": str(path)},
                 )
+        return paths
+
+
+class DaemonBootstrap:
+    def setup(self, config: MishkanConfig, *, principal_id: str = "local-operator") -> DaemonPaths:
+        paths = DaemonPaths.from_config(config)
         paths.workspace.mkdir(parents=True, exist_ok=True)
         manager = SchemaManager(paths.database)
         state = manager.status().state
@@ -62,5 +66,6 @@ class DaemonBootstrap:
                 details={"state": state.value, "automatic_migration": False},
             )
         paths.artifacts.mkdir(parents=True, exist_ok=True)
+        paths.sessions.mkdir(parents=True, exist_ok=True)
         TokenFile(paths.token_file).create(principal_id)
         return paths

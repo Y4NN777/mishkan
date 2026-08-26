@@ -40,7 +40,7 @@ def migrate_to_1_2(source: Path) -> Path:
         )
     defaults = yaml.safe_load(preset_text(str(mode)))
     document["schema_version"] = "1.2"
-    for field in ("daemon", "persistence", "artifacts"):
+    for field in ("daemon", "persistence", "artifacts", "sessions"):
         document.setdefault(field, defaults[field])
     payload = yaml.safe_dump(document, sort_keys=False, allow_unicode=True).encode()
     descriptor, staged_name = tempfile.mkstemp(prefix=f".{target.name}.", dir=target.parent)

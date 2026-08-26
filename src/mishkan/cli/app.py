@@ -26,6 +26,8 @@ daemon_token_app = typer.Typer(help="Administer the local daemon bearer credenti
 database_app = typer.Typer(help="Inspect and explicitly migrate authoritative metadata.")
 events_app = typer.Typer(help="Query and export the durable event stream.")
 change_app = typer.Typer(help="Plan, apply, and inspect recoverable change sets.")
+terminal_app = typer.Typer(help="Open and control daemon-owned PTY sessions.")
+job_app = typer.Typer(help="Start and control daemon-owned managed jobs.")
 app.add_typer(config_app, name="config")
 app.add_typer(schema_app, name="schema")
 app.add_typer(daemon_app, name="daemon")
@@ -33,6 +35,8 @@ daemon_app.add_typer(daemon_token_app, name="token")
 app.add_typer(database_app, name="db")
 app.add_typer(events_app, name="events")
 app.add_typer(change_app, name="change")
+app.add_typer(terminal_app, name="terminal")
+app.add_typer(job_app, name="job")
 
 
 @dataclass(frozen=True, slots=True)
@@ -362,15 +366,15 @@ def plan_change_set(
     from mishkan.edits import ChangeSet
 
     change_set = ChangeSet.model_validate(yaml.safe_load(source.read_text(encoding="utf-8")))
-    command = ApplicationCommand(
-        command_type="change.plan",
-        actor_id="local-operator",
-        target_type="change_set",
-        target_id=str(change_set.id),
-        expected_revision=0,
-        payload={"change_set": change_set.model_dump(mode="json")},
-    )
     with _daemon_client(ctx) as client:
+        command = ApplicationCommand(
+            command_type="change.plan",
+            actor_id=client.principal_id,
+            target_type="change_set",
+            target_id=str(change_set.id),
+            expected_revision=0,
+            payload={"change_set": change_set.model_dump(mode="json")},
+        )
         result = client.command(command)
     _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
 
@@ -384,17 +388,203 @@ def apply_change_set(
     """Apply a previously planned change set through mishkand."""
     from mishkan.application import ApplicationCommand
 
-    command = ApplicationCommand(
-        command_type="change.apply",
-        actor_id="local-operator",
-        target_type="change_set",
-        target_id=change_set_id,
-        expected_revision=expected_revision,
-        payload={},
-    )
     with _daemon_client(ctx) as client:
+        command = ApplicationCommand(
+            command_type="change.apply",
+            actor_id=client.principal_id,
+            target_type="change_set",
+            target_id=change_set_id,
+            expected_revision=expected_revision,
+            payload={},
+        )
         result = client.command(command)
     _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+def _start_session(ctx: typer.Context, source: Path, mode: str) -> None:
+    from mishkan.application import ApplicationCommand
+    from mishkan.execution import SessionMode, SessionRequest
+
+    request = SessionRequest.model_validate(yaml.safe_load(source.read_text(encoding="utf-8")))
+    expected_mode = SessionMode(mode)
+    if request.mode is not expected_mode:
+        raise typer.BadParameter(f"request mode must be {mode}")
+    with _daemon_client(ctx) as client:
+        result = client.command(
+            ApplicationCommand(
+                command_type="session.start",
+                actor_id=client.principal_id,
+                target_type="session_service",
+                payload={"request": request.model_dump(mode="json")},
+            )
+        )
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+def _session_effect(
+    ctx: typer.Context,
+    session_id: str,
+    command_type: str,
+    payload: dict[str, object],
+    expected_revision: int | None,
+) -> None:
+    from mishkan.application import ApplicationCommand
+
+    with _daemon_client(ctx) as client:
+        result = client.command(
+            ApplicationCommand(
+                command_type=command_type,
+                actor_id=client.principal_id,
+                target_type="session",
+                target_id=session_id,
+                expected_revision=expected_revision,
+                payload=payload,
+            )
+        )
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@terminal_app.command("open")
+def open_terminal(
+    ctx: typer.Context,
+    source: Annotated[Path, typer.Option("--file", help="Versioned PTY request YAML.")],
+) -> None:
+    """Open a governed PTY session."""
+    _start_session(ctx, source, "pty")
+
+
+@job_app.command("start")
+def start_job(
+    ctx: typer.Context,
+    source: Annotated[Path, typer.Option("--file", help="Versioned job request YAML.")],
+) -> None:
+    """Start a governed managed job."""
+    _start_session(ctx, source, "job")
+
+
+@terminal_app.command("write")
+def write_terminal(
+    ctx: typer.Context,
+    session_id: str,
+    data: str,
+    expected_revision: Annotated[int | None, typer.Option(min=0)] = None,
+) -> None:
+    """Write UTF-8 input to an owned PTY."""
+    import base64
+
+    _session_effect(
+        ctx,
+        session_id,
+        "session.write",
+        {"content_base64": base64.b64encode(data.encode()).decode()},
+        expected_revision,
+    )
+
+
+@terminal_app.command("resize")
+def resize_terminal(
+    ctx: typer.Context,
+    session_id: str,
+    rows: Annotated[int, typer.Option(min=1, max=1000)],
+    columns: Annotated[int, typer.Option(min=1, max=4000)],
+    expected_revision: Annotated[int | None, typer.Option(min=0)] = None,
+) -> None:
+    """Resize an owned PTY."""
+    _session_effect(
+        ctx,
+        session_id,
+        "session.resize",
+        {"rows": rows, "columns": columns},
+        expected_revision,
+    )
+
+
+def _read_session(
+    ctx: typer.Context,
+    session_id: str,
+    channel: str,
+    offset: int,
+    limit: int,
+    binary: bool,
+) -> None:
+    with _daemon_client(ctx) as client:
+        result = client.session_output(
+            session_id, channel=channel, offset=offset, limit=limit, binary=binary
+        )
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@terminal_app.command("read")
+def read_terminal(
+    ctx: typer.Context,
+    session_id: str,
+    offset: Annotated[int, typer.Option(min=0)] = 0,
+    limit: Annotated[int, typer.Option(min=1, max=16_777_216)] = 65_536,
+    binary: bool = False,
+) -> None:
+    """Read PTY output from a durable cursor."""
+    _read_session(ctx, session_id, "stdout", offset, limit, binary)
+
+
+@job_app.command("read")
+def read_job(
+    ctx: typer.Context,
+    session_id: str,
+    channel: Annotated[str, typer.Option()] = "stdout",
+    offset: Annotated[int, typer.Option(min=0)] = 0,
+    limit: Annotated[int, typer.Option(min=1, max=16_777_216)] = 65_536,
+    binary: bool = False,
+) -> None:
+    """Read managed-job output from a durable cursor."""
+    _read_session(ctx, session_id, channel, offset, limit, binary)
+
+
+@job_app.command("status")
+@terminal_app.command("status")
+def session_status(ctx: typer.Context, session_id: str) -> None:
+    """Inspect one execution session."""
+    with _daemon_client(ctx) as client:
+        result = client.session(session_id)
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@job_app.command("signal")
+@terminal_app.command("signal")
+def signal_session(
+    ctx: typer.Context,
+    session_id: str,
+    signal_name: str,
+    expected_revision: Annotated[int | None, typer.Option(min=0)] = None,
+) -> None:
+    """Send a profile-authorized signal to a proven process identity."""
+    _session_effect(
+        ctx,
+        session_id,
+        "session.signal",
+        {"signal": signal_name},
+        expected_revision,
+    )
+
+
+@job_app.command("stop")
+@terminal_app.command("close")
+def cancel_session(
+    ctx: typer.Context,
+    session_id: str,
+    expected_revision: Annotated[int | None, typer.Option(min=0)] = None,
+) -> None:
+    """Request durable cancellation and settle the session."""
+    _session_effect(ctx, session_id, "session.cancel", {}, expected_revision)
+
+
+@job_app.command("settle")
+def settle_job(
+    ctx: typer.Context,
+    session_id: str,
+    expected_revision: Annotated[int | None, typer.Option(min=0)] = None,
+) -> None:
+    """Finalize completed job spools as immutable Artifacts."""
+    _session_effect(ctx, session_id, "session.settle", {}, expected_revision)
 
 
 @schema_app.command("export")

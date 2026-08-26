@@ -132,6 +132,34 @@ class ArtifactConfig(StrictConfigModel):
         return value
 
 
+class SessionProfileConfig(StrictConfigModel):
+    cancellation_signals: tuple[str, ...] = Field(min_length=1)
+    grace_seconds: float = Field(ge=0.05, le=300)
+    settle_timeout_seconds: float = Field(ge=0.1, le=3600)
+    max_output_bytes: int = Field(ge=1)
+    read_chunk_bytes: int = Field(ge=1, le=16_777_216)
+    readiness_poll_seconds: float = Field(ge=0.01, le=60)
+
+
+class SessionConfig(StrictConfigModel):
+    spool_root: Path
+    default_profile: str = Field(min_length=1)
+    profiles: dict[str, SessionProfileConfig] = Field(min_length=1)
+
+    @field_validator("spool_root")
+    @classmethod
+    def spool_root_is_project_relative(cls, value: Path) -> Path:
+        if value.is_absolute() or not value.parts:
+            raise ValueError("session spool root must be project-relative")
+        return value
+
+    @model_validator(mode="after")
+    def default_profile_exists(self) -> Self:
+        if self.default_profile not in self.profiles:
+            raise ValueError("default session profile does not exist")
+        return self
+
+
 class MishkanConfig(StrictConfigModel):
     """Complete effective configuration required before a run can be accepted."""
 
@@ -151,6 +179,7 @@ class MishkanConfig(StrictConfigModel):
     daemon: DaemonConfig | None = None
     persistence: PersistenceConfig | None = None
     artifacts: ArtifactConfig | None = None
+    sessions: SessionConfig | None = None
 
     @field_validator("timezone")
     @classmethod
@@ -180,6 +209,7 @@ class MishkanConfig(StrictConfigModel):
                     ("daemon", self.daemon),
                     ("persistence", self.persistence),
                     ("artifacts", self.artifacts),
+                    ("sessions", self.sessions),
                 )
                 if value is None
             ]

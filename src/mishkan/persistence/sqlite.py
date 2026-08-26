@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy import (
+    Boolean,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -242,6 +244,35 @@ class ChangeOperationRow(Base):
     expected_after_token: Mapped[str | None] = mapped_column(Text)
     actual_after_token: Mapped[str | None] = mapped_column(Text)
     payload: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class ExecutionSessionRow(Base):
+    __tablename__ = "execution_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    mode: Mapped[str] = mapped_column(String(16), nullable=False)
+    state: Mapped[str] = mapped_column(String(32), nullable=False)
+    owner: Mapped[str] = mapped_column(String(256), nullable=False)
+    run_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    task_id: Mapped[str] = mapped_column(String(256), nullable=False)
+    workspace: Mapped[str] = mapped_column(Text, nullable=False)
+    profile: Mapped[str] = mapped_column(String(128), nullable=False)
+    request_payload: Mapped[str] = mapped_column(Text, nullable=False)
+    pid: Mapped[int | None] = mapped_column(Integer)
+    process_group_id: Mapped[int | None] = mapped_column(Integer)
+    process_create_time: Mapped[float | None] = mapped_column(Float)
+    stdout_spool: Mapped[str] = mapped_column(Text, nullable=False)
+    stderr_spool: Mapped[str] = mapped_column(Text, nullable=False)
+    stdout_cursor: Mapped[int] = mapped_column(Integer, nullable=False)
+    stderr_cursor: Mapped[int] = mapped_column(Integer, nullable=False)
+    exit_code: Mapped[int | None] = mapped_column(Integer)
+    signal: Mapped[int | None] = mapped_column(Integer)
+    stdout_artifact_reference: Mapped[str | None] = mapped_column(String(64))
+    stderr_artifact_reference: Mapped[str | None] = mapped_column(String(64))
+    cancellation_requested: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    deadline: Mapped[str] = mapped_column(String(40), nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
     updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
 
 

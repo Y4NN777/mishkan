@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import stat
+from datetime import timedelta
 from pathlib import Path
 
 import httpx
@@ -15,6 +17,7 @@ from mishkan.config.presets import preset_text
 from mishkan.daemon import DaemonBootstrap, create_app
 from mishkan.daemon.auth import TokenFile
 from mishkan.daemon.bootstrap import DaemonPaths
+from mishkan.domain.time import utc_now
 
 
 @pytest.fixture
@@ -178,6 +181,56 @@ async def test_artifact_upload_commands_publish_only_verified_content(tmp_path: 
     assert chunked.status_code == 200
     assert committed.status_code == 200
     assert body.content == content
+
+
+@pytest.mark.anyio
+async def test_managed_job_is_started_and_observed_through_commands(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    paths = DaemonBootstrap().setup(config)
+    token = TokenFile(paths.token_file).read().token
+    headers = {"Authorization": f"Bearer {token}"}
+    request = {
+        "mode": "job",
+        "owner": "local-operator",
+        "run_id": "run-1",
+        "task_id": "task-1",
+        "workspace": ".",
+        "executable": "/bin/sh",
+        "arguments": ["-c", "printf daemon-job"],
+        "environment": {},
+        "credential_environment": {},
+        "credential_references": [],
+        "profile": "standard",
+        "deadline": (utc_now() + timedelta(minutes=1)).isoformat(),
+        "policy_fingerprint": "a" * 64,
+    }
+    transport = httpx.ASGITransport(app=create_app(config))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        started = await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=ApplicationCommand(
+                command_type="session.start",
+                actor_id="local-operator",
+                target_type="session_service",
+                payload={"request": request},
+            ).model_dump(mode="json"),
+        )
+        session_id = started.json()["payload"]["session_id"]
+        for _ in range(50):
+            observed = await client.get(f"/v1/sessions/{session_id}", headers=headers)
+            if observed.json()["state"] in {"settled", "failed"}:
+                break
+            await asyncio.sleep(0.01)
+        output = await client.get(
+            f"/v1/sessions/{session_id}/output",
+            headers=headers,
+            params={"channel": "stdout", "offset": 0},
+        )
+
+    assert started.status_code == 200
+    assert observed.json()["state"] == "settled"
+    assert output.json()["data"] == "daemon-job"
 
 
 def test_token_rotation_invalidates_previous_credential(tmp_path: Path) -> None:

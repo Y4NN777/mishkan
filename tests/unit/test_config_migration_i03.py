@@ -16,3 +16,4 @@ def test_explicit_config_migration_adds_public_i03_surfaces(tmp_path: Path) -> N
     assert config.daemon is not None and config.daemon.host == "127.0.0.1"
     assert config.persistence is not None
     assert config.artifacts is not None
+    assert config.sessions is not None

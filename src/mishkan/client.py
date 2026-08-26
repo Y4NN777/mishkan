@@ -13,6 +13,7 @@ from mishkan.artifacts import ArtifactManifest
 from mishkan.daemon.auth import TokenFile
 from mishkan.edits import ChangeSetResult
 from mishkan.events import EventEnvelope, EventPage
+from mishkan.execution import CursorRead, SessionRecord
 
 
 class Mishkan:
@@ -39,6 +40,10 @@ class Mishkan:
         response = self._client.get("/v1/health")
         response.raise_for_status()
         return dict(response.json())
+
+    @property
+    def principal_id(self) -> str:
+        return self._token_file.read().principal_id
 
     def command(self, command: ApplicationCommand) -> CommandResult:
         response = self._client.post(
@@ -123,6 +128,42 @@ class Mishkan:
         response = self._client.get(f"/v1/change-sets/{change_set_id}", headers=self._headers())
         response.raise_for_status()
         return ChangeSetResult.model_validate(response.json())
+
+    def sessions(self, *, offset: int = 0, limit: int = 100) -> tuple[SessionRecord, ...]:
+        response = self._client.get(
+            "/v1/sessions",
+            headers=self._headers(),
+            params={"offset": offset, "limit": limit},
+        )
+        response.raise_for_status()
+        return tuple(SessionRecord.model_validate(item) for item in response.json())
+
+    def session(self, session_id: str) -> SessionRecord:
+        response = self._client.get(f"/v1/sessions/{session_id}", headers=self._headers())
+        response.raise_for_status()
+        return SessionRecord.model_validate(response.json())
+
+    def session_output(
+        self,
+        session_id: str,
+        *,
+        channel: str = "stdout",
+        offset: int = 0,
+        limit: int = 65_536,
+        binary: bool = False,
+    ) -> CursorRead:
+        response = self._client.get(
+            f"/v1/sessions/{session_id}/output",
+            headers=self._headers(),
+            params={
+                "channel": channel,
+                "offset": offset,
+                "limit": limit,
+                "binary": binary,
+            },
+        )
+        response.raise_for_status()
+        return CursorRead.model_validate(response.json())
 
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self._token_file.read().token}"}

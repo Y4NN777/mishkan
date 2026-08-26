@@ -7,7 +7,7 @@ import base64
 import json
 from collections.abc import AsyncIterator
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, Header, Query, Request
@@ -23,6 +23,7 @@ from mishkan.daemon.bootstrap import DaemonPaths
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.edits import ChangeSet, ChangeSetResult, ChangeSetService
 from mishkan.events import EventPage
+from mishkan.execution import CursorRead, SessionRecord, SessionRequest, SessionSupervisor
 from mishkan.persistence import SchemaManager, SQLiteApplicationRepository
 
 
@@ -58,6 +59,16 @@ def create_app(config: MishkanConfig) -> FastAPI:
         max_chunk_bytes=artifact_config.chunk_bytes,
     )
     changes = ChangeSetService(paths.database, paths.workspace, artifacts)
+    session_config = config.sessions
+    assert session_config is not None
+    supervisor = SessionSupervisor(
+        paths.database,
+        paths.workspace,
+        paths.sessions,
+        session_config,
+        artifacts,
+    )
+    supervisor.reconcile_all()
     command_lock = asyncio.Lock()
 
     app = FastAPI(
@@ -115,7 +126,7 @@ def create_app(config: MishkanConfig) -> FastAPI:
             target_id = command.target_id or "local-instance"
             repository.require_expected_revision(command, target_id)
             try:
-                event_type, result_payload = _dispatch(command, artifacts, changes)
+                event_type, result_payload = _dispatch(command, artifacts, changes, supervisor)
             except MishkanError:
                 raise
             except (KeyError, TypeError, ValueError) as exc:
@@ -259,6 +270,39 @@ def create_app(config: MishkanConfig) -> FastAPI:
     ) -> ChangeSetResult:
         return changes.get(change_set_id)
 
+    @app.get("/v1/sessions")
+    async def session_list(
+        _principal: TokenRecord = authenticated,
+        offset: Annotated[int, Query(ge=0)] = 0,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
+    ) -> tuple[SessionRecord, ...]:
+        return supervisor.list(offset=offset, limit=limit)
+
+    @app.get("/v1/sessions/{session_id}")
+    async def session_get(
+        session_id: UUID,
+        _principal: TokenRecord = authenticated,
+    ) -> SessionRecord:
+        return supervisor.status(session_id)
+
+    @app.get("/v1/sessions/{session_id}/output")
+    async def session_output(
+        session_id: UUID,
+        _principal: TokenRecord = authenticated,
+        channel: Annotated[str, Query(pattern=r"^(stdout|stderr)$")] = "stdout",
+        offset: Annotated[int, Query(ge=0)] = 0,
+        limit: Annotated[int, Query(ge=1, le=16_777_216)] = 65_536,
+        binary: bool = False,
+    ) -> CursorRead:
+        selected: Literal["stdout", "stderr"] = "stdout" if channel == "stdout" else "stderr"
+        return supervisor.read(
+            session_id,
+            channel=selected,
+            offset=offset,
+            limit=limit,
+            binary=binary,
+        )
+
     return app
 
 
@@ -266,6 +310,7 @@ def _dispatch(
     command: ApplicationCommand,
     artifacts: DurableArtifactService,
     changes: ChangeSetService,
+    supervisor: SessionSupervisor,
 ) -> tuple[str, dict[str, object]]:
     payload = command.payload
     if command.command_type == "system.checkpoint" and command.target_type == "system":
@@ -317,6 +362,27 @@ def _dispatch(
     if command.command_type == "change.reconcile" and command.target_id is not None:
         result = changes.reconcile(UUID(command.target_id))
         return "change_set.reconciled", result.model_dump(mode="json")
+    if command.command_type == "session.start":
+        record = supervisor.start(SessionRequest.model_validate(payload["request"]))
+        return "session.started", record.model_dump(mode="json")
+    if command.command_type == "session.write" and command.target_id is not None:
+        content = base64.b64decode(str(payload["content_base64"]), validate=True)
+        written = supervisor.write(UUID(command.target_id), content)
+        return "session.input_written", {"written": written}
+    if command.command_type == "session.resize" and command.target_id is not None:
+        supervisor.resize(
+            UUID(command.target_id), rows=int(payload["rows"]), columns=int(payload["columns"])
+        )
+        return "session.resized", {"rows": int(payload["rows"]), "columns": int(payload["columns"])}
+    if command.command_type == "session.signal" and command.target_id is not None:
+        record = supervisor.signal(UUID(command.target_id), str(payload["signal"]))
+        return "session.signalled", record.model_dump(mode="json")
+    if command.command_type == "session.cancel" and command.target_id is not None:
+        record = supervisor.cancel(UUID(command.target_id))
+        return "session.cancelled", record.model_dump(mode="json")
+    if command.command_type == "session.settle" and command.target_id is not None:
+        record = supervisor.settle(UUID(command.target_id))
+        return "session.settled", record.model_dump(mode="json")
     raise MishkanError(
         ErrorCode.OUTPUT_CONTRACT,
         "application command type has no registered I03 handler",
