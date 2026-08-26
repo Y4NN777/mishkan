@@ -1,0 +1,29 @@
+schema_version: "1.0"
+source_id: bundled.core
+source_kind: native
+revision: test-only
+adoption_authority: MISHKAN test suite
+tools:
+  - tool_id: repository.write_file
+    version: 1.0.0
+    summary: Test-only write contract for gateway mechanism coverage.
+    effect_class: filesystem_write
+    source_id: bundled.core
+    source_kind: native
+    contract_uri: package://mishkan.resources.tools/contracts/write-file.yaml
+  - tool_id: command.run
+    version: 1.0.0
+    summary: Test-only command contract for gateway mechanism coverage.
+    effect_class: command
+    source_id: bundled.core
+    source_kind: native
+    contract_uri: package://mishkan.resources.tools/contracts/command-run.yaml
+    availability:
+      runtimes: [container]
+  - tool_id: git.push
+    version: 1.0.0
+    summary: Test-only stateful contract for gateway mechanism coverage.
+    effect_class: repository_remote_write
+    source_id: bundled.core
+    source_kind: native
+    contract_uri: package://mishkan.resources.tools/contracts/git-push.yaml

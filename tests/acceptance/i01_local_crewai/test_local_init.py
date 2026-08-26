@@ -12,7 +12,8 @@ from mishkan.application.initialize import MishkanInitializer
 from mishkan.config.models import MishkanConfig
 
 OLLAMA_ENDPOINT = "http://127.0.0.1:11434"
-OLLAMA_MODEL = "qwen2.5-coder-7b-16k:latest"
+OLLAMA_PLANNING_MODEL = "qwen2.5-coder-7b-16k:latest"
+OLLAMA_EXECUTION_MODEL = "deepseek-coder-v2:16b"
 
 
 def _require_ollama() -> None:
@@ -22,8 +23,10 @@ def _require_ollama() -> None:
     except (OSError, URLError) as exc:
         pytest.skip(f"local Ollama is unavailable: {type(exc).__name__}")
     names = {model["name"] for model in payload.get("models", [])}
-    if OLLAMA_MODEL not in names:
-        pytest.skip(f"local Ollama model is not installed: {OLLAMA_MODEL}")
+    required = {OLLAMA_PLANNING_MODEL, OLLAMA_EXECUTION_MODEL}
+    missing = sorted(required - names)
+    if missing:
+        pytest.skip(f"local Ollama models are not installed: {missing}")
 
 
 def _repository(root: Path) -> Path:
@@ -53,7 +56,7 @@ def _repository(root: Path) -> Path:
 def _config(workspace: Path) -> MishkanConfig:
     return MishkanConfig.model_validate(
         {
-            "schema_version": "1.0",
+            "schema_version": "1.1",
             "mode": "local",
             "timezone": "UTC",
             "project": {"workspace": str(workspace)},
@@ -66,25 +69,37 @@ def _config(workspace: Path) -> MishkanConfig:
             "model_routes": {
                 "planning": {
                     "candidates": [
-                        {"provider": "ollama-local", "model": OLLAMA_MODEL},
+                        {"provider": "ollama-local", "model": OLLAMA_PLANNING_MODEL},
                     ]
                 },
                 "execution": {
                     "candidates": [
-                        {"provider": "ollama-local", "model": OLLAMA_MODEL},
+                        {"provider": "ollama-local", "model": OLLAMA_EXECUTION_MODEL},
                     ]
                 },
             },
-            "policy_sources": ["fixture:read-only"],
+            "policy_sources": [
+                "package://mishkan.resources.policies/i02-local.yaml",
+            ],
+            "tool_sources": [
+                "package://mishkan.resources.tools/i02-catalog.yaml",
+            ],
+            "inspection_profile": ("package://mishkan.resources.inspection/i02-default.yaml"),
+            "isolation_profiles": [
+                "package://mishkan.resources.isolation/local-no-network.yaml",
+            ],
             "crewai": {
                 "tracing": False,
                 "telemetry": False,
                 "temperature": 0,
-                "model_timeout_seconds": 120,
-                "max_agent_iterations": 4,
-                "plan_validation_retries": 2,
-                "review_retries": 2,
-                "structured_output_retries": 2,
+                "model_timeout_seconds": 300,
+                "model_transport_retries": 0,
+                "model_max_output_tokens": 2048,
+                "max_agent_iterations": 8,
+                "task_execution_retries": 3,
+                "plan_validation_retries": 1,
+                "review_retries": 1,
+                "structured_output_retries": 1,
             },
         }
     )

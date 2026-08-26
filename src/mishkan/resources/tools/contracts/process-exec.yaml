@@ -1,0 +1,137 @@
+schema_version: "1.0"
+tool_id: core.process.exec
+version: 1.0.0
+crewai_name: process_exec
+summary: Execute one canonical executable with a literal argument vector and no shell interpretation.
+effect_class: command
+source_id: bundled.core
+source_kind: native
+adapter: native.process.exec
+input_schema:
+  type: object
+  additionalProperties: false
+  required:
+    - mode
+    - executable
+    - args
+    - cwd
+    - environment
+    - credential_environment
+    - stdin
+    - timeout_seconds
+    - expected_exit_codes
+    - declared_effects
+    - output_policy
+  properties:
+    mode: {type: string, const: process}
+    executable: {type: string, pattern: "^/[^\\u0000]*$"}
+    args: {type: array, maxItems: 4096, items: {type: string}}
+    cwd: {type: string, minLength: 1}
+    environment:
+      type: object
+      propertyNames: {pattern: "^[A-Za-z_][A-Za-z0-9_]*$"}
+      additionalProperties: {type: string}
+    credential_environment:
+      type: object
+      propertyNames: {pattern: "^[A-Za-z_][A-Za-z0-9_]*$"}
+      additionalProperties: {type: string, minLength: 1}
+    stdin: {type: [string, "null"]}
+    timeout_seconds: {type: integer, minimum: 1, maximum: 86400}
+    expected_exit_codes:
+      type: array
+      uniqueItems: true
+      items: {type: integer}
+    declared_effects:
+      type: array
+      uniqueItems: true
+      items: {type: string, minLength: 1}
+    output_policy:
+      type: object
+      additionalProperties: false
+      required: [preview_bytes, preserve_full_output_as_artifact]
+      properties:
+        preview_bytes: {type: integer, minimum: 1}
+        preserve_full_output_as_artifact: {type: boolean}
+result_schema:
+  type: object
+  additionalProperties: false
+  required:
+    - schema_version
+    - execution_id
+    - mode
+    - status
+    - executable
+    - args
+    - cwd
+    - exit_code
+    - signal
+    - started_at
+    - finished_at
+    - stdout_preview
+    - stderr_preview
+    - stdout_bytes
+    - stderr_bytes
+    - stdout_digest
+    - stderr_digest
+    - stdout_artifact_ref
+    - stderr_artifact_ref
+    - truncated
+    - termination_cause
+    - expected_exit_codes
+    - environment_names
+    - credential_environment_names
+    - declared_effects
+    - observed_effects
+    - effect_settlement
+    - retryable
+    - execution_location
+    - error
+  properties:
+    schema_version: {type: string, const: "1.0"}
+    execution_id: {type: string, format: uuid}
+    mode: {type: string, const: process}
+    status: {type: string, enum: [completed, failed, timed_out, cancelled, lost, uncertain]}
+    executable: {type: string}
+    args: {type: array, items: {type: string}}
+    cwd: {type: string}
+    exit_code: {type: [integer, "null"]}
+    signal: {type: [integer, "null"], minimum: 1}
+    started_at: {type: string, format: date-time}
+    finished_at: {type: string, format: date-time}
+    stdout_preview: {type: string}
+    stderr_preview: {type: string}
+    stdout_bytes: {type: integer, minimum: 0}
+    stderr_bytes: {type: integer, minimum: 0}
+    stdout_digest: {type: string, pattern: "^sha256:[a-f0-9]{64}$"}
+    stderr_digest: {type: string, pattern: "^sha256:[a-f0-9]{64}$"}
+    stdout_artifact_ref: {type: [string, "null"]}
+    stderr_artifact_ref: {type: [string, "null"]}
+    truncated: {type: boolean}
+    termination_cause:
+      type: [string, "null"]
+      enum: [null, cancellation, timeout, output_limit]
+    expected_exit_codes: {type: array, uniqueItems: true, items: {type: integer}}
+    environment_names: {type: array, uniqueItems: true, items: {type: string}}
+    credential_environment_names: {type: array, uniqueItems: true, items: {type: string}}
+    declared_effects: {type: array, uniqueItems: true, items: {type: string}}
+    observed_effects: {type: array, uniqueItems: true, items: {type: string}}
+    effect_settlement: {type: string, enum: [absent, completed, uncertain]}
+    retryable: {type: boolean}
+    execution_location: {type: string}
+    error: {type: [string, "null"]}
+timeout_behavior: terminate_process_group_and_settle_effects
+idempotency: none
+target_scopes: [path, executable, environment, external_resource]
+target_arguments:
+  path: [cwd]
+  executable: [executable]
+  environment: [environment.@keys, credential_environment.@keys]
+  external_resource: [declared_effects]
+credential_arguments: [credential_environment.*]
+policy_arguments: [args.*]
+artifact_output_argument: output_policy.preserve_full_output_as_artifact
+resources: {timeout_seconds: 30, memory_mb: null, network: true, concurrency: 1}
+adapter_config:
+  max_output_bytes: 2097152
+  max_stdin_bytes: 65536
+  max_environment_entries: 128

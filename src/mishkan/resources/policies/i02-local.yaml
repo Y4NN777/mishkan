@@ -1,0 +1,95 @@
+schema_version: "1.0"
+source_id: bundled.local
+revision: "4"
+adoption_authority: MISHKAN release
+priority: 0
+rules:
+  - rule_id: local.repository-read
+    priority: 100
+    decision: allow
+    scope:
+      identities: ["role:Repository_Investigator", "role:Repository_Reviewer"]
+      objective_classes: [repository-initialization]
+      repositories: ["*"]
+      outcomes: [mishkan.init]
+      roles: [Repository_Investigator, Repository_Reviewer]
+      capabilities:
+        - repository.read_file
+        - file.resolve
+        - file.stat
+        - file.read
+        - file.list
+        - search.files
+        - search.text
+      effect_classes: [read]
+      paths: ["*"]
+      executables: ["*"]
+      arguments: ["*"]
+      network_destinations: ["*"]
+      remotes: ["*"]
+      branches: ["*"]
+      environments: ["*"]
+      credentials: ["*"]
+      external_resources: ["*"]
+      isolation_profiles: ["*"]
+      max_timeout_seconds: 120
+      max_memory_mb: 512
+      allow_network: false
+      max_concurrency: 1
+  - rule_id: local.repository-probe.git-read
+    priority: 110
+    decision: allow
+    scope:
+      identities: ["role:Repository_Investigator"]
+      objective_classes: [repository-initialization]
+      repositories: ["*"]
+      outcomes: [mishkan.init]
+      roles: [Repository_Investigator]
+      capabilities: [core.process.exec]
+      effect_classes: [command]
+      paths: ["*"]
+      executables:
+        - /usr/bin/git
+        - /usr/local/bin/git
+        - /usr/local/Cellar/git/*/bin/git
+        - /opt/homebrew/bin/git
+        - /opt/homebrew/Cellar/git/*/bin/git
+        - /Applications/Xcode*.app/Contents/Developer/usr/bin/git
+        - /Library/Developer/CommandLineTools/usr/bin/git
+      arguments: [show, "HEAD:*"]
+      network_destinations: ["*"]
+      remotes: ["*"]
+      branches: ["*"]
+      environments: ["*"]
+      credentials: ["*"]
+      external_resources: ["*"]
+      isolation_profiles: ["*"]
+      max_timeout_seconds: 30
+      max_memory_mb: 512
+      allow_network: true
+      max_concurrency: 1
+  - rule_id: local.repository-probe.approval
+    priority: 100
+    decision: require_approval
+    scope:
+      identities: ["role:Repository_Investigator"]
+      objective_classes: [repository-initialization]
+      repositories: ["*"]
+      outcomes: [mishkan.init]
+      roles: [Repository_Investigator]
+      capabilities: [core.process.exec, core.shell.run]
+      effect_classes: [command]
+      paths: ["*"]
+      executables: ["*"]
+      arguments: ["*"]
+      network_destinations: ["*"]
+      remotes: ["*"]
+      branches: ["*"]
+      environments: ["*"]
+      credentials: ["*"]
+      external_resources: ["*"]
+      isolation_profiles: ["*"]
+      max_timeout_seconds: 30
+      max_memory_mb: 512
+      allow_network: true
+      max_concurrency: 1

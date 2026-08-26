@@ -67,7 +67,10 @@ class CrewAIRuntimeConfig(StrictConfigModel):
     telemetry: bool = False
     temperature: float = Field(default=0.0, ge=0.0, le=2.0)
     model_timeout_seconds: int = Field(default=120, ge=10, le=3_600)
+    model_transport_retries: int = Field(default=0, ge=0, le=10)
+    model_max_output_tokens: int = Field(default=2_048, ge=128, le=131_072)
     max_agent_iterations: int = Field(default=4, ge=1, le=100)
+    task_execution_retries: int = Field(default=2, ge=0, le=10)
     plan_validation_retries: int = Field(default=2, ge=0, le=10)
     review_retries: int = Field(default=2, ge=0, le=10)
     structured_output_retries: int = Field(default=2, ge=0, le=10)
@@ -85,6 +88,9 @@ class MishkanConfig(StrictConfigModel):
     agent_routes: dict[str, str] = Field(default_factory=dict)
     services: dict[str, ServiceConfig] = Field(default_factory=dict)
     policy_sources: tuple[str, ...] = Field(min_length=1)
+    tool_sources: tuple[str, ...] = ()
+    inspection_profile: str | None = None
+    isolation_profiles: tuple[str, ...] = ()
     crewai: CrewAIRuntimeConfig = Field(default_factory=CrewAIRuntimeConfig)
 
     @field_validator("timezone")
@@ -94,6 +100,21 @@ class MishkanConfig(StrictConfigModel):
 
     @model_validator(mode="after")
     def references_exist(self) -> Self:
+        if self.schema_version == "1.1":
+            missing = [
+                field
+                for field, value in (
+                    ("tool_sources", self.tool_sources),
+                    ("inspection_profile", self.inspection_profile),
+                    ("isolation_profiles", self.isolation_profiles),
+                )
+                if not value
+            ]
+            if missing:
+                raise ValueError(
+                    f"configuration 1.1 requires governed capability fields: {missing}"
+                )
+
         missing_providers = sorted(
             {
                 candidate.provider

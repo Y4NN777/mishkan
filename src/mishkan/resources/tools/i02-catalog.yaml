@@ -1,0 +1,97 @@
+schema_version: "1.0"
+source_id: bundled.core
+source_kind: native
+revision: "8"
+adoption_authority: MISHKAN release
+tools:
+  - tool_id: file.resolve
+    version: 1.0.0
+    summary: Resolve one scoped path and report the observed filesystem object.
+    effect_class: read
+    source_id: bundled.core
+    source_kind: native
+    contract_uri: package://mishkan.resources.tools/contracts/file-resolve.yaml
+  - tool_id: file.stat
+    version: 1.0.0
+    summary: Inspect bounded metadata for one resolved filesystem object.
+    effect_class: read
+    source_id: bundled.core
+    source_kind: native
+    contract_uri: package://mishkan.resources.tools/contracts/file-stat.yaml
+  - tool_id: file.read
+    version: 1.0.0
+    summary: Read bounded bytes, text, ranges, or lines from one resolved regular file.
+    effect_class: read
+    source_id: bundled.core
+    source_kind: native
+    contract_uri: package://mishkan.resources.tools/contracts/file-read.yaml
+  - tool_id: file.list
+    version: 1.0.0
+    summary: List one directory or bounded tree with deterministic pagination and visible omissions.
+    effect_class: read
+    source_id: bundled.core
+    source_kind: native
+    contract_uri: package://mishkan.resources.tools/contracts/file-list.yaml
+  - tool_id: search.files
+    version: 1.0.0
+    summary: Find scoped filesystem objects by glob and type with bounded pagination.
+    effect_class: read
+    source_id: bundled.core
+    source_kind: native
+    contract_uri: package://mishkan.resources.tools/contracts/search-files.yaml
+  - tool_id: search.text
+    version: 1.0.0
+    summary: Search scoped text with bounded literal or ripgrep-regex semantics.
+    effect_class: read
+    source_id: bundled.core
+    source_kind: native
+    contract_uri: package://mishkan.resources.tools/contracts/search-text.yaml
+    availability: {dependencies: [rg]}
+  - tool_id: repository.read_file
+    version: 1.0.0
+    summary: Read one exact repository-relative file bound to the accepted task.
+    effect_class: read
+    source_id: bundled.core
+    source_kind: native
+    contract_uri: package://mishkan.resources.tools/contracts/read-file.yaml
+  - tool_id: core.process.exec
+    version: 1.0.0
+    summary: Execute one canonical executable and literal argument vector without a shell.
+    effect_class: command
+    source_id: bundled.core
+    source_kind: native
+    contract_uri: package://mishkan.resources.tools/contracts/process-exec.yaml
+    availability: {platforms: [linux, darwin], runtimes: [python]}
+  - tool_id: core.shell.run
+    version: 1.0.0
+    summary: Run one Bash script under an explicit versioned shell profile.
+    effect_class: command
+    source_id: bundled.core
+    source_kind: native
+    contract_uri: package://mishkan.resources.tools/contracts/shell-run.yaml
+    availability: {platforms: [linux, darwin], runtimes: [python], dependencies: [bash]}
+toolsets:
+  - toolset_id: file.readonly
+    version: 1.0.0
+    summary: Canonical non-mutating native file capabilities.
+    tools: [file.resolve, file.stat, file.read, file.list]
+  - toolset_id: repository.readonly
+    version: 1.0.0
+    summary: Repository inspection capabilities.
+    tools: [repository.read_file]
+  - toolset_id: search.basic
+    version: 1.0.0
+    summary: Concretely available non-mutating search capabilities.
+    tools: [search.files, search.text]
+  - toolset_id: execution.process
+    version: 1.0.0
+    summary: Direct process execution without shell interpretation.
+    tools: [core.process.exec]
+  - toolset_id: execution.shell
+    version: 1.0.0
+    summary: Full Bash semantics under a versioned execution profile.
+    tools: [core.shell.run]
+  - toolset_id: execution.local
+    version: 1.0.0
+    summary: Direct process and Bash execution selected by required semantics.
+    tools: [core.process.exec, core.shell.run]

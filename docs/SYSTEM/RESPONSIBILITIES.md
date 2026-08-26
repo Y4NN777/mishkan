@@ -1,15 +1,15 @@
 # MISHKAN Requirement-to-Responsibility Map
 
-**Status:** Approved — Gate G4
-**Version:** 1.0
+**Status:** Accepted by D-034 on 2026-08-25
+**Version:** 1.2
 **Sequence:** SWE-BASICS-BEFORE-CODE 04
-**Derived from:** Approved PRD 1.2, SRS 1.3, System Contract 1.2
+**Derived from:** PRD 1.4, SRS 1.6, and System Contract 1.4 accepted by D-032–D-033
 
 ## 1. Purpose
 
-This document assigns every approved guarantee to one primary responsibility before components are
-designed. A responsibility describes logic and state ownership. It is not yet a Python module,
-service, daemon, database, or deployment unit.
+This accepted map assigns every SRS 1.6 guarantee to one primary responsibility before
+components are designed. A responsibility describes logic and state ownership. It is not yet a
+Python module, service, daemon, database, or deployment unit.
 
 Rules:
 
@@ -61,20 +61,23 @@ the same validation and authorization; return stable machine-readable failures.
 
 **Owns:** interface parity rules and error catalogue semantics.
 
-### RSP-004 — Establish repository evidence and lineage
+### RSP-004 — Establish execution-context evidence and lineage
 
-Identify the repository and base revision, discover project characteristics from cited evidence,
-represent unknowns honestly, preserve discovery history, and validate produced revision lineage.
+Identify the repository/base revision or prospective-workspace/discovery revision, discover project
+characteristics from cited evidence, represent unknowns honestly, preserve discovery history, and
+validate establishment and produced-revision lineage.
 
-**Owns:** repository binding, discovery revision, evidence citations, produced-revision lineage.
+**Owns:** execution-context binding, discovery revision, evidence citations, repository
+establishment, and produced-revision lineage.
 
-### RSP-005 — Compose and revise repository-specific plans
+### RSP-005 — Compose and revise context-specific plans
 
 Transform an objective and evidence into a normalized task graph with roles, dependencies,
-contracts, capabilities, bounds, and completion criteria. Revise plans through explicit linked
-versions while preserving compatible accepted work.
+contracts, capabilities, bounds, completion criteria, and agent-authored environment proposals.
+Revise plans through explicit linked versions while preserving compatible accepted work.
 
-**Owns:** plan contents, fingerprint, revision reason and diff, result-preservation analysis.
+**Owns:** plan contents, MissionEnvironmentPlan proposal, fingerprint, revision reason and diff,
+result-preservation analysis.
 
 ### RSP-006 — Decide and record authorization
 
@@ -86,19 +89,23 @@ their exact scopes.
 
 ### RSP-007 — Govern organization definitions
 
-Load and validate the versioned 32-role organization and 15-outcome catalogue; define functional
-roles, admissible tools, delegation eligibility, and the subset relevant to a plan.
+Load and validate the versioned 59-identity organization, professional profiles, explicit branches
+and pools, and optional mission-template catalogue; define authority, independence, delegation
+eligibility, and contextual plan participation without a static role/tool matrix.
 
-**Owns:** organization identity, roster, role metadata, outcome contracts, declared tool catalogue.
+**Owns:** organization identity, exact roster, professional-profile contract, branch and pool
+definitions, template contracts, and organization-level eligibility constraints.
 
-### RSP-008 — Coordinate production work through CrewAI
+### RSP-008 — Coordinate organizational agent work through CrewAI
 
-Materialize authorized organization and plan definitions as CrewAI Agents, Tasks, Crews, Processes,
-and Flows; drive bounded task eligibility, delegation, parallel barriers, retry, cancellation,
-resumption, and terminal outcomes using CrewAI's production runtime.
+Materialize bounded clarification, planning, production, evaluation, reporting, research, and
+learning work as CrewAI Agents, Tasks, Crews, Processes, and Flows; drive task eligibility,
+delegation, parallel barriers, retry, cancellation, resumption, and terminal outcomes using
+CrewAI's sole production runtime.
 
-**Owns:** binding from accepted MISHKAN definitions to CrewAI primitives and the resulting runtime
-execution lineage. It does not own policy decisions or acceptance validity.
+**Owns:** binding from accepted MISHKAN envelopes and definitions to CrewAI primitives and the
+resulting runtime execution lineage, including candidate Brief and plan authorship. It does not own
+policy decisions, normalized plan contents, mission state, or acceptance validity.
 
 ### RSP-009 — Enforce independent evaluation and reporting
 
@@ -142,11 +149,12 @@ provenance and staleness; and declare safe degraded operation when optional sour
 ### RSP-014 — Govern skill sources, trust, and lifecycle
 
 Resolve configured skill sources and precedence; validate compatibility, provenance locks, trust,
-inspection and quarantine decisions; stage and atomically activate policy-authorized mutations;
+inspection and quarantine decisions; create immutable candidate versions and atomically activate
+policy-authorized mutations immediately or after staging as the effective policy requires;
 preserve update, archival, reset, and restoration lineage.
 
-**Owns:** skill-source catalogue, provenance lock, inspection and quarantine record, staged mutation,
-active-version pointer, pin and archival state, recoverable lineage.
+**Owns:** skill-source catalogue, provenance lock, inspection and quarantine record, candidate or
+staged mutation, active-version pointer, pin and archival state, recoverable lineage.
 
 ### RSP-015 — Persist and project events and evidence
 
@@ -190,7 +198,7 @@ preserved while concrete persistence awaits its ADR.
 Validate the portable skill contract; expose Level 0 catalogue metadata; load Level 1 instructions
 and Level 2 content progressively; select explicit or applicable skills and bundles for authorized
 CrewAI tasks; record hit, partial, and miss outcomes; turn teaching or configured evidence into
-staged Research-team proposals.
+attributable Research-team proposals or policy-authorized native corrections.
 
 **Owns:** skill package semantics, selection and composition evidence, loaded-content record, usage
 outcome, miss aggregation, learning request and proposal lineage. It does not activate its own
@@ -199,13 +207,66 @@ proposal or grant the consuming task capabilities.
 ### RSP-021 — Resolve and expose atomic tools
 
 Discover versioned tools from configured native and external sources; validate contracts,
-namespaces, availability, adapters, and external schema state; resolve nested toolsets into immutable
-registry snapshots; search metadata without eagerly loading every schema; bind exact eligible tools
-to authorized CrewAI agents without creating another tool-calling runtime.
+namespaces, concrete adapter registration, location-specific availability, and external schema
+state; resolve nested toolsets into immutable registry snapshots; search metadata without eagerly
+loading every schema; bind exact eligible tools to authorized CrewAI agents without creating
+another tool-calling runtime or a universal capability taxonomy.
 
 **Owns:** tool and toolset definitions, source and adapter provenance, registry snapshot, collision
-and drift decisions, availability result, task tool binding, CrewAI tool representation. It does not
-authorize or dispatch a call.
+and drift decisions, concrete availability result, task tool binding, CrewAI tool representation.
+It does not authorize or dispatch a call. General-purpose command, path, and destination inputs are
+enforced by RSP-011 rather than expanded into synthetic per-command tools.
+
+### RSP-022 — Govern missions, conversations, and interventions
+
+Turn mission origins into PM/CTO-confirmed Mission Briefs; compose and revise temporary Mission
+Crews; preserve mission lifecycle and durable channel classes; distinguish messages, commands,
+decisions, and escalations; validate CEO interventions and scoped pauses; and require an explicit
+execution-environment intent and dependency state for environment-dependent mission work.
+
+**Owns:** Mission Brief, environment intent, crew revision, accountable assignment, mission state,
+conversation and escalation records, intervention validation, and PM/CTO confirmation evidence.
+
+### RSP-023 — Preserve artifacts and working references
+
+Store immutable artifact revisions and manifests; stream bounded outputs; advance scoped working
+references by compare-and-swap; and govern integrity, validation, retention, hold, garbage
+collection, missing-content reconciliation, and recovery.
+
+**Owns:** artifact manifest and content identity, working-reference revision, conflict record,
+retention state, recovery journal, and artifact availability evidence.
+
+### RSP-024 — Mediate MCP and external harness clients
+
+Terminate external-client requests in the MISHKAN application domain; manage MCP client/server
+identity, discovery, schemas, sessions, transports, progress, cancellation, reconnect, and drift;
+and expose only governed application operations without creating another production runtime.
+
+**Owns:** MCP binding and session record, external-client identity, facade contract, schema-drift
+decision, transport lifecycle, and application-command translation.
+
+### RSP-025 — Resolve engineering engines, environments, and packs
+
+Preserve independent observed engine states; match adapters, execution locations, project evidence,
+technical packs, and reproducible environments; reject incompatible candidates; and declare
+truthful fallback degradation. Resolve each agent-authored mission environment proposal into a
+compatible versioned binding or a precise incompatibility, expose eligible descriptor adapters,
+and settle location-bound verification without choosing the engineering outcome or owning project
+mutation and process effects.
+
+**Owns:** engine and environment observations, environment binding request and resolution,
+descriptor-adapter eligibility, descriptor-set identity and provenance, compatibility decision,
+adapter/location binding, pack resolution, materialization and verification evidence, and
+degradation record.
+
+### RSP-026 — Govern professional evolution and organizational learning
+
+Attribute agent knowledge, skill associations, tool mastery, and demonstrated competence to scoped
+execution and evaluation evidence; enforce independence and authority immutability; promote only to
+justified scope; and retain contradictory, stale, and failure evidence.
+
+**Owns:** profile-evidence record, competence state, learning scope, promotion decision request,
+freshness, contradiction, and reversible profile-version lineage.
 
 ## 4. Requirement ownership matrix
 
@@ -216,14 +277,14 @@ Each range is inclusive. No requirement appears in more than one row.
 | RSP-001 | SYS-001–003 |
 | RSP-002 | SYS-004–005, NFR-007 |
 | RSP-003 | SYS-006–007 |
-| RSP-004 | PRJ-001–006 |
-| RSP-005 | PRJ-007, PLN-001–004, PLN-009–011, ORG-012 |
+| RSP-004 | PRJ-001–010, CTX-001–003 |
+| RSP-005 | PLN-001–004, PLN-009–021 |
 | RSP-006 | PLN-005–008, SAF-003–006 |
-| RSP-007 | ORG-001–004, ORG-010–011 |
+| RSP-007 | ORG-001–004, ORG-010–014 |
 | RSP-008 | ORG-009, RUN-001–005, RUN-007, RUN-009, RUN-011 |
 | RSP-009 | ORG-005–008 |
 | RSP-010 | RUN-006, RUN-008, RUN-010 |
-| RSP-011 | SAF-001–002, SAF-007, SAF-011, SAF-013, TOL-012–022 |
+| RSP-011 | SAF-001–002, SAF-007, SAF-011, SAF-013, TOL-012–022, TOL-026, FIL-001–007, EDT-001–008, EXE-001–008, WEB-001–007, BRW-001–008 |
 | RSP-012 | SAF-008–010, SAF-012, OBS-008 |
 | RSP-013 | KNW-001–005 |
 | RSP-014 | KNW-006, SKL-006–008, SKL-016–025 |
@@ -231,17 +292,22 @@ Each range is inclusive. No requirement appears in more than one row.
 | RSP-016 | AUT-001–007 |
 | RSP-017 | DST-001–010 |
 | RSP-018 | NFR-001–006, NFR-008–010 |
-| RSP-019 | TC-001–007 |
+| RSP-019 | TC-001–009 |
 | RSP-020 | SKL-001–005, SKL-009–015 |
-| RSP-021 | TOL-001–011, TOL-023–025 |
+| RSP-021 | TOL-001–011, TOL-023–025, TOL-027 |
+| RSP-022 | MSN-001–016 |
+| RSP-023 | ART-001–008 |
+| RSP-024 | MCP-001–009 |
+| RSP-025 | CTX-004–008, ENG-001–013 |
+| RSP-026 | ORG-015–016 |
 
 ## 5. Error ownership matrix
 
 | Primary responsibility | Error codes |
 |---|---|
 | RSP-001 | ERR-CFG-001 |
-| RSP-004 | ERR-PRJ-001, ERR-REV-001 |
-| RSP-005 | ERR-PLN-001 |
+| RSP-004 | ERR-PRJ-001, ERR-REV-001, ERR-CTX-001 |
+| RSP-005 | ERR-PLN-001, ERR-DEC-001, ERR-DEC-002 |
 | RSP-006 | ERR-PLN-002, ERR-POL-001, ERR-POL-002 |
 | RSP-009 | ERR-ROL-001 |
 | RSP-010 | ERR-OUT-001, ERR-RUN-002 |
@@ -251,10 +317,14 @@ Each range is inclusive. No requirement appears in more than one row.
 | RSP-014 | ERR-SKL-001, ERR-SKL-002 |
 | RSP-020 | ERR-SKL-003 |
 | RSP-021 | ERR-TOL-001, ERR-TOL-002, ERR-TOL-005 |
-| RSP-011 | ERR-TOL-003, ERR-TOL-004 |
+| RSP-011 | ERR-TOL-003, ERR-TOL-004, ERR-FIL-001, ERR-EDT-001, ERR-EXE-001, ERR-WEB-001, ERR-BRW-001 |
 | RSP-016 | ERR-SCH-001 |
 | RSP-017 | ERR-WRK-001 |
 | RSP-002 | ERR-VER-001 |
+| RSP-022 | ERR-MSN-001 |
+| RSP-023 | ERR-ART-001 |
+| RSP-024 | ERR-MCP-001 |
+| RSP-025 | ERR-ENG-001 |
 
 ## 6. Contract ownership matrix
 
@@ -277,7 +347,12 @@ Each range is inclusive. No requirement appears in more than one row.
 | RSP-016 | INV-022 |
 | RSP-017 | CTR-012, INV-023 |
 | RSP-020 | CTR-013, INV-024 |
-| RSP-021 | CTR-014, INV-027 |
+| RSP-021 | CTR-014, INV-027, INV-031 |
+| RSP-022 | CTR-015–016, INV-032–034 |
+| RSP-023 | CTR-017, INV-036–037 |
+| RSP-024 | CTR-019, INV-040–041 |
+| RSP-025 | CTR-020, INV-038–039, INV-042 |
+| RSP-026 | CTR-018, INV-035 |
 
 `INV-003` is primarily enforced at the capability boundary by RSP-011; RSP-006 supplies the
 authorization decision but does not enforce its own decision.
@@ -286,25 +361,31 @@ authorization decision but does not enforce its own decision.
 
 | Producer | Consumer | Required handoff |
 |---|---|---|
-| RSP-001 | RSP-005–021 | Effective configuration identity and provenance |
-| RSP-004 | RSP-005, RSP-010, RSP-017 | Repository evidence, base revision, and lineage |
+| RSP-001 | RSP-002–026 | Effective configuration identity and provenance |
+| RSP-004 | RSP-005, RSP-010, RSP-017, RSP-022 | Bound execution context, applicable base revision, discovery evidence, and lineage |
 | RSP-005 | RSP-006 | Exact normalized plan fingerprint and capability requests |
-| RSP-006 | RSP-008, RSP-011, RSP-016, RSP-017 | Durable authorization decision and exact scope |
-| RSP-007 | RSP-005, RSP-008, RSP-009 | Versioned roles, outcomes, tools, and separation metadata |
+| RSP-005 | RSP-025 | Agent-authored MissionEnvironmentPlan proposal, requested outcome, descriptor semantics or selection constraints, affected tasks, and verification criteria |
+| RSP-006 | RSP-008, RSP-011, RSP-014, RSP-016–017, RSP-022–026 | Durable authorization decision and exact scope |
+| RSP-007 | RSP-005, RSP-008, RSP-009, RSP-022, RSP-026 | Versioned identities, profiles, branches, pools, templates, and separation metadata |
 | RSP-007 | RSP-021 | Role tool eligibility and declared toolset references |
 | RSP-021 | RSP-005, RSP-008, RSP-011 | Registry snapshot, exact task binding, and CrewAI tool representation |
-| RSP-008 | RSP-010 | CrewAI task result plus execution lineage |
+| RSP-008 | RSP-005, RSP-010, RSP-022 | CrewAI-authored candidate plan or Mission Brief, task result, and exact execution lineage; never self-acceptance |
 | RSP-011 | RSP-010, RSP-012 | Effect outcome and resolved target evidence |
 | RSP-009 | RSP-010 | Independent evaluation result |
 | RSP-010 | RSP-008, RSP-015 | Durable acceptance or rejection evidence |
 | RSP-013 | RSP-005, RSP-008 | Attributed project context |
 | RSP-014 | RSP-020 | Eligible skill catalogue, trust state, and active version |
 | RSP-020 | RSP-005, RSP-008 | Selected skill content, composition, and usage evidence |
-| RSP-020 | RSP-014 | Staged skill proposal or lifecycle request; never self-activation |
+| RSP-020 | RSP-014, RSP-026 | Attributable skill correction, proposal, usage outcome, or lifecycle request; never self-authorization |
 | RSP-015 | Every responsibility | Durable event acknowledgement and current-state projection |
 | RSP-016 | RSP-005, RSP-008 | Idempotent run trigger and schedule context |
 | RSP-017 | RSP-008, RSP-010 | Remote execution and completion-delivery evidence |
 | RSP-018–019 | Release decision | Acceptance and conformance evidence |
+| RSP-022 | RSP-005, RSP-008–010, RSP-015, RSP-025 | Accepted Mission Brief, environment intent, crew revision, assignments, authorized organizational-turn envelopes, commands, and escalation state |
+| RSP-023 | RSP-010, RSP-012, RSP-015, RSP-025 | Immutable artifact manifest, validation state, reference revision, and recovery evidence |
+| RSP-024 | RSP-003, RSP-005, RSP-008, RSP-011 | External-client identity, mediated application request, negotiated schema, and session evidence |
+| RSP-025 | RSP-005, RSP-008, RSP-011, RSP-021, RSP-023 | Compatible environment binding or precise incompatibility, eligible descriptor adapters, observed engine states, verification, pack, and degradation evidence |
+| RSP-026 | RSP-007, RSP-005, RSP-020 | Scoped profile evidence, demonstrated competence, freshness, contradiction, and promotion request |
 
 ## 8. Cohesion candidates for Sequence 05
 
@@ -312,10 +393,10 @@ These groupings are hypotheses to test with behavior and C4 models, not approved
 
 | Candidate responsibility family | Responsibilities | Shared reason to change |
 |---|---|---|
-| Definition and context | RSP-001–004, RSP-007 | Configuration, schemas, organization, and repository evidence evolve |
+| Definition and context | RSP-001–004, RSP-007, RSP-025–026 | Configuration, schemas, organization, engineering context, and professional evidence evolve |
 | Planning and authority | RSP-005–006 | Plan semantics and policy decisions evolve together but require an enforcement boundary |
-| CrewAI coordination and acceptance | RSP-008–010 | Runtime orchestration, independent evaluation, and accepted completion interact closely |
-| Tools, effects, and evidence | RSP-011–012, RSP-015, RSP-021 | Tool resolution, enforcement, sanitation, audit, and durable reconstruction protect every action |
+| Mission coordination and acceptance | RSP-008–010, RSP-022 | Mission governance, CrewAI orchestration, independent evaluation, and accepted completion interact closely |
+| Tools, effects, artifacts, and evidence | RSP-011–012, RSP-015, RSP-021, RSP-023–024 | Tool resolution, mediation, enforcement, artifacts, sanitation, audit, and durable reconstruction protect every action |
 | Context and skills | RSP-013–014, RSP-020 | Retrieval, procedural selection, and skill lifecycle share provenance but preserve activation separation |
 | Automation and distribution | RSP-016–017 | Scheduled and remote triggers extend execution without changing acceptance semantics |
 | Product conformance | RSP-018–019 | Release gates and fixed technical constraints change with supported product versions |

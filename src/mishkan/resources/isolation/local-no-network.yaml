@@ -1,0 +1,14 @@
+schema_version: "1.0"
+profile_id: local.no-network
+revision: "1"
+adoption_authority: MISHKAN release
+runtime: docker
+image: python:3.13-alpine
+network_mode: none
+timeout_seconds: 30
+memory_mb: 512
+pids_limit: 128
+read_only_root: true
+workspace_mount: read_write
+workspace_target: /workspace
+environment_allowlist: []

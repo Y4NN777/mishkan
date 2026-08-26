@@ -5,13 +5,15 @@ from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine, text
+from support.i02 import plan_validator
 
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.organization import load_initialization_definitions
 from mishkan.persistence import LocalRunRepository
-from mishkan.planning import PlanCandidate, PlanTask, PlanValidator
-from mishkan.planning.models import InitializationResult, ReviewDecision
+from mishkan.planning import PlanCandidate, PlanTask
+from mishkan.planning.models import AcceptedPlan, InitializationResult, ReviewDecision
 from mishkan.repository import RepositoryInspector
+from mishkan.repository.models import DiscoverySnapshot
 
 
 def _discovery(tmp_path: Path):  # type: ignore[no-untyped-def]
@@ -35,7 +37,7 @@ def _discovery(tmp_path: Path):  # type: ignore[no-untyped-def]
     return RepositoryInspector().inspect(repository)
 
 
-def _accepted_plan(discovery):  # type: ignore[no-untyped-def]
+def _accepted_plan(discovery: DiscoverySnapshot) -> AcceptedPlan:
     organization, outcome = load_initialization_definitions()
     candidate = PlanCandidate(
         objective="Initialize this repository",
@@ -52,7 +54,9 @@ def _accepted_plan(discovery):  # type: ignore[no-untyped-def]
             ),
         ),
     )
-    return PlanValidator().accept(candidate, discovery, organization, outcome)
+    return plan_validator(discovery.binding.root).accept(
+        candidate, discovery, organization, outcome
+    )
 
 
 def _review(task_id: str = "read-readme") -> ReviewDecision:
