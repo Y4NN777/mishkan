@@ -30,11 +30,6 @@ def _discovery(tmp_path: Path) -> DiscoverySnapshot:
 
 
 def _plan() -> AcceptedPlan:
-    common = {
-        "assigned_role": "Repository_Investigator",
-        "tools": ("repository.read_file",),
-        "evidence_paths": ("README.md",),
-    }
     return AcceptedPlan(
         objective="Initialize after a forced crash",
         outcome_id="mishkan.init",
@@ -44,14 +39,18 @@ def _plan() -> AcceptedPlan:
                 task_id="inspect-overview",
                 title="Inspect project overview",
                 purpose="Ground the first finding in project evidence.",
-                **common,
+                assigned_role="Repository_Investigator",
+                tools=("repository.read_file",),
+                evidence_paths=("README.md",),
             ),
             PlanTask(
                 task_id="inspect-details",
                 title="Inspect project details",
                 purpose="Ground the second finding after the first.",
                 depends_on=("inspect-overview",),
-                **common,
+                assigned_role="Repository_Investigator",
+                tools=("repository.read_file",),
+                evidence_paths=("README.md",),
             ),
         ),
         fingerprint="d" * 64,
@@ -63,20 +62,54 @@ class FakeCoordinator:
     plan_validation_retries = 0
     review_retries = 0
 
-    def __init__(self, *, crash_on: str | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        crash_on: str | None = None,
+        rejected_reviews: int = 0,
+        invalid_accepted_reviews: int = 0,
+    ) -> None:
         self.crash_on = crash_on
+        self.review_retries = rejected_reviews
+        self.rejected_reviews = rejected_reviews
+        self.invalid_accepted_reviews = invalid_accepted_reviews
+        self.evidence_executed: list[str] = []
         self.executed: list[str] = []
+        self.reviewed = 0
+        self.awaiting_contract_feedback = False
+
+    def execute_task_evidence(
+        self,
+        _run_id: str,
+        _plan: AcceptedPlan,
+        _discovery: DiscoverySnapshot,
+        task: PlanTask,
+    ) -> str:
+        self.evidence_executed.append(task.task_id)
+        return f'{{"task_id":"{task.task_id}","content":"evidence"}}'
+
+    def execute_review_evidence(
+        self,
+        _run_id: str,
+        _plan: AcceptedPlan,
+        _discovery: DiscoverySnapshot,
+        task: PlanTask,
+    ) -> str:
+        return f'{{"task_id":"{task.task_id}","content":"evidence"}}'
 
     def execute_task(
         self,
+        _plan: AcceptedPlan,
         discovery: DiscoverySnapshot,
         task: PlanTask,
+        _call_evidence: str,
         review_feedback: ReviewDecision | None = None,
     ) -> InitializationResult:
-        del review_feedback
         self.executed.append(task.task_id)
         if task.task_id == self.crash_on:
             raise RuntimeError("forced crash")
+        if self.executed.count(task.task_id) > 1:
+            assert review_feedback is not None
         return InitializationResult(
             repository_revision=discovery.binding.base_revision,
             task_id=task.task_id,
@@ -87,10 +120,32 @@ class FakeCoordinator:
 
     def review_task(
         self,
-        _discovery: DiscoverySnapshot,
         task: PlanTask,
         _result: InitializationResult,
+        _review_evidence: str,
+        contract_feedback: tuple[str, ...] = (),
     ) -> ReviewDecision:
+        self.reviewed += 1
+        if self.awaiting_contract_feedback:
+            assert contract_feedback
+            self.awaiting_contract_feedback = False
+        if self.reviewed <= self.rejected_reviews:
+            return ReviewDecision(
+                task_id=task.task_id,
+                verdict="rejected",
+                summary="Independent evidence check requested another review.",
+                checked_citations=("README.md",),
+                issues=("Review retry fixture",),
+            )
+        if self.reviewed <= self.rejected_reviews + self.invalid_accepted_reviews:
+            assert not contract_feedback
+            self.awaiting_contract_feedback = True
+            return ReviewDecision(
+                task_id=task.task_id,
+                verdict="accepted",
+                summary="Review fixture omitted the required repository path.",
+                checked_citations=("not-a-bound-path.md",),
+            )
         return ReviewDecision(
             task_id=task.task_id,
             verdict="accepted",
@@ -156,4 +211,65 @@ def test_flow_resumes_after_last_accepted_task(tmp_path: Path) -> None:
 
     assert report.resumed is True
     assert resumed_coordinator.executed == ["inspect-details"]
+    assert report.completed_task_ids == ("inspect-overview", "inspect-details")
+
+
+def test_review_rejection_resynthesizes_without_reexecuting_evidence(tmp_path: Path) -> None:
+    (tmp_path / "README.md").write_text("evidence", encoding="utf-8")
+    discovery = _discovery(tmp_path)
+    repository = LocalRunRepository(tmp_path / ".mishkan" / "mishkan.db")
+    started = repository.start_or_resume(
+        discovery,
+        "Initialize after a forced crash",
+        "mishkan.init",
+    )
+    plan = _plan()
+    repository.accept_plan(started.run_id, plan)
+    coordinator = FakeCoordinator(rejected_reviews=1)
+    state = InitializationFlowState(
+        run_id=started.run_id,
+        objective=plan.objective,
+        discovery=discovery,
+        accepted_plan=plan,
+    )
+
+    report = _flow(state, coordinator, repository).execute_plan(plan)
+
+    assert coordinator.evidence_executed == ["inspect-overview", "inspect-details"]
+    assert coordinator.executed == [
+        "inspect-overview",
+        "inspect-overview",
+        "inspect-details",
+    ]
+    assert coordinator.reviewed == 3
+    assert report.completed_task_ids == ("inspect-overview", "inspect-details")
+
+
+def test_invalid_accepted_review_is_corrected_without_resynthesizing_task(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "README.md").write_text("evidence", encoding="utf-8")
+    discovery = _discovery(tmp_path)
+    repository = LocalRunRepository(tmp_path / ".mishkan" / "mishkan.db")
+    started = repository.start_or_resume(
+        discovery,
+        "Initialize after a forced crash",
+        "mishkan.init",
+    )
+    plan = _plan()
+    repository.accept_plan(started.run_id, plan)
+    coordinator = FakeCoordinator(invalid_accepted_reviews=1)
+    coordinator.review_retries = 1
+    state = InitializationFlowState(
+        run_id=started.run_id,
+        objective=plan.objective,
+        discovery=discovery,
+        accepted_plan=plan,
+    )
+
+    report = _flow(state, coordinator, repository).execute_plan(plan)
+
+    assert coordinator.evidence_executed == ["inspect-overview", "inspect-details"]
+    assert coordinator.executed == ["inspect-overview", "inspect-details"]
+    assert coordinator.reviewed == 3
     assert report.completed_task_ids == ("inspect-overview", "inspect-details")

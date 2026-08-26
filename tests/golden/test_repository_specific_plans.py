@@ -5,14 +5,15 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
 from crewai import Crew
 
 from mishkan.config.loader import ConfigLoader
 from mishkan.crewai.coordinator import CrewAIInitializationCoordinator
+from mishkan.crewai.environment import configure_crewai_environment
 from mishkan.organization import load_initialization_definitions
 from mishkan.planning.models import PlanCandidate, PlanTask
 from mishkan.repository import RepositoryInspector
-from mishkan.tools import load_tool_registry
 
 
 def _make_repository(root: Path, files: dict[str, str]) -> Path:
@@ -34,8 +35,8 @@ def _make_repository(root: Path, files: dict[str, str]) -> Path:
 
 def test_same_outcome_generates_different_graphs_from_repository_evidence(
     tmp_path: Path,
-    monkeypatch,
-) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     python_repo = _make_repository(
         tmp_path / "python-project",
         {
@@ -73,12 +74,12 @@ def test_same_outcome_generates_different_graphs_from_repository_evidence(
 
     monkeypatch.setattr(Crew, "kickoff", generated_kickoff)
     config = ConfigLoader().load([Path("tests/fixtures/config/local-valid.yaml")]).value
+    configure_crewai_environment(config.crewai, tmp_path / "crewai-runtime")
     organization, outcome = load_initialization_definitions()
     coordinator = CrewAIInitializationCoordinator(
         config,
         organization,
         outcome,
-        load_tool_registry(),
     )
 
     python_plan = coordinator.propose_plan(

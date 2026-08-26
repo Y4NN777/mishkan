@@ -4,10 +4,21 @@ These instructions apply to the entire repository.
 
 ## Current stage
 
-MISHKAN has completed the framework's final pre-code stage, Sequence 05, and Implementation Plan
-1.1 is approved. Increments I00 and I01 have passed their local and remote acceptance gates. No
-later increment is currently authorized; further implementation requires the engineer to authorize
-the owning increment under the progressive delivery protocol in the approved plan.
+MISHKAN has completed the framework's final pre-code stage, Sequence 05. Increments I00 and I01
+have passed their local and remote acceptance gates and their code and evidence remain unchanged.
+PRD 1.4, SRS 1.6, Contract 1.4, Responsibilities 1.2, System Model 1.3, Architecture 1.3, and
+Implementation Plan 1.5 were accepted in order by D-032 through D-037 on 2026-08-25. D-036 resumes
+I02 on `feat/i02-policy-tools`; D-037 preserves that authority and the later increment gates. The
+existing registry, policy, gateway, and deterministic
+enforcement mechanisms remain accepted narrow evidence; I02 must remove false adapter bindings and
+add truthful File/Read/Search, process, and full Bash execution. The rejected universal workflow, mandatory
+outcome catalogue, capability-family matrix, static role/tool matrix, competing runtime, and
+private operational deny-list must not return.
+
+D-037 accepts the detailed agent-authored mission environment lifecycle, per-context bindings,
+Dev Container/Podman/Compose descriptor generation, ordinary effect boundaries, and acceptance
+work packages. It does not expand implementation beyond I02 until the later increment gates are
+reached.
 
 ## Mandatory method
 
@@ -29,8 +40,8 @@ not silently turn them into approved architecture.
 ## Source authority
 
 - The original MISHKAN SPEC and SRS attachments are historical discovery sources.
-- `docs/PROJECT/PRD.md` is the approved product authority.
-- `docs/PROJECT/SRS.md` is the approved behavioral authority.
+- `docs/PROJECT/PRD.md` 1.4 is the product authority accepted by D-032.
+- `docs/PROJECT/SRS.md` 1.6 is the behavioral authority accepted by D-032.
 - `docs/PROJECT/DECISION_LOG.md` is the only decision-status registry.
 - `docs/SYSTEM/CONTRACT.md` owns invariants and refusals after Gate G3 approval.
 - ADRs own durable implementation decisions.
@@ -49,11 +60,29 @@ not silently turn them into approved architecture.
 - Every guarantee receives one primary responsibility owner before components are designed.
 - Model behavior before structure. Draw only diagrams that answer a concrete design question.
 - Treat skills as first-class portable procedural memory loaded progressively into authorized
-  CrewAI work. Skills do not replace roles, repository-specific plans, CrewAI coordination, or
-  deterministic capability enforcement, and skill mutations follow the public capability policy.
+  CrewAI work. Skills do not replace roles, execution-context-specific plans, CrewAI coordination,
+  or deterministic capability enforcement, and skill mutations follow the public capability policy.
 - Treat tools as first-class typed atomic capabilities resolved from a public versioned registry.
   Tool availability, grouping, and source do not grant authority; exact plan and policy scope is
   enforced before dispatch, and production invocation remains integrated with CrewAI.
+- Prefer a small set of general file, terminal/process, web, and browser tools plus configurable
+  toolsets and dynamic extensions. Project commands are governed inputs, not synthetic tool types;
+  do not introduce a universal capability-family taxonomy or static role/outcome tool matrix.
+- Treat the 59 identities as persistent professional profiles and Mission Crews as temporary
+  contextual compositions. PM and CTO are agents in the organization; free-form missions may use
+  optional templates but never require a universal workflow.
+- Require an explicit execution-environment decision for environment-dependent mission work.
+  An accountable Mission Crew agent authors it through CrewAI; deterministic resolution validates
+  compatibility and binds adapters without selecting a different engineering outcome. Reuse
+  existing project definitions when compatible; treat Dev Container, Podman, Docker, Nix,
+  native-host, and other formats as contextual versioned inputs. Generated descriptors are
+  artifacts or governed change sets and never prove runtime readiness by themselves.
+- Treat CLI, SDK, chat, TUI, HTTP/SSE, MCP, schedules, Codex, Claude, and other harnesses as clients
+  of the same MISHKAN application authority. The TUI may issue governed interventions; no client
+  replaces CrewAI or owns stronger policy or authoritative state.
+- Keep artifacts immutable, working references compare-and-swap, and terminal, PTY, job, browser,
+  and MCP sessions explicitly owned. Availability, discovery, credentials, and instructions never
+  grant authority.
 
 ## Change discipline
 

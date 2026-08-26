@@ -1,0 +1,95 @@
+schema_version: "1.0"
+tool_id: file.list
+version: 1.0.0
+crewai_name: file_list
+summary: List one directory or bounded tree with deterministic pagination and visible omissions.
+effect_class: read
+source_id: bundled.core
+source_kind: native
+adapter: native.file.list
+input_schema:
+  type: object
+  additionalProperties: false
+  required: [path]
+  properties:
+    path: {type: string, minLength: 1}
+    recursive: {type: boolean}
+    max_depth: {type: integer, minimum: 1}
+    include:
+      type: array
+      items: {type: string, minLength: 1}
+    exclude:
+      type: array
+      items: {type: string, minLength: 1}
+    include_hidden: {type: boolean}
+    follow_links: {type: boolean}
+    object_types:
+      type: array
+      items: {type: string, enum: [file, directory, symlink, special]}
+    max_results: {type: integer, minimum: 1}
+    cursor: {type: string, minLength: 1}
+result_schema:
+  type: object
+  additionalProperties: false
+  required:
+    - root
+    - entries
+    - ordering
+    - query_digest
+    - view_digest
+    - engine
+    - engine_version
+    - ignore_evidence
+    - inaccessible
+    - cycles
+    - truncated
+    - continuation_cursor
+    - changed_during_list
+  properties:
+    root: {type: string}
+    entries:
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required: [path, object_type, depth, size, link_target]
+        properties:
+          path: {type: string}
+          object_type: {type: string, enum: [file, directory, symlink, special]}
+          depth: {type: integer, minimum: 1}
+          size: {type: [integer, "null"], minimum: 0}
+          link_target: {type: [string, "null"]}
+    ordering: {type: string, const: path-bytewise-ascending}
+    query_digest: {type: string}
+    view_digest: {type: string}
+    engine: {type: string}
+    engine_version: {type: string}
+    ignore_evidence:
+      type: object
+      additionalProperties: false
+      required: [hidden, include, exclude]
+      properties:
+        hidden: {type: string, enum: [included, excluded]}
+        include: {type: array, items: {type: string}}
+        exclude: {type: array, items: {type: string}}
+    inaccessible:
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required: [path, error]
+        properties:
+          path: {type: string}
+          error: {type: string}
+    cycles: {type: array, items: {type: string}}
+    truncated: {type: boolean}
+    continuation_cursor: {type: [string, "null"]}
+    changed_during_list: {type: boolean}
+timeout_behavior: cancel_local
+idempotency: idempotent
+target_scopes: [path]
+target_arguments: {path: [path]}
+resources: {timeout_seconds: 30, memory_mb: 64, network: false, concurrency: 1}
+adapter_config:
+  max_results: 1000
+  max_traversal_entries: 100000

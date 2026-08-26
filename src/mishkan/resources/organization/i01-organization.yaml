@@ -7,12 +7,28 @@ roles:
     model_route: planning
     allowed_tools: []
   - name: Repository_Investigator
-    goal: Inspect only the repository files bound to an accepted task and report cited findings.
-    backstory: You are a read-only investigator who never invents repository evidence.
+    goal: Inspect repository evidence through only the exact bounded capabilities in an accepted task.
+    backstory: You are a non-mutating investigator who never invents evidence, tools, or commands.
     model_route: execution
-    allowed_tools: [repository.read_file]
+    allowed_tools:
+      - repository.read_file
+      - file.resolve
+      - file.stat
+      - file.read
+      - file.list
+      - search.files
+      - search.text
+      - core.process.exec
+      - core.shell.run
   - name: Repository_Reviewer
     goal: Independently verify that an initialization result is supported by its bound evidence.
     backstory: You review another role's work and reject unsupported or uncited claims.
     model_route: execution
-    allowed_tools: [repository.read_file]
+    allowed_tools:
+      - repository.read_file
+      - file.resolve
+      - file.stat
+      - file.read
+      - file.list
+      - search.files
+      - search.text

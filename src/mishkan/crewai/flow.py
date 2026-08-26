@@ -47,6 +47,7 @@ class CrewAIInitializationFlow(Flow[InitializationFlowState]):
         repository: LocalRunRepository,
         organization: OrganizationDefinition,
         outcome: OutcomeDefinition,
+        plan_validator: PlanValidator | None = None,
         *,
         tracing: bool,
     ) -> None:
@@ -59,12 +60,14 @@ class CrewAIInitializationFlow(Flow[InitializationFlowState]):
         self._repository = repository
         self._organization = organization
         self._outcome = outcome
-        self._plan_validator = PlanValidator()
+        self._plan_validator = plan_validator
         self._result_validator = ResultValidator()
 
     @start()
     def establish_plan(self) -> AcceptedPlan:
         if self.state.accepted_plan is None:
+            if self._plan_validator is None:
+                raise RuntimeError("a plan validator is required before plan proposal")
             validation_feedback: tuple[str, ...] = ()
             last_error: MishkanError | None = None
             attempts = self._coordinator.plan_validation_retries + 1
@@ -110,37 +113,69 @@ class CrewAIInitializationFlow(Flow[InitializationFlowState]):
                 if task.task_id in pending and set(task.depends_on).issubset(completed)
             ]
             for task in ready:
-                review_feedback: ReviewDecision | None = None
-                verified: InitializationResult | None = None
+                task_evidence = self._coordinator.execute_task_evidence(
+                    self.state.run_id,
+                    plan,
+                    self.state.discovery,
+                    task,
+                )
+                review_evidence = self._coordinator.execute_review_evidence(
+                    self.state.run_id,
+                    plan,
+                    self.state.discovery,
+                    task,
+                )
                 accepted_review: ReviewDecision | None = None
+                last_review: ReviewDecision | None = None
+                verified: InitializationResult | None = None
                 attempts = self._coordinator.review_retries + 1
                 for _attempt in range(attempts):
                     proposed = self._coordinator.execute_task(
+                        plan,
                         self.state.discovery,
                         task,
-                        review_feedback,
+                        task_evidence,
+                        last_review,
                     )
                     verified = self._result_validator.verify(
                         proposed,
                         task,
                         self.state.discovery,
                     )
-                    proposed_review = self._coordinator.review_task(
-                        self.state.discovery,
-                        task,
-                        verified,
-                    )
-                    if proposed_review.verdict == "accepted":
-                        accepted_review = self._result_validator.accept_review(
-                            proposed_review,
+                    review_contract_feedback: tuple[str, ...] = ()
+                    review_attempts = self._coordinator.review_retries + 1
+                    for review_attempt in range(review_attempts):
+                        proposed_review = self._coordinator.review_task(
+                            task,
                             verified,
+                            review_evidence,
+                            review_contract_feedback,
                         )
+                        last_review = proposed_review
+                        if proposed_review.verdict != "accepted":
+                            break
+                        try:
+                            accepted_review = self._result_validator.accept_review(
+                                proposed_review,
+                                verified,
+                            )
+                        except MishkanError as error:
+                            if error.envelope.code is not ErrorCode.OUTPUT_CONTRACT:
+                                raise
+                            raw_violations = error.envelope.details.get("violations", [])
+                            review_contract_feedback = tuple(str(item) for item in raw_violations)
+                            if review_attempt + 1 >= review_attempts:
+                                raise
+                        else:
+                            break
+                    if accepted_review is not None:
                         break
-                    review_feedback = proposed_review
-                if verified is None or accepted_review is None:
-                    if review_feedback is None or verified is None:
+                if verified is None:
+                    raise RuntimeError("review loop produced no task result")
+                if accepted_review is None:
+                    if last_review is None:
                         raise RuntimeError("review loop produced no result")
-                    self._result_validator.accept_review(review_feedback, verified)
+                    self._result_validator.accept_review(last_review, verified)
                     raise RuntimeError("rejected review was unexpectedly accepted")
                 self._repository.accept_result(
                     self.state.run_id,

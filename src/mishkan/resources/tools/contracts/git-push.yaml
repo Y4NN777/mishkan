@@ -1,0 +1,39 @@
+schema_version: "1.0"
+tool_id: git.push
+version: 1.0.0
+crewai_name: git_push
+summary: Push one exact local branch to one exact configured remote branch.
+effect_class: repository_remote_write
+source_id: bundled.core
+source_kind: native
+adapter: native.git.push
+input_schema:
+  type: object
+  additionalProperties: false
+  required: [repository, remote, local_branch, remote_branch, expected_revision, destination]
+  properties:
+    repository: {type: string}
+    remote: {type: string}
+    local_branch: {type: string}
+    remote_branch: {type: string}
+    expected_revision: {type: string}
+    destination: {type: string}
+result_schema:
+  type: object
+  additionalProperties: false
+  required: [remote, branch, revision, external_reference]
+  properties:
+    remote: {type: string}
+    branch: {type: string}
+    revision: {type: string}
+    external_reference: {type: string}
+timeout_behavior: effect_may_be_uncertain
+idempotency: none
+target_scopes: [repository, remote, branch, network]
+target_arguments:
+  repository: [repository]
+  remote: [remote]
+  branch: [local_branch, remote_branch]
+  network: [destination]
+credential_refs: [git.remote]
+resources: {timeout_seconds: 120, memory_mb: 128, network: true, concurrency: 1}

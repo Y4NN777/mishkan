@@ -1,0 +1,31 @@
+schema_version: "1.0"
+source_id: fixture.safe-shell-probe
+revision: "1"
+adoption_authority: MISHKAN test suite
+priority: 10
+rules:
+  - rule_id: fixture.safe-shell-probe.git-show-go-mod
+    priority: 100
+    decision: allow
+    scope:
+      identities: ["role:Repository_Investigator"]
+      objective_classes: [repository-initialization]
+      repositories: ["*"]
+      outcomes: [mishkan.init]
+      roles: [Repository_Investigator]
+      capabilities: [core.shell.run]
+      effect_classes: [command]
+      paths: ["*"]
+      executables: ["*/bash", "*/git"]
+      arguments: ["*/git show HEAD:go.mod", i02.fixture-bash, "1"]
+      network_destinations: ["*"]
+      remotes: ["*"]
+      branches: ["*"]
+      environments: ["*"]
+      credentials: ["*"]
+      external_resources: ["*"]
+      isolation_profiles: ["*"]
+      max_timeout_seconds: 30
+      max_memory_mb: 512
+      allow_network: true
+      max_concurrency: 1

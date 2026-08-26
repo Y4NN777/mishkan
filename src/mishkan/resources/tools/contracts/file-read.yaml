@@ -1,0 +1,77 @@
+schema_version: "1.0"
+tool_id: file.read
+version: 1.0.0
+crewai_name: file_read
+summary: Read bounded bytes, text, ranges, or lines from one resolved regular file.
+effect_class: read
+source_id: bundled.core
+source_kind: native
+adapter: native.file.read
+input_schema:
+  type: object
+  additionalProperties: false
+  required: [path, mode]
+  properties:
+    path: {type: string, minLength: 1}
+    mode: {type: string, enum: [bytes, text, range, lines, head, tail]}
+    offset: {type: integer, minimum: 0}
+    length: {type: integer, minimum: 1}
+    start_line: {type: integer, minimum: 1}
+    end_line: {type: integer, minimum: 1}
+    line_count: {type: integer, minimum: 1}
+    max_bytes: {type: integer, minimum: 1}
+    encoding: {type: string, minLength: 1}
+    binary_policy: {type: string, enum: [reject, base64]}
+result_schema:
+  type: object
+  additionalProperties: false
+  required:
+    - path
+    - mode
+    - content
+    - content_format
+    - encoding
+    - byte_range
+    - line_range
+    - total_bytes
+    - content_digest
+    - object_identity
+    - truncated
+    - continuation_offset
+    - changed_during_read
+  properties:
+    path: {type: string}
+    mode: {type: string}
+    content: {type: string}
+    content_format: {type: string, enum: [text, base64]}
+    encoding: {type: [string, "null"]}
+    byte_range:
+      type: array
+      minItems: 2
+      maxItems: 2
+      items: {type: integer, minimum: 0}
+    line_range:
+      type: [array, "null"]
+      minItems: 2
+      maxItems: 2
+      items: {type: integer, minimum: 1}
+    total_bytes: {type: integer, minimum: 0}
+    content_digest: {type: string}
+    object_identity:
+      type: object
+      additionalProperties: false
+      required: [device, inode]
+      properties:
+        device: {type: integer, minimum: 0}
+        inode: {type: integer, minimum: 0}
+    truncated: {type: boolean}
+    continuation_offset: {type: [integer, "null"], minimum: 0}
+    changed_during_read: {type: boolean}
+timeout_behavior: cancel_local
+idempotency: idempotent
+target_scopes: [path]
+target_arguments: {path: [path]}
+resources: {timeout_seconds: 30, memory_mb: 64, network: false, concurrency: 1}
+adapter_config:
+  max_bytes: 262144
+  max_scan_bytes: 16777216

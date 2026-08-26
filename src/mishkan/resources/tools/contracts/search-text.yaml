@@ -1,0 +1,94 @@
+schema_version: "1.0"
+tool_id: search.text
+version: 1.0.0
+crewai_name: search_text
+summary: Search scoped text with explicit literal or ripgrep-regex semantics and bounded output.
+effect_class: read
+source_id: bundled.core
+source_kind: native
+adapter: ripgrep.search.text
+availability: {dependencies: [rg]}
+input_schema:
+  type: object
+  additionalProperties: false
+  required: [path, query]
+  properties:
+    path: {type: string, minLength: 1}
+    query: {type: string, minLength: 1}
+    semantics: {type: string, enum: [literal, regex]}
+    case: {type: string, enum: [smart, sensitive, insensitive]}
+    word: {type: boolean}
+    multiline: {type: boolean}
+    include_hidden: {type: boolean}
+    include_ignored: {type: boolean}
+    binary_policy: {type: string, enum: [skip, text]}
+    include: {type: array, items: {type: string, minLength: 1}}
+    exclude: {type: array, items: {type: string, minLength: 1}}
+    max_results: {type: integer, minimum: 1}
+result_schema:
+  type: object
+  additionalProperties: false
+  required:
+    - root
+    - matches
+    - engine
+    - engine_version
+    - query_digest
+    - search_options
+    - failures
+    - truncated
+    - partial_reason
+    - continuation_cursor
+    - exit_code
+  properties:
+    root: {type: string}
+    matches:
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required: [path, line_number, absolute_offset, line, submatches]
+        properties:
+          path: {type: [string, "null"]}
+          line_number: {type: [integer, "null"], minimum: 1}
+          absolute_offset: {type: [integer, "null"], minimum: 0}
+          line: {type: [string, "null"]}
+          submatches:
+            type: array
+            items:
+              type: object
+              additionalProperties: false
+              required: [text, start, end]
+              properties:
+                text: {type: [string, "null"]}
+                start: {type: integer, minimum: 0}
+                end: {type: integer, minimum: 0}
+    engine: {type: string, const: ripgrep}
+    engine_version: {type: string}
+    query_digest: {type: string}
+    search_options:
+      type: object
+      additionalProperties: false
+      required: [semantics, case, include_hidden, include_ignored, binary_policy]
+      properties:
+        semantics: {type: string, enum: [literal, regex]}
+        case: {type: string, enum: [smart, sensitive, insensitive]}
+        include_hidden: {type: boolean}
+        include_ignored: {type: boolean}
+        binary_policy: {type: string, enum: [skip, text]}
+    failures: {type: array, items: {type: string}}
+    truncated: {type: boolean}
+    partial_reason:
+      type: [string, "null"]
+      enum: [null, timeout, output_limit, result_limit, engine_failure]
+    continuation_cursor: {type: "null"}
+    exit_code: {type: integer}
+timeout_behavior: cancel_local
+idempotency: idempotent
+target_scopes: [path]
+target_arguments: {path: [path]}
+resources: {timeout_seconds: 30, memory_mb: 128, network: false, concurrency: 2}
+adapter_config:
+  max_results: 1000
+  max_output_bytes: 2097152
+  timeout_seconds: 30

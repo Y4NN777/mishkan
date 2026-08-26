@@ -14,6 +14,7 @@ authors = [
 ]
 dependencies = [
   "crewai>=1,<2",
+  "jsonschema>=4.23,<5",
   "pydantic>=2.10,<3",
   "pyyaml>=6,<7",
   "sqlalchemy>=2,<3",
@@ -46,10 +47,17 @@ include = [
 
 [tool.pytest.ini_options]
 addopts = "--strict-config --strict-markers"
+pythonpath = ["tests"]
 testpaths = ["tests"]
 markers = [
   "acceptance: runnable increment acceptance test",
+  "cloud: requires an explicitly configured cloud model credential",
+  "commands: command-boundary security test",
   "ollama: requires a local Ollama service and configured model",
+  "paths: filesystem path-scope security test",
+  "secrets: credential containment security test",
+  "symlinks: symbolic-link escape security test",
+  "unicode: Unicode normalization security test",
 ]
 
 [tool.coverage.run]
