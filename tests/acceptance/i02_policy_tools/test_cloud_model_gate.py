@@ -1,32 +1,46 @@
 from __future__ import annotations
 
-import json
+import os
 import subprocess
 from pathlib import Path
-from urllib.error import URLError
-from urllib.request import urlopen
 
 import pytest
 
 from mishkan.application.initialize import MishkanInitializer
 from mishkan.config.models import MishkanConfig
 
-OLLAMA_ENDPOINT = "http://127.0.0.1:11434"
-OLLAMA_PLANNING_MODEL = "qwen2.5-coder-7b-16k:latest"
-OLLAMA_EXECUTION_MODEL = "deepseek-coder-v2:16b"
+DEFAULT_ENDPOINT = "https://openrouter.ai/api/v1"
+DEFAULT_KEY_ENV = "OPENROUTER_API_KEY"
+DEFAULT_MODEL = "openrouter/free"
+DEFAULT_FALLBACK_MODEL = "stealth/ox-alpha"
 
 
-def _require_ollama() -> None:
-    try:
-        with urlopen(f"{OLLAMA_ENDPOINT}/api/tags", timeout=2) as response:
-            payload = json.load(response)
-    except (OSError, URLError) as exc:
-        pytest.skip(f"local Ollama is unavailable: {type(exc).__name__}")
-    names = {model["name"] for model in payload.get("models", [])}
-    required = {OLLAMA_PLANNING_MODEL, OLLAMA_EXECUTION_MODEL}
-    missing = sorted(required - names)
-    if missing:
-        pytest.skip(f"local Ollama models are not installed: {missing}")
+def _setting(name: str, default: str) -> str:
+    return os.environ.get(name, default).strip()
+
+
+def _credential_environment_name() -> str:
+    key_env = _setting("MISHKAN_CLOUD_KEY_ENV", DEFAULT_KEY_ENV)
+    if not key_env:
+        pytest.fail("MISHKAN_CLOUD_KEY_ENV must name a credential environment variable")
+    return key_env
+
+
+def _require_cloud_credential(key_env: str) -> None:
+    if not os.environ.get(key_env):
+        pytest.skip(f"cloud credential environment variable is unavailable: {key_env}")
+
+
+def _models(primary_env: str) -> list[dict[str, str]]:
+    primary = _setting(primary_env, DEFAULT_MODEL)
+    fallback = _setting("MISHKAN_CLOUD_FALLBACK_MODEL", DEFAULT_FALLBACK_MODEL)
+    if not primary:
+        pytest.fail(f"{primary_env} must identify a cloud model")
+    return [
+        {"provider": "cloud-gate", "model": model}
+        for model in dict.fromkeys((primary, fallback))
+        if model
+    ]
 
 
 def _repository(root: Path) -> Path:
@@ -53,30 +67,26 @@ def _repository(root: Path) -> Path:
     return root
 
 
-def _config(workspace: Path) -> MishkanConfig:
+def _config(workspace: Path, key_env: str) -> MishkanConfig:
+    endpoint = _setting("MISHKAN_CLOUD_ENDPOINT", DEFAULT_ENDPOINT)
+    if not endpoint:
+        pytest.fail("MISHKAN_CLOUD_ENDPOINT must identify an OpenAI-compatible endpoint")
     return MishkanConfig.model_validate(
         {
             "schema_version": "1.1",
-            "mode": "local",
+            "mode": "cloud",
             "timezone": "UTC",
             "project": {"workspace": str(workspace)},
             "providers": {
-                "ollama-local": {
-                    "kind": "ollama",
-                    "endpoint": OLLAMA_ENDPOINT,
+                "cloud-gate": {
+                    "kind": "openai-compatible",
+                    "endpoint": endpoint,
+                    "credential_pool": [{"source": "env", "locator": key_env}],
                 }
             },
             "model_routes": {
-                "planning": {
-                    "candidates": [
-                        {"provider": "ollama-local", "model": OLLAMA_PLANNING_MODEL},
-                    ]
-                },
-                "execution": {
-                    "candidates": [
-                        {"provider": "ollama-local", "model": OLLAMA_EXECUTION_MODEL},
-                    ]
-                },
+                "planning": {"candidates": _models("MISHKAN_CLOUD_PLANNING_MODEL")},
+                "execution": {"candidates": _models("MISHKAN_CLOUD_EXECUTION_MODEL")},
             },
             "policy_sources": [
                 "package://mishkan.resources.policies/i02-local.yaml",
@@ -84,7 +94,7 @@ def _config(workspace: Path) -> MishkanConfig:
             "tool_sources": [
                 "package://mishkan.resources.tools/i02-catalog.yaml",
             ],
-            "inspection_profile": ("package://mishkan.resources.inspection/i02-default.yaml"),
+            "inspection_profile": "package://mishkan.resources.inspection/i02-default.yaml",
             "isolation_profiles": [
                 "package://mishkan.resources.isolation/local-no-network.yaml",
             ],
@@ -94,9 +104,9 @@ def _config(workspace: Path) -> MishkanConfig:
                 "temperature": 0,
                 "model_timeout_seconds": 300,
                 "model_transport_retries": 0,
-                "model_max_output_tokens": 2048,
+                "model_max_output_tokens": 8192,
                 "max_agent_iterations": 8,
-                "task_execution_retries": 3,
+                "task_execution_retries": 1,
                 "plan_validation_retries": 1,
                 "review_retries": 1,
                 "structured_output_retries": 1,
@@ -106,14 +116,19 @@ def _config(workspace: Path) -> MishkanConfig:
 
 
 @pytest.mark.acceptance
-@pytest.mark.ollama
-def test_real_crewai_ollama_init_and_resume_without_paid_provider(tmp_path: Path) -> None:
-    _require_ollama()
+@pytest.mark.cloud
+def test_real_crewai_cloud_init_and_resume(tmp_path: Path) -> None:
+    key_env = _credential_environment_name()
     repository = _repository(tmp_path / "weather-ledger")
-    config = _config(repository)
+    config = _config(repository, key_env)
+    _require_cloud_credential(key_env)
 
     first = MishkanInitializer().run(config, repository, "Initialize this library from evidence")
-    resumed = MishkanInitializer().run(config, repository, "Initialize this library from evidence")
+    resumed = MishkanInitializer().run(
+        config,
+        repository,
+        "Initialize this library from evidence",
+    )
 
     assert first.resumed is False
     assert len(first.results) == len(first.reviews) == 1
@@ -123,4 +138,4 @@ def test_real_crewai_ollama_init_and_resume_without_paid_provider(tmp_path: Path
     assert resumed.plan_fingerprint == first.plan_fingerprint
     assert resumed.results == first.results
     assert (repository / ".mishkan" / "mishkan.db").is_file()
-    assert {provider.kind for provider in config.providers.values()} == {"ollama"}
+    assert {provider.kind for provider in config.providers.values()} == {"openai-compatible"}

@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import json
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -23,7 +21,6 @@ from mishkan.planning.models import (
     ReviewDecision,
 )
 from mishkan.repository import RepositoryInspector
-from mishkan.tools.crewai_gateway import GatewayCrewAITool
 
 
 def _repository(root: Path) -> Path:
@@ -60,11 +57,13 @@ def test_production_crewai_task_uses_accepted_gateway_binding_and_durable_eviden
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repository = _repository(tmp_path / "repository")
-    executable = str(Path(sys.executable).resolve())
+    git_path = shutil.which("git")
+    assert git_path is not None
+    executable = str(Path(git_path).resolve())
     process_arguments = {
         "mode": "process",
         "executable": executable,
-        "args": ["-c", "print('governed-project-probe')"],
+        "args": ["show", "HEAD:README.md"],
         "cwd": ".",
         "environment": {},
         "credential_environment": {},
@@ -77,12 +76,22 @@ def test_production_crewai_task_uses_accepted_gateway_binding_and_durable_eviden
             "preserve_full_output_as_artifact": False,
         },
     }
+    execution_attempts = 0
+    review_attempts = 0
 
     def kickoff(crew: Crew, *_args: Any, **_kwargs: Any) -> SimpleNamespace:
+        nonlocal execution_attempts, review_attempts
+        assert crew.agents[0].max_retry_limit == 0
         task = crew.tasks[0]
         output_model = task.output_pydantic
         value: PlanCandidate | InitializationResult | ReviewDecision
-        if output_model is PlanCandidate:
+        if issubclass(output_model, PlanCandidate):
+            assert output_model.model_json_schema()["properties"]["tasks"]["maxItems"] == 1
+            assert "Create at most 1 task(s)" in task.description
+            assert "assigned_role must be Repository_Investigator" in task.description
+            assert '"core.process.exec"' in task.description
+            assert executable in task.description
+            assert "public policy permits none unattended" not in task.description
             revision = task.description.split("Repository revision: ", 1)[1].splitlines()[0]
             value = PlanCandidate(
                 schema_version="1.1",
@@ -114,16 +123,17 @@ def test_production_crewai_task_uses_accepted_gateway_binding_and_durable_eviden
             )
         else:
             tools = crew.agents[0].tools
-            assert tools is not None
-            read_tool = tools[0]
-            assert isinstance(read_tool, GatewayCrewAITool)
-            evidence = json.loads(read_tool.run(path="README.md"))
-            assert evidence["content"] == "# Governed repository\n"
+            assert tools == []
+            assert "# Governed repository\\n" in task.description
             if output_model is InitializationResult:
-                process_tool = tools[1]
-                assert isinstance(process_tool, GatewayCrewAITool)
-                process_evidence = json.loads(process_tool.run(**process_arguments))
-                assert process_evidence["stdout_preview"] == "governed-project-probe\n"
+                assert (
+                    "MISHKAN has already executed every accepted call exactly once"
+                    in task.description
+                )
+                execution_attempts += 1
+                if execution_attempts > 1:
+                    assert "A previous independent review rejected" in task.description
+                    assert "State the repository heading exactly" in task.description
                 value = InitializationResult(
                     repository_revision=task.description.split("Repository revision: ", 1)[
                         1
@@ -135,11 +145,22 @@ def test_production_crewai_task_uses_accepted_gateway_binding_and_durable_eviden
                 )
             else:
                 assert output_model is ReviewDecision
+                review_attempts += 1
+                assert "MISHKAN independently executed" in task.description
                 value = ReviewDecision(
                     task_id="inspect-governed-readme",
-                    verdict="accepted",
-                    summary="Independent evidence review passed through its own binding.",
+                    verdict="rejected" if review_attempts == 1 else "accepted",
+                    summary=(
+                        "The first result needs a more exact evidence statement."
+                        if review_attempts == 1
+                        else "Independent evidence review passed through its own binding."
+                    ),
                     checked_citations=("README.md",),
+                    issues=(
+                        ("State the repository heading exactly from README.md.",)
+                        if review_attempts == 1
+                        else ()
+                    ),
                 )
         return SimpleNamespace(pydantic=value, raw=value.model_dump_json())
 
@@ -163,6 +184,8 @@ def test_production_crewai_task_uses_accepted_gateway_binding_and_durable_eviden
         "mishkan.init",
     )
     assert report.completed_task_ids == ("inspect-governed-readme",)
+    assert execution_attempts == 2
+    assert review_attempts == 2
     assert state.plan is not None and state.plan.schema_version == "1.1"
     assert state.plan.registry is not None
     assert len(state.plan.tool_bindings) == 3
@@ -262,7 +285,8 @@ def test_production_path_accepts_different_exact_native_commands_for_different_r
             }
         )
         value: PlanCandidate | InitializationResult | ReviewDecision
-        if output_model is PlanCandidate:
+        if issubclass(output_model, PlanCandidate):
+            assert output_model.model_json_schema()["properties"]["tasks"]["maxItems"] == 1
             revision = task.description.split("Repository revision: ", 1)[1].splitlines()[0]
             value = PlanCandidate(
                 schema_version="1.1",
@@ -298,12 +322,14 @@ def test_production_path_accepts_different_exact_native_commands_for_different_r
             )
         else:
             tools = crew.agents[0].tools
-            assert tools is not None
-            read_output = json.loads(tools[0].run(path=manifest))
-            assert manifest in read_output["path"]
+            assert tools == []
+            assert f'"path": "{manifest}"' in task.description
             if output_model is InitializationResult:
-                command_output = json.loads(tools[1].run(**execution_arguments))
-                assert command_output["stdout_preview"] == read_output["content"]
+                assert (
+                    "MISHKAN has already executed every accepted call exactly once"
+                    in task.description
+                )
+                assert manifest in task.description
                 revision = task.description.split("Repository revision: ", 1)[1].splitlines()[0]
                 value = InitializationResult(
                     repository_revision=revision,
@@ -314,6 +340,7 @@ def test_production_path_accepts_different_exact_native_commands_for_different_r
                 )
             else:
                 assert output_model is ReviewDecision
+                assert "MISHKAN independently executed" in task.description
                 value = ReviewDecision(
                     task_id=task_id,
                     verdict="accepted",
@@ -329,6 +356,10 @@ def test_production_path_accepts_different_exact_native_commands_for_different_r
         lambda flow: flow.execute_plan(flow.establish_plan()),
     )
     config = ConfigLoader().load([Path("tests/fixtures/config/local-valid.yaml")]).value
+    shell_policy = Path("tests/fixtures/policies/i02-safe-shell-probe.yaml").resolve()
+    config = config.model_copy(
+        update={"policy_sources": (*config.policy_sources, str(shell_policy))}
+    )
 
     reports = tuple(
         MishkanInitializer().run(

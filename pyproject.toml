@@ -51,6 +51,7 @@ pythonpath = ["tests"]
 testpaths = ["tests"]
 markers = [
   "acceptance: runnable increment acceptance test",
+  "cloud: requires an explicitly configured cloud model credential",
   "commands: command-boundary security test",
   "ollama: requires a local Ollama service and configured model",
   "paths: filesystem path-scope security test",

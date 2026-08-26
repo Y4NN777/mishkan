@@ -98,6 +98,10 @@ def test_plan_acceptance_refuses_lineage_changes(
     with pytest.raises(MishkanError, match="refused") as caught:
         plan_validator(discovery.binding.root).accept(candidate, discovery, organization, outcome)
     assert violation in str(caught.value.envelope.details["violations"])
+    assert caught.value.envelope.details["violation_categories"] == [
+        "repository_revision" if violation == "revision" else "outcome_identifier"
+    ]
+    assert "different-revision" not in str(caught.value)
 
 
 def test_plan_acceptance_refuses_dependency_cycles(tmp_path: Path) -> None:
@@ -112,3 +116,30 @@ def test_plan_acceptance_refuses_dependency_cycles(tmp_path: Path) -> None:
             outcome,
         )
     assert "cycle" in str(caught.value.envelope.details["violations"])
+
+
+def test_initialization_outcome_enforces_its_single_task_resource_bound(
+    tmp_path: Path,
+) -> None:
+    discovery = RepositoryInspector().inspect(_repository(tmp_path))
+    organization, outcome = load_initialization_definitions()
+    first = _candidate(discovery.binding.base_revision).tasks[0]
+    candidate = _candidate(discovery.binding.base_revision).model_copy(
+        update={
+            "tasks": (
+                first,
+                first.model_copy(update={"task_id": "inspect-readme"}),
+            )
+        }
+    )
+
+    with pytest.raises(MishkanError, match="task_count") as caught:
+        plan_validator(discovery.binding.root).accept(
+            candidate,
+            discovery,
+            organization,
+            outcome,
+        )
+
+    assert outcome.max_tasks == 1
+    assert caught.value.envelope.details["violation_categories"] == ["task_count"]

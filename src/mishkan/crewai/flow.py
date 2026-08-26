@@ -113,35 +113,65 @@ class CrewAIInitializationFlow(Flow[InitializationFlowState]):
                 if task.task_id in pending and set(task.depends_on).issubset(completed)
             ]
             for task in ready:
-                proposed = self._coordinator.execute_task(
+                task_evidence = self._coordinator.execute_task_evidence(
                     self.state.run_id,
                     plan,
                     self.state.discovery,
                     task,
                 )
-                verified = self._result_validator.verify(
-                    proposed,
-                    task,
+                review_evidence = self._coordinator.execute_review_evidence(
+                    self.state.run_id,
+                    plan,
                     self.state.discovery,
+                    task,
                 )
                 accepted_review: ReviewDecision | None = None
                 last_review: ReviewDecision | None = None
+                verified: InitializationResult | None = None
                 attempts = self._coordinator.review_retries + 1
                 for _attempt in range(attempts):
-                    proposed_review = self._coordinator.review_task(
-                        self.state.run_id,
+                    proposed = self._coordinator.execute_task(
                         plan,
                         self.state.discovery,
                         task,
-                        verified,
+                        task_evidence,
+                        last_review,
                     )
-                    last_review = proposed_review
-                    if proposed_review.verdict == "accepted":
-                        accepted_review = self._result_validator.accept_review(
-                            proposed_review,
+                    verified = self._result_validator.verify(
+                        proposed,
+                        task,
+                        self.state.discovery,
+                    )
+                    review_contract_feedback: tuple[str, ...] = ()
+                    review_attempts = self._coordinator.review_retries + 1
+                    for review_attempt in range(review_attempts):
+                        proposed_review = self._coordinator.review_task(
+                            task,
                             verified,
+                            review_evidence,
+                            review_contract_feedback,
                         )
+                        last_review = proposed_review
+                        if proposed_review.verdict != "accepted":
+                            break
+                        try:
+                            accepted_review = self._result_validator.accept_review(
+                                proposed_review,
+                                verified,
+                            )
+                        except MishkanError as error:
+                            if error.envelope.code is not ErrorCode.OUTPUT_CONTRACT:
+                                raise
+                            raw_violations = error.envelope.details.get("violations", [])
+                            review_contract_feedback = tuple(str(item) for item in raw_violations)
+                            if review_attempt + 1 >= review_attempts:
+                                raise
+                        else:
+                            break
+                    if accepted_review is not None:
                         break
+                if verified is None:
+                    raise RuntimeError("review loop produced no task result")
                 if accepted_review is None:
                     if last_review is None:
                         raise RuntimeError("review loop produced no result")

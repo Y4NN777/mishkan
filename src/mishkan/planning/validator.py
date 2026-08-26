@@ -32,11 +32,13 @@ class PlanValidator:
         policy: EffectivePolicy,
         authority: PolicyAuthority,
         inspector: ContentInspector | None = None,
+        max_agent_iterations: int | None = None,
     ) -> None:
         self._catalog = catalog
         self._policy = policy
         self._authority = authority
         self._inspector = inspector
+        self._max_agent_iterations = max_agent_iterations
 
     def accept(
         self,
@@ -65,6 +67,13 @@ class PlanValidator:
             violations.append("task identifiers must be unique")
 
         for task in candidate.tasks:
+            if (
+                self._max_agent_iterations is not None
+                and len(task.tool_calls) + 1 > self._max_agent_iterations
+            ):
+                violations.append(
+                    f"task {task.task_id} exact calls exceed the CrewAI iteration bound"
+                )
             role_is_allowed = task.assigned_role in allowed_roles
             role_is_defined = task.assigned_role in organization_roles
             if not role_is_allowed or not role_is_defined:
@@ -98,22 +107,14 @@ class PlanValidator:
         if self._has_cycle(candidate):
             violations.append("task dependencies contain a cycle")
         if violations:
-            raise MishkanError(
-                ErrorCode.PLAN,
-                "CrewAI plan candidate was refused",
-                details={"violations": violations},
-            )
+            self._refuse(violations)
 
         registry = self._catalog.snapshot(
             tuple(dict.fromkeys(tool for task in candidate.tasks for tool in task.tools))
         )
         self._validate_planned_calls(candidate, registry, violations)
         if violations:
-            raise MishkanError(
-                ErrorCode.PLAN,
-                "CrewAI plan candidate was refused",
-                details={"violations": violations},
-            )
+            self._refuse(violations)
         bindings = self._bindings(candidate, organization, outcome, registry)
         payload = candidate.model_dump(mode="json")
         payload["discovery_fingerprint"] = discovery.fingerprint
@@ -173,13 +174,9 @@ class PlanValidator:
                         approval_requests.append(request.fingerprint)
                 authorizations.append(decision)
         if violations:
-            raise MishkanError(
-                ErrorCode.PLAN,
-                "CrewAI plan candidate was refused",
-                details={
-                    "violations": violations,
-                    "approval_request_fingerprints": approval_requests,
-                },
+            self._refuse(
+                violations,
+                approval_request_fingerprints=approval_requests,
             )
         accepted_payload = candidate.model_dump()
         return AcceptedPlan(
@@ -192,6 +189,54 @@ class PlanValidator:
             approvals=approvals,
             authorizations=tuple(authorizations),
         )
+
+    @classmethod
+    def _refuse(
+        cls,
+        violations: list[str],
+        *,
+        approval_request_fingerprints: list[str] | None = None,
+    ) -> None:
+        categories = cls._violation_categories(violations)
+        details: dict[str, object] = {
+            "violations": violations,
+            "violation_categories": categories,
+        }
+        if approval_request_fingerprints:
+            details["approval_request_fingerprints"] = approval_request_fingerprints
+        raise MishkanError(
+            ErrorCode.PLAN,
+            "CrewAI plan candidate was refused: " + ", ".join(categories),
+            details=details,
+        )
+
+    @staticmethod
+    def _violation_categories(violations: list[str]) -> list[str]:
+        matchers = (
+            ("repository revision", "repository_revision"),
+            ("outcome identifier", "outcome_identifier"),
+            ("task count", "task_count"),
+            ("task identifiers", "task_identifier"),
+            ("iteration bound", "iteration_bound"),
+            ("unauthorized role", "role_authority"),
+            ("unauthorized tools", "tool_authority"),
+            ("role eligibility", "role_tool_eligibility"),
+            ("absent from discovery", "evidence_path"),
+            ("unknown dependencies", "dependency"),
+            ("depends on itself", "dependency"),
+            ("dependencies contain a cycle", "dependency_cycle"),
+            ("input schema", "tool_input_schema"),
+            ("requires redaction", "content_inspection"),
+            ("blocked content", "content_inspection"),
+            ("binding ", "policy_authority"),
+        )
+        categories = [
+            category
+            for violation in violations
+            for fragment, category in matchers
+            if fragment in violation
+        ]
+        return list(dict.fromkeys(categories)) or ["plan_contract"]
 
     def _validate_planned_calls(
         self,

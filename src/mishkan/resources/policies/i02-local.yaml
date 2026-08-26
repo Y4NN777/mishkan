@@ -1,6 +1,6 @@
 schema_version: "1.0"
 source_id: bundled.local
-revision: "2"
+revision: "3"
 adoption_authority: MISHKAN release
 priority: 0
 rules:
@@ -36,9 +36,34 @@ rules:
       max_memory_mb: 512
       allow_network: false
       max_concurrency: 1
-  - rule_id: local.repository-probe
-    priority: 100
+  - rule_id: local.repository-probe.git-read
+    priority: 110
     decision: allow
+    scope:
+      identities: ["role:Repository_Investigator"]
+      objective_classes: [repository-initialization]
+      repositories: ["*"]
+      outcomes: [mishkan.init]
+      roles: [Repository_Investigator]
+      capabilities: [core.process.exec]
+      effect_classes: [command]
+      paths: ["*"]
+      executables: [/usr/bin/git, /usr/local/bin/git, /opt/homebrew/bin/git]
+      arguments: [show, "HEAD:*"]
+      network_destinations: ["*"]
+      remotes: ["*"]
+      branches: ["*"]
+      environments: ["*"]
+      credentials: ["*"]
+      external_resources: ["*"]
+      isolation_profiles: ["*"]
+      max_timeout_seconds: 30
+      max_memory_mb: 512
+      allow_network: true
+      max_concurrency: 1
+  - rule_id: local.repository-probe.approval
+    priority: 100
+    decision: require_approval
     scope:
       identities: ["role:Repository_Investigator"]
       objective_classes: [repository-initialization]

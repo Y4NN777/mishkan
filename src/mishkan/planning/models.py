@@ -112,9 +112,15 @@ class InitializationResult(PlanModel):
     schema_version: str = "1.0"
     repository_revision: str = Field(min_length=7)
     task_id: str = Field(min_length=2)
-    summary: str = Field(min_length=3, max_length=4_000)
-    cited_paths: tuple[str, ...] = Field(min_length=1)
-    findings: tuple[str, ...] = Field(min_length=1)
+    summary: str = Field(min_length=3, max_length=2_000)
+    cited_paths: tuple[str, ...] = Field(
+        min_length=1,
+        description="Exact repository-relative evidence paths from the accepted task.",
+    )
+    findings: tuple[str, ...] = Field(
+        min_length=1,
+        description="Factual findings directly supported by the cited repository paths.",
+    )
 
 
 class ReviewDecision(PlanModel):
@@ -122,8 +128,17 @@ class ReviewDecision(PlanModel):
     task_id: str = Field(min_length=2)
     verdict: Literal["accepted", "rejected"]
     summary: str = Field(min_length=3, max_length=2_000)
-    checked_citations: tuple[str, ...] = Field(min_length=1)
-    issues: tuple[str, ...] = ()
+    checked_citations: tuple[str, ...] = Field(
+        min_length=1,
+        description=(
+            "Exact repository-relative path strings copied from the proposed result's "
+            "cited_paths; never findings or explanations."
+        ),
+    )
+    issues: tuple[str, ...] = Field(
+        default=(),
+        description="Concrete evidence or contract defects; empty when the verdict is accepted.",
+    )
 
 
 class InitializationReport(PlanModel):

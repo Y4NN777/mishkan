@@ -15,4 +15,4 @@ allowed_tools:
   - search.text
   - core.process.exec
   - core.shell.run
-max_tasks: 4
+max_tasks: 1

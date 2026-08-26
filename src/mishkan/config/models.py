@@ -67,7 +67,10 @@ class CrewAIRuntimeConfig(StrictConfigModel):
     telemetry: bool = False
     temperature: float = Field(default=0.0, ge=0.0, le=2.0)
     model_timeout_seconds: int = Field(default=120, ge=10, le=3_600)
+    model_transport_retries: int = Field(default=0, ge=0, le=10)
+    model_max_output_tokens: int = Field(default=2_048, ge=128, le=131_072)
     max_agent_iterations: int = Field(default=4, ge=1, le=100)
+    task_execution_retries: int = Field(default=2, ge=0, le=10)
     plan_validation_retries: int = Field(default=2, ge=0, le=10)
     review_retries: int = Field(default=2, ge=0, le=10)
     structured_output_retries: int = Field(default=2, ge=0, le=10)

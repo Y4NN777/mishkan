@@ -47,6 +47,10 @@ class CrewAIModelRouter:
             api_key=credential,
             temperature=self._config.crewai.temperature,
             timeout=self._config.crewai.model_timeout_seconds,
+            max_tokens=self._config.crewai.model_max_output_tokens,
+            # CrewAI's public LLM factory signature omits this field, while the
+            # selected OpenAI-compatible provider exposes and honors it.
+            max_retries=self._config.crewai.model_transport_retries,  # type: ignore[call-arg]
         )
 
     @staticmethod

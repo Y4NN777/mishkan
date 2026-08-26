@@ -215,6 +215,43 @@ def test_bundled_policy_is_loaded_through_a_public_package_uri(tmp_path: Path) -
     assert policy.source_uris == ("package://mishkan.resources.policies/i02-local.yaml",)
 
 
+def test_bundled_init_policy_allows_safe_git_read_and_gates_other_host_commands(
+    tmp_path: Path,
+) -> None:
+    policy = PolicyLoader().load(
+        ("package://mishkan.resources.policies/i02-local.yaml",),
+        tmp_path,
+    )
+    base = {
+        "identity": "role:Repository_Investigator",
+        "objective_class": "repository-initialization",
+        "repository": "fixture-repository",
+        "outcome": "mishkan.init",
+        "role": "Repository_Investigator",
+        "capability": "core.process.exec",
+        "effect_class": "command",
+        "paths": (".",),
+        "resources": ResourceRequest(timeout_seconds=30, network=True),
+    }
+    git_read = _request(
+        **base,
+        executables=("/usr/bin/git",),
+        arguments=("show", "HEAD:README.md"),
+    )
+    recursive_init = _request(
+        **base,
+        executables=("/usr/bin/mishkan",),
+        arguments=("init",),
+    )
+    allowed = PolicyAuthority().evaluate(git_read, policy)
+    gated = PolicyAuthority().evaluate(recursive_init, policy)
+
+    assert allowed.decision is Decision.ALLOW
+    assert allowed.matched_rule_ids == ("local.repository-probe.git-read",)
+    assert gated.decision is Decision.REQUIRE_APPROVAL
+    assert gated.matched_rule_ids == ("local.repository-probe.approval",)
+
+
 def test_unicode_confusable_is_rejected_in_authorization_identity() -> None:
     with pytest.raises(ValueError, match="stable visible Unicode"):
         _request(identity="role:\uff25ngineer")

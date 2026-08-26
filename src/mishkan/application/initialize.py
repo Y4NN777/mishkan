@@ -122,7 +122,13 @@ class MishkanInitializer:
             state_repository,
             organization,
             outcome,
-            PlanValidator(catalog, policy, authority, inspector),
+            PlanValidator(
+                catalog,
+                policy,
+                authority,
+                inspector,
+                max_agent_iterations=config.crewai.max_agent_iterations,
+            ),
             tracing=config.crewai.tracing,
         )
         output = flow.kickoff()
