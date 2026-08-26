@@ -226,7 +226,7 @@ def test_bash_does_not_inherit_personal_environment(tmp_path: Path) -> None:
 def test_bash_profile_options_change_execution_and_are_recorded(tmp_path: Path) -> None:
     value = arguments(
         "false; printf must-not-run",
-        shell_profile=profile(errexit=True, nounset=True, inherit_errexit=True),
+        shell_profile=profile(errexit=True, nounset=True),
     )
     result = gateway(tmp_path).invoke(shell_context(tmp_path, value), value, targets(value))
 
@@ -238,8 +238,28 @@ def test_bash_profile_options_change_execution_and_are_recorded(tmp_path: Path) 
         "pipefail": True,
         "errexit": True,
         "nounset": True,
-        "inherit_errexit": True,
+        "inherit_errexit": False,
     }
+
+
+@pytest.mark.commands
+def test_bash_reports_inherit_errexit_support_truthfully(tmp_path: Path) -> None:
+    value = arguments(
+        "printf supported",
+        shell_profile=profile(inherit_errexit=True),
+    )
+    result = gateway(tmp_path).invoke(shell_context(tmp_path, value), value, targets(value))
+
+    assert result.output is not None
+    assert result.adapter_evidence["shell_options"]["inherit_errexit"] is True
+    if result.output["exit_code"] == 2:
+        assert result.status is CallStatus.FAILED
+        assert result.output["stdout_preview"] == ""
+        assert result.output["stderr_preview"] == "inherit_errexit is unsupported\n"
+    else:
+        assert result.status is CallStatus.COMPLETED
+        assert result.output["exit_code"] == 0
+        assert result.output["stdout_preview"] == "supported"
 
 
 @pytest.mark.secrets

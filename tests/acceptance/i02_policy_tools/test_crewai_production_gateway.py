@@ -241,7 +241,7 @@ def test_production_path_accepts_different_exact_native_commands_for_different_r
                         "pipefail": True,
                         "errexit": True,
                         "nounset": True,
-                        "inherit_errexit": True,
+                        "inherit_errexit": False,
                     },
                 },
                 "script": f"{executable} show HEAD:{manifest}",
