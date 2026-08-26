@@ -1,6 +1,6 @@
 schema_version: "1.0"
 source_id: bundled.local
-revision: "3"
+revision: "4"
 adoption_authority: MISHKAN release
 priority: 0
 rules:
@@ -48,7 +48,14 @@ rules:
       capabilities: [core.process.exec]
       effect_classes: [command]
       paths: ["*"]
-      executables: [/usr/bin/git, /usr/local/bin/git, /opt/homebrew/bin/git]
+      executables:
+        - /usr/bin/git
+        - /usr/local/bin/git
+        - /usr/local/Cellar/git/*/bin/git
+        - /opt/homebrew/bin/git
+        - /opt/homebrew/Cellar/git/*/bin/git
+        - /Applications/Xcode*.app/Contents/Developer/usr/bin/git
+        - /Library/Developer/CommandLineTools/usr/bin/git
       arguments: [show, "HEAD:*"]
       network_destinations: ["*"]
       remotes: ["*"]

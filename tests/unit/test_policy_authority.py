@@ -215,8 +215,19 @@ def test_bundled_policy_is_loaded_through_a_public_package_uri(tmp_path: Path) -
     assert policy.source_uris == ("package://mishkan.resources.policies/i02-local.yaml",)
 
 
-def test_bundled_init_policy_allows_safe_git_read_and_gates_other_host_commands(
+@pytest.mark.parametrize(
+    "git_executable",
+    (
+        "/usr/bin/git",
+        "/usr/local/Cellar/git/2.52.0/bin/git",
+        "/opt/homebrew/Cellar/git/2.52.0/bin/git",
+        "/Applications/Xcode_26.3.app/Contents/Developer/usr/bin/git",
+        "/Library/Developer/CommandLineTools/usr/bin/git",
+    ),
+)
+def test_bundled_init_policy_allows_portable_safe_git_read_and_gates_other_host_commands(
     tmp_path: Path,
+    git_executable: str,
 ) -> None:
     policy = PolicyLoader().load(
         ("package://mishkan.resources.policies/i02-local.yaml",),
@@ -235,7 +246,7 @@ def test_bundled_init_policy_allows_safe_git_read_and_gates_other_host_commands(
     }
     git_read = _request(
         **base,
-        executables=("/usr/bin/git",),
+        executables=(git_executable,),
         arguments=("show", "HEAD:README.md"),
     )
     recursive_init = _request(
