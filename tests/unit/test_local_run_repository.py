@@ -9,7 +9,7 @@ from support.i02 import plan_validator
 
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.organization import load_initialization_definitions
-from mishkan.persistence import LocalRunRepository
+from mishkan.persistence import LocalRunRepository, SchemaManager
 from mishkan.planning import PlanCandidate, PlanTask
 from mishkan.planning.models import AcceptedPlan, InitializationResult, ReviewDecision
 from mishkan.repository import RepositoryInspector
@@ -71,6 +71,7 @@ def _review(task_id: str = "read-readme") -> ReviewDecision:
 def test_state_and_outbox_are_durable_and_resumable(tmp_path: Path) -> None:
     discovery = _discovery(tmp_path)
     database = tmp_path / ".mishkan" / "mishkan.db"
+    SchemaManager(database).initialize()
     repository = LocalRunRepository(database)
     started = repository.start_or_resume(discovery, "Initialize this repository", "mishkan.init")
     plan = _accepted_plan(discovery)
@@ -105,7 +106,9 @@ def test_state_and_outbox_are_durable_and_resumable(tmp_path: Path) -> None:
 
 def test_conflicting_duplicate_result_is_refused(tmp_path: Path) -> None:
     discovery = _discovery(tmp_path)
-    repository = LocalRunRepository(tmp_path / "state.db")
+    database = tmp_path / "state.db"
+    SchemaManager(database).initialize()
+    repository = LocalRunRepository(database)
     run = repository.start_or_resume(discovery, "Initialize this repository", "mishkan.init")
     repository.accept_plan(run.run_id, _accepted_plan(discovery))
     first = InitializationResult(

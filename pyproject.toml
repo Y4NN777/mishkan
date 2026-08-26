@@ -13,12 +13,17 @@ authors = [
   { name = "Y4NN777", email = "axel.studiesmail@gmail.com" },
 ]
 dependencies = [
+  "alembic>=1.19,<2",
   "crewai>=1,<2",
+  "fastapi>=0.141,<1",
+  "httpx>=0.28,<1",
   "jsonschema>=4.23,<5",
+  "psutil>=7.2,<8",
   "pydantic>=2.10,<3",
   "pyyaml>=6,<7",
   "sqlalchemy>=2,<3",
   "typer>=0.16,<1",
+  "uvicorn>=0.52,<1",
 ]
 
 [project.scripts]

@@ -6,7 +6,7 @@ import pytest
 
 from mishkan.crewai.flow import CrewAIInitializationFlow, InitializationFlowState
 from mishkan.organization import load_initialization_definitions
-from mishkan.persistence import LocalRunRepository
+from mishkan.persistence import LocalRunRepository, SchemaManager
 from mishkan.planning.models import (
     AcceptedPlan,
     InitializationResult,
@@ -170,10 +170,16 @@ def _flow(
     )
 
 
+def _repository(tmp_path: Path) -> LocalRunRepository:
+    database = tmp_path / ".mishkan" / "mishkan.db"
+    SchemaManager(database).initialize()
+    return LocalRunRepository(database)
+
+
 def test_flow_resumes_after_last_accepted_task(tmp_path: Path) -> None:
     (tmp_path / "README.md").write_text("evidence", encoding="utf-8")
     discovery = _discovery(tmp_path)
-    repository = LocalRunRepository(tmp_path / ".mishkan" / "mishkan.db")
+    repository = _repository(tmp_path)
     started = repository.start_or_resume(
         discovery,
         "Initialize after a forced crash",
@@ -217,7 +223,7 @@ def test_flow_resumes_after_last_accepted_task(tmp_path: Path) -> None:
 def test_review_rejection_resynthesizes_without_reexecuting_evidence(tmp_path: Path) -> None:
     (tmp_path / "README.md").write_text("evidence", encoding="utf-8")
     discovery = _discovery(tmp_path)
-    repository = LocalRunRepository(tmp_path / ".mishkan" / "mishkan.db")
+    repository = _repository(tmp_path)
     started = repository.start_or_resume(
         discovery,
         "Initialize after a forced crash",
@@ -250,7 +256,7 @@ def test_invalid_accepted_review_is_corrected_without_resynthesizing_task(
 ) -> None:
     (tmp_path / "README.md").write_text("evidence", encoding="utf-8")
     discovery = _discovery(tmp_path)
-    repository = LocalRunRepository(tmp_path / ".mishkan" / "mishkan.db")
+    repository = _repository(tmp_path)
     started = repository.start_or_resume(
         discovery,
         "Initialize after a forced crash",

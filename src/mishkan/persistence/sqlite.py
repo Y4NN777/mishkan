@@ -9,7 +9,16 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import ForeignKey, String, Text, UniqueConstraint, create_engine, event, select
+from sqlalchemy import (
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    create_engine,
+    event,
+    select,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship
 
 from mishkan.domain.errors import ErrorCode, MishkanError
@@ -35,6 +44,7 @@ class RunRow(Base):
     objective: Mapped[str] = mapped_column(Text, nullable=False)
     outcome_id: Mapped[str] = mapped_column(String(160), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[str] = mapped_column(String(40), nullable=False)
     plan: Mapped[PlanRow | None] = relationship(back_populates="run", uselist=False)
 
@@ -59,6 +69,7 @@ class TaskRow(Base):
     task_key: Mapped[str] = mapped_column(String(64), nullable=False)
     position: Mapped[int] = mapped_column(nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     contract: Mapped[str] = mapped_column(Text, nullable=False)
 
 
@@ -88,12 +99,47 @@ class AcceptanceRow(Base):
 class OutboxRow(Base):
     __tablename__ = "event_outbox"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    aggregate_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    cursor: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    id: Mapped[str] = mapped_column(String(36), unique=True, nullable=False)
+    schema_version: Mapped[str] = mapped_column(String(16), nullable=False, default="1.0")
+    aggregate_id: Mapped[str] = mapped_column(String(256), nullable=False)
+    entity_type: Mapped[str] = mapped_column(String(64), nullable=False)
     event_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    source: Mapped[str] = mapped_column(String(128), nullable=False)
     payload: Mapped[str] = mapped_column(Text, nullable=False)
     occurred_at: Mapped[str] = mapped_column(String(40), nullable=False)
+    command_id: Mapped[str | None] = mapped_column(String(36))
+    correlation_id: Mapped[str | None] = mapped_column(String(36))
+    causation_id: Mapped[str | None] = mapped_column(String(36))
+    sensitivity: Mapped[str] = mapped_column(String(32), nullable=False, default="internal")
     published_at: Mapped[str | None] = mapped_column(String(40))
+
+
+class CommandRow(Base):
+    __tablename__ = "application_commands"
+
+    command_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    schema_version: Mapped[str] = mapped_column(String(16), nullable=False)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    command_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    actor_id: Mapped[str] = mapped_column(String(256), nullable=False)
+    target_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    target_id: Mapped[str | None] = mapped_column(String(256))
+    expected_revision: Mapped[int | None] = mapped_column(Integer)
+    issued_at: Mapped[str] = mapped_column(String(40), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    result_payload: Mapped[str] = mapped_column(Text, nullable=False)
+    event_cursor: Mapped[int | None] = mapped_column(Integer)
+    completed_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class AggregateRevisionRow(Base):
+    __tablename__ = "aggregate_revisions"
+
+    entity_type: Mapped[str] = mapped_column(String(64), primary_key=True)
+    entity_id: Mapped[str] = mapped_column(String(256), primary_key=True)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,10 +157,11 @@ class RunSnapshot:
 
 class LocalRunRepository:
     def __init__(self, database_path: Path) -> None:
-        database_path.parent.mkdir(parents=True, exist_ok=True)
+        from mishkan.persistence.migration import SchemaManager
+
+        SchemaManager(database_path).require_current()
         self._engine = create_engine(f"sqlite:///{database_path}")
         event.listen(self._engine, "connect", self._configure_connection)
-        Base.metadata.create_all(self._engine)
 
     @staticmethod
     def _configure_connection(dbapi_connection: Any, _connection_record: Any) -> None:
@@ -187,6 +234,7 @@ class LocalRunRepository:
                         task_key=task.task_id,
                         position=position,
                         status="pending",
+                        revision=0,
                         contract=task.model_dump_json(),
                     )
                 )
@@ -278,6 +326,7 @@ class LocalRunRepository:
                 )
             )
             task.status = "completed"
+            task.revision += 1
             self._add_event(
                 session,
                 run_id,
@@ -295,12 +344,15 @@ class LocalRunRepository:
 
     def outbox_events(self) -> tuple[dict[str, Any], ...]:
         with Session(self._engine) as session:
-            rows = session.scalars(select(OutboxRow).order_by(OutboxRow.occurred_at)).all()
+            rows = session.scalars(select(OutboxRow).order_by(OutboxRow.cursor)).all()
             return tuple(
                 {
+                    "cursor": row.cursor,
                     "id": row.id,
                     "aggregate_id": row.aggregate_id,
+                    "entity_type": row.entity_type,
                     "event_type": row.event_type,
+                    "source": row.source,
                     "payload": json.loads(row.payload),
                     "occurred_at": row.occurred_at,
                 }
@@ -314,10 +366,17 @@ class LocalRunRepository:
             session.add(
                 OutboxRow(
                     id=str(audit.id),
+                    schema_version=audit.schema_version,
                     aggregate_id=audit.run_id,
+                    entity_type="run",
                     event_type=audit.event_type,
+                    source="mishkan.gateway",
                     payload=audit.model_dump_json(),
                     occurred_at=audit.created_at.isoformat(),
+                    command_id=None,
+                    correlation_id=None,
+                    causation_id=None,
+                    sensitivity="internal",
                     published_at=None,
                 )
             )
@@ -386,10 +445,17 @@ class LocalRunRepository:
         session.add(
             OutboxRow(
                 id=str(new_id()),
+                schema_version="1.0",
                 aggregate_id=aggregate_id,
+                entity_type="run",
                 event_type=event_type,
+                source="mishkan.runtime",
                 payload=json.dumps(payload, sort_keys=True, separators=(",", ":")),
                 occurred_at=datetime.isoformat(utc_now()),
+                command_id=None,
+                correlation_id=None,
+                causation_id=None,
+                sensitivity="internal",
                 published_at=None,
             )
         )

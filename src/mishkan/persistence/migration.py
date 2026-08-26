@@ -1,0 +1,194 @@
+"""Explicit database initialization, inspection, backup, and migration."""
+
+from __future__ import annotations
+
+import sqlite3
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from enum import StrEnum
+from pathlib import Path
+
+from alembic import command
+from alembic.config import Config
+from alembic.runtime.migration import MigrationContext
+from alembic.script import ScriptDirectory
+from sqlalchemy import create_engine, inspect
+from sqlalchemy.engine.reflection import Inspector
+
+from mishkan.domain.errors import ErrorCode, MishkanError
+
+I02_BASELINE = "i02_baseline"
+
+_I02_COLUMNS = {
+    "runs": {
+        "id",
+        "resume_key",
+        "repository_id",
+        "repository_revision",
+        "discovery_fingerprint",
+        "objective",
+        "outcome_id",
+        "status",
+        "created_at",
+    },
+    "plans": {"id", "run_id", "fingerprint", "payload", "accepted_at"},
+    "tasks": {"id", "run_id", "task_key", "position", "status", "contract"},
+    "accepted_results": {"id", "run_id", "task_key", "payload", "accepted_at"},
+    "task_acceptances": {
+        "id",
+        "run_id",
+        "task_key",
+        "result_id",
+        "review_payload",
+        "accepted_at",
+    },
+    "event_outbox": {
+        "id",
+        "aggregate_id",
+        "event_type",
+        "payload",
+        "occurred_at",
+        "published_at",
+    },
+}
+
+
+class DatabaseState(StrEnum):
+    EMPTY = "empty"
+    LEGACY_I02 = "legacy_i02"
+    OUTDATED = "outdated"
+    CURRENT = "current"
+    UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True, slots=True)
+class DatabaseStatus:
+    state: DatabaseState
+    current_revision: str | None
+    head_revision: str
+    backup_path: Path | None = None
+
+
+class SchemaManager:
+    def __init__(self, database_path: Path) -> None:
+        self.database_path = database_path.resolve()
+
+    def status(self) -> DatabaseStatus:
+        head = self._head()
+        if not self.database_path.exists() or self.database_path.stat().st_size == 0:
+            return DatabaseStatus(DatabaseState.EMPTY, None, head)
+        engine = create_engine(f"sqlite:///{self.database_path}")
+        try:
+            inspector = inspect(engine)
+            tables = set(inspector.get_table_names())
+            if not tables:
+                return DatabaseStatus(DatabaseState.EMPTY, None, head)
+            if "alembic_version" not in tables:
+                state = (
+                    DatabaseState.LEGACY_I02
+                    if self._is_i02(inspector, tables)
+                    else DatabaseState.UNKNOWN
+                )
+                return DatabaseStatus(state, None, head)
+            with engine.connect() as connection:
+                current = MigrationContext.configure(connection).get_current_revision()
+            if current == head:
+                return DatabaseStatus(DatabaseState.CURRENT, current, head)
+            known = {revision.revision for revision in self._scripts().walk_revisions()}
+            state = DatabaseState.OUTDATED if current in known else DatabaseState.UNKNOWN
+            return DatabaseStatus(state, current, head)
+        finally:
+            engine.dispose()
+
+    def initialize(self) -> DatabaseStatus:
+        observed = self.status()
+        if observed.state is not DatabaseState.EMPTY:
+            raise MishkanError(
+                ErrorCode.VERSION,
+                "database initialization requires an empty destination",
+                details={"state": observed.state.value, "database": str(self.database_path)},
+            )
+        self.database_path.parent.mkdir(parents=True, exist_ok=True)
+        self._upgrade_to_head()
+        return self.status()
+
+    def initialize_if_empty(self) -> DatabaseStatus:
+        observed = self.status()
+        return self.initialize() if observed.state is DatabaseState.EMPTY else observed
+
+    def upgrade(self) -> DatabaseStatus:
+        observed = self.status()
+        if observed.state is DatabaseState.CURRENT:
+            return observed
+        if observed.state is DatabaseState.EMPTY:
+            return self.initialize()
+        if observed.state is DatabaseState.UNKNOWN:
+            raise MishkanError(
+                ErrorCode.VERSION,
+                "database schema is not a recognized MISHKAN revision",
+                details={"database": str(self.database_path), "automatic_migration": False},
+            )
+        backup = self._backup()
+        if observed.state is DatabaseState.LEGACY_I02:
+            self._stamp(I02_BASELINE)
+        self._upgrade_to_head()
+        current = self.status()
+        return DatabaseStatus(
+            current.state,
+            current.current_revision,
+            current.head_revision,
+            backup_path=backup,
+        )
+
+    def require_current(self) -> None:
+        observed = self.status()
+        if observed.state is not DatabaseState.CURRENT:
+            raise MishkanError(
+                ErrorCode.VERSION,
+                "database schema requires an explicit operator action",
+                details={
+                    "state": observed.state.value,
+                    "current_revision": observed.current_revision,
+                    "required_revision": observed.head_revision,
+                    "automatic_migration": False,
+                },
+            )
+
+    def _config(self) -> Config:
+        config = Config()
+        config.set_main_option("script_location", str(Path(__file__).parent / "migrations"))
+        config.set_main_option("sqlalchemy.url", f"sqlite:///{self.database_path}")
+        return config
+
+    def _scripts(self) -> ScriptDirectory:
+        return ScriptDirectory.from_config(self._config())
+
+    def _head(self) -> str:
+        head = self._scripts().get_current_head()
+        if head is None:
+            raise RuntimeError("MISHKAN migration history has no head revision")
+        return head
+
+    def _upgrade_to_head(self) -> None:
+        command.upgrade(self._config(), "head")
+
+    def _stamp(self, revision: str) -> None:
+        command.stamp(self._config(), revision)
+
+    def _backup(self) -> Path:
+        directory = self.database_path.parent / "backups"
+        directory.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+        destination = directory / f"{self.database_path.stem}-{timestamp}.db"
+        with sqlite3.connect(self.database_path) as source, sqlite3.connect(destination) as target:
+            source.backup(target)
+        return destination
+
+    @staticmethod
+    def _is_i02(inspector: Inspector, tables: set[str]) -> bool:
+        if tables != set(_I02_COLUMNS):
+            return False
+        return all(
+            {column["name"] for column in inspector.get_columns(table)} == expected
+            for table, expected in _I02_COLUMNS.items()
+        )

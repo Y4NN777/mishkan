@@ -7,7 +7,7 @@ from mishkan.config.models import MishkanConfig
 from mishkan.crewai.environment import configure_crewai_environment
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.organization import load_initialization_definitions
-from mishkan.persistence import LocalRunRepository
+from mishkan.persistence import LocalRunRepository, SchemaManager
 from mishkan.planning import PlanValidator
 from mishkan.planning.models import InitializationReport
 from mishkan.policy import PolicyAuthority, PolicyLoader
@@ -45,7 +45,9 @@ class MishkanInitializer:
         from mishkan.crewai.flow import CrewAIInitializationFlow, InitializationFlowState
 
         organization, outcome = load_initialization_definitions()
-        state_repository = LocalRunRepository(discovery.binding.root / ".mishkan" / "mishkan.db")
+        database = discovery.binding.root / ".mishkan" / "mishkan.db"
+        SchemaManager(database).initialize_if_empty()
+        state_repository = LocalRunRepository(database)
         native_environment = discover_native_environment()
         catalog = ToolCatalog(
             config.tool_sources,
