@@ -7,18 +7,17 @@ These instructions apply to the entire repository.
 MISHKAN has completed the framework's final pre-code stage, Sequence 05. Increments I00 and I01
 have passed their local and remote acceptance gates and their code and evidence remain unchanged.
 PRD 1.4, SRS 1.6, Contract 1.4, Responsibilities 1.2, System Model 1.3, Architecture 1.3, and
-Implementation Plan 1.5 were accepted in order by D-032 through D-037 on 2026-08-25. D-036 resumes
-I02 on `feat/i02-policy-tools`; D-037 preserves that authority and the later increment gates. The
-existing registry, policy, gateway, and deterministic
-enforcement mechanisms remain accepted narrow evidence; I02 must remove false adapter bindings and
-add truthful File/Read/Search, process, and full Bash execution. The rejected universal workflow, mandatory
-outcome catalogue, capability-family matrix, static role/tool matrix, competing runtime, and
-private operational deny-list must not return.
+Implementation Plan 1.5 were accepted in order by D-032 through D-037 on 2026-08-25. I02 was
+integrated before `feat/i03-mutations-sessions-durability` began. I03 now has a green deterministic
+local gate recorded in `docs/VALIDATION/I03.md`; its final acceptance remains pending the tracked
+live CrewAI/Ollama regression and the remote Linux/macOS Python 3.11–3.13 matrix. Until that gate is
+recorded, I04 production implementation does not begin. The rejected universal workflow,
+mandatory outcome catalogue, capability-family matrix, static role/tool matrix, competing runtime,
+and private operational deny-list must not return.
 
 D-037 accepts the detailed agent-authored mission environment lifecycle, per-context bindings,
 Dev Container/Podman/Compose descriptor generation, ordinary effect boundaries, and acceptance
-work packages. It does not expand implementation beyond I02 until the later increment gates are
-reached.
+work packages. It does not waive any increment gate.
 
 ## Mandatory method
 

@@ -97,8 +97,11 @@ left solely in that register; authority transferred through accepted decisions D
 ## Open decisions
 
 No documentary-baseline decision remains open. D-030 was superseded without acceptance; D-032
-through D-037 were accepted in order on 2026-08-25. I02 remains resumed under Implementation Plan
-1.5 and subject to its implementation scope and acceptance gate.
+through D-037 were accepted in order on 2026-08-25.
+
+The I03 deterministic local gate passed on 2026-08-26 and is recorded in `VALIDATION/I03.md`.
+Increment acceptance is still open until the tracked real CrewAI/Ollama regression and the remote
+Linux/macOS Python 3.11–3.13 matrix pass. No D-038 acceptance decision exists before those results.
 
 ## Review rules
 

@@ -26,6 +26,7 @@ This index is the entry point for durable MISHKAN documentation.
 | [`VALIDATION/I00.md`](VALIDATION/I00.md) | Passed | Observed local and remote acceptance evidence for the I00 foundation |
 | [`VALIDATION/I01.md`](VALIDATION/I01.md) | Passed | Observed local and remote acceptance evidence for real CrewAI execution |
 | [`VALIDATION/I02.md`](VALIDATION/I02.md) | Reopened | Narrow mechanism evidence and remaining corrected I02 acceptance conditions |
+| [`VALIDATION/I03.md`](VALIDATION/I03.md) | Local gate passed; external evidence pending | Durable daemon, mutations, artifacts, sessions, runtime recovery, security, and performance evidence |
 
 ## Authority rules
 
