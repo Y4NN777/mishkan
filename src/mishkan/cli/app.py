@@ -28,6 +28,7 @@ events_app = typer.Typer(help="Query and export the durable event stream.")
 change_app = typer.Typer(help="Plan, apply, and inspect recoverable change sets.")
 terminal_app = typer.Typer(help="Open and control daemon-owned PTY sessions.")
 job_app = typer.Typer(help="Start and control daemon-owned managed jobs.")
+run_app = typer.Typer(help="Inspect, cancel, and recover durable runs.")
 app.add_typer(config_app, name="config")
 app.add_typer(schema_app, name="schema")
 app.add_typer(daemon_app, name="daemon")
@@ -37,6 +38,7 @@ app.add_typer(events_app, name="events")
 app.add_typer(change_app, name="change")
 app.add_typer(terminal_app, name="terminal")
 app.add_typer(job_app, name="job")
+app.add_typer(run_app, name="run")
 
 
 @dataclass(frozen=True, slots=True)
@@ -585,6 +587,84 @@ def settle_job(
 ) -> None:
     """Finalize completed job spools as immutable Artifacts."""
     _session_effect(ctx, session_id, "session.settle", {}, expected_revision)
+
+
+@run_app.command("list")
+def list_runs(
+    ctx: typer.Context,
+    offset: Annotated[int, typer.Option(min=0)] = 0,
+    limit: Annotated[int, typer.Option(min=1, max=1_000)] = 100,
+) -> None:
+    """List bounded durable run projections."""
+    with _daemon_client(ctx) as client:
+        values = client.runs(offset=offset, limit=limit)
+    _emit(values, as_json=_state(ctx).json_output)
+
+
+@run_app.command("tasks")
+def list_run_tasks(
+    ctx: typer.Context,
+    run_id: str,
+    offset: Annotated[int, typer.Option(min=0)] = 0,
+    limit: Annotated[int, typer.Option(min=1, max=1_000)] = 100,
+) -> None:
+    """List bounded task projections for one run."""
+    with _daemon_client(ctx) as client:
+        values = client.tasks(run_id, offset=offset, limit=limit)
+    _emit(values, as_json=_state(ctx).json_output)
+
+
+@run_app.command("cancel")
+def cancel_run(
+    ctx: typer.Context,
+    run_id: str,
+    expected_revision: Annotated[int | None, typer.Option(min=0)] = None,
+) -> None:
+    """Persist monotone cancellation before stopping new eligibility."""
+    _run_effect(ctx, run_id, "run.cancel", {}, expected_revision)
+
+
+@run_app.command("recover")
+def recover_run(
+    ctx: typer.Context,
+    run_id: str,
+    uncertain_effect: Annotated[
+        list[str] | None,
+        typer.Option("--uncertain-effect", help="Unreconciled effect; repeat as needed."),
+    ] = None,
+    expected_revision: Annotated[int | None, typer.Option(min=0)] = None,
+) -> None:
+    """Release interrupted tasks only after effect reconciliation."""
+    _run_effect(
+        ctx,
+        run_id,
+        "run.recover",
+        {"uncertain_effects": uncertain_effect or []},
+        expected_revision,
+    )
+
+
+def _run_effect(
+    ctx: typer.Context,
+    run_id: str,
+    command_type: str,
+    payload: dict[str, object],
+    expected_revision: int | None,
+) -> None:
+    from mishkan.application import ApplicationCommand
+
+    with _daemon_client(ctx) as client:
+        result = client.command(
+            ApplicationCommand(
+                command_type=command_type,
+                actor_id=client.principal_id,
+                target_type="run",
+                target_id=run_id,
+                expected_revision=expected_revision,
+                payload=payload,
+            )
+        )
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
 
 
 @schema_app.command("export")

@@ -200,16 +200,19 @@ class SQLiteApplicationRepository:
                 events=events,
             )
 
-    def snapshot(self) -> SnapshotEnvelope:
+    def snapshot(self, *, limit: int = 1_000) -> SnapshotEnvelope:
+        self._query_bound(0, limit)
         with Session(self._engine) as session, session.begin():
             cursor = session.scalar(select(func.max(OutboxRow.cursor))) or 0
             runs = session.execute(
-                select(RunRow.id, RunRow.status, RunRow.revision).order_by(RunRow.created_at)
+                select(RunRow.id, RunRow.status, RunRow.revision)
+                .order_by(RunRow.created_at)
+                .limit(limit)
             ).all()
             tasks = session.execute(
-                select(TaskRow.id, TaskRow.run_id, TaskRow.status, TaskRow.revision).order_by(
-                    TaskRow.run_id, TaskRow.position
-                )
+                select(TaskRow.id, TaskRow.run_id, TaskRow.status, TaskRow.revision)
+                .order_by(TaskRow.run_id, TaskRow.position)
+                .limit(limit)
             ).all()
             return SnapshotEnvelope(
                 cursor=cursor,
@@ -229,6 +232,58 @@ class SQLiteApplicationRepository:
                     ],
                 },
             )
+
+    def runs(self, *, offset: int = 0, limit: int = 100) -> tuple[dict[str, Any], ...]:
+        self._query_bound(offset, limit)
+        with Session(self._engine) as session:
+            rows = session.scalars(
+                select(RunRow).order_by(RunRow.created_at, RunRow.id).offset(offset).limit(limit)
+            ).all()
+            return tuple(
+                {
+                    "id": row.id,
+                    "status": row.status,
+                    "revision": row.revision,
+                    "cancellation_requested": row.cancellation_requested,
+                    "repository_revision": row.repository_revision,
+                    "created_at": row.created_at,
+                    "updated_at": row.updated_at,
+                }
+                for row in rows
+            )
+
+    def tasks(
+        self,
+        run_id: str,
+        *,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> tuple[dict[str, Any], ...]:
+        self._query_bound(offset, limit)
+        with Session(self._engine) as session:
+            rows = session.scalars(
+                select(TaskRow)
+                .where(TaskRow.run_id == run_id)
+                .order_by(TaskRow.position)
+                .offset(offset)
+                .limit(limit)
+            ).all()
+            return tuple(
+                {
+                    "id": row.id,
+                    "task_id": row.task_key,
+                    "status": row.status,
+                    "revision": row.revision,
+                    "attempt_count": row.attempt_count,
+                    "updated_at": row.updated_at,
+                }
+                for row in rows
+            )
+
+    @staticmethod
+    def _query_bound(offset: int, limit: int) -> None:
+        if offset < 0 or limit < 1 or limit > 1_000:
+            raise MishkanError(ErrorCode.OUTPUT_CONTRACT, "query bound is invalid")
 
     @staticmethod
     def _command_row(command: ApplicationCommand, result: CommandResult) -> CommandRow:

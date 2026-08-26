@@ -26,8 +26,9 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, rela
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.identity import new_id
 from mishkan.domain.time import utc_now
-from mishkan.planning.models import AcceptedPlan, InitializationResult, ReviewDecision
+from mishkan.planning.models import AcceptedPlan, InitializationResult, PlanTask, ReviewDecision
 from mishkan.repository.models import DiscoverySnapshot
+from mishkan.runtime import RunState, TaskState
 from mishkan.tools.gateway_models import AuditEvent
 
 
@@ -47,7 +48,9 @@ class RunRow(Base):
     outcome_id: Mapped[str] = mapped_column(String(160), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cancellation_requested: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
     plan: Mapped[PlanRow | None] = relationship(back_populates="run", uselist=False)
 
 
@@ -72,7 +75,9 @@ class TaskRow(Base):
     position: Mapped[int] = mapped_column(nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     contract: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
 
 
 class ResultRow(Base):
@@ -316,6 +321,7 @@ class LocalRunRepository:
             run = session.scalar(select(RunRow).where(RunRow.resume_key == resume_key))
             resumed = run is not None
             if run is None:
+                now = utc_now().isoformat()
                 run = RunRow(
                     id=str(new_id()),
                     resume_key=resume_key,
@@ -324,8 +330,10 @@ class LocalRunRepository:
                     discovery_fingerprint=discovery.fingerprint,
                     objective=objective,
                     outcome_id=outcome_id,
-                    status="planning",
-                    created_at=utc_now().isoformat(),
+                    status=RunState.PLANNING.value,
+                    cancellation_requested=False,
+                    created_at=now,
+                    updated_at=now,
                 )
                 session.add(run)
                 self._add_event(
@@ -361,18 +369,22 @@ class LocalRunRepository:
                 )
             )
             for position, task in enumerate(plan.tasks):
+                task_state = TaskState.ELIGIBLE if not task.depends_on else TaskState.PENDING
                 session.add(
                     TaskRow(
                         id=str(new_id()),
                         run_id=run_id,
                         task_key=task.task_id,
                         position=position,
-                        status="pending",
+                        status=task_state.value,
                         revision=0,
+                        attempt_count=0,
                         contract=task.model_dump_json(),
+                        updated_at=utc_now().isoformat(),
                     )
                 )
-            run.status = "running"
+            run.status = RunState.RUNNING.value
+            run.updated_at = utc_now().isoformat()
             self._add_event(
                 session,
                 run_id,
@@ -381,6 +393,128 @@ class LocalRunRepository:
             )
             session.flush()
             return self._snapshot(session, run, resumed=False)
+
+    def claim_task(self, run_id: str, task_id: str) -> int:
+        """Move one eligible task to executing and return its monotone attempt number."""
+        with Session(self._engine) as session, session.begin():
+            run = self._require_run(session, run_id)
+            task = self._require_task(session, run_id, task_id)
+            if run.cancellation_requested or run.status != RunState.RUNNING.value:
+                raise MishkanError(ErrorCode.RUN_INTERRUPTED, "run is not accepting task claims")
+            if task.status != TaskState.ELIGIBLE.value:
+                raise MishkanError(
+                    ErrorCode.REVISION_MISMATCH,
+                    "task is not eligible for execution",
+                    details={"task_id": task_id, "state": task.status},
+                )
+            task.status = TaskState.EXECUTING.value
+            task.attempt_count += 1
+            task.revision += 1
+            task.updated_at = utc_now().isoformat()
+            self._add_event(
+                session,
+                run_id,
+                "task.claimed",
+                {"task_id": task_id, "attempt": task.attempt_count},
+            )
+            return task.attempt_count
+
+    def mark_validating(self, run_id: str, task_id: str) -> None:
+        with Session(self._engine) as session, session.begin():
+            task = self._require_task(session, run_id, task_id)
+            if task.status != TaskState.EXECUTING.value:
+                raise MishkanError(ErrorCode.REVISION_MISMATCH, "task is not executing")
+            task.status = TaskState.VALIDATING.value
+            task.revision += 1
+            task.updated_at = utc_now().isoformat()
+            self._add_event(session, run_id, "task.validating", {"task_id": task_id})
+
+    def mark_task_failure(self, run_id: str, task_id: str, *, rejected: bool) -> None:
+        with Session(self._engine) as session, session.begin():
+            task = self._require_task(session, run_id, task_id)
+            if task.status not in {TaskState.EXECUTING.value, TaskState.VALIDATING.value}:
+                raise MishkanError(ErrorCode.REVISION_MISMATCH, "task is not active")
+            state = TaskState.REJECTED if rejected else TaskState.FAILED
+            task.status = state.value
+            task.revision += 1
+            task.updated_at = utc_now().isoformat()
+            self._add_event(session, run_id, f"task.{state.value}", {"task_id": task_id})
+
+    def cancel_run(self, run_id: str) -> RunSnapshot:
+        """Persist cancellation before preventing all future eligibility."""
+        with Session(self._engine) as session, session.begin():
+            run = self._require_run(session, run_id)
+            if run.status in {RunState.COMPLETED.value, RunState.CANCELLED.value}:
+                return self._snapshot(session, run, resumed=True)
+            run.cancellation_requested = True
+            run.status = RunState.CANCELLING.value
+            now = utc_now().isoformat()
+            run.updated_at = now
+            tasks = session.scalars(select(TaskRow).where(TaskRow.run_id == run_id)).all()
+            for task in tasks:
+                if task.status in {TaskState.PENDING.value, TaskState.ELIGIBLE.value}:
+                    task.status = TaskState.CANCELLED.value
+                    task.revision += 1
+                    task.updated_at = now
+            if not any(
+                task.status in {TaskState.EXECUTING.value, TaskState.VALIDATING.value}
+                for task in tasks
+            ):
+                run.status = RunState.CANCELLED.value
+            self._add_event(session, run_id, "run.cancellation_requested", {})
+            return self._snapshot(session, run, resumed=False)
+
+    def recover_interrupted(
+        self,
+        run_id: str,
+        *,
+        uncertain_effects: tuple[str, ...] = (),
+    ) -> tuple[str, ...]:
+        """Release interrupted work only after callers reconcile every stateful effect."""
+        if uncertain_effects:
+            raise MishkanError(
+                ErrorCode.RUN_INTERRUPTED,
+                "run contains unreconciled stateful effects",
+                details={"effects": uncertain_effects, "automatic_retry": False},
+            )
+        with Session(self._engine) as session, session.begin():
+            run = self._require_run(session, run_id)
+            if run.cancellation_requested:
+                return ()
+            tasks = session.scalars(
+                select(TaskRow).where(
+                    TaskRow.run_id == run_id,
+                    TaskRow.status.in_(
+                        (
+                            TaskState.EXECUTING.value,
+                            TaskState.VALIDATING.value,
+                            TaskState.REJECTED.value,
+                            TaskState.FAILED.value,
+                        )
+                    ),
+                )
+            ).all()
+            released: list[str] = []
+            for task in tasks:
+                if self._dependencies_accepted(session, run_id, task):
+                    task.status = TaskState.ELIGIBLE.value
+                    task.revision += 1
+                    task.updated_at = utc_now().isoformat()
+                    released.append(task.task_key)
+            if released:
+                self._add_event(
+                    session, run_id, "run.interrupted_tasks_released", {"tasks": released}
+                )
+            return tuple(released)
+
+    def task_states(self, run_id: str) -> dict[str, str]:
+        with Session(self._engine) as session:
+            rows = session.execute(
+                select(TaskRow.task_key, TaskRow.status)
+                .where(TaskRow.run_id == run_id)
+                .order_by(TaskRow.position)
+            ).all()
+            return {row.task_key: row.status for row in rows}
 
     def accept_result(
         self,
@@ -437,6 +571,24 @@ class LocalRunRepository:
                     )
                 return self._snapshot(session, run, resumed=True)
 
+            if run.cancellation_requested:
+                raise MishkanError(
+                    ErrorCode.RUN_INTERRUPTED,
+                    "run cancellation prevents new result acceptance",
+                    details={"run_id": run_id},
+                )
+            if not self._dependencies_accepted(session, run_id, task):
+                raise MishkanError(
+                    ErrorCode.RUN_INTERRUPTED,
+                    "task dependencies are not durably accepted",
+                    details={"run_id": run_id, "task_id": result.task_id},
+                )
+            if review.verdict != "accepted":
+                raise MishkanError(
+                    ErrorCode.OUTPUT_CONTRACT,
+                    "rejected review cannot become a durable task acceptance",
+                )
+
             result_id = str(new_id())
             accepted_at = utc_now().isoformat()
             session.add(
@@ -459,19 +611,25 @@ class LocalRunRepository:
                     accepted_at=accepted_at,
                 )
             )
-            task.status = "completed"
+            task.status = TaskState.ACCEPTED.value
             task.revision += 1
+            task.updated_at = accepted_at
             self._add_event(
                 session,
                 run_id,
                 "task.result_accepted",
                 {"task_id": result.task_id},
             )
+            self._release_dependents(session, run_id)
             pending = session.scalar(
-                select(TaskRow.id).where(TaskRow.run_id == run_id, TaskRow.status != "completed")
+                select(TaskRow.id).where(
+                    TaskRow.run_id == run_id,
+                    TaskRow.status != TaskState.ACCEPTED.value,
+                )
             )
             if pending is None:
-                run.status = "completed"
+                run.status = RunState.COMPLETED.value
+                run.updated_at = accepted_at
                 self._add_event(session, run_id, "run.completed", {})
             session.flush()
             return self._snapshot(session, run, resumed=False)
@@ -542,6 +700,49 @@ class LocalRunRepository:
                 details={"run_id": run_id},
             )
         return run
+
+    @staticmethod
+    def _require_task(session: Session, run_id: str, task_id: str) -> TaskRow:
+        task = session.scalar(
+            select(TaskRow).where(TaskRow.run_id == run_id, TaskRow.task_key == task_id)
+        )
+        if task is None:
+            raise MishkanError(
+                ErrorCode.RUN_INTERRUPTED,
+                "run task does not exist",
+                details={"run_id": run_id, "task_id": task_id},
+            )
+        return task
+
+    @staticmethod
+    def _dependencies_accepted(session: Session, run_id: str, task: TaskRow) -> bool:
+        contract = PlanTask.model_validate_json(task.contract)
+        if not contract.depends_on:
+            return True
+        accepted = set(
+            session.scalars(
+                select(TaskRow.task_key).where(
+                    TaskRow.run_id == run_id,
+                    TaskRow.task_key.in_(contract.depends_on),
+                    TaskRow.status == TaskState.ACCEPTED.value,
+                )
+            ).all()
+        )
+        return accepted == set(contract.depends_on)
+
+    @classmethod
+    def _release_dependents(cls, session: Session, run_id: str) -> None:
+        pending = session.scalars(
+            select(TaskRow).where(
+                TaskRow.run_id == run_id,
+                TaskRow.status == TaskState.PENDING.value,
+            )
+        ).all()
+        for task in pending:
+            if cls._dependencies_accepted(session, run_id, task):
+                task.status = TaskState.ELIGIBLE.value
+                task.revision += 1
+                task.updated_at = utc_now().isoformat()
 
     @staticmethod
     def _snapshot(session: Session, run: RunRow, *, resumed: bool) -> RunSnapshot:

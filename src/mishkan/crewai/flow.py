@@ -104,6 +104,8 @@ class CrewAIInitializationFlow(Flow[InitializationFlowState]):
 
     @listen(establish_plan)
     def execute_plan(self, plan: AcceptedPlan) -> InitializationReport:
+        if self.state.resumed:
+            self._repository.recover_interrupted(self.state.run_id)
         completed = {result.task_id for result in self.state.accepted_results}
         pending = {task.task_id: task for task in plan.tasks if task.task_id not in completed}
         while pending:
@@ -113,6 +115,7 @@ class CrewAIInitializationFlow(Flow[InitializationFlowState]):
                 if task.task_id in pending and set(task.depends_on).issubset(completed)
             ]
             for task in ready:
+                self._repository.claim_task(self.state.run_id, task.task_id)
                 task_evidence = self._coordinator.execute_task_evidence(
                     self.state.run_id,
                     plan,
@@ -142,6 +145,8 @@ class CrewAIInitializationFlow(Flow[InitializationFlowState]):
                         task,
                         self.state.discovery,
                     )
+                    if _attempt == 0:
+                        self._repository.mark_validating(self.state.run_id, task.task_id)
                     review_contract_feedback: tuple[str, ...] = ()
                     review_attempts = self._coordinator.review_retries + 1
                     for review_attempt in range(review_attempts):

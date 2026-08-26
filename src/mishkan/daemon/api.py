@@ -24,7 +24,7 @@ from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.edits import ChangeSet, ChangeSetResult, ChangeSetService
 from mishkan.events import EventPage
 from mishkan.execution import CursorRead, SessionRecord, SessionRequest, SessionSupervisor
-from mishkan.persistence import SchemaManager, SQLiteApplicationRepository
+from mishkan.persistence import LocalRunRepository, SchemaManager, SQLiteApplicationRepository
 
 
 def _http_status(error: MishkanError) -> int:
@@ -46,6 +46,7 @@ def create_app(config: MishkanConfig) -> FastAPI:
     token_file = TokenFile(paths.token_file)
     token_file.read()
     repository = SQLiteApplicationRepository(paths.database)
+    run_repository = LocalRunRepository(paths.database)
     security = HTTPBearer(auto_error=False)
     security_dependency = Depends(security)
     daemon = config.daemon
@@ -126,7 +127,9 @@ def create_app(config: MishkanConfig) -> FastAPI:
             target_id = command.target_id or "local-instance"
             repository.require_expected_revision(command, target_id)
             try:
-                event_type, result_payload = _dispatch(command, artifacts, changes, supervisor)
+                event_type, result_payload = _dispatch(
+                    command, artifacts, changes, supervisor, run_repository
+                )
             except MishkanError:
                 raise
             except (KeyError, TypeError, ValueError) as exc:
@@ -148,7 +151,7 @@ def create_app(config: MishkanConfig) -> FastAPI:
     async def snapshot(
         _principal: TokenRecord = authenticated,
     ) -> SnapshotEnvelope:
-        return repository.snapshot()
+        return repository.snapshot(limit=daemon.event_page_limit)
 
     @app.get("/v1/events")
     async def events(
@@ -303,6 +306,23 @@ def create_app(config: MishkanConfig) -> FastAPI:
             binary=binary,
         )
 
+    @app.get("/v1/runs")
+    async def run_list(
+        _principal: TokenRecord = authenticated,
+        offset: Annotated[int, Query(ge=0)] = 0,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
+    ) -> tuple[dict[str, object], ...]:
+        return repository.runs(offset=offset, limit=limit)
+
+    @app.get("/v1/runs/{run_id}/tasks")
+    async def task_list(
+        run_id: str,
+        _principal: TokenRecord = authenticated,
+        offset: Annotated[int, Query(ge=0)] = 0,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
+    ) -> tuple[dict[str, object], ...]:
+        return repository.tasks(run_id, offset=offset, limit=limit)
+
     return app
 
 
@@ -311,6 +331,7 @@ def _dispatch(
     artifacts: DurableArtifactService,
     changes: ChangeSetService,
     supervisor: SessionSupervisor,
+    runs: LocalRunRepository,
 ) -> tuple[str, dict[str, object]]:
     payload = command.payload
     if command.command_type == "system.checkpoint" and command.target_type == "system":
@@ -383,6 +404,13 @@ def _dispatch(
     if command.command_type == "session.settle" and command.target_id is not None:
         record = supervisor.settle(UUID(command.target_id))
         return "session.settled", record.model_dump(mode="json")
+    if command.command_type == "run.cancel" and command.target_id is not None:
+        snapshot = runs.cancel_run(command.target_id)
+        return "run.cancellation_requested", {"run_id": snapshot.run_id}
+    if command.command_type == "run.recover" and command.target_id is not None:
+        effects = tuple(str(value) for value in payload.get("uncertain_effects", []))
+        released = runs.recover_interrupted(command.target_id, uncertain_effects=effects)
+        return "run.recovered", {"run_id": command.target_id, "released_tasks": released}
     raise MishkanError(
         ErrorCode.OUTPUT_CONTRACT,
         "application command type has no registered I03 handler",

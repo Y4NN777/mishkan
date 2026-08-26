@@ -165,6 +165,30 @@ class Mishkan:
         response.raise_for_status()
         return CursorRead.model_validate(response.json())
 
+    def runs(self, *, offset: int = 0, limit: int = 100) -> tuple[dict[str, object], ...]:
+        response = self._client.get(
+            "/v1/runs",
+            headers=self._headers(),
+            params={"offset": offset, "limit": limit},
+        )
+        response.raise_for_status()
+        return tuple(dict(item) for item in response.json())
+
+    def tasks(
+        self,
+        run_id: str,
+        *,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> tuple[dict[str, object], ...]:
+        response = self._client.get(
+            f"/v1/runs/{run_id}/tasks",
+            headers=self._headers(),
+            params={"offset": offset, "limit": limit},
+        )
+        response.raise_for_status()
+        return tuple(dict(item) for item in response.json())
+
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self._token_file.read().token}"}
 

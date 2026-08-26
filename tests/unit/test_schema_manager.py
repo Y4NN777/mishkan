@@ -59,7 +59,11 @@ def test_exact_i02_database_is_backed_up_and_upgraded(tmp_path: Path) -> None:
         )
         connection.execute(text("DROP TABLE event_outbox_i03"))
         connection.execute(text("ALTER TABLE runs DROP COLUMN revision"))
+        connection.execute(text("ALTER TABLE runs DROP COLUMN cancellation_requested"))
+        connection.execute(text("ALTER TABLE runs DROP COLUMN updated_at"))
         connection.execute(text("ALTER TABLE tasks DROP COLUMN revision"))
+        connection.execute(text("ALTER TABLE tasks DROP COLUMN attempt_count"))
+        connection.execute(text("ALTER TABLE tasks DROP COLUMN updated_at"))
     engine.dispose()
 
     manager = SchemaManager(database)
