@@ -559,7 +559,8 @@ class ChangeSetService:
     @staticmethod
     def _result(session: Session, change_set_id: str) -> ChangeSetResult:
         row = session.get(ChangeSetRow, change_set_id)
-        assert row is not None
+        if row is None:
+            raise MishkanError(ErrorCode.EDIT, "change set does not exist")
         preimages = session.scalars(
             select(ChangeOperationRow.preimage_reference)
             .where(ChangeOperationRow.change_set_id == change_set_id)

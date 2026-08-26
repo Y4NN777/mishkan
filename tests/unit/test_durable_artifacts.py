@@ -120,3 +120,45 @@ def test_missing_body_is_persistently_classified(tmp_path: Path) -> None:
     with pytest.raises(MishkanError):
         service.read_bytes(reference)
     assert service.manifest(reference).lifecycle is ArtifactLifecycle.MISSING
+
+
+def test_artifact_bounds_corruption_and_idempotent_commit_fail_closed(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    with pytest.raises(MishkanError):
+        service.put_bytes(
+            b"partial",
+            media_type="text/plain",
+            provenance=_provenance(),
+            complete=False,
+        )
+    with pytest.raises(MishkanError):
+        service.open_upload(
+            expected_size=1,
+            expected_digest="invalid",
+            media_type="text/plain",
+            provenance=_provenance(),
+        )
+    upload = service.open_upload(
+        expected_size=1,
+        expected_digest=f"sha256:{hashlib.sha256(b'x').hexdigest()}",
+        media_type="text/plain",
+        provenance=_provenance(),
+    )
+    with pytest.raises(MishkanError):
+        service.append_chunk(upload.upload_id, offset=0, content=b"")
+    with pytest.raises(MishkanError):
+        service.append_chunk(upload.upload_id, offset=0, content=b"too-long")
+    service.append_chunk(upload.upload_id, offset=0, content=b"x")
+    first = service.commit_upload(upload.upload_id)
+    assert service.commit_upload(upload.upload_id).reference == first.reference
+
+    blob = service.body_path(first.reference)
+    blob.write_bytes(b"y")
+    with pytest.raises(MishkanError):
+        service.read_bytes(first.reference)
+    assert service.manifest(first.reference).lifecycle is ArtifactLifecycle.CORRUPT
+
+    with pytest.raises(MishkanError):
+        service.list_manifests(limit=0)
+    with pytest.raises(MishkanError):
+        service.manifest("not-an-artifact")

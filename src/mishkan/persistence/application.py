@@ -130,6 +130,151 @@ class SQLiteApplicationRepository:
                 "application command could not be committed uniquely",
             ) from exc
 
+    def reserve(self, command: ApplicationCommand, *, target_id: str) -> CommandResult | None:
+        """Durably reserve an effectful command before executing it.
+
+        A daemon crash leaves a stable refused receipt. Replaying that UUID therefore
+        fails closed instead of repeating an effect whose outcome has not been
+        reconciled.
+        """
+        with Session(self._engine) as session, session.begin():
+            existing = session.get(CommandRow, str(command.command_id))
+            if existing is not None:
+                return self._existing(existing, command)
+            revision_row = session.get(AggregateRevisionRow, (command.target_type, target_id))
+            current_revision = revision_row.revision if revision_row is not None else 0
+            if (
+                command.expected_revision is not None
+                and command.expected_revision != current_revision
+            ):
+                raise MishkanError(
+                    ErrorCode.REVISION_MISMATCH,
+                    "application command expected a stale aggregate revision",
+                    details={
+                        "target_type": command.target_type,
+                        "target_id": target_id,
+                        "expected": command.expected_revision,
+                        "current": current_revision,
+                    },
+                )
+            now = utc_now()
+            interrupted = MishkanError(
+                ErrorCode.RUN_INTERRUPTED,
+                "command was interrupted before its effect could be accepted",
+                details={
+                    "command_id": str(command.command_id),
+                    "reconciliation_required": True,
+                    "automatic_retry": False,
+                },
+            )
+            result = CommandResult(
+                command_id=command.command_id,
+                status=CommandStatus.REFUSED,
+                target_type=command.target_type,
+                target_id=target_id,
+                error=interrupted.envelope,
+                completed_at=now,
+            )
+            session.add(self._command_row(command, result))
+            return None
+
+    def complete_reserved(
+        self,
+        command: ApplicationCommand,
+        *,
+        target_id: str,
+        event_type: str,
+        result_payload: Mapping[str, Any] | None = None,
+        event_payload: Mapping[str, Any] | None = None,
+        source: str = "mishkan.application",
+        sensitivity: str = "internal",
+    ) -> CommandResult:
+        """Atomically accept one reserved command, its revision, and its event."""
+        with Session(self._engine) as session, session.begin():
+            row = session.get(CommandRow, str(command.command_id))
+            if row is None:
+                raise MishkanError(ErrorCode.RUN_INTERRUPTED, "command was not reserved")
+            if row.fingerprint != command.fingerprint:
+                raise MishkanError(
+                    ErrorCode.DUPLICATE_RESULT,
+                    "command identity was already used for different content",
+                    details={"command_id": str(command.command_id)},
+                )
+            current_result = CommandResult.model_validate_json(row.result_payload)
+            if current_result.status is CommandStatus.ACCEPTED:
+                return current_result
+            if (
+                current_result.status is not CommandStatus.REFUSED
+                or current_result.error is None
+                or not current_result.error.details.get("reconciliation_required")
+            ):
+                return current_result
+            revision_row = session.get(AggregateRevisionRow, (command.target_type, target_id))
+            current_revision = revision_row.revision if revision_row is not None else 0
+            if (
+                command.expected_revision is not None
+                and command.expected_revision != current_revision
+            ):
+                raise MishkanError(
+                    ErrorCode.REVISION_MISMATCH,
+                    "aggregate revision changed while command effect was executing",
+                    details={
+                        "target_type": command.target_type,
+                        "target_id": target_id,
+                        "expected": command.expected_revision,
+                        "current": current_revision,
+                        "effect_reconciliation_required": True,
+                    },
+                )
+            next_revision = current_revision + 1
+            now = utc_now()
+            if revision_row is None:
+                session.add(
+                    AggregateRevisionRow(
+                        entity_type=command.target_type,
+                        entity_id=target_id,
+                        revision=next_revision,
+                        updated_at=now.isoformat(),
+                    )
+                )
+            else:
+                revision_row.revision = next_revision
+                revision_row.updated_at = now.isoformat()
+            event_row = OutboxRow(
+                id=str(new_id()),
+                schema_version="1.0",
+                aggregate_id=target_id,
+                entity_type=command.target_type,
+                event_type=event_type,
+                source=source,
+                payload=json.dumps(
+                    dict(event_payload or {}), sort_keys=True, separators=(",", ":")
+                ),
+                occurred_at=now.isoformat(),
+                command_id=str(command.command_id),
+                correlation_id=str(command.command_id),
+                causation_id=None,
+                sensitivity=sensitivity,
+                published_at=None,
+            )
+            session.add(event_row)
+            session.flush()
+            result = CommandResult(
+                command_id=command.command_id,
+                status=CommandStatus.ACCEPTED,
+                target_type=command.target_type,
+                target_id=target_id,
+                revision=next_revision,
+                event_cursor=event_row.cursor,
+                payload=dict(result_payload or {}),
+                completed_at=now,
+            )
+            row.status = result.status.value
+            row.result_payload = result.model_dump_json()
+            row.event_cursor = result.event_cursor
+            row.completed_at = result.completed_at.isoformat()
+            return result
+
     def command_result(self, command_id: str) -> CommandResult | None:
         with Session(self._engine) as session:
             row = session.get(CommandRow, command_id)

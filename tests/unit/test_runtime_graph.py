@@ -149,3 +149,48 @@ def test_predicate_dsl_is_bounded_and_never_evaluates_python() -> None:
         evaluator.evaluate({"eval": ["__import__('os').system('true')"]}, results)
     with pytest.raises(MishkanError):
         evaluator.validate_loop(maximum_iterations=0)
+
+
+@pytest.mark.parametrize(
+    ("predicate", "expected"),
+    [
+        ({"any": [{"eq": ["value", 1]}, {"eq": ["value", 2]}]}, True),
+        ({"not": {"exists": "missing"}}, True),
+        ({"exists": "items.0.name"}, True),
+        ({"ne": ["value", 1]}, True),
+        ({"lt": ["value", 3]}, True),
+        ({"le": ["value", 2]}, True),
+        ({"gt": ["value", 1]}, True),
+        ({"contains": ["items.0.name", "ish"]}, True),
+        ({"eq": ["missing", None]}, False),
+    ],
+)
+def test_predicate_dsl_supported_operators(predicate: dict[str, object], expected: bool) -> None:
+    evaluator = PredicateEvaluator()
+    assert evaluator.evaluate(predicate, {"value": 2, "items": [{"name": "mishkan"}]}) is expected
+
+
+@pytest.mark.parametrize(
+    "predicate",
+    [
+        {},
+        {"all": []},
+        {"all": ["invalid"]},
+        {"not": []},
+        {"exists": []},
+        {"eq": ["value"]},
+        {"lt": ["value", object()]},
+    ],
+)
+def test_predicate_dsl_rejects_malformed_or_incompatible_inputs(
+    predicate: dict[str, object],
+) -> None:
+    evaluator = PredicateEvaluator(PredicateLimits(max_depth=1, max_nodes=2))
+    with pytest.raises(MishkanError):
+        evaluator.evaluate(predicate, {"value": 1})
+
+    with pytest.raises(MishkanError):
+        evaluator.evaluate({"not": {"not": {"eq": ["value", 1]}}}, {"value": 1})
+
+    with pytest.raises(MishkanError):
+        evaluator.evaluate({"exists": ".invalid"}, {"value": 1})

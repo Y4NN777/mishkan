@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -170,10 +171,20 @@ class SchemaManager:
         return head
 
     def _upgrade_to_head(self) -> None:
-        command.upgrade(self._config(), "head")
+        self._run_alembic(command.upgrade, "head")
 
     def _stamp(self, revision: str) -> None:
-        command.stamp(self._config(), revision)
+        self._run_alembic(command.stamp, revision)
+
+    def _run_alembic(self, operation: Callable[[Config, str], None], revision: str) -> None:
+        engine = create_engine(f"sqlite:///{self.database_path}")
+        try:
+            with engine.begin() as connection:
+                config = self._config()
+                config.attributes["connection"] = connection
+                operation(config, revision)
+        finally:
+            engine.dispose()
 
     def _backup(self) -> Path:
         directory = self.database_path.parent / "backups"

@@ -4,11 +4,13 @@ import asyncio
 import base64
 import hashlib
 import stat
+import time
 from datetime import timedelta
 from pathlib import Path
 
 import httpx
 import pytest
+from sqlalchemy import create_engine, text
 
 from mishkan.application import ApplicationCommand
 from mishkan.config.loader import ConfigLoader
@@ -17,7 +19,9 @@ from mishkan.config.presets import preset_text
 from mishkan.daemon import DaemonBootstrap, create_app
 from mishkan.daemon.auth import TokenFile
 from mishkan.daemon.bootstrap import DaemonPaths
+from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.time import utc_now
+from mishkan.persistence import SQLiteApplicationRepository
 
 
 @pytest.fixture
@@ -250,3 +254,120 @@ def test_daemon_paths_are_project_scoped(tmp_path: Path) -> None:
     paths = DaemonPaths.from_config(config)
     assert paths.database.is_relative_to(tmp_path)
     assert paths.token_file.is_relative_to(tmp_path)
+
+
+def test_application_bootstrap_stays_below_ten_seconds(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    DaemonBootstrap().setup(config)
+
+    started = time.perf_counter()
+    application = create_app(config)
+
+    assert application.title == "MISHKAN application API"
+    assert time.perf_counter() - started < 10
+
+
+@pytest.mark.anyio
+async def test_crash_after_effect_reservation_refuses_implicit_replay(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = _config(tmp_path)
+    paths = DaemonBootstrap().setup(config)
+    token = TokenFile(paths.token_file).read().token
+    headers = {"Authorization": f"Bearer {token}"}
+    request = {
+        "mode": "job",
+        "owner": "local-operator",
+        "run_id": "run-crash",
+        "task_id": "task-crash",
+        "workspace": ".",
+        "executable": "/bin/sh",
+        "arguments": ["-c", "sleep 10"],
+        "environment": {},
+        "credential_environment": {},
+        "credential_references": [],
+        "profile": "standard",
+        "deadline": (utc_now() + timedelta(minutes=1)).isoformat(),
+        "policy_fingerprint": "b" * 64,
+    }
+    command = ApplicationCommand(
+        command_type="session.start",
+        actor_id="local-operator",
+        target_type="session_service",
+        payload={"request": request},
+    )
+    original = SQLiteApplicationRepository.complete_reserved
+
+    def crash(*_args: object, **_kwargs: object):  # type: ignore[no-untyped-def]
+        raise MishkanError(ErrorCode.RUN_INTERRUPTED, "injected crash after effect")
+
+    monkeypatch.setattr(SQLiteApplicationRepository, "complete_reserved", crash)
+    transport = httpx.ASGITransport(app=create_app(config))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        crashed = await client.post(
+            "/v1/commands", headers=headers, json=command.model_dump(mode="json")
+        )
+        sessions_after_crash = await client.get("/v1/sessions", headers=headers)
+        monkeypatch.setattr(SQLiteApplicationRepository, "complete_reserved", original)
+        replayed = await client.post(
+            "/v1/commands", headers=headers, json=command.model_dump(mode="json")
+        )
+        sessions_after_replay = await client.get("/v1/sessions", headers=headers)
+        session_id = sessions_after_crash.json()[0]["session_id"]
+        cancelled = await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=ApplicationCommand(
+                command_type="session.cancel",
+                actor_id="local-operator",
+                target_type="session",
+                target_id=session_id,
+                payload={},
+            ).model_dump(mode="json"),
+        )
+
+    assert crashed.status_code == 400
+    assert len(sessions_after_crash.json()) == 1
+    assert replayed.status_code == 200
+    assert replayed.json()["status"] == "refused"
+    assert replayed.json()["error"]["details"]["automatic_retry"] is False
+    assert len(sessions_after_replay.json()) == 1
+    assert cancelled.status_code == 200
+
+
+@pytest.mark.anyio
+async def test_sse_removed_last_event_id_returns_explicit_snapshot_gap(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    paths = DaemonBootstrap().setup(config)
+    token = TokenFile(paths.token_file).read().token
+    headers = {"Authorization": f"Bearer {token}"}
+    transport = httpx.ASGITransport(app=create_app(config))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        for index in range(3):
+            response = await client.post(
+                "/v1/commands",
+                headers=headers,
+                json=ApplicationCommand(
+                    command_type="system.checkpoint",
+                    actor_id="local-operator",
+                    target_type="system",
+                    target_id=str(index),
+                    payload={"index": index},
+                ).model_dump(mode="json"),
+            )
+            assert response.status_code == 200
+        with create_engine(f"sqlite:///{paths.database}").begin() as connection:
+            connection.execute(text("DELETE FROM event_outbox WHERE cursor <= 2"))
+        gap = await client.get(
+            "/v1/events/stream",
+            headers={**headers, "Last-Event-ID": "1"},
+        )
+        malformed = await client.get(
+            "/v1/events/stream",
+            headers={**headers, "Last-Event-ID": "not-a-cursor"},
+        )
+
+    assert gap.status_code == 400
+    assert gap.json()["details"]["category"] == "cursor_gap"
+    assert gap.json()["details"]["snapshot_required"] is True
+    assert malformed.status_code == 422

@@ -343,6 +343,40 @@ def list_events(
     _emit(page.model_dump(mode="json"), as_json=state.json_output)
 
 
+@events_app.command("tail")
+def tail_events(
+    ctx: typer.Context,
+    after: Annotated[int, typer.Option(min=0)] = 0,
+    count: Annotated[
+        int,
+        typer.Option(min=0, help="Stop after this many events; zero follows continuously."),
+    ] = 0,
+) -> None:
+    """Follow the resumable SSE stream from an explicit durable cursor."""
+    emitted = 0
+    with _daemon_client(ctx) as client:
+        for event in client.stream_events(after=after):
+            _emit(event.model_dump(mode="json"), as_json=_state(ctx).json_output)
+            emitted += 1
+            if count and emitted >= count:
+                return
+
+
+@events_app.command("export")
+def export_events(
+    ctx: typer.Context,
+    output: Annotated[Path, typer.Option(help="Atomic JSONL destination.")],
+    after: Annotated[int, typer.Option(min=0)] = 0,
+) -> None:
+    """Export all currently retained events after a cursor as inspectable JSONL."""
+    with _daemon_client(ctx) as client:
+        count, cursor = client.export_events_jsonl(output, after=after)
+    _emit(
+        {"output": str(output), "events": count, "cursor": cursor},
+        as_json=_state(ctx).json_output,
+    )
+
+
 @change_app.command("list")
 def list_change_sets(
     ctx: typer.Context,

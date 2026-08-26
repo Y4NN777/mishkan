@@ -398,11 +398,15 @@ class SessionSupervisor:
             close_fds=True,
         )
         assert process.stdout is not None and process.stderr is not None
+        stdout_descriptor = os.dup(process.stdout.fileno())
+        stderr_descriptor = os.dup(process.stderr.fileno())
+        process.stdout.close()
+        process.stderr.close()
         secrets = tuple(request.credential_environment.values())
         stdout = self._reader_thread(
             session_id,
             "stdout",
-            process.stdout.fileno(),
+            stdout_descriptor,
             stdout_spool,
             secrets,
             profile,
@@ -410,7 +414,7 @@ class SessionSupervisor:
         stderr = self._reader_thread(
             session_id,
             "stderr",
-            process.stderr.fileno(),
+            stderr_descriptor,
             stderr_spool,
             secrets,
             profile,

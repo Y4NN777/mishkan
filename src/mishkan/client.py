@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -91,6 +93,45 @@ class Mishkan:
                     continue
                 if line.startswith("data: "):
                     data.append(line.removeprefix("data: "))
+
+    def export_events_jsonl(
+        self,
+        destination: Path,
+        *,
+        after: int = 0,
+        page_size: int = 1_000,
+    ) -> tuple[int, int]:
+        """Export a coherent event range using an atomic local replacement."""
+        if page_size < 1 or page_size > 1_000:
+            raise ValueError("page_size must be between 1 and 1000")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{destination.name}.", suffix=".tmp", dir=destination.parent
+        )
+        cursor = after
+        count = 0
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+                while True:
+                    page = self.events(after=cursor, limit=page_size)
+                    for event in page.events:
+                        stream.write(event.model_dump_json() + "\n")
+                        count += 1
+                    if not page.events:
+                        break
+                    cursor = page.next_cursor
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary_name, destination)
+            directory = os.open(destination.parent, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+        except BaseException:
+            Path(temporary_name).unlink(missing_ok=True)
+            raise
+        return count, cursor
 
     def artifacts(self, *, offset: int = 0, limit: int = 100) -> tuple[ArtifactManifest, ...]:
         response = self._client.get(

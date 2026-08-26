@@ -121,11 +121,10 @@ def create_app(config: MishkanConfig) -> FastAPI:
                 details={"actor_id": command.actor_id},
             )
         async with command_lock:
-            replayed = repository.replay(command)
+            target_id = command.target_id or "local-instance"
+            replayed = repository.reserve(command, target_id=target_id)
             if replayed is not None:
                 return replayed
-            target_id = command.target_id or "local-instance"
-            repository.require_expected_revision(command, target_id)
             try:
                 event_type, result_payload = _dispatch(
                     command, artifacts, changes, supervisor, run_repository
@@ -138,7 +137,7 @@ def create_app(config: MishkanConfig) -> FastAPI:
                     "application command payload does not match its registered contract",
                     details={"command_type": command.command_type},
                 ) from exc
-            return repository.accept(
+            return repository.complete_reserved(
                 command,
                 target_id=target_id,
                 event_type=event_type,
