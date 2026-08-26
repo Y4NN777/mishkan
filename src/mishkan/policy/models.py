@@ -57,6 +57,7 @@ class PolicyScope(PolicyModel):
     roles: tuple[str, ...] = ("*",)
     capabilities: tuple[str, ...] = ("*",)
     effect_classes: tuple[str, ...] = ("*",)
+    effects: tuple[str, ...] = ("*",)
     paths: tuple[str, ...] = ("*",)
     executables: tuple[str, ...] = ("*",)
     arguments: tuple[str, ...] = ("*",)
@@ -80,6 +81,7 @@ class PolicyScope(PolicyModel):
         "roles",
         "capabilities",
         "effect_classes",
+        "effects",
         "paths",
         "executables",
         "network_destinations",
@@ -168,6 +170,7 @@ class AuthorizationRequest(PolicyModel):
     role: str = Field(min_length=1)
     capability: str = Field(min_length=1)
     effect_class: str = Field(min_length=1)
+    effects: tuple[str, ...] = ()
     paths: tuple[str, ...] = ()
     executables: tuple[str, ...] = ()
     arguments: tuple[str, ...] = ()
@@ -202,6 +205,7 @@ class AuthorizationRequest(PolicyModel):
         "environments",
         "credentials",
         "external_resources",
+        "effects",
     )
     @classmethod
     def scoped_identifiers_are_unambiguous(cls, value: tuple[str, ...]) -> tuple[str, ...]:

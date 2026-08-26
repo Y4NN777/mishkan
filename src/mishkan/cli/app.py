@@ -25,12 +25,14 @@ daemon_app = typer.Typer(help="Bootstrap and administer the local mishkand insta
 daemon_token_app = typer.Typer(help="Administer the local daemon bearer credential.")
 database_app = typer.Typer(help="Inspect and explicitly migrate authoritative metadata.")
 events_app = typer.Typer(help="Query and export the durable event stream.")
+change_app = typer.Typer(help="Plan, apply, and inspect recoverable change sets.")
 app.add_typer(config_app, name="config")
 app.add_typer(schema_app, name="schema")
 app.add_typer(daemon_app, name="daemon")
 daemon_app.add_typer(daemon_token_app, name="token")
 app.add_typer(database_app, name="db")
 app.add_typer(events_app, name="events")
+app.add_typer(change_app, name="change")
 
 
 @dataclass(frozen=True, slots=True)
@@ -333,6 +335,66 @@ def list_events(
         _emit_error(error, as_json=state.json_output)
         raise typer.Exit(code=2) from error
     _emit(page.model_dump(mode="json"), as_json=state.json_output)
+
+
+@change_app.command("list")
+def list_change_sets(
+    ctx: typer.Context,
+    offset: Annotated[int, typer.Option(min=0)] = 0,
+    limit: Annotated[int, typer.Option(min=1, max=1_000)] = 100,
+) -> None:
+    """Query bounded change-set state from mishkand."""
+    with _daemon_client(ctx) as client:
+        values = client.change_sets(offset=offset, limit=limit)
+    _emit(
+        [value.model_dump(mode="json") for value in values],
+        as_json=_state(ctx).json_output,
+    )
+
+
+@change_app.command("plan")
+def plan_change_set(
+    ctx: typer.Context,
+    source: Annotated[Path, typer.Option("--file", help="Versioned change-set YAML or JSON.")],
+) -> None:
+    """Submit an immutable change-set plan to mishkand."""
+    from mishkan.application import ApplicationCommand
+    from mishkan.edits import ChangeSet
+
+    change_set = ChangeSet.model_validate(yaml.safe_load(source.read_text(encoding="utf-8")))
+    command = ApplicationCommand(
+        command_type="change.plan",
+        actor_id="local-operator",
+        target_type="change_set",
+        target_id=str(change_set.id),
+        expected_revision=0,
+        payload={"change_set": change_set.model_dump(mode="json")},
+    )
+    with _daemon_client(ctx) as client:
+        result = client.command(command)
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@change_app.command("apply")
+def apply_change_set(
+    ctx: typer.Context,
+    change_set_id: Annotated[str, typer.Argument()],
+    expected_revision: Annotated[int, typer.Option(min=0)] = 1,
+) -> None:
+    """Apply a previously planned change set through mishkand."""
+    from mishkan.application import ApplicationCommand
+
+    command = ApplicationCommand(
+        command_type="change.apply",
+        actor_id="local-operator",
+        target_type="change_set",
+        target_id=change_set_id,
+        expected_revision=expected_revision,
+        payload={},
+    )
+    with _daemon_client(ctx) as client:
+        result = client.command(command)
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
 
 
 @schema_app.command("export")

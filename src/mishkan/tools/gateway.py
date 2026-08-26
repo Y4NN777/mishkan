@@ -232,6 +232,7 @@ class CapabilityGateway:
                 role=context.role,
                 capability=contract.tool_id,
                 effect_class=contract.effect_class.value,
+                effects=_select_argument_values(arguments, "declared_effects"),
                 paths=tuple(path.relative for path in resolved.paths),
                 executables=resolved.executables,
                 arguments=policy_arguments,

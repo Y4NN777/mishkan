@@ -124,6 +124,7 @@ class PolicyAuthority:
             (request.environments, scope.environments),
             (request.credentials, scope.credentials),
             (request.external_resources, scope.external_resources),
+            (request.effects, scope.effects),
         )
         if not all(cls._matches_all(values, selectors) for values, selectors in collection_pairs):
             return False
@@ -162,6 +163,7 @@ class PolicyAuthority:
             scope.roles,
             scope.capabilities,
             scope.effect_classes,
+            scope.effects,
             scope.paths,
             scope.executables,
             scope.arguments,

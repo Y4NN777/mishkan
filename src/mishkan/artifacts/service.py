@@ -120,6 +120,37 @@ class DurableArtifactService:
             created_at=now,
         )
 
+    def put_bytes(
+        self,
+        content: bytes,
+        *,
+        media_type: str,
+        provenance: ArtifactProvenance,
+        complete: bool,
+        sensitivity: str = "internal",
+        retention: str = "run",
+    ) -> ArtifactManifest:
+        if not complete:
+            raise MishkanError(
+                ErrorCode.ARTIFACT,
+                "durable artifact publication requires complete content",
+            )
+        upload = self.open_upload(
+            expected_size=len(content),
+            expected_digest=self._digest(content),
+            media_type=media_type,
+            provenance=provenance,
+            sensitivity=sensitivity,
+            retention=retention,
+        )
+        for offset in range(0, len(content), self._max_chunk_bytes):
+            self.append_chunk(
+                upload.upload_id,
+                offset=offset,
+                content=content[offset : offset + self._max_chunk_bytes],
+            )
+        return self.commit_upload(upload.upload_id)
+
     def append_chunk(self, upload_id: UUID, *, offset: int, content: bytes) -> UploadSession:
         if not content or len(content) > self._max_chunk_bytes:
             raise MishkanError(

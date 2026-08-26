@@ -215,6 +215,36 @@ class ArtifactGCPlanRow(Base):
     created_at: Mapped[str] = mapped_column(String(40), nullable=False)
 
 
+class ChangeSetRow(Base):
+    __tablename__ = "change_sets"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    workspace: Mapped[str] = mapped_column(Text, nullable=False)
+    scope: Mapped[str] = mapped_column(String(256), nullable=False)
+    state: Mapped[str] = mapped_column(String(32), nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    operation_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    diff_reference: Mapped[str | None] = mapped_column(String(64))
+    reason: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class ChangeOperationRow(Base):
+    __tablename__ = "change_operations"
+
+    change_set_id: Mapped[str] = mapped_column(ForeignKey("change_sets.id"), primary_key=True)
+    position: Mapped[int] = mapped_column(Integer, primary_key=True)
+    state: Mapped[str] = mapped_column(String(32), nullable=False)
+    before_token: Mapped[str | None] = mapped_column(Text)
+    preimage_reference: Mapped[str | None] = mapped_column(String(64))
+    expected_after_token: Mapped[str | None] = mapped_column(Text)
+    actual_after_token: Mapped[str | None] = mapped_column(Text)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
 @dataclass(frozen=True, slots=True)
 class RunSnapshot:
     run_id: str

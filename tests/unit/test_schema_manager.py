@@ -28,6 +28,8 @@ def test_exact_i02_database_is_backed_up_and_upgraded(tmp_path: Path) -> None:
     Base.metadata.create_all(engine)
     with engine.begin() as connection:
         for table in (
+            "change_operations",
+            "change_sets",
             "artifact_gc_plans",
             "artifact_pins",
             "artifact_holds",

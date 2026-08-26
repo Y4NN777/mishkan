@@ -21,6 +21,7 @@ from mishkan.config.models import MishkanConfig
 from mishkan.daemon.auth import TokenFile, TokenRecord
 from mishkan.daemon.bootstrap import DaemonPaths
 from mishkan.domain.errors import ErrorCode, MishkanError
+from mishkan.edits import ChangeSet, ChangeSetResult, ChangeSetService
 from mishkan.events import EventPage
 from mishkan.persistence import SchemaManager, SQLiteApplicationRepository
 
@@ -56,6 +57,7 @@ def create_app(config: MishkanConfig) -> FastAPI:
         max_artifact_bytes=artifact_config.max_artifact_bytes,
         max_chunk_bytes=artifact_config.chunk_bytes,
     )
+    changes = ChangeSetService(paths.database, paths.workspace, artifacts)
     command_lock = asyncio.Lock()
 
     app = FastAPI(
@@ -113,7 +115,7 @@ def create_app(config: MishkanConfig) -> FastAPI:
             target_id = command.target_id or "local-instance"
             repository.require_expected_revision(command, target_id)
             try:
-                event_type, result_payload = _dispatch(command, artifacts)
+                event_type, result_payload = _dispatch(command, artifacts, changes)
             except MishkanError:
                 raise
             except (KeyError, TypeError, ValueError) as exc:
@@ -242,12 +244,28 @@ def create_app(config: MishkanConfig) -> FastAPI:
             headers={"Content-Length": str(manifest.size_bytes)},
         )
 
+    @app.get("/v1/change-sets")
+    async def change_set_list(
+        _principal: TokenRecord = authenticated,
+        offset: Annotated[int, Query(ge=0)] = 0,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
+    ) -> tuple[ChangeSetResult, ...]:
+        return changes.list(offset=offset, limit=limit)
+
+    @app.get("/v1/change-sets/{change_set_id}")
+    async def change_set_get(
+        change_set_id: UUID,
+        _principal: TokenRecord = authenticated,
+    ) -> ChangeSetResult:
+        return changes.get(change_set_id)
+
     return app
 
 
 def _dispatch(
     command: ApplicationCommand,
     artifacts: DurableArtifactService,
+    changes: ChangeSetService,
 ) -> tuple[str, dict[str, object]]:
     payload = command.payload
     if command.command_type == "system.checkpoint" and command.target_type == "system":
@@ -290,6 +308,15 @@ def _dispatch(
     if command.command_type == "artifact.gc.apply" and command.target_id is not None:
         plan = artifacts.apply_gc(UUID(command.target_id))
         return "artifact.gc_applied", plan.model_dump(mode="json")
+    if command.command_type == "change.plan":
+        result = changes.plan(ChangeSet.model_validate(payload["change_set"]))
+        return "change_set.planned", result.model_dump(mode="json")
+    if command.command_type == "change.apply" and command.target_id is not None:
+        result = changes.apply(UUID(command.target_id))
+        return "change_set.settled", result.model_dump(mode="json")
+    if command.command_type == "change.reconcile" and command.target_id is not None:
+        result = changes.reconcile(UUID(command.target_id))
+        return "change_set.reconciled", result.model_dump(mode="json")
     raise MishkanError(
         ErrorCode.OUTPUT_CONTRACT,
         "application command type has no registered I03 handler",

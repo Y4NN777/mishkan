@@ -11,6 +11,7 @@ import httpx
 from mishkan.application import ApplicationCommand, CommandResult, SnapshotEnvelope
 from mishkan.artifacts import ArtifactManifest
 from mishkan.daemon.auth import TokenFile
+from mishkan.edits import ChangeSetResult
 from mishkan.events import EventEnvelope, EventPage
 
 
@@ -108,6 +109,20 @@ class Mishkan:
         ) as response:
             response.raise_for_status()
             yield from response.iter_bytes()
+
+    def change_sets(self, *, offset: int = 0, limit: int = 100) -> tuple[ChangeSetResult, ...]:
+        response = self._client.get(
+            "/v1/change-sets",
+            headers=self._headers(),
+            params={"offset": offset, "limit": limit},
+        )
+        response.raise_for_status()
+        return tuple(ChangeSetResult.model_validate(item) for item in response.json())
+
+    def change_set(self, change_set_id: str) -> ChangeSetResult:
+        response = self._client.get(f"/v1/change-sets/{change_set_id}", headers=self._headers())
+        response.raise_for_status()
+        return ChangeSetResult.model_validate(response.json())
 
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self._token_file.read().token}"}
