@@ -1,0 +1,122 @@
+from __future__ import annotations
+
+import hashlib
+from datetime import timedelta
+from pathlib import Path
+
+import pytest
+
+from mishkan.artifacts import ArtifactLifecycle, ArtifactProvenance
+from mishkan.artifacts.service import DurableArtifactService
+from mishkan.domain.errors import ErrorCode, MishkanError
+from mishkan.domain.time import utc_now
+from mishkan.persistence import SchemaManager
+
+
+def _provenance() -> ArtifactProvenance:
+    return ArtifactProvenance(
+        producer_identity="engineer",
+        run_id="run-1",
+        task_attempt_id="attempt-1",
+        call_id="call-1",
+        capability="terminal.process",
+        channel="stdout",
+    )
+
+
+def _service(tmp_path: Path) -> DurableArtifactService:
+    database = tmp_path / "mishkan.db"
+    SchemaManager(database).initialize()
+    return DurableArtifactService(
+        database,
+        tmp_path / "artifacts",
+        max_artifact_bytes=1024,
+        max_chunk_bytes=4,
+    )
+
+
+def _upload(service: DurableArtifactService, content: bytes) -> str:
+    digest = f"sha256:{hashlib.sha256(content).hexdigest()}"
+    upload = service.open_upload(
+        expected_size=len(content),
+        expected_digest=digest,
+        media_type="text/plain",
+        provenance=_provenance(),
+    )
+    offset = 0
+    for start in range(0, len(content), 4):
+        chunk = content[start : start + 4]
+        service.append_chunk(upload.upload_id, offset=offset, content=chunk)
+        offset += len(chunk)
+    return service.commit_upload(upload.upload_id).reference
+
+
+def test_chunked_upload_is_invisible_until_verified_commit(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    content = b"streamed"
+    reference = _upload(service, content)
+
+    assert service.read_bytes(reference) == content
+    assert service.manifest(reference).lifecycle is ArtifactLifecycle.AVAILABLE
+
+
+def test_upload_rejects_stale_offset_and_wrong_digest(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    upload = service.open_upload(
+        expected_size=4,
+        expected_digest=f"sha256:{'0' * 64}",
+        media_type="text/plain",
+        provenance=_provenance(),
+    )
+    service.append_chunk(upload.upload_id, offset=0, content=b"data")
+
+    with pytest.raises(MishkanError) as stale:
+        service.append_chunk(upload.upload_id, offset=0, content=b"x")
+    assert stale.value.envelope.code is ErrorCode.REVISION_MISMATCH
+
+    with pytest.raises(MishkanError) as invalid:
+        service.commit_upload(upload.upload_id)
+    assert invalid.value.envelope.code is ErrorCode.ARTIFACT
+
+
+def test_working_reference_requires_compare_and_swap(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    first = _upload(service, b"one")
+    second = _upload(service, b"two")
+
+    current = service.update_reference("run:1", "latest", first, expected_revision=0)
+    assert current.revision == 1
+    with pytest.raises(MishkanError) as conflict:
+        service.update_reference("run:1", "latest", second, expected_revision=0)
+    assert conflict.value.envelope.code is ErrorCode.REVISION_MISMATCH
+    assert service.update_reference("run:1", "latest", second, expected_revision=1).revision == 2
+
+
+def test_collections_validate_paths_and_holds_root_gc(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    kept = _upload(service, b"keep")
+    removed = _upload(service, b"drop")
+    service.create_collection({"logs/output.txt": kept})
+    with pytest.raises(MishkanError):
+        service.create_collection({"../escape": kept})
+    service.hold(kept, "incident evidence")
+
+    plan = service.plan_gc(watermark=utc_now() + timedelta(seconds=1))
+    assert kept not in plan.candidates
+    assert removed in plan.candidates
+    applied = service.apply_gc(plan.plan_id)
+    assert applied.applied
+    assert service.manifest(removed).lifecycle is ArtifactLifecycle.TOMBSTONED
+    assert service.read_bytes(kept) == b"keep"
+
+
+def test_missing_body_is_persistently_classified(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    reference = _upload(service, b"gone")
+    manifest = service.manifest(reference)
+    blob = tmp_path / "artifacts" / "blobs" / manifest.storage_ref
+    blob.unlink()
+
+    with pytest.raises(MishkanError):
+        service.read_bytes(reference)
+    assert service.manifest(reference).lifecycle is ArtifactLifecycle.MISSING

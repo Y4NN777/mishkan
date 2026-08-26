@@ -142,6 +142,79 @@ class AggregateRevisionRow(Base):
     updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
 
 
+class ArtifactRow(Base):
+    __tablename__ = "artifacts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    digest: Mapped[str] = mapped_column(String(71), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    media_type: Mapped[str] = mapped_column(String(255), nullable=False)
+    lifecycle: Mapped[str] = mapped_column(String(32), nullable=False)
+    storage_ref: Mapped[str] = mapped_column(String(128), nullable=False)
+    manifest_payload: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+    tombstoned_at: Mapped[str | None] = mapped_column(String(40))
+
+
+class ArtifactUploadRow(Base):
+    __tablename__ = "artifact_uploads"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    expected_digest: Mapped[str] = mapped_column(String(71), nullable=False)
+    expected_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    media_type: Mapped[str] = mapped_column(String(255), nullable=False)
+    offset: Mapped[int] = mapped_column(Integer, nullable=False)
+    state: Mapped[str] = mapped_column(String(32), nullable=False)
+    artifact_id: Mapped[str | None] = mapped_column(ForeignKey("artifacts.id"))
+    staging_path: Mapped[str] = mapped_column(Text, nullable=False)
+    metadata_payload: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class ArtifactCollectionRow(Base):
+    __tablename__ = "artifact_collections"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    entries_payload: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class ArtifactReferenceRow(Base):
+    __tablename__ = "artifact_references"
+
+    scope: Mapped[str] = mapped_column(String(256), primary_key=True)
+    name: Mapped[str] = mapped_column(String(256), primary_key=True)
+    artifact_id: Mapped[str] = mapped_column(ForeignKey("artifacts.id"), nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class ArtifactHoldRow(Base):
+    __tablename__ = "artifact_holds"
+
+    artifact_id: Mapped[str] = mapped_column(ForeignKey("artifacts.id"), primary_key=True)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class ArtifactPinRow(Base):
+    __tablename__ = "artifact_pins"
+
+    artifact_id: Mapped[str] = mapped_column(ForeignKey("artifacts.id"), primary_key=True)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class ArtifactGCPlanRow(Base):
+    __tablename__ = "artifact_gc_plans"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    watermark: Mapped[str] = mapped_column(String(40), nullable=False)
+    candidates_payload: Mapped[str] = mapped_column(Text, nullable=False)
+    applied_at: Mapped[str | None] = mapped_column(String(40))
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
 @dataclass(frozen=True, slots=True)
 class RunSnapshot:
     run_id: str

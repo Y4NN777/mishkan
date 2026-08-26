@@ -137,6 +137,25 @@ class SQLiteApplicationRepository:
                 CommandResult.model_validate_json(row.result_payload) if row is not None else None
             )
 
+    def replay(self, command: ApplicationCommand) -> CommandResult | None:
+        """Return an identical command result or reject reuse of its UUID."""
+        with Session(self._engine) as session:
+            row = session.get(CommandRow, str(command.command_id))
+            return self._existing(row, command) if row is not None else None
+
+    def require_expected_revision(self, command: ApplicationCommand, target_id: str) -> None:
+        if command.expected_revision is None:
+            return
+        with Session(self._engine) as session:
+            row = session.get(AggregateRevisionRow, (command.target_type, target_id))
+            current = row.revision if row is not None else 0
+        if current != command.expected_revision:
+            raise MishkanError(
+                ErrorCode.REVISION_MISMATCH,
+                "application command expected a stale aggregate revision",
+                details={"expected": command.expected_revision, "current": current},
+            )
+
     def events(
         self,
         *,

@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from enum import StrEnum
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from mishkan.domain.identity import DomainRecord
+from mishkan.domain.time import utc_now
 
 
 class ArtifactModel(BaseModel):
@@ -15,8 +18,12 @@ class ArtifactModel(BaseModel):
 
 
 class ArtifactLifecycle(StrEnum):
+    STAGING = "staging"
     AVAILABLE = "available"
     QUARANTINED = "quarantined"
+    MISSING = "missing"
+    CORRUPT = "corrupt"
+    TOMBSTONED = "tombstoned"
 
 
 class ArtifactValidation(StrEnum):
@@ -49,3 +56,38 @@ class ArtifactManifest(DomainRecord):
     @property
     def reference(self) -> str:
         return f"artifact:{self.id}"
+
+
+class UploadSession(ArtifactModel):
+    schema_version: str = "1.0"
+    upload_id: UUID
+    expected_size: int = Field(ge=0)
+    expected_digest: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    media_type: str = Field(min_length=1)
+    offset: int = Field(ge=0)
+    lifecycle: Literal["staging", "committed", "aborted"]
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class ArtifactCollection(ArtifactModel):
+    schema_version: str = "1.0"
+    collection_id: UUID
+    entries: dict[str, str]
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class WorkingReference(ArtifactModel):
+    schema_version: str = "1.0"
+    scope: str = Field(min_length=1, max_length=256)
+    name: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,255}$")
+    artifact_reference: str = Field(pattern=r"^artifact:[0-9a-f-]{36}$")
+    revision: int = Field(ge=1)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+class GarbageCollectionPlan(ArtifactModel):
+    schema_version: str = "1.0"
+    plan_id: UUID
+    candidates: tuple[str, ...]
+    watermark: datetime
+    applied: bool = False

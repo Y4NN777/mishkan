@@ -3,15 +3,20 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 from collections.abc import AsyncIterator
+from datetime import datetime
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import Depends, FastAPI, Header, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from mishkan.application import ApplicationCommand, CommandResult, SnapshotEnvelope
+from mishkan.artifacts import ArtifactManifest, ArtifactProvenance
+from mishkan.artifacts.service import DurableArtifactService
 from mishkan.config.models import MishkanConfig
 from mishkan.daemon.auth import TokenFile, TokenRecord
 from mishkan.daemon.bootstrap import DaemonPaths
@@ -42,7 +47,16 @@ def create_app(config: MishkanConfig) -> FastAPI:
     security = HTTPBearer(auto_error=False)
     security_dependency = Depends(security)
     daemon = config.daemon
+    artifact_config = config.artifacts
     assert daemon is not None
+    assert artifact_config is not None
+    artifacts = DurableArtifactService(
+        paths.database,
+        paths.artifacts,
+        max_artifact_bytes=artifact_config.max_artifact_bytes,
+        max_chunk_bytes=artifact_config.chunk_bytes,
+    )
+    command_lock = asyncio.Lock()
 
     app = FastAPI(
         title="MISHKAN application API",
@@ -92,21 +106,30 @@ def create_app(config: MishkanConfig) -> FastAPI:
                 "command actor does not match the authenticated client identity",
                 details={"actor_id": command.actor_id},
             )
-        if command.command_type != "system.checkpoint" or command.target_type != "system":
-            raise MishkanError(
-                ErrorCode.OUTPUT_CONTRACT,
-                "application command type has no registered I03 handler",
-                details={"command_type": command.command_type},
+        async with command_lock:
+            replayed = repository.replay(command)
+            if replayed is not None:
+                return replayed
+            target_id = command.target_id or "local-instance"
+            repository.require_expected_revision(command, target_id)
+            try:
+                event_type, result_payload = _dispatch(command, artifacts)
+            except MishkanError:
+                raise
+            except (KeyError, TypeError, ValueError) as exc:
+                raise MishkanError(
+                    ErrorCode.OUTPUT_CONTRACT,
+                    "application command payload does not match its registered contract",
+                    details={"command_type": command.command_type},
+                ) from exc
+            return repository.accept(
+                command,
+                target_id=target_id,
+                event_type=event_type,
+                result_payload=result_payload,
+                event_payload=command.payload,
+                source="mishkand",
             )
-        target_id = command.target_id or "local-instance"
-        return repository.accept(
-            command,
-            target_id=target_id,
-            event_type="system.checkpoint_recorded",
-            result_payload={"recorded": True},
-            event_payload=command.payload,
-            source="mishkand",
-        )
 
     @app.get("/v1/snapshot")
     async def snapshot(
@@ -185,4 +208,90 @@ def create_app(config: MishkanConfig) -> FastAPI:
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
+    @app.get("/v1/artifacts")
+    async def artifact_list(
+        _principal: TokenRecord = authenticated,
+        offset: Annotated[int, Query(ge=0)] = 0,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
+    ) -> tuple[ArtifactManifest, ...]:
+        return artifacts.list_manifests(offset=offset, limit=limit)
+
+    @app.get("/v1/artifacts/{artifact_id}")
+    async def artifact_manifest(
+        artifact_id: str,
+        _principal: TokenRecord = authenticated,
+    ) -> ArtifactManifest:
+        return artifacts.manifest(f"artifact:{artifact_id}")
+
+    @app.get("/v1/artifacts/{artifact_id}/content")
+    async def artifact_content(
+        artifact_id: str,
+        _principal: TokenRecord = authenticated,
+    ) -> StreamingResponse:
+        manifest = artifacts.manifest(f"artifact:{artifact_id}")
+        path = artifacts.body_path(manifest.reference)
+
+        async def body() -> AsyncIterator[bytes]:
+            with path.open("rb") as stream:
+                while chunk := stream.read(artifact_config.chunk_bytes):
+                    yield chunk
+
+        return StreamingResponse(
+            body(),
+            media_type=manifest.detected_media_type or manifest.declared_media_type,
+            headers={"Content-Length": str(manifest.size_bytes)},
+        )
+
     return app
+
+
+def _dispatch(
+    command: ApplicationCommand,
+    artifacts: DurableArtifactService,
+) -> tuple[str, dict[str, object]]:
+    payload = command.payload
+    if command.command_type == "system.checkpoint" and command.target_type == "system":
+        return "system.checkpoint_recorded", {"recorded": True}
+    if command.command_type == "artifact.upload.open":
+        upload = artifacts.open_upload(
+            expected_size=int(payload["expected_size"]),
+            expected_digest=str(payload["expected_digest"]),
+            media_type=str(payload["media_type"]),
+            provenance=ArtifactProvenance.model_validate(payload["provenance"]),
+            sensitivity=str(payload.get("sensitivity", "internal")),
+            retention=str(payload.get("retention", "run")),
+        )
+        return "artifact.upload_opened", upload.model_dump(mode="json")
+    if command.command_type == "artifact.upload.chunk" and command.target_id is not None:
+        try:
+            content = base64.b64decode(str(payload["content_base64"]), validate=True)
+        except (ValueError, TypeError) as exc:
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT, "artifact chunk is not valid base64"
+            ) from exc
+        upload = artifacts.append_chunk(
+            UUID(command.target_id), offset=int(payload["offset"]), content=content
+        )
+        return "artifact.chunk_appended", upload.model_dump(mode="json")
+    if command.command_type == "artifact.upload.commit" and command.target_id is not None:
+        manifest = artifacts.commit_upload(UUID(command.target_id))
+        return "artifact.available", manifest.model_dump(mode="json")
+    if command.command_type == "artifact.reference.update":
+        reference = artifacts.update_reference(
+            str(payload["scope"]),
+            str(payload["name"]),
+            str(payload["artifact_reference"]),
+            expected_revision=int(payload["expected_reference_revision"]),
+        )
+        return "artifact.reference_updated", reference.model_dump(mode="json")
+    if command.command_type == "artifact.gc.plan":
+        plan = artifacts.plan_gc(watermark=datetime.fromisoformat(str(payload["watermark"])))
+        return "artifact.gc_planned", plan.model_dump(mode="json")
+    if command.command_type == "artifact.gc.apply" and command.target_id is not None:
+        plan = artifacts.apply_gc(UUID(command.target_id))
+        return "artifact.gc_applied", plan.model_dump(mode="json")
+    raise MishkanError(
+        ErrorCode.OUTPUT_CONTRACT,
+        "application command type has no registered I03 handler",
+        details={"command_type": command.command_type},
+    )

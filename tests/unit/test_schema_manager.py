@@ -27,6 +27,16 @@ def test_exact_i02_database_is_backed_up_and_upgraded(tmp_path: Path) -> None:
     engine = create_engine(f"sqlite:///{database}")
     Base.metadata.create_all(engine)
     with engine.begin() as connection:
+        for table in (
+            "artifact_gc_plans",
+            "artifact_pins",
+            "artifact_holds",
+            "artifact_references",
+            "artifact_collections",
+            "artifact_uploads",
+            "artifacts",
+        ):
+            connection.execute(text(f"DROP TABLE {table}"))
         connection.execute(text("DROP TABLE application_commands"))
         connection.execute(text("DROP TABLE aggregate_revisions"))
         connection.execute(text("ALTER TABLE event_outbox RENAME TO event_outbox_i03"))

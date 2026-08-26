@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import hashlib
 import stat
 from pathlib import Path
 
@@ -106,6 +108,76 @@ async def test_command_cannot_claim_another_actor(tmp_path: Path) -> None:
 
     assert response.status_code == 403
     assert response.json()["code"] == "ERR-POL-001"
+
+
+@pytest.mark.anyio
+async def test_artifact_upload_commands_publish_only_verified_content(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    paths = DaemonBootstrap().setup(config)
+    token = TokenFile(paths.token_file).read().token
+    headers = {"Authorization": f"Bearer {token}"}
+    content = b"daemon artifact"
+    provenance = {
+        "producer_identity": "engineer",
+        "run_id": "run-1",
+        "task_attempt_id": "attempt-1",
+        "call_id": "call-1",
+        "capability": "terminal.process",
+        "channel": "stdout",
+    }
+    transport = httpx.ASGITransport(app=create_app(config))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        opened = await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=ApplicationCommand(
+                command_type="artifact.upload.open",
+                actor_id="local-operator",
+                target_type="artifact_service",
+                expected_revision=0,
+                payload={
+                    "expected_size": len(content),
+                    "expected_digest": f"sha256:{hashlib.sha256(content).hexdigest()}",
+                    "media_type": "text/plain",
+                    "provenance": provenance,
+                },
+            ).model_dump(mode="json"),
+        )
+        upload_id = opened.json()["payload"]["upload_id"]
+        chunked = await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=ApplicationCommand(
+                command_type="artifact.upload.chunk",
+                actor_id="local-operator",
+                target_type="artifact_upload",
+                target_id=upload_id,
+                expected_revision=0,
+                payload={
+                    "offset": 0,
+                    "content_base64": base64.b64encode(content).decode(),
+                },
+            ).model_dump(mode="json"),
+        )
+        committed = await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=ApplicationCommand(
+                command_type="artifact.upload.commit",
+                actor_id="local-operator",
+                target_type="artifact_upload",
+                target_id=upload_id,
+                expected_revision=1,
+                payload={},
+            ).model_dump(mode="json"),
+        )
+        artifact_id = committed.json()["payload"]["id"]
+        body = await client.get(f"/v1/artifacts/{artifact_id}/content", headers=headers)
+
+    assert opened.status_code == 200
+    assert chunked.status_code == 200
+    assert committed.status_code == 200
+    assert body.content == content
 
 
 def test_token_rotation_invalidates_previous_credential(tmp_path: Path) -> None:

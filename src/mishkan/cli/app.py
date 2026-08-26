@@ -278,6 +278,16 @@ def database_upgrade(ctx: typer.Context) -> None:
     try:
         paths = DaemonPaths.from_config(effective.value)
         observed = SchemaManager(paths.database).upgrade()
+        artifact_config = effective.value.artifacts
+        assert artifact_config is not None
+        from mishkan.artifacts.service import DurableArtifactService
+
+        imported_artifacts = DurableArtifactService(
+            paths.database,
+            paths.artifacts,
+            max_artifact_bytes=artifact_config.max_artifact_bytes,
+            max_chunk_bytes=artifact_config.chunk_bytes,
+        ).import_legacy_manifests()
     except MishkanError as error:
         _emit_error(error, as_json=state.json_output)
         raise typer.Exit(code=2) from error
@@ -287,6 +297,7 @@ def database_upgrade(ctx: typer.Context) -> None:
             "state": observed.state.value,
             "revision": observed.current_revision,
             "backup": str(observed.backup_path) if observed.backup_path else None,
+            "imported_artifacts": imported_artifacts,
         },
         as_json=state.json_output,
     )
