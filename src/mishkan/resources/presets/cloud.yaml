@@ -1,4 +1,4 @@
-schema_version: "1.1"
+schema_version: "1.2"
 mode: cloud
 timezone: UTC
 project:
@@ -29,3 +29,20 @@ tool_sources:
 inspection_profile: package://mishkan.resources.inspection/i02-default.yaml
 isolation_profiles:
   - package://mishkan.resources.isolation/local-no-network.yaml
+daemon:
+  host: 127.0.0.1
+  port: 8888
+  token_file: .mishkan/runtime/api-token.json
+  heartbeat_seconds: 15
+  event_poll_seconds: 0.25
+  event_page_limit: 100
+  request_timeout_seconds: 120
+persistence:
+  database: .mishkan/mishkan.db
+  busy_timeout_ms: 5000
+  event_retention_days: 30
+artifacts:
+  root: .mishkan/artifacts
+  max_artifact_bytes: 536870912
+  chunk_bytes: 1048576
+  staging_ttl_seconds: 86400

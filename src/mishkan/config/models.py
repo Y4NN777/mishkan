@@ -1,5 +1,6 @@
 """Strict public configuration contracts."""
 
+import ipaddress
 from enum import StrEnum
 from pathlib import Path
 from typing import Self
@@ -76,6 +77,61 @@ class CrewAIRuntimeConfig(StrictConfigModel):
     structured_output_retries: int = Field(default=2, ge=0, le=10)
 
 
+class DaemonConfig(StrictConfigModel):
+    host: str
+    port: int = Field(ge=1, le=65_535)
+    token_file: Path
+    heartbeat_seconds: int = Field(ge=1, le=300)
+    event_poll_seconds: float = Field(ge=0.05, le=30)
+    event_page_limit: int = Field(ge=1, le=1_000)
+    request_timeout_seconds: int = Field(ge=1, le=3_600)
+
+    @field_validator("host")
+    @classmethod
+    def host_is_loopback_for_i03(cls, value: str) -> str:
+        try:
+            address = ipaddress.ip_address(value)
+        except ValueError as exc:
+            raise ValueError("I03 daemon host must be a literal loopback address") from exc
+        if not address.is_loopback:
+            raise ValueError("I03 daemon host must be loopback-only")
+        return value
+
+    @field_validator("token_file")
+    @classmethod
+    def token_file_is_project_relative(cls, value: Path) -> Path:
+        if value.is_absolute() or not value.parts:
+            raise ValueError("daemon token file must be project-relative")
+        return value
+
+
+class PersistenceConfig(StrictConfigModel):
+    database: Path
+    busy_timeout_ms: int = Field(ge=1, le=300_000)
+    event_retention_days: int = Field(ge=1, le=36_500)
+
+    @field_validator("database")
+    @classmethod
+    def database_is_project_relative(cls, value: Path) -> Path:
+        if value.is_absolute() or not value.parts:
+            raise ValueError("metadata database must be project-relative")
+        return value
+
+
+class ArtifactConfig(StrictConfigModel):
+    root: Path
+    max_artifact_bytes: int = Field(ge=1)
+    chunk_bytes: int = Field(ge=1)
+    staging_ttl_seconds: int = Field(ge=1)
+
+    @field_validator("root")
+    @classmethod
+    def root_is_project_relative(cls, value: Path) -> Path:
+        if value.is_absolute() or not value.parts:
+            raise ValueError("artifact root must be project-relative")
+        return value
+
+
 class MishkanConfig(StrictConfigModel):
     """Complete effective configuration required before a run can be accepted."""
 
@@ -92,6 +148,9 @@ class MishkanConfig(StrictConfigModel):
     inspection_profile: str | None = None
     isolation_profiles: tuple[str, ...] = ()
     crewai: CrewAIRuntimeConfig = Field(default_factory=CrewAIRuntimeConfig)
+    daemon: DaemonConfig | None = None
+    persistence: PersistenceConfig | None = None
+    artifacts: ArtifactConfig | None = None
 
     @field_validator("timezone")
     @classmethod
@@ -114,6 +173,18 @@ class MishkanConfig(StrictConfigModel):
                 raise ValueError(
                     f"configuration 1.1 requires governed capability fields: {missing}"
                 )
+        if self.schema_version == "1.2":
+            missing_i03 = [
+                field
+                for field, value in (
+                    ("daemon", self.daemon),
+                    ("persistence", self.persistence),
+                    ("artifacts", self.artifacts),
+                )
+                if value is None
+            ]
+            if missing_i03:
+                raise ValueError(f"configuration 1.2 requires I03 fields: {missing_i03}")
 
         missing_providers = sorted(
             {

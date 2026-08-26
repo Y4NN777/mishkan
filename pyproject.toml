@@ -28,6 +28,7 @@ dependencies = [
 
 [project.scripts]
 mishkan = "mishkan.cli.app:app"
+mishkand = "mishkan.daemon.main:main"
 
 [dependency-groups]
 dev = [

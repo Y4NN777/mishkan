@@ -21,8 +21,16 @@ from mishkan.domain.export import export_schemas
 app = typer.Typer(help="MISHKAN engineering control plane.", no_args_is_help=True)
 config_app = typer.Typer(help="Create, inspect, edit, and validate effective configuration.")
 schema_app = typer.Typer(help="Export versioned public schemas.")
+daemon_app = typer.Typer(help="Bootstrap and administer the local mishkand instance.")
+daemon_token_app = typer.Typer(help="Administer the local daemon bearer credential.")
+database_app = typer.Typer(help="Inspect and explicitly migrate authoritative metadata.")
+events_app = typer.Typer(help="Query and export the durable event stream.")
 app.add_typer(config_app, name="config")
 app.add_typer(schema_app, name="schema")
+app.add_typer(daemon_app, name="daemon")
+daemon_app.add_typer(daemon_token_app, name="token")
+app.add_typer(database_app, name="db")
+app.add_typer(events_app, name="events")
 
 
 @dataclass(frozen=True, slots=True)
@@ -165,6 +173,155 @@ def set_config(
         {"updated": str(target), "field": path, "fingerprint": effective.fingerprint},
         as_json=state.json_output,
     )
+
+
+@config_app.command("migrate")
+def migrate_config(
+    ctx: typer.Context,
+    source: Annotated[Path, typer.Option("--file", help="Explicit schema 1.1 YAML source.")],
+) -> None:
+    """Explicitly migrate one configuration source to schema 1.2."""
+    from mishkan.config.migration import migrate_to_1_2
+
+    state = _state(ctx)
+    try:
+        target = migrate_to_1_2(source)
+        effective = ConfigLoader().load([target])
+    except MishkanError as error:
+        _emit_error(error, as_json=state.json_output)
+        raise typer.Exit(code=2) from error
+    _emit(
+        {"migrated": str(target), "schema_version": effective.value.schema_version},
+        as_json=state.json_output,
+    )
+
+
+@daemon_app.command("setup")
+def setup_daemon(
+    ctx: typer.Context,
+    principal: Annotated[str, typer.Option(help="Authenticated local operator identity.")] = (
+        "local-operator"
+    ),
+) -> None:
+    """Explicitly initialize an empty daemon database and local credential."""
+    from mishkan.daemon import DaemonBootstrap
+    from mishkan.daemon.auth import TokenFile
+
+    state = _state(ctx)
+    effective = _load_or_exit(ctx)
+    try:
+        paths = DaemonBootstrap().setup(effective.value, principal_id=principal)
+        token = TokenFile(paths.token_file).public_status()
+    except MishkanError as error:
+        _emit_error(error, as_json=state.json_output)
+        raise typer.Exit(code=2) from error
+    _emit(
+        {"database": str(paths.database), "artifacts": str(paths.artifacts), "token": token},
+        as_json=state.json_output,
+    )
+
+
+@daemon_token_app.command("rotate")
+def rotate_daemon_token(ctx: typer.Context) -> None:
+    """Atomically rotate the configured local bearer credential."""
+    from mishkan.daemon.auth import TokenFile
+    from mishkan.daemon.bootstrap import DaemonPaths
+
+    state = _state(ctx)
+    effective = _load_or_exit(ctx)
+    try:
+        paths = DaemonPaths.from_config(effective.value)
+        token_file = TokenFile(paths.token_file)
+        record = token_file.rotate()
+    except MishkanError as error:
+        _emit_error(error, as_json=state.json_output)
+        raise typer.Exit(code=2) from error
+    _emit(
+        {"rotated": True, "path": str(paths.token_file), "principal_id": record.principal_id},
+        as_json=state.json_output,
+    )
+
+
+@database_app.command("status")
+def database_status(ctx: typer.Context) -> None:
+    """Report the observed schema without changing it."""
+    from mishkan.daemon.bootstrap import DaemonPaths
+    from mishkan.persistence import SchemaManager
+
+    state = _state(ctx)
+    effective = _load_or_exit(ctx)
+    try:
+        paths = DaemonPaths.from_config(effective.value)
+        observed = SchemaManager(paths.database).status()
+    except MishkanError as error:
+        _emit_error(error, as_json=state.json_output)
+        raise typer.Exit(code=2) from error
+    _emit(
+        {
+            "database": str(paths.database),
+            "state": observed.state.value,
+            "current_revision": observed.current_revision,
+            "head_revision": observed.head_revision,
+        },
+        as_json=state.json_output,
+    )
+
+
+@database_app.command("upgrade")
+def database_upgrade(ctx: typer.Context) -> None:
+    """Back up and explicitly upgrade recognized metadata to the current head."""
+    from mishkan.daemon.bootstrap import DaemonPaths
+    from mishkan.persistence import SchemaManager
+
+    state = _state(ctx)
+    effective = _load_or_exit(ctx)
+    try:
+        paths = DaemonPaths.from_config(effective.value)
+        observed = SchemaManager(paths.database).upgrade()
+    except MishkanError as error:
+        _emit_error(error, as_json=state.json_output)
+        raise typer.Exit(code=2) from error
+    _emit(
+        {
+            "database": str(paths.database),
+            "state": observed.state.value,
+            "revision": observed.current_revision,
+            "backup": str(observed.backup_path) if observed.backup_path else None,
+        },
+        as_json=state.json_output,
+    )
+
+
+def _daemon_client(ctx: typer.Context):  # type: ignore[no-untyped-def]
+    from mishkan.client import Mishkan, daemon_url
+    from mishkan.daemon.bootstrap import DaemonPaths
+
+    effective = _load_or_exit(ctx)
+    paths = DaemonPaths.from_config(effective.value)
+    daemon = effective.value.daemon
+    assert daemon is not None
+    return Mishkan(
+        daemon_url(daemon.host, daemon.port),
+        token_file=paths.token_file,
+        timeout_seconds=daemon.request_timeout_seconds,
+    )
+
+
+@events_app.command("list")
+def list_events(
+    ctx: typer.Context,
+    after: Annotated[int, typer.Option(min=0)] = 0,
+    limit: Annotated[int | None, typer.Option(min=1, max=1_000)] = None,
+) -> None:
+    """Query a bounded page from the durable daemon stream."""
+    state = _state(ctx)
+    try:
+        with _daemon_client(ctx) as client:
+            page = client.events(after=after, limit=limit)
+    except MishkanError as error:
+        _emit_error(error, as_json=state.json_output)
+        raise typer.Exit(code=2) from error
+    _emit(page.model_dump(mode="json"), as_json=state.json_output)
 
 
 @schema_app.command("export")
