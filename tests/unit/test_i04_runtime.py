@@ -8,6 +8,7 @@ import pytest
 import mishkan.application.initialize as initialize_module
 from mishkan.application.initialize import MishkanInitializer
 from mishkan.artifacts.service import DurableArtifactService
+from mishkan.browser import BrowserSupervisor
 from mishkan.config.loader import ConfigLoader
 from mishkan.config.models import MishkanConfig, ProjectConfig
 from mishkan.config.presets import preset_text
@@ -27,6 +28,7 @@ def _config(tmp_path: Path) -> MishkanConfig:
 
 def test_i04_runtime_makes_only_constructed_adapters_bindable_without_starting_browser(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = _config(tmp_path)
     paths = DaemonBootstrap().setup(config)
@@ -41,6 +43,14 @@ def test_i04_runtime_makes_only_constructed_adapters_bindable_without_starting_b
     inspector = ContentInspector(
         InspectionProfileLoader().load(config.inspection_profile, tmp_path)
     )
+    reconciliations: list[int] = []
+    original_reconcile = BrowserSupervisor.reconcile_all
+
+    def reconcile(supervisor: BrowserSupervisor) -> int:
+        reconciliations.append(1)
+        return original_reconcile(supervisor)
+
+    monkeypatch.setattr(BrowserSupervisor, "reconcile_all", reconcile)
     runtime = build_i04_capability_runtime(
         config,
         paths.database,
@@ -71,8 +81,10 @@ def test_i04_runtime_makes_only_constructed_adapters_bindable_without_starting_b
             "browser.close",
         }
         assert runtime.browser_started is False
+        assert len(reconciliations) == 1
     finally:
         runtime.close()
+    assert len(reconciliations) == 2
 
 
 def test_schema_13_initializer_assembles_i04_adapters_without_eager_browser_effect(
@@ -92,7 +104,7 @@ def test_schema_13_initializer_assembles_i04_adapters_without_eager_browser_effe
         subprocess.run(["git", *arguments], cwd=repository, check=True, capture_output=True)
     config = _config(repository)
     observed: list[frozenset[str]] = []
-    original = initialize_module.build_i04_capability_runtime
+    original = initialize_module.build_i04_capability_runtime  # type: ignore[attr-defined]
 
     def capture(
         selected: MishkanConfig,

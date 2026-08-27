@@ -374,8 +374,11 @@ class PlaywrightChromiumDriver:
 
     @staticmethod
     def _dispose(live: _LiveSession) -> None:
-        if live.profile.kind is not BrowserProfileKind.ATTACHED_EXISTING:
-            live.context.close()
+        if live.profile.kind is BrowserProfileKind.ATTACHED_EXISTING:
+            # Dropping MISHKAN's CDP objects is a detach. Closing either the
+            # selected context or Browser would terminate externally owned state.
+            return
+        live.context.close()
         if live.browser is not None and live.browser.is_connected():
             live.browser.close()
 

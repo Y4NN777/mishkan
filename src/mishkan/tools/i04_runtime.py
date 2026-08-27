@@ -33,6 +33,7 @@ class I04CapabilityRuntime:
     adapters: dict[str, CapabilityAdapter]
     dependencies: frozenset[str]
     _browser: LazyPlaywrightChromiumDriver | None = None
+    _browser_supervisor: BrowserSupervisor | None = None
 
     @property
     def adapter_ids(self) -> frozenset[str]:
@@ -45,6 +46,10 @@ class I04CapabilityRuntime:
     def close(self) -> None:
         if self._browser is not None:
             self._browser.shutdown()
+        if self._browser_supervisor is not None:
+            # Any session not explicitly closed before adapter shutdown has lost
+            # its live handle and must never remain advertised as active.
+            self._browser_supervisor.reconcile_all()
 
 
 def build_i04_capability_runtime(
@@ -88,6 +93,7 @@ def build_i04_capability_runtime(
 
     configured_drivers = {profile.adapter for profile in browser_config.profiles.values()}
     browser: LazyPlaywrightChromiumDriver | None = None
+    supervisor: BrowserSupervisor | None = None
     if LazyPlaywrightChromiumDriver.adapter_id in configured_drivers:
         browser = LazyPlaywrightChromiumDriver(web_config.network_profiles)
         supervisor = BrowserSupervisor(
@@ -98,8 +104,11 @@ def build_i04_capability_runtime(
             {browser.adapter_id: browser},
             inspector,
         )
+        # Reconcile handles lost by a prior daemon/runtime interruption before
+        # exposing any Browser adapter to a new CrewAI run.
+        supervisor.reconcile_all()
         adapters.update(build_browser_tool_adapters(supervisor))
     dependencies = {"trafilatura"} if extraction_adapters else set()
     if browser is not None:
         dependencies.add("playwright")
-    return I04CapabilityRuntime(adapters, frozenset(dependencies), browser)
+    return I04CapabilityRuntime(adapters, frozenset(dependencies), browser, supervisor)
