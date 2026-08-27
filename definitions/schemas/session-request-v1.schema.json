@@ -1,5 +1,35 @@
 {
   "$defs": {
+    "CredentialReference": {
+      "additionalProperties": false,
+      "description": "A late-resolution locator; never a credential value.",
+      "properties": {
+        "locator": {
+          "minLength": 1,
+          "title": "Locator",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/CredentialSource"
+        }
+      },
+      "required": [
+        "source",
+        "locator"
+      ],
+      "title": "CredentialReference",
+      "type": "object"
+    },
+    "CredentialSource": {
+      "enum": [
+        "env",
+        "file",
+        "keyring",
+        "command"
+      ],
+      "title": "CredentialSource",
+      "type": "string"
+    },
     "ReadinessProbe": {
       "additionalProperties": false,
       "properties": {
@@ -63,7 +93,7 @@
     },
     "credential_environment": {
       "additionalProperties": {
-        "type": "string"
+        "$ref": "#/$defs/CredentialReference"
       },
       "title": "Credential Environment",
       "type": "object"
@@ -71,7 +101,7 @@
     "credential_references": {
       "default": [],
       "items": {
-        "type": "string"
+        "$ref": "#/$defs/CredentialReference"
       },
       "title": "Credential References",
       "type": "array"

@@ -14,6 +14,7 @@ from mishkan.application.contracts import (
 from mishkan.artifacts.models import (
     ArtifactCollection,
     ArtifactManifest,
+    ArtifactReconciliationPlan,
     GarbageCollectionPlan,
     UploadSession,
     WorkingReference,
@@ -63,6 +64,7 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "artifact-collection-v1.schema.json": ArtifactCollection,
     "artifact-gc-plan-v1.schema.json": GarbageCollectionPlan,
     "artifact-manifest-v1.schema.json": ArtifactManifest,
+    "artifact-reconciliation-plan-v1.schema.json": ArtifactReconciliationPlan,
     "artifact-upload-session-v1.schema.json": UploadSession,
     "artifact-working-reference-v1.schema.json": WorkingReference,
     "browser-action-request-v1.schema.json": BrowserActionRequest,

@@ -25,6 +25,7 @@ daemon_app = typer.Typer(help="Bootstrap and administer the local mishkand insta
 daemon_token_app = typer.Typer(help="Administer the local daemon bearer credential.")
 database_app = typer.Typer(help="Inspect and explicitly migrate authoritative metadata.")
 events_app = typer.Typer(help="Query and export the durable event stream.")
+artifact_app = typer.Typer(help="Inspect and reconcile immutable artifacts.")
 change_app = typer.Typer(help="Plan, apply, and inspect recoverable change sets.")
 terminal_app = typer.Typer(help="Open and control daemon-owned PTY sessions.")
 job_app = typer.Typer(help="Start and control daemon-owned managed jobs.")
@@ -36,6 +37,7 @@ app.add_typer(daemon_app, name="daemon")
 daemon_app.add_typer(daemon_token_app, name="token")
 app.add_typer(database_app, name="db")
 app.add_typer(events_app, name="events")
+app.add_typer(artifact_app, name="artifact")
 app.add_typer(change_app, name="change")
 app.add_typer(terminal_app, name="terminal")
 app.add_typer(job_app, name="job")
@@ -392,6 +394,73 @@ def list_change_sets(
         [value.model_dump(mode="json") for value in values],
         as_json=_state(ctx).json_output,
     )
+
+
+@artifact_app.command("list")
+def list_artifacts(
+    ctx: typer.Context,
+    offset: Annotated[int, typer.Option(min=0)] = 0,
+    limit: Annotated[int, typer.Option(min=1, max=1_000)] = 100,
+) -> None:
+    """List bounded artifact manifests from mishkand."""
+
+    with _daemon_client(ctx) as client:
+        manifests = client.artifacts(offset=offset, limit=limit)
+    _emit(
+        [manifest.model_dump(mode="json") for manifest in manifests],
+        as_json=_state(ctx).json_output,
+    )
+
+
+@artifact_app.command("show")
+def show_artifact(ctx: typer.Context, reference: Annotated[str, typer.Argument()]) -> None:
+    """Show one immutable artifact manifest."""
+
+    with _daemon_client(ctx) as client:
+        manifest = client.artifact(reference)
+    _emit(manifest.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@artifact_app.command("reconcile-plan")
+def plan_artifact_reconciliation(ctx: typer.Context) -> None:
+    """Observe inconsistencies and persist a non-mutating reconciliation plan."""
+
+    from mishkan.application import ApplicationCommand
+
+    with _daemon_client(ctx) as client:
+        result = client.command(
+            ApplicationCommand(
+                command_type="artifact.reconcile.plan",
+                actor_id=client.principal_id,
+                target_type="artifact_service",
+                payload={},
+            )
+        )
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@artifact_app.command("reconcile-apply")
+def apply_artifact_reconciliation(
+    ctx: typer.Context,
+    plan_id: Annotated[str, typer.Argument()],
+    expected_revision: Annotated[int | None, typer.Option(min=0)] = None,
+) -> None:
+    """Apply one previously persisted reconciliation plan exactly once."""
+
+    from mishkan.application import ApplicationCommand
+
+    with _daemon_client(ctx) as client:
+        result = client.command(
+            ApplicationCommand(
+                command_type="artifact.reconcile.apply",
+                actor_id=client.principal_id,
+                target_type="artifact_reconciliation_plan",
+                target_id=plan_id,
+                expected_revision=expected_revision,
+                payload={},
+            )
+        )
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
 
 
 @change_app.command("plan")

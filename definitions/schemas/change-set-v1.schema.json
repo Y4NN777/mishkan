@@ -91,6 +91,18 @@
           "default": null,
           "title": "Match"
         },
+        "patch": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Patch"
+        },
         "path": {
           "maxLength": 4096,
           "minLength": 1,

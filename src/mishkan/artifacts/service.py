@@ -11,7 +11,7 @@ from typing import Literal, cast
 from uuid import UUID
 
 from pydantic import ValidationError
-from sqlalchemy import create_engine, event, select
+from sqlalchemy import create_engine, delete, event, select
 from sqlalchemy.orm import Session
 
 from mishkan.artifacts.models import (
@@ -19,6 +19,9 @@ from mishkan.artifacts.models import (
     ArtifactLifecycle,
     ArtifactManifest,
     ArtifactProvenance,
+    ArtifactReconciliationAction,
+    ArtifactReconciliationIssue,
+    ArtifactReconciliationPlan,
     ArtifactValidation,
     GarbageCollectionPlan,
     UploadSession,
@@ -33,6 +36,7 @@ from mishkan.persistence.sqlite import (
     ArtifactGCPlanRow,
     ArtifactHoldRow,
     ArtifactPinRow,
+    ArtifactReconciliationPlanRow,
     ArtifactReferenceRow,
     ArtifactRow,
     ArtifactUploadRow,
@@ -458,6 +462,265 @@ class DurableArtifactService:
             applied=True,
         )
 
+    def plan_reconciliation(self) -> ArtifactReconciliationPlan:
+        issues: list[ArtifactReconciliationIssue] = []
+        with Session(self._engine) as session, session.begin():
+            all_rows = session.scalars(
+                select(ArtifactRow).where(
+                    ArtifactRow.lifecycle.not_in(
+                        (ArtifactLifecycle.TOMBSTONED.value, ArtifactLifecycle.DELETED.value)
+                    )
+                )
+            ).all()
+            live_storage = {row.storage_ref for row in all_rows}
+            rows = [
+                row
+                for row in all_rows
+                if row.lifecycle
+                in {
+                    ArtifactLifecycle.AVAILABLE.value,
+                    ArtifactLifecycle.VALIDATING.value,
+                    ArtifactLifecycle.QUARANTINED.value,
+                }
+            ]
+            unavailable_ids: set[str] = set()
+            for row in rows:
+                blob = self._safe_blob(row.storage_ref)
+                try:
+                    digest, size = self._hash_file(blob)
+                except OSError:
+                    unavailable_ids.add(row.id)
+                    issues.append(
+                        ArtifactReconciliationIssue(
+                            action=ArtifactReconciliationAction.MARK_MISSING,
+                            artifact_reference=f"artifact:{row.id}",
+                            storage_ref=row.storage_ref,
+                        )
+                    )
+                    continue
+                if size != row.size_bytes or f"sha256:{digest}" != row.digest:
+                    unavailable_ids.add(row.id)
+                    issues.append(
+                        ArtifactReconciliationIssue(
+                            action=ArtifactReconciliationAction.MARK_CORRUPT,
+                            artifact_reference=f"artifact:{row.id}",
+                            storage_ref=row.storage_ref,
+                        )
+                    )
+            for blob in sorted(self._blobs.glob("sha256/[0-9a-f][0-9a-f]/*")):
+                if blob.is_symlink() or not blob.is_file():
+                    continue
+                storage_ref = blob.relative_to(self._blobs).as_posix()
+                if storage_ref not in live_storage:
+                    issues.append(
+                        ArtifactReconciliationIssue(
+                            action=ArtifactReconciliationAction.DELETE_ORPHAN_BLOB,
+                            storage_ref=storage_ref,
+                        )
+                    )
+            for reference in session.scalars(select(ArtifactReferenceRow)).all():
+                target = session.get(ArtifactRow, reference.artifact_id)
+                if (
+                    target is None
+                    or target.id in unavailable_ids
+                    or target.lifecycle != ArtifactLifecycle.AVAILABLE.value
+                ):
+                    issues.append(
+                        ArtifactReconciliationIssue(
+                            action=ArtifactReconciliationAction.DELETE_INVALID_REFERENCE,
+                            scope=reference.scope,
+                            name=reference.name,
+                        )
+                    )
+            for collection in session.scalars(select(ArtifactCollectionRow)).all():
+                if self._collection_is_incomplete(session, collection, unavailable_ids):
+                    issues.append(
+                        ArtifactReconciliationIssue(
+                            action=ArtifactReconciliationAction.DELETE_INCOMPLETE_COLLECTION,
+                            collection_id=UUID(collection.id),
+                        )
+                    )
+            ordered = tuple(sorted(issues, key=lambda item: item.model_dump_json()))
+            plan = ArtifactReconciliationPlan(plan_id=new_id(), issues=ordered)
+            session.add(
+                ArtifactReconciliationPlanRow(
+                    id=str(plan.plan_id),
+                    payload=plan.model_dump_json(),
+                    applied_at=None,
+                    created_at=plan.created_at.isoformat(),
+                )
+            )
+            return plan
+
+    def apply_reconciliation(self, plan_id: UUID) -> ArtifactReconciliationPlan:
+        with Session(self._engine) as session:
+            row = session.get(ArtifactReconciliationPlanRow, str(plan_id))
+            if row is None:
+                raise MishkanError(ErrorCode.ARTIFACT, "artifact reconciliation plan is absent")
+            plan = ArtifactReconciliationPlan.model_validate_json(row.payload)
+            if row.applied_at is not None:
+                return plan.model_copy(update={"applied": True})
+            self._validate_reconciliation_plan(session, plan)
+
+        for issue in plan.issues:
+            if (
+                issue.action is ArtifactReconciliationAction.DELETE_ORPHAN_BLOB
+                and issue.storage_ref is not None
+            ):
+                self._safe_blob(issue.storage_ref).unlink(missing_ok=True)
+
+        with Session(self._engine) as session, session.begin():
+            row = session.get(ArtifactReconciliationPlanRow, str(plan_id))
+            if row is None:
+                raise MishkanError(ErrorCode.ARTIFACT, "artifact reconciliation plan is absent")
+            if row.applied_at is not None:
+                return plan.model_copy(update={"applied": True})
+            for issue in plan.issues:
+                if issue.action in {
+                    ArtifactReconciliationAction.MARK_MISSING,
+                    ArtifactReconciliationAction.MARK_CORRUPT,
+                }:
+                    assert issue.artifact_reference is not None
+                    artifact = session.get(
+                        ArtifactRow, str(self._reference_id(issue.artifact_reference))
+                    )
+                    assert artifact is not None
+                    lifecycle = (
+                        ArtifactLifecycle.MISSING
+                        if issue.action is ArtifactReconciliationAction.MARK_MISSING
+                        else ArtifactLifecycle.CORRUPT
+                    )
+                    self._set_row_lifecycle(artifact, lifecycle)
+                elif issue.action is ArtifactReconciliationAction.DELETE_INVALID_REFERENCE:
+                    assert issue.scope is not None and issue.name is not None
+                    session.execute(
+                        delete(ArtifactReferenceRow).where(
+                            ArtifactReferenceRow.scope == issue.scope,
+                            ArtifactReferenceRow.name == issue.name,
+                        )
+                    )
+                elif issue.action is ArtifactReconciliationAction.DELETE_INCOMPLETE_COLLECTION:
+                    assert issue.collection_id is not None
+                    session.execute(
+                        delete(ArtifactCollectionRow).where(
+                            ArtifactCollectionRow.id == str(issue.collection_id)
+                        )
+                    )
+            row.applied_at = utc_now().isoformat()
+        return plan.model_copy(update={"applied": True})
+
+    def _validate_reconciliation_plan(
+        self, session: Session, plan: ArtifactReconciliationPlan
+    ) -> None:
+        planned_unavailable = {
+            str(self._reference_id(issue.artifact_reference))
+            for issue in plan.issues
+            if issue.action
+            in {
+                ArtifactReconciliationAction.MARK_MISSING,
+                ArtifactReconciliationAction.MARK_CORRUPT,
+            }
+            and issue.artifact_reference is not None
+        }
+        for issue in plan.issues:
+            if issue.action in {
+                ArtifactReconciliationAction.MARK_MISSING,
+                ArtifactReconciliationAction.MARK_CORRUPT,
+            }:
+                if issue.artifact_reference is None or issue.storage_ref is None:
+                    raise MishkanError(ErrorCode.ARTIFACT, "reconciliation issue is incomplete")
+                row = session.get(ArtifactRow, str(self._reference_id(issue.artifact_reference)))
+                if row is None or row.storage_ref != issue.storage_ref:
+                    raise MishkanError(
+                        ErrorCode.REVISION_MISMATCH, "artifact changed after planning"
+                    )
+                blob = self._safe_blob(issue.storage_ref)
+                if issue.action is ArtifactReconciliationAction.MARK_MISSING:
+                    if blob.exists():
+                        raise MishkanError(
+                            ErrorCode.REVISION_MISMATCH,
+                            "missing artifact reappeared after planning",
+                        )
+                else:
+                    try:
+                        digest, size = self._hash_file(blob)
+                    except OSError as exc:
+                        raise MishkanError(
+                            ErrorCode.REVISION_MISMATCH,
+                            "corrupt artifact became missing after planning",
+                        ) from exc
+                    if size == row.size_bytes and f"sha256:{digest}" == row.digest:
+                        raise MishkanError(
+                            ErrorCode.REVISION_MISMATCH,
+                            "corrupt artifact was repaired after planning",
+                        )
+            elif issue.action is ArtifactReconciliationAction.DELETE_ORPHAN_BLOB:
+                if issue.storage_ref is None:
+                    raise MishkanError(ErrorCode.ARTIFACT, "orphan issue has no storage ref")
+                live = session.scalar(
+                    select(ArtifactRow.id).where(
+                        ArtifactRow.storage_ref == issue.storage_ref,
+                        ArtifactRow.lifecycle.not_in(
+                            (ArtifactLifecycle.TOMBSTONED.value, ArtifactLifecycle.DELETED.value)
+                        ),
+                    )
+                )
+                if live is not None:
+                    raise MishkanError(
+                        ErrorCode.REVISION_MISMATCH, "orphan blob became referenced after planning"
+                    )
+            elif issue.action is ArtifactReconciliationAction.DELETE_INVALID_REFERENCE:
+                if issue.scope is None or issue.name is None:
+                    raise MishkanError(ErrorCode.ARTIFACT, "reference issue is incomplete")
+                reference = session.get(ArtifactReferenceRow, (issue.scope, issue.name))
+                if reference is None:
+                    continue
+                target = session.get(ArtifactRow, reference.artifact_id)
+                if (
+                    target is not None
+                    and target.id not in planned_unavailable
+                    and target.lifecycle == ArtifactLifecycle.AVAILABLE.value
+                ):
+                    raise MishkanError(
+                        ErrorCode.REVISION_MISMATCH, "working reference was repaired after planning"
+                    )
+            elif issue.action is ArtifactReconciliationAction.DELETE_INCOMPLETE_COLLECTION:
+                if issue.collection_id is None:
+                    raise MishkanError(ErrorCode.ARTIFACT, "collection issue is incomplete")
+                collection = session.get(ArtifactCollectionRow, str(issue.collection_id))
+                if collection is not None and not self._collection_is_incomplete(
+                    session, collection, planned_unavailable
+                ):
+                    raise MishkanError(
+                        ErrorCode.REVISION_MISMATCH, "collection was repaired after planning"
+                    )
+
+    def _collection_is_incomplete(
+        self,
+        session: Session,
+        collection: ArtifactCollectionRow,
+        unavailable_ids: set[str] | None = None,
+    ) -> bool:
+        unavailable = unavailable_ids or set()
+        try:
+            entries = json.loads(collection.entries_payload)
+            if not isinstance(entries, dict):
+                return True
+            for logical_path, reference in entries.items():
+                if not isinstance(logical_path, str) or not isinstance(reference, str):
+                    return True
+                self._validate_logical_path(logical_path)
+                target = session.get(ArtifactRow, str(self._reference_id(reference)))
+                if (
+                    target is None
+                    or target.id in unavailable
+                    or target.lifecycle != ArtifactLifecycle.AVAILABLE.value
+                ):
+                    return True
+        except (MishkanError, ValueError, TypeError):
+            return True
+        return False
+
     def import_legacy_manifests(self) -> int:
         """Import I02 JSON manifests and classify unavailable bodies without hiding them."""
         if not self._legacy_manifests.is_dir():
@@ -500,11 +763,15 @@ class DurableArtifactService:
         with Session(self._engine) as session, session.begin():
             row = session.get(ArtifactRow, str(artifact_id))
             if row is not None:
-                row.lifecycle = lifecycle.value
-                manifest = ArtifactManifest.model_validate_json(row.manifest_payload)
-                row.manifest_payload = manifest.model_copy(
-                    update={"lifecycle": lifecycle}
-                ).model_dump_json()
+                self._set_row_lifecycle(row, lifecycle)
+
+    @staticmethod
+    def _set_row_lifecycle(row: ArtifactRow, lifecycle: ArtifactLifecycle) -> None:
+        row.lifecycle = lifecycle.value
+        manifest = ArtifactManifest.model_validate_json(row.manifest_payload)
+        row.manifest_payload = manifest.model_copy(
+            update={"lifecycle": lifecycle}
+        ).model_dump_json()
 
     def _staging_path(self, row: ArtifactUploadRow) -> Path:
         path = (self._staging / row.staging_path).resolve()

@@ -19,11 +19,15 @@ class ArtifactModel(BaseModel):
 
 class ArtifactLifecycle(StrEnum):
     STAGING = "staging"
+    VALIDATING = "validating"
     AVAILABLE = "available"
     QUARANTINED = "quarantined"
+    REJECTED = "rejected"
+    EXPIRED = "expired"
     MISSING = "missing"
     CORRUPT = "corrupt"
     TOMBSTONED = "tombstoned"
+    DELETED = "deleted"
 
 
 class ArtifactValidation(StrEnum):
@@ -90,4 +94,29 @@ class GarbageCollectionPlan(ArtifactModel):
     plan_id: UUID
     candidates: tuple[str, ...]
     watermark: datetime
+    applied: bool = False
+
+
+class ArtifactReconciliationAction(StrEnum):
+    MARK_MISSING = "mark_missing"
+    MARK_CORRUPT = "mark_corrupt"
+    DELETE_ORPHAN_BLOB = "delete_orphan_blob"
+    DELETE_INVALID_REFERENCE = "delete_invalid_reference"
+    DELETE_INCOMPLETE_COLLECTION = "delete_incomplete_collection"
+
+
+class ArtifactReconciliationIssue(ArtifactModel):
+    action: ArtifactReconciliationAction
+    artifact_reference: str | None = None
+    storage_ref: str | None = None
+    scope: str | None = None
+    name: str | None = None
+    collection_id: UUID | None = None
+
+
+class ArtifactReconciliationPlan(ArtifactModel):
+    schema_version: str = "1.0"
+    plan_id: UUID
+    issues: tuple[ArtifactReconciliationIssue, ...]
+    created_at: datetime = Field(default_factory=utc_now)
     applied: bool = False

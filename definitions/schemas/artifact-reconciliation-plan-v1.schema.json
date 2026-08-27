@@ -1,0 +1,125 @@
+{
+  "$defs": {
+    "ArtifactReconciliationAction": {
+      "enum": [
+        "mark_missing",
+        "mark_corrupt",
+        "delete_orphan_blob",
+        "delete_invalid_reference",
+        "delete_incomplete_collection"
+      ],
+      "title": "ArtifactReconciliationAction",
+      "type": "string"
+    },
+    "ArtifactReconciliationIssue": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/ArtifactReconciliationAction"
+        },
+        "artifact_reference": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Artifact Reference"
+        },
+        "collection_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Collection Id"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scope"
+        },
+        "storage_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Storage Ref"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "title": "ArtifactReconciliationIssue",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "applied": {
+      "default": false,
+      "title": "Applied",
+      "type": "boolean"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "issues": {
+      "items": {
+        "$ref": "#/$defs/ArtifactReconciliationIssue"
+      },
+      "title": "Issues",
+      "type": "array"
+    },
+    "plan_id": {
+      "format": "uuid",
+      "title": "Plan Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "plan_id",
+    "issues"
+  ],
+  "title": "ArtifactReconciliationPlan",
+  "type": "object"
+}

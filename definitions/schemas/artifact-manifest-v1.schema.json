@@ -3,11 +3,15 @@
     "ArtifactLifecycle": {
       "enum": [
         "staging",
+        "validating",
         "available",
         "quarantined",
+        "rejected",
+        "expired",
         "missing",
         "corrupt",
-        "tombstoned"
+        "tombstoned",
+        "deleted"
       ],
       "title": "ArtifactLifecycle",
       "type": "string"

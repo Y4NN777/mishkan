@@ -6,7 +6,11 @@ from pathlib import Path
 
 import pytest
 
-from mishkan.artifacts import ArtifactLifecycle, ArtifactProvenance
+from mishkan.artifacts import (
+    ArtifactLifecycle,
+    ArtifactProvenance,
+    ArtifactReconciliationAction,
+)
 from mishkan.artifacts.service import DurableArtifactService
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.time import utc_now
@@ -162,3 +166,38 @@ def test_artifact_bounds_corruption_and_idempotent_commit_fail_closed(tmp_path: 
         service.list_manifests(limit=0)
     with pytest.raises(MishkanError):
         service.manifest("not-an-artifact")
+
+
+def test_reconciliation_plan_repairs_metadata_and_orphans_only_after_apply(
+    tmp_path: Path,
+) -> None:
+    service = _service(tmp_path)
+    reference = _upload(service, b"evidence")
+    service.update_reference("run:1", "latest", reference, expected_revision=0)
+    service.create_collection({"evidence/output.txt": reference})
+    manifest = service.manifest(reference)
+    blob = tmp_path / "artifacts" / "blobs" / manifest.storage_ref
+    blob.unlink()
+    orphan = tmp_path / "artifacts" / "blobs" / "sha256" / "aa" / ("b" * 62)
+    orphan.parent.mkdir(parents=True, exist_ok=True)
+    orphan.write_bytes(b"orphan")
+
+    plan = service.plan_reconciliation()
+    actions = {issue.action for issue in plan.issues}
+
+    assert actions == {
+        ArtifactReconciliationAction.MARK_MISSING,
+        ArtifactReconciliationAction.DELETE_ORPHAN_BLOB,
+        ArtifactReconciliationAction.DELETE_INVALID_REFERENCE,
+        ArtifactReconciliationAction.DELETE_INCOMPLETE_COLLECTION,
+    }
+    assert orphan.exists()
+    assert service.manifest(reference).lifecycle is ArtifactLifecycle.AVAILABLE
+
+    applied = service.apply_reconciliation(plan.plan_id)
+
+    assert applied.applied is True
+    assert not orphan.exists()
+    assert service.manifest(reference).lifecycle is ArtifactLifecycle.MISSING
+    assert service.apply_reconciliation(plan.plan_id) == applied
+    assert service.plan_reconciliation().issues == ()

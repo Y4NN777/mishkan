@@ -98,7 +98,7 @@ async def test_authenticated_command_and_event_query_share_durable_contract(
         "command_type": "system.checkpoint",
         "matched_rule_ids": ["local.application-commands"],
         "policy_fingerprint": event_payload["policy_fingerprint"],
-        "policy_revisions": ["bundled.local@5"],
+        "policy_revisions": ["bundled.local@6"],
         "request_schema_version": "1.0",
         "payload_fields": ["checkpoint"],
         "result_fields": ["recorded"],
@@ -303,6 +303,50 @@ async def test_artifact_upload_commands_publish_only_verified_content(tmp_path: 
     assert chunked.status_code == 200
     assert committed.status_code == 200
     assert body.content == content
+
+
+@pytest.mark.anyio
+async def test_artifact_reconciliation_is_a_governed_plan_then_apply_command(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    paths = DaemonBootstrap().setup(config)
+    token = TokenFile(paths.token_file).read().token
+    headers = {"Authorization": f"Bearer {token}"}
+    orphan = paths.artifacts / "blobs" / "sha256" / "aa" / ("c" * 62)
+    orphan.parent.mkdir(parents=True, exist_ok=True)
+    orphan.write_bytes(b"orphan")
+    transport = httpx.ASGITransport(app=create_app(config))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        planned = await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=ApplicationCommand(
+                command_type="artifact.reconcile.plan",
+                actor_id="local-operator",
+                target_type="artifact_service",
+                payload={},
+            ).model_dump(mode="json"),
+        )
+        plan_id = planned.json()["payload"]["plan_id"]
+        assert orphan.exists()
+        applied = await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=ApplicationCommand(
+                command_type="artifact.reconcile.apply",
+                actor_id="local-operator",
+                target_type="artifact_reconciliation_plan",
+                target_id=plan_id,
+                payload={},
+            ).model_dump(mode="json"),
+        )
+
+    assert planned.status_code == 200
+    assert planned.json()["payload"]["issues"][0]["action"] == "delete_orphan_blob"
+    assert applied.status_code == 200
+    assert applied.json()["payload"]["applied"] is True
+    assert not orphan.exists()
 
 
 @pytest.mark.anyio

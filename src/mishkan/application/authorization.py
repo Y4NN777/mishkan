@@ -91,6 +91,12 @@ COMMAND_SEMANTICS = MappingProxyType(
         "artifact.gc.apply": CommandSemantics(
             "application.artifact.gc", "artifact", ("artifact.gc.apply",)
         ),
+        "artifact.reconcile.plan": CommandSemantics(
+            "application.artifact.reconcile", "artifact", ("artifact.reconcile.plan",)
+        ),
+        "artifact.reconcile.apply": CommandSemantics(
+            "application.artifact.reconcile", "artifact", ("artifact.reconcile.apply",)
+        ),
         "change.plan": CommandSemantics("application.change.plan", "filesystem", ("change.plan",)),
         "change.apply": CommandSemantics(
             "application.change.apply", "filesystem", ("change.apply",)
@@ -138,6 +144,8 @@ _COMMAND_TARGETS = MappingProxyType(
         "artifact.reference.update": ("artifact_reference", "absent"),
         "artifact.gc.plan": ("artifact_service", "absent"),
         "artifact.gc.apply": ("artifact_gc_plan", "uuid"),
+        "artifact.reconcile.plan": ("artifact_service", "absent"),
+        "artifact.reconcile.apply": ("artifact_reconciliation_plan", "uuid"),
         "change.plan": ("change_set", "uuid"),
         "change.apply": ("change_set", "uuid"),
         "change.reconcile": ("change_set", "uuid"),
@@ -174,6 +182,8 @@ _COMMAND_PAYLOAD_FIELDS = MappingProxyType(
         ),
         "artifact.gc.plan": (frozenset({"watermark"}), frozenset()),
         "artifact.gc.apply": (frozenset(), frozenset()),
+        "artifact.reconcile.plan": (frozenset(), frozenset()),
+        "artifact.reconcile.apply": (frozenset(), frozenset()),
         "change.plan": (frozenset({"change_set"}), frozenset()),
         "change.apply": (frozenset(), frozenset()),
         "change.reconcile": (frozenset(), frozenset()),

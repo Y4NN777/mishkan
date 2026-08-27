@@ -84,6 +84,7 @@ def test_public_contract_catalogue_exports_deterministically(tmp_path: Path) -> 
         "artifact-collection-v1.schema.json",
         "artifact-gc-plan-v1.schema.json",
         "artifact-manifest-v1.schema.json",
+        "artifact-reconciliation-plan-v1.schema.json",
         "artifact-upload-session-v1.schema.json",
         "artifact-working-reference-v1.schema.json",
         "browser-action-request-v1.schema.json",

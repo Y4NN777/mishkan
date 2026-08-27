@@ -222,6 +222,15 @@ class ArtifactGCPlanRow(Base):
     created_at: Mapped[str] = mapped_column(String(40), nullable=False)
 
 
+class ArtifactReconciliationPlanRow(Base):
+    __tablename__ = "artifact_reconciliation_plans"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    applied_at: Mapped[str | None] = mapped_column(String(40))
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
 class ChangeSetRow(Base):
     __tablename__ = "change_sets"
 

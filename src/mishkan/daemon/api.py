@@ -678,6 +678,12 @@ def _dispatch(
     if command.command_type == "artifact.gc.apply" and command.target_id is not None:
         plan = artifacts.apply_gc(UUID(command.target_id))
         return "artifact.gc_applied", plan.model_dump(mode="json")
+    if command.command_type == "artifact.reconcile.plan":
+        reconciliation = artifacts.plan_reconciliation()
+        return "artifact.reconciliation_planned", reconciliation.model_dump(mode="json")
+    if command.command_type == "artifact.reconcile.apply" and command.target_id is not None:
+        reconciliation = artifacts.apply_reconciliation(UUID(command.target_id))
+        return "artifact.reconciliation_applied", reconciliation.model_dump(mode="json")
     if command.command_type == "change.plan":
         result = changes.plan(ChangeSet.model_validate(payload["change_set"]))
         return "change_set.planned", result.model_dump(mode="json")
