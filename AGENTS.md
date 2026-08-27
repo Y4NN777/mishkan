@@ -10,10 +10,12 @@ PRD 1.4, SRS 1.6, Contract 1.4, Responsibilities 1.2, System Model 1.3, Architec
 Implementation Plan 1.5 were accepted in order by D-032 through D-037 on 2026-08-25. I02 was
 integrated before `feat/i03-mutations-sessions-durability` began. I03 now has a green deterministic
 local gate, a passing tracked live CrewAI/Ollama regression, and a green remote Linux/macOS Python
-3.11–3.13 matrix recorded in `docs/VALIDATION/I03.md`. D-038 accepts I03. Promote the topic branch
-into `develop` before opening a new I04 topic branch; do not implement I04 on the I03 branch. The
-rejected universal workflow, mandatory outcome catalogue, capability-family matrix, static
-role/tool matrix, competing runtime, and private operational deny-list must not return.
+3.11–3.13 matrix recorded in `docs/VALIDATION/I03.md`. D-038 accepts I03. I04 is implemented on
+`feat/i04-web-browser-mcp-harnesses`; its complete local, real-browser/MCP, live-model, and remote
+evidence is recorded in `docs/VALIDATION/I04.md`. D-039 is proposed and awaits explicit engineer
+acceptance. Do not promote I04 into `develop` or begin I05 before D-039 is accepted. The rejected
+universal workflow, mandatory outcome catalogue, capability-family matrix, static role/tool matrix,
+competing runtime, and private operational deny-list must not return.
 
 D-037 accepts the detailed agent-authored mission environment lifecycle, per-context bindings,
 Dev Container/Podman/Compose descriptor generation, ordinary effect boundaries, and acceptance

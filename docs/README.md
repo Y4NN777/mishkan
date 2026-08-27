@@ -27,6 +27,7 @@ This index is the entry point for durable MISHKAN documentation.
 | [`VALIDATION/I01.md`](VALIDATION/I01.md) | Passed | Observed local and remote acceptance evidence for real CrewAI execution |
 | [`VALIDATION/I02.md`](VALIDATION/I02.md) | Reopened | Narrow mechanism evidence and remaining corrected I02 acceptance conditions |
 | [`VALIDATION/I03.md`](VALIDATION/I03.md) | Passed — D-038 | Local, live CrewAI/Ollama, and remote Linux/macOS evidence for the durable daemon, mutations, artifacts, sessions, recovery, security, and performance |
+| [`VALIDATION/I04.md`](VALIDATION/I04.md) | Gate passed — D-039 proposed | Local, real-browser/MCP, live CrewAI/Ollama, and remote Linux/macOS evidence for Web, Browser, MCP, and governed harness clients |
 
 ## Authority rules
 
