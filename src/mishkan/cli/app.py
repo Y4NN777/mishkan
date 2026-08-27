@@ -855,19 +855,32 @@ def initialize_repository(
         typer.Option("--repository", "-r", help="Git repository to initialize."),
     ] = None,
 ) -> None:
-    """Run the read-only CrewAI initialization flow and durably resume it."""
+    """Submit repository initialization to the authoritative local daemon."""
 
     state = _state(ctx)
     effective = _load_or_exit(ctx)
-    target = repository or effective.value.project.workspace
+    workspace = effective.value.project.workspace.resolve()
+    if repository is not None and repository.resolve() != workspace:
+        raise typer.BadParameter(
+            "--repository must match the workspace configured for this mishkand instance",
+            param_hint="--repository",
+        )
     try:
-        from mishkan.application.initialize import MishkanInitializer
+        from mishkan.application import ApplicationCommand, RunInitializationRequest
 
-        report = MishkanInitializer().run(effective.value, target, objective)
+        with _daemon_client(ctx) as client:
+            result = client.command(
+                ApplicationCommand(
+                    command_type="run.initialize",
+                    actor_id=client.principal_id,
+                    target_type="run",
+                    payload=RunInitializationRequest(objective=objective).model_dump(mode="json"),
+                )
+            )
     except MishkanError as error:
         _emit_error(error, as_json=state.json_output)
         raise typer.Exit(code=2) from error
-    _emit(report.model_dump(mode="json"), as_json=state.json_output)
+    _emit(result.model_dump(mode="json"), as_json=state.json_output)
 
 
 if __name__ == "__main__":

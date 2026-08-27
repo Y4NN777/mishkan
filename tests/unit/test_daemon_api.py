@@ -91,6 +91,12 @@ async def test_authenticated_command_and_event_query_share_durable_contract(
     assert events.status_code == 200
     assert len(events.json()["events"]) == 1
     assert events.json()["events"][0]["command_id"] == str(command.command_id)
+    assert events.json()["events"][0]["payload"] == {
+        "command_type": "system.checkpoint",
+        "request_schema_version": "1.0",
+        "payload_fields": ["checkpoint"],
+        "result_fields": ["recorded"],
+    }
 
 
 @pytest.mark.anyio

@@ -228,7 +228,7 @@ def create_app(config: MishkanConfig) -> FastAPI:
                 target_id=target_id,
                 event_type=event_type,
                 result_payload=result_payload,
-                event_payload=command.payload,
+                event_payload=_event_projection(command, result_payload),
                 source="mishkand",
             )
 
@@ -548,6 +548,20 @@ def create_app(config: MishkanConfig) -> FastAPI:
         app.mount(mcp_config.facade.streamable_http_path, mcp_http.app)
 
     return app
+
+
+def _event_projection(
+    command: ApplicationCommand,
+    result_payload: dict[str, object],
+) -> dict[str, object]:
+    """Describe a command settlement without copying effect inputs or result bodies."""
+
+    return {
+        "command_type": command.command_type,
+        "request_schema_version": command.schema_version,
+        "payload_fields": sorted(command.payload),
+        "result_fields": sorted(result_payload),
+    }
 
 
 def _dispatch(

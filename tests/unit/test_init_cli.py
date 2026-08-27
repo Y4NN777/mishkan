@@ -1,41 +1,45 @@
 import json
+from contextlib import contextmanager
 from pathlib import Path
+from uuid import UUID
 
 from typer.testing import CliRunner
 
-from mishkan.application.initialize import MishkanInitializer
+import mishkan.cli.app as cli_module
+from mishkan.application import CommandResult, CommandStatus
 from mishkan.cli.app import app
-from mishkan.planning.models import InitializationReport, InitializationResult, ReviewDecision
+from mishkan.domain.time import utc_now
 
 
-def test_init_cli_emits_machine_readable_reviewed_report(
+def test_init_cli_submits_the_objective_through_mishkand(
     monkeypatch,
 ) -> None:  # type: ignore[no-untyped-def]
-    result = InitializationResult(
-        repository_revision="a" * 40,
-        task_id="inspect-readme",
-        summary="Evidence-backed result.",
-        cited_paths=("README.md",),
-        findings=("The repository has a README.",),
-    )
-    review = ReviewDecision(
-        task_id=result.task_id,
-        verdict="accepted",
-        summary="Independent review passed.",
-        checked_citations=result.cited_paths,
-    )
-    report = InitializationReport(
-        run_id="run-id",
-        repository_id="b" * 64,
-        repository_revision=result.repository_revision,
-        discovery_fingerprint="c" * 64,
-        plan_fingerprint="d" * 64,
-        resumed=False,
-        completed_task_ids=(result.task_id,),
-        results=(result,),
-        reviews=(review,),
-    )
-    monkeypatch.setattr(MishkanInitializer, "run", lambda *_args, **_kwargs: report)
+    class FakeClient:
+        principal_id = "local-operator"
+
+        def command(self, command):  # type: ignore[no-untyped-def]
+            assert command.command_type == "run.initialize"
+            assert command.target_type == "run"
+            assert command.payload == {
+                "schema_version": "1.0",
+                "objective": "Inspect repository evidence",
+            }
+            return CommandResult(
+                command_id=UUID("00000000-0000-4000-8000-000000000001"),
+                status=CommandStatus.ACCEPTED,
+                target_type="run",
+                target_id="local-instance",
+                revision=1,
+                event_cursor=1,
+                payload={"run_id": "run-id"},
+                completed_at=utc_now(),
+            )
+
+    @contextmanager
+    def fake_daemon_client(_ctx):  # type: ignore[no-untyped-def]
+        yield FakeClient()
+
+    monkeypatch.setattr(cli_module, "_daemon_client", fake_daemon_client)
 
     cli_result = CliRunner().invoke(
         app,
@@ -52,5 +56,5 @@ def test_init_cli_emits_machine_readable_reviewed_report(
 
     assert cli_result.exit_code == 0, cli_result.output
     payload = json.loads(cli_result.stdout)
-    assert payload["results"][0]["task_id"] == "inspect-readme"
-    assert payload["reviews"][0]["verdict"] == "accepted"
+    assert payload["status"] == "accepted"
+    assert payload["payload"]["run_id"] == "run-id"
