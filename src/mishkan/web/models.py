@@ -39,7 +39,7 @@ class RedirectPolicy(StrEnum):
 class SearchRequest(WebModel):
     schema_version: str = "1.0"
     query: str = Field(min_length=1, max_length=16_384)
-    strategy: SearchStrategy
+    strategy: SearchStrategy | None = None
     source_ids: tuple[str, ...] = ()
     limit: int = Field(default=10, ge=1, le=1_000)
     language: str | None = Field(default=None, min_length=2, max_length=35)

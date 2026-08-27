@@ -77,10 +77,12 @@ class WebService:
         *,
         credential_resolver: WebCredentialResolver | None = None,
     ) -> SearchResponse:
-        source_ids = self._search_sources(request)
+        strategy = request.strategy or self._config.default_search_strategy
+        effective_request = request.model_copy(update={"strategy": strategy})
+        source_ids = self._search_sources(effective_request, strategy)
         cache_key = self._cache_key(
             "search",
-            request.model_dump(
+            effective_request.model_dump(
                 mode="json",
                 exclude={"cache", "cache_max_age_seconds", "allow_stale_seconds"},
             ),
@@ -141,13 +143,13 @@ class WebService:
                     )
                 )
                 lost.append(source_id)
-                if request.strategy is SearchStrategy.DIRECT:
+                if strategy is SearchStrategy.DIRECT:
                     break
                 continue
             try:
                 resolver = credential_resolver or self._credentials
                 result = adapter.search(
-                    request,
+                    effective_request,
                     source_id=source_id,
                     source=source,
                     profile=self._config.network_profiles[source.network_profile],
@@ -168,7 +170,7 @@ class WebService:
                     )
                 )
                 lost.append(source_id)
-                if request.strategy is SearchStrategy.DIRECT:
+                if strategy is SearchStrategy.DIRECT:
                     break
                 continue
             routes.append(
@@ -184,25 +186,46 @@ class WebService:
                 )
             )
             hits.extend(result.hits)
-            if request.strategy is SearchStrategy.AUTOMATIC:
+            if strategy is SearchStrategy.AUTOMATIC:
                 break
-        if not any(route.status is RouteStatus.COMPLETED for route in routes):
+        completed_routes = sum(route.status is RouteStatus.COMPLETED for route in routes)
+        verification_origins = {
+            f"upstream:{upstream.casefold()}"
+            for route in routes
+            if route.status is RouteStatus.COMPLETED and route.upstreams
+            for upstream in route.upstreams
+        }
+        verification_origins.update(
+            f"route:{route.source_id}"
+            for route in routes
+            if route.status is RouteStatus.COMPLETED and not route.upstreams
+        )
+        enough_verification = (
+            strategy is not SearchStrategy.VERIFICATION or len(verification_origins) >= 2
+        )
+        if completed_routes < 1 or not enough_verification:
             raise MishkanError(
                 ErrorCode.WEB,
-                "no selected Web search route completed",
+                "selected Web search strategy did not produce enough attributable evidence",
                 details={
                     "routes": [
                         {"source_id": route.source_id, "status": route.status.value}
                         for route in routes
                     ],
-                    "fallback_eligible": request.strategy is SearchStrategy.AUTOMATIC,
+                    "strategy": strategy.value,
+                    "completed_routes": completed_routes,
+                    "verification_origins": sorted(verification_origins),
+                    "required_verification_origins": (
+                        2 if strategy is SearchStrategy.VERIFICATION else 0
+                    ),
+                    "fallback_eligible": strategy is SearchStrategy.AUTOMATIC,
                 },
                 retryable=any(route.status is RouteStatus.FAILED for route in routes),
             )
         cache_unavailable = request.cache and self._cache is None
         response = SearchResponse(
             query=request.query,
-            strategy=request.strategy,
+            strategy=strategy,
             hits=tuple(hits[: request.limit]),
             routes=tuple(routes),
             degraded=bool(lost) or any(route.limitation for route in routes) or cache_unavailable,
@@ -566,7 +589,11 @@ class WebService:
             span=span,
         )
 
-    def _search_sources(self, request: SearchRequest) -> tuple[str, ...]:
+    def _search_sources(
+        self,
+        request: SearchRequest,
+        strategy: SearchStrategy,
+    ) -> tuple[str, ...]:
         selected = request.source_ids or self._config.default_search_sources
         unknown = sorted(set(selected) - set(self._config.sources))
         if unknown:
@@ -575,10 +602,24 @@ class WebService:
                 "search references unknown configured sources",
                 details={"source_ids": unknown},
             )
-        if request.strategy is SearchStrategy.DIRECT and len(selected) != 1:
+        if strategy is SearchStrategy.DIRECT and len(selected) != 1:
             raise MishkanError(
                 ErrorCode.WEB,
                 "direct search requires exactly one explicit or configured source",
+            )
+        route_identities: dict[tuple[str, str], str] = {}
+        duplicates: list[dict[str, str]] = []
+        for source_id in selected:
+            source = self._config.sources[source_id]
+            identity = (source.adapter, str(source.endpoint))
+            previous = route_identities.setdefault(identity, source_id)
+            if previous != source_id:
+                duplicates.append({"source_id": source_id, "duplicates": previous})
+        if duplicates:
+            raise MishkanError(
+                ErrorCode.WEB,
+                "search selection contains duplicate executable routes",
+                details={"duplicates": duplicates},
             )
         return selected
 

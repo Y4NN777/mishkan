@@ -87,7 +87,15 @@
       "type": "array"
     },
     "strategy": {
-      "$ref": "#/$defs/SearchStrategy"
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SearchStrategy"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "time_range": {
       "anyOf": [
@@ -104,8 +112,7 @@
     }
   },
   "required": [
-    "query",
-    "strategy"
+    "query"
   ],
   "title": "SearchRequest",
   "type": "object"

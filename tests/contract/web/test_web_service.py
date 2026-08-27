@@ -107,6 +107,176 @@ class SuccessfulSearch:
         )
 
 
+class RecordingSearch:
+    adapter_id = "test.record"
+
+    def __init__(self, *, failing_sources: tuple[str, ...] = ()) -> None:
+        self.calls: list[str] = []
+        self.failing_sources = set(failing_sources)
+
+    def search(self, *args: object, **kwargs: object) -> ProviderSearchResult:
+        del args
+        source_id = str(kwargs["source_id"])
+        self.calls.append(source_id)
+        if source_id in self.failing_sources:
+            raise MishkanError(ErrorCode.WEB, "verification source failed", retryable=True)
+        return ProviderSearchResult(
+            hits=(
+                SearchHit(
+                    source_id=source_id,
+                    upstream=source_id,
+                    rank=1,
+                    title=f"Evidence from {source_id}",
+                    url=AnyHttpUrl(f"https://{source_id}.example/evidence"),
+                    snippet="Observed result",
+                    score_scale=f"{source_id}.rank",
+                ),
+            ),
+            upstreams=(source_id,),
+        )
+
+
+def _two_source_config(strategy: SearchStrategy) -> WebConfig:
+    base = _web_config()
+    template = base.sources["searxng-local"]
+    first = template.model_copy(
+        update={
+            "adapter": "test.record",
+            "endpoint": AnyHttpUrl("https://first.example/search"),
+            "network_profile": "public-read",
+        }
+    )
+    second = template.model_copy(
+        update={
+            "adapter": "test.record",
+            "endpoint": AnyHttpUrl("https://second.example/search"),
+            "network_profile": "public-read",
+        }
+    )
+    return base.model_copy(
+        update={
+            "sources": {"first": first, "second": second},
+            "default_search_sources": ("first", "second"),
+            "default_search_strategy": strategy,
+        }
+    )
+
+
+def test_configured_default_search_strategy_is_executed_when_request_omits_it(
+    tmp_path: Path,
+) -> None:
+    config = _two_source_config(SearchStrategy.AUTOMATIC)
+    adapter = RecordingSearch()
+    service = WebService(
+        config,
+        _artifacts(tmp_path),
+        search_adapters={adapter.adapter_id: adapter},
+        extraction_adapters={},
+    )
+
+    result = service.search(SearchRequest(query="default strategy", cache=False))
+
+    assert result.strategy is SearchStrategy.AUTOMATIC
+    assert adapter.calls == ["first"]
+
+
+def test_aggregate_queries_every_selected_independent_route(tmp_path: Path) -> None:
+    config = _two_source_config(SearchStrategy.AGGREGATE)
+    adapter = RecordingSearch()
+    service = WebService(
+        config,
+        _artifacts(tmp_path),
+        search_adapters={adapter.adapter_id: adapter},
+        extraction_adapters={},
+    )
+
+    result = service.search(SearchRequest(query="aggregate evidence", cache=False))
+
+    assert adapter.calls == ["first", "second"]
+    assert [route.source_id for route in result.routes] == ["first", "second"]
+    assert {hit.score_scale for hit in result.hits} == {"first.rank", "second.rank"}
+
+
+def test_verification_requires_two_completed_independent_routes(tmp_path: Path) -> None:
+    config = _two_source_config(SearchStrategy.VERIFICATION)
+    adapter = RecordingSearch(failing_sources=("first",))
+    service = WebService(
+        config,
+        _artifacts(tmp_path),
+        search_adapters={adapter.adapter_id: adapter},
+        extraction_adapters={},
+    )
+
+    with pytest.raises(MishkanError) as caught:
+        service.search(SearchRequest(query="verify evidence", cache=False))
+
+    assert adapter.calls == ["first", "second"]
+    assert caught.value.envelope.details["completed_routes"] == 1
+    assert caught.value.envelope.details["verification_origins"] == ["upstream:second"]
+    assert caught.value.envelope.details["required_verification_origins"] == 2
+
+
+def test_verification_accepts_two_observed_upstreams_from_one_broker(tmp_path: Path) -> None:
+    base = _web_config()
+    broker = base.sources["searxng-local"].model_copy(update={"adapter": "test.broker"})
+    config = base.model_copy(
+        update={
+            "sources": {"broker": broker},
+            "default_search_sources": ("broker",),
+            "default_search_strategy": SearchStrategy.VERIFICATION,
+        }
+    )
+
+    class BrokerSearch:
+        adapter_id = "test.broker"
+
+        def search(self, *args: object, **kwargs: object) -> ProviderSearchResult:
+            del args, kwargs
+            return ProviderSearchResult(hits=(), upstreams=("duckduckgo", "brave"))
+
+    adapter = BrokerSearch()
+    service = WebService(
+        config,
+        _artifacts(tmp_path),
+        search_adapters={adapter.adapter_id: adapter},
+        extraction_adapters={},
+    )
+
+    result = service.search(SearchRequest(query="broker verification", cache=False))
+
+    assert result.strategy is SearchStrategy.VERIFICATION
+    assert result.routes[0].upstreams == ("duckduckgo", "brave")
+
+
+def test_verification_and_aggregate_refuse_duplicate_route_aliases_before_network(
+    tmp_path: Path,
+) -> None:
+    base = _web_config()
+    source = base.sources["searxng-local"].model_copy(update={"adapter": "test.record"})
+    config = base.model_copy(
+        update={
+            "sources": {"first": source, "alias": source},
+            "default_search_sources": ("first", "alias"),
+            "default_search_strategy": SearchStrategy.VERIFICATION,
+        }
+    )
+    adapter = RecordingSearch()
+    service = WebService(
+        config,
+        _artifacts(tmp_path),
+        search_adapters={adapter.adapter_id: adapter},
+        extraction_adapters={},
+    )
+
+    with pytest.raises(MishkanError) as caught:
+        service.search(SearchRequest(query="duplicate route", cache=False))
+
+    assert caught.value.envelope.details["duplicates"] == [
+        {"source_id": "alias", "duplicates": "first"}
+    ]
+    assert adapter.calls == []
+
+
 def test_automatic_search_exposes_failed_route_before_compatible_fallback(
     tmp_path: Path,
 ) -> None:
