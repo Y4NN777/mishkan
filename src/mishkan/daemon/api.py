@@ -369,6 +369,13 @@ def create_app(config: MishkanConfig) -> FastAPI:
         event_type: Annotated[list[str] | None, Query()] = None,
         entity_type: str | None = None,
         entity_id: str | None = None,
+        run_id: str | None = None,
+        task_id: str | None = None,
+        identity_id: str | None = None,
+        team_id: str | None = None,
+        occurred_after: datetime | None = None,
+        occurred_before: datetime | None = None,
+        security_relevant: bool | None = None,
     ) -> EventPage:
         return repository.events(
             after_cursor=after,
@@ -376,6 +383,13 @@ def create_app(config: MishkanConfig) -> FastAPI:
             event_types=tuple(event_type or ()),
             entity_type=entity_type,
             entity_id=entity_id,
+            run_id=run_id,
+            task_id=task_id,
+            identity_id=identity_id,
+            team_id=team_id,
+            occurred_after=occurred_after,
+            occurred_before=occurred_before,
+            security_relevant=security_relevant,
         )
 
     @app.get("/v1/events/stream")
@@ -384,6 +398,16 @@ def create_app(config: MishkanConfig) -> FastAPI:
         _principal: TokenRecord = authenticated,
         after: Annotated[int, Query(ge=0)] = 0,
         last_event_id: Annotated[str | None, Header(alias="Last-Event-ID")] = None,
+        event_type: Annotated[list[str] | None, Query()] = None,
+        entity_type: str | None = None,
+        entity_id: str | None = None,
+        run_id: str | None = None,
+        task_id: str | None = None,
+        identity_id: str | None = None,
+        team_id: str | None = None,
+        occurred_after: datetime | None = None,
+        occurred_before: datetime | None = None,
+        security_relevant: bool | None = None,
     ) -> StreamingResponse:
         cursor = after
         if last_event_id is not None:
@@ -397,6 +421,16 @@ def create_app(config: MishkanConfig) -> FastAPI:
         initial = repository.events(
             after_cursor=cursor,
             limit=daemon.event_page_limit,
+            event_types=tuple(event_type or ()),
+            entity_type=entity_type,
+            entity_id=entity_id,
+            run_id=run_id,
+            task_id=task_id,
+            identity_id=identity_id,
+            team_id=team_id,
+            occurred_after=occurred_after,
+            occurred_before=occurred_before,
+            security_relevant=security_relevant,
         )
 
         async def stream() -> AsyncIterator[str]:
@@ -424,6 +458,16 @@ def create_app(config: MishkanConfig) -> FastAPI:
                 page = repository.events(
                     after_cursor=current,
                     limit=daemon.event_page_limit,
+                    event_types=tuple(event_type or ()),
+                    entity_type=entity_type,
+                    entity_id=entity_id,
+                    run_id=run_id,
+                    task_id=task_id,
+                    identity_id=identity_id,
+                    team_id=team_id,
+                    occurred_after=occurred_after,
+                    occurred_before=occurred_before,
+                    security_relevant=security_relevant,
                 )
 
         return StreamingResponse(

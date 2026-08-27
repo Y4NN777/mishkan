@@ -23,6 +23,11 @@ class EventEnvelope(EventModel):
     source: str = Field(min_length=1, max_length=128)
     entity_type: str = Field(min_length=1, max_length=64)
     entity_id: str = Field(min_length=1, max_length=256)
+    run_id: str | None = Field(default=None, min_length=1, max_length=256)
+    task_id: str | None = Field(default=None, min_length=1, max_length=256)
+    identity_id: str | None = Field(default=None, min_length=1, max_length=256)
+    team_id: str | None = Field(default=None, min_length=1, max_length=256)
+    security_relevant: bool = False
     occurred_at: datetime
     command_id: UUID | None = None
     correlation_id: UUID | None = None

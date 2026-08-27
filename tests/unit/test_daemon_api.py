@@ -194,6 +194,11 @@ rules:
         )
         sessions = await client.get("/v1/sessions", headers=headers)
         events = await client.get("/v1/events", headers=headers)
+        security_events = await client.get(
+            "/v1/events",
+            headers=headers,
+            params={"security_relevant": "true", "identity_id": "local-operator"},
+        )
 
     assert first.status_code == 200
     assert first.json()["status"] == "refused"
@@ -204,6 +209,9 @@ rules:
     assert events.json()["events"][0]["event_type"] == "application.command_refused"
     assert events.json()["events"][0]["sensitivity"] == "security"
     assert events.json()["events"][0]["payload"]["authorization_decision"] == "deny"
+    assert len(security_events.json()["events"]) == 1
+    assert security_events.json()["events"][0]["security_relevant"] is True
+    assert security_events.json()["events"][0]["identity_id"] == "local-operator"
 
 
 @pytest.mark.anyio

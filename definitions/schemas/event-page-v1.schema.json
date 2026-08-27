@@ -69,6 +69,20 @@
           "title": "Event Type",
           "type": "string"
         },
+        "identity_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Identity Id"
+        },
         "occurred_at": {
           "format": "date-time",
           "title": "Occurred At",
@@ -79,10 +93,29 @@
           "title": "Payload",
           "type": "object"
         },
+        "run_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Run Id"
+        },
         "schema_version": {
           "default": "1.0",
           "title": "Schema Version",
           "type": "string"
+        },
+        "security_relevant": {
+          "default": false,
+          "title": "Security Relevant",
+          "type": "boolean"
         },
         "sensitivity": {
           "maxLength": 32,
@@ -95,6 +128,34 @@
           "minLength": 1,
           "title": "Source",
           "type": "string"
+        },
+        "task_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Task Id"
+        },
+        "team_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Team Id"
         }
       },
       "required": [

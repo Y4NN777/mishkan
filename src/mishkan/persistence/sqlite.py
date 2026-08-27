@@ -125,6 +125,11 @@ class OutboxRow(Base):
     schema_version: Mapped[str] = mapped_column(String(16), nullable=False, default="1.0")
     aggregate_id: Mapped[str] = mapped_column(String(256), nullable=False)
     entity_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    run_id: Mapped[str | None] = mapped_column(String(256))
+    task_id: Mapped[str | None] = mapped_column(String(256))
+    identity_id: Mapped[str | None] = mapped_column(String(256))
+    team_id: Mapped[str | None] = mapped_column(String(256))
+    security_relevant: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     event_type: Mapped[str] = mapped_column(String(120), nullable=False)
     source: Mapped[str] = mapped_column(String(128), nullable=False)
     payload: Mapped[str] = mapped_column(Text, nullable=False)
@@ -937,6 +942,13 @@ class LocalRunRepository:
                     schema_version=audit.schema_version,
                     aggregate_id=audit.run_id,
                     entity_type="run",
+                    run_id=audit.run_id,
+                    task_id=audit.task_attempt_id,
+                    identity_id=audit.identity,
+                    team_id=None,
+                    security_relevant=(
+                        audit.decision.casefold() not in {"allow", "allowed", "completed"}
+                    ),
                     event_type=audit.event_type,
                     source="mishkan.gateway",
                     payload=audit.model_dump_json(),
@@ -1071,6 +1083,11 @@ class LocalRunRepository:
                 schema_version="1.0",
                 aggregate_id=aggregate_id,
                 entity_type="run",
+                run_id=aggregate_id,
+                task_id=(str(payload["task_id"]) if payload.get("task_id") else None),
+                identity_id=None,
+                team_id=None,
+                security_relevant=event_type.startswith("security."),
                 event_type=event_type,
                 source="mishkan.runtime",
                 payload=json.dumps(payload, sort_keys=True, separators=(",", ":")),

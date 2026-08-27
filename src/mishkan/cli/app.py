@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -335,12 +336,31 @@ def list_events(
     ctx: typer.Context,
     after: Annotated[int, typer.Option(min=0)] = 0,
     limit: Annotated[int | None, typer.Option(min=1, max=1_000)] = None,
+    event_type: Annotated[list[str] | None, typer.Option("--type")] = None,
+    run_id: Annotated[str | None, typer.Option("--run")] = None,
+    task_id: Annotated[str | None, typer.Option("--task")] = None,
+    identity_id: Annotated[str | None, typer.Option("--identity")] = None,
+    team_id: Annotated[str | None, typer.Option("--team")] = None,
+    since: Annotated[str | None, typer.Option(help="Inclusive ISO-8601 timestamp.")] = None,
+    until: Annotated[str | None, typer.Option(help="Inclusive ISO-8601 timestamp.")] = None,
+    security: Annotated[bool, typer.Option("--security", help="Only security events.")] = False,
 ) -> None:
     """Query a bounded page from the durable daemon stream."""
     state = _state(ctx)
     try:
         with _daemon_client(ctx) as client:
-            page = client.events(after=after, limit=limit)
+            page = client.events(
+                after=after,
+                limit=limit,
+                event_types=tuple(event_type or ()),
+                run_id=run_id,
+                task_id=task_id,
+                identity_id=identity_id,
+                team_id=team_id,
+                occurred_after=_event_time(since),
+                occurred_before=_event_time(until),
+                security_relevant=True if security else None,
+            )
     except MishkanError as error:
         _emit_error(error, as_json=state.json_output)
         raise typer.Exit(code=2) from error
@@ -355,15 +375,43 @@ def tail_events(
         int,
         typer.Option(min=0, help="Stop after this many events; zero follows continuously."),
     ] = 0,
+    event_type: Annotated[list[str] | None, typer.Option("--type")] = None,
+    run_id: Annotated[str | None, typer.Option("--run")] = None,
+    task_id: Annotated[str | None, typer.Option("--task")] = None,
+    identity_id: Annotated[str | None, typer.Option("--identity")] = None,
+    team_id: Annotated[str | None, typer.Option("--team")] = None,
+    since: Annotated[str | None, typer.Option(help="Inclusive ISO-8601 timestamp.")] = None,
+    security: Annotated[bool, typer.Option("--security", help="Only security events.")] = False,
 ) -> None:
     """Follow the resumable SSE stream from an explicit durable cursor."""
     emitted = 0
     with _daemon_client(ctx) as client:
-        for event in client.stream_events(after=after):
+        for event in client.stream_events(
+            after=after,
+            event_types=tuple(event_type or ()),
+            run_id=run_id,
+            task_id=task_id,
+            identity_id=identity_id,
+            team_id=team_id,
+            occurred_after=_event_time(since),
+            security_relevant=True if security else None,
+        ):
             _emit(event.model_dump(mode="json"), as_json=_state(ctx).json_output)
             emitted += 1
             if count and emitted >= count:
                 return
+
+
+def _event_time(value: str | None) -> datetime | None:
+    if value is None:
+        return None
+    try:
+        observed = datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise typer.BadParameter("event time must be an ISO-8601 timestamp") from exc
+    if observed.tzinfo is None or observed.utcoffset() is None:
+        raise typer.BadParameter("event time must include a timezone offset")
+    return observed
 
 
 @events_app.command("export")

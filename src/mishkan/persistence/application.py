@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -62,6 +62,7 @@ class SQLiteApplicationRepository:
                 schema_version="1.0",
                 aggregate_id=target_id,
                 entity_type=command.target_type,
+                **self._event_dimensions(command, target_id, "security"),
                 event_type="application.command_refused",
                 source="mishkand.policy",
                 payload=json.dumps(dict(event_payload), sort_keys=True, separators=(",", ":")),
@@ -137,6 +138,7 @@ class SQLiteApplicationRepository:
                     schema_version="1.0",
                     aggregate_id=target_id,
                     entity_type=command.target_type,
+                    **self._event_dimensions(command, target_id, sensitivity),
                     event_type=event_type,
                     source=source,
                     payload=json.dumps(
@@ -289,6 +291,7 @@ class SQLiteApplicationRepository:
                 schema_version="1.0",
                 aggregate_id=target_id,
                 entity_type=command.target_type,
+                **self._event_dimensions(command, target_id, sensitivity),
                 event_type=event_type,
                 source=source,
                 payload=json.dumps(
@@ -353,6 +356,13 @@ class SQLiteApplicationRepository:
         event_types: tuple[str, ...] = (),
         entity_type: str | None = None,
         entity_id: str | None = None,
+        run_id: str | None = None,
+        task_id: str | None = None,
+        identity_id: str | None = None,
+        team_id: str | None = None,
+        occurred_after: datetime | None = None,
+        occurred_before: datetime | None = None,
+        security_relevant: bool | None = None,
     ) -> EventPage:
         if limit < 1 or limit > 1_000:
             raise MishkanError(
@@ -380,6 +390,24 @@ class SQLiteApplicationRepository:
                 statement = statement.where(OutboxRow.entity_type == entity_type)
             if entity_id is not None:
                 statement = statement.where(OutboxRow.aggregate_id == entity_id)
+            if run_id is not None:
+                statement = statement.where(OutboxRow.run_id == run_id)
+            if task_id is not None:
+                statement = statement.where(OutboxRow.task_id == task_id)
+            if identity_id is not None:
+                statement = statement.where(OutboxRow.identity_id == identity_id)
+            if team_id is not None:
+                statement = statement.where(OutboxRow.team_id == team_id)
+            if occurred_after is not None:
+                statement = statement.where(
+                    OutboxRow.occurred_at >= self._normalized_time(occurred_after)
+                )
+            if occurred_before is not None:
+                statement = statement.where(
+                    OutboxRow.occurred_at <= self._normalized_time(occurred_before)
+                )
+            if security_relevant is not None:
+                statement = statement.where(OutboxRow.security_relevant == security_relevant)
             rows = session.scalars(statement.order_by(OutboxRow.cursor).limit(limit)).all()
             events = tuple(self._event(row) for row in rows)
             return EventPage(
@@ -512,6 +540,11 @@ class SQLiteApplicationRepository:
             source=row.source,
             entity_type=row.entity_type,
             entity_id=row.aggregate_id,
+            run_id=row.run_id,
+            task_id=row.task_id,
+            identity_id=row.identity_id,
+            team_id=row.team_id,
+            security_relevant=row.security_relevant,
             occurred_at=datetime.fromisoformat(row.occurred_at),
             command_id=UUID(row.command_id) if row.command_id is not None else None,
             correlation_id=(UUID(row.correlation_id) if row.correlation_id is not None else None),
@@ -519,3 +552,33 @@ class SQLiteApplicationRepository:
             sensitivity=row.sensitivity,
             payload=json.loads(row.payload),
         )
+
+    @staticmethod
+    def _normalized_time(value: datetime) -> str:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT,
+                "event time filters require an explicit timezone offset",
+            )
+        return value.astimezone(UTC).isoformat()
+
+    @staticmethod
+    def _event_dimensions(
+        command: ApplicationCommand,
+        target_id: str,
+        sensitivity: str,
+    ) -> dict[str, object]:
+        nested = command.payload.get("request")
+        request = nested if isinstance(nested, dict) else {}
+
+        def selected(name: str) -> str | None:
+            value = command.payload.get(name, request.get(name))
+            return str(value) if isinstance(value, str) and value else None
+
+        return {
+            "run_id": target_id if command.target_type == "run" else selected("run_id"),
+            "task_id": selected("task_id"),
+            "identity_id": command.actor_id,
+            "team_id": selected("team_id"),
+            "security_relevant": sensitivity == "security",
+        }

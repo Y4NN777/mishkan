@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from time import perf_counter
 
@@ -44,6 +45,59 @@ def test_command_event_and_revision_are_committed_atomically(tmp_path: Path) -> 
     assert page.next_cursor == 1
     assert page.events[0].command_id == command.command_id
     assert page.events[0].payload == {"reason": "operator request"}
+    assert page.events[0].run_id == "run-1"
+    assert page.events[0].identity_id == "local-operator"
+
+
+def test_event_dimensions_filter_without_inspecting_payload_json(tmp_path: Path) -> None:
+    repository = _repository(tmp_path)
+    security = ApplicationCommand(
+        command_type="session.start",
+        actor_id="security-engineer",
+        target_type="session",
+        payload={
+            "request": {
+                "run_id": "run-secure",
+                "task_id": "task-audit",
+                "team_id": "independent-assurance",
+            }
+        },
+    )
+    repository.accept(
+        security,
+        target_id="session-1",
+        event_type="session.started",
+        sensitivity="security",
+    )
+    repository.accept(
+        ApplicationCommand(
+            command_type="system.checkpoint",
+            actor_id="operator",
+            target_type="system",
+            payload={},
+        ),
+        target_id="local",
+        event_type="system.checkpoint_recorded",
+    )
+    observed = repository.events().events[0]
+
+    assert observed.run_id == "run-secure"
+    assert observed.task_id == "task-audit"
+    assert observed.identity_id == "security-engineer"
+    assert observed.team_id == "independent-assurance"
+    assert observed.security_relevant is True
+    assert repository.events(run_id="run-secure").events == (observed,)
+    assert repository.events(task_id="task-audit").events == (observed,)
+    assert repository.events(identity_id="security-engineer").events == (observed,)
+    assert repository.events(team_id="independent-assurance").events == (observed,)
+    assert repository.events(security_relevant=True).events == (observed,)
+    assert repository.events(
+        occurred_after=observed.occurred_at,
+        occurred_before=observed.occurred_at,
+    ).events == (observed,)
+
+    with pytest.raises(MishkanError, match="timezone offset"):
+        repository.events(occurred_after=datetime(2026, 8, 27))
 
 
 def test_exact_command_retry_returns_original_result(tmp_path: Path) -> None:

@@ -6,6 +6,7 @@ import json
 import os
 import tempfile
 from collections.abc import Iterator
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
 
@@ -68,21 +69,68 @@ class Mishkan:
         after: int = 0,
         limit: int | None = None,
         event_types: tuple[str, ...] = (),
+        entity_type: str | None = None,
+        entity_id: str | None = None,
+        run_id: str | None = None,
+        task_id: str | None = None,
+        identity_id: str | None = None,
+        team_id: str | None = None,
+        occurred_after: datetime | None = None,
+        occurred_before: datetime | None = None,
+        security_relevant: bool | None = None,
     ) -> EventPage:
-        params = httpx.QueryParams({"after": after})
+        params = self._event_params(
+            after=after,
+            event_types=event_types,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            run_id=run_id,
+            task_id=task_id,
+            identity_id=identity_id,
+            team_id=team_id,
+            occurred_after=occurred_after,
+            occurred_before=occurred_before,
+            security_relevant=security_relevant,
+        )
         if limit is not None:
             params = params.set("limit", limit)
-        for value in event_types:
-            params = params.add("event_type", value)
         response = self._client.get("/v1/events", headers=self._headers(), params=params)
         response.raise_for_status()
         return EventPage.model_validate(response.json())
 
-    def stream_events(self, *, after: int = 0) -> Iterator[EventEnvelope]:
+    def stream_events(
+        self,
+        *,
+        after: int = 0,
+        event_types: tuple[str, ...] = (),
+        entity_type: str | None = None,
+        entity_id: str | None = None,
+        run_id: str | None = None,
+        task_id: str | None = None,
+        identity_id: str | None = None,
+        team_id: str | None = None,
+        occurred_after: datetime | None = None,
+        occurred_before: datetime | None = None,
+        security_relevant: bool | None = None,
+    ) -> Iterator[EventEnvelope]:
+        params = self._event_params(
+            after=after,
+            event_types=event_types,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            run_id=run_id,
+            task_id=task_id,
+            identity_id=identity_id,
+            team_id=team_id,
+            occurred_after=occurred_after,
+            occurred_before=occurred_before,
+            security_relevant=security_relevant,
+        )
         with self._client.stream(
             "GET",
             "/v1/events/stream",
             headers={**self._headers(), "Last-Event-ID": str(after)},
+            params=params,
         ) as response:
             response.raise_for_status()
             data: list[str] = []
@@ -94,6 +142,40 @@ class Mishkan:
                     continue
                 if line.startswith("data: "):
                     data.append(line.removeprefix("data: "))
+
+    @staticmethod
+    def _event_params(
+        *,
+        after: int,
+        event_types: tuple[str, ...],
+        entity_type: str | None,
+        entity_id: str | None,
+        run_id: str | None,
+        task_id: str | None,
+        identity_id: str | None,
+        team_id: str | None,
+        occurred_after: datetime | None,
+        occurred_before: datetime | None,
+        security_relevant: bool | None,
+    ) -> httpx.QueryParams:
+        params = httpx.QueryParams({"after": after})
+        optional = {
+            "entity_type": entity_type,
+            "entity_id": entity_id,
+            "run_id": run_id,
+            "task_id": task_id,
+            "identity_id": identity_id,
+            "team_id": team_id,
+            "occurred_after": occurred_after.isoformat() if occurred_after else None,
+            "occurred_before": occurred_before.isoformat() if occurred_before else None,
+            "security_relevant": security_relevant,
+        }
+        for name, value in optional.items():
+            if value is not None:
+                params = params.set(name, value)
+        for value in event_types:
+            params = params.add("event_type", value)
+        return params
 
     def export_events_jsonl(
         self,
