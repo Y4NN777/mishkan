@@ -15,12 +15,14 @@ from mishkan.mcp.models import (
 )
 from mishkan.mcp.repository import McpCallReservation, McpRepository
 from mishkan.mcp.sdk import McpSdkClient
+from mishkan.mcp.service import McpClientPort, McpService
 
 __all__ = [
     "McpCallRequest",
     "McpCallReservation",
     "McpCallResult",
     "McpCallState",
+    "McpClientPort",
     "McpConnectionRecord",
     "McpDirection",
     "McpDiscoverySnapshot",
@@ -30,5 +32,6 @@ __all__ = [
     "McpProgressEvent",
     "McpRepository",
     "McpSdkClient",
+    "McpService",
     "McpSessionState",
 ]

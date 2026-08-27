@@ -23,6 +23,7 @@ from mishkan.mcp.models import (
     McpDiscoverySnapshot,
     McpEffectDisposition,
     McpPrimitiveDescriptor,
+    McpPrimitiveKind,
     McpProgressEvent,
 )
 from mishkan.persistence.migration import SchemaManager
@@ -116,6 +117,13 @@ class McpRepository:
             if row is None:
                 raise MishkanError(ErrorCode.MCP, "MCP connection does not exist")
             return self._connection(row)
+
+    def find_connection(self, connection_id: str) -> McpConnectionRecord | None:
+        with Session(self._engine) as session:
+            row = session.scalar(
+                select(McpConnectionRow).where(McpConnectionRow.connection_id == connection_id)
+            )
+            return self._connection(row) if row is not None else None
 
     def update_connection(
         self,
@@ -216,15 +224,18 @@ class McpRepository:
         connection_id: str,
         name: str,
         schema_hash: str,
+        *,
+        kind: McpPrimitiveKind | None = None,
     ) -> McpPrimitiveDescriptor:
         with Session(self._engine) as session:
-            row = session.scalar(
-                select(McpPrimitiveRow).where(
-                    McpPrimitiveRow.connection_id == connection_id,
-                    McpPrimitiveRow.name == name,
-                    McpPrimitiveRow.schema_hash == schema_hash,
-                )
+            query = select(McpPrimitiveRow).where(
+                McpPrimitiveRow.connection_id == connection_id,
+                McpPrimitiveRow.name == name,
+                McpPrimitiveRow.schema_hash == schema_hash,
             )
+            if kind is not None:
+                query = query.where(McpPrimitiveRow.kind == kind.value)
+            row = session.scalar(query)
             if row is None:
                 raise MishkanError(ErrorCode.TOOL_DRIFT, "bound MCP primitive is unavailable")
             return McpPrimitiveDescriptor.model_validate_json(row.payload)
