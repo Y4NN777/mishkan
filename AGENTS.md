@@ -9,11 +9,11 @@ have passed their local and remote acceptance gates and their code and evidence 
 PRD 1.4, SRS 1.6, Contract 1.4, Responsibilities 1.2, System Model 1.3, Architecture 1.3, and
 Implementation Plan 1.5 were accepted in order by D-032 through D-037 on 2026-08-25. I02 was
 integrated before `feat/i03-mutations-sessions-durability` began. I03 now has a green deterministic
-local gate recorded in `docs/VALIDATION/I03.md`; its final acceptance remains pending the tracked
-live CrewAI/Ollama regression and the remote Linux/macOS Python 3.11–3.13 matrix. Until that gate is
-recorded, I04 production implementation does not begin. The rejected universal workflow,
-mandatory outcome catalogue, capability-family matrix, static role/tool matrix, competing runtime,
-and private operational deny-list must not return.
+local gate, a passing tracked live CrewAI/Ollama regression, and a green remote Linux/macOS Python
+3.11–3.13 matrix recorded in `docs/VALIDATION/I03.md`. D-038 accepts I03. Promote the topic branch
+into `develop` before opening a new I04 topic branch; do not implement I04 on the I03 branch. The
+rejected universal workflow, mandatory outcome catalogue, capability-family matrix, static
+role/tool matrix, competing runtime, and private operational deny-list must not return.
 
 D-037 accepts the detailed agent-authored mission environment lifecycle, per-context bindings,
 Dev Container/Podman/Compose descriptor generation, ordinary effect boundaries, and acceptance
