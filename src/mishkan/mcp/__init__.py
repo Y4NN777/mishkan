@@ -18,10 +18,12 @@ from mishkan.mcp.models import (
 from mishkan.mcp.repository import McpCallReservation, McpRepository
 from mishkan.mcp.runner import McpServiceRunner
 from mishkan.mcp.sdk import McpSdkClient
+from mishkan.mcp.server import BearerAuthenticatedMcpApp, McpHttpFacade
 from mishkan.mcp.service import McpClientPort, McpService
 from mishkan.mcp.tools import McpPrimitiveToolAdapter, build_mcp_tool_adapters
 
 __all__ = [
+    "BearerAuthenticatedMcpApp",
     "EventQuery",
     "McpCallRequest",
     "McpCallReservation",
@@ -34,6 +36,7 @@ __all__ = [
     "McpDiscoverySnapshot",
     "McpEffectDisposition",
     "McpFacadeRouter",
+    "McpHttpFacade",
     "McpPrimitiveDescriptor",
     "McpPrimitiveKind",
     "McpPrimitiveToolAdapter",

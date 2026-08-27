@@ -6,6 +6,7 @@ import asyncio
 import base64
 import json
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
@@ -24,6 +25,7 @@ from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.edits import ChangeSet, ChangeSetResult, ChangeSetService
 from mishkan.events import EventPage
 from mishkan.execution import CursorRead, SessionRecord, SessionRequest, SessionSupervisor
+from mishkan.mcp import McpFacadeRouter, McpHttpFacade
 from mishkan.persistence import LocalRunRepository, SchemaManager, SQLiteApplicationRepository
 
 
@@ -72,11 +74,71 @@ def create_app(config: MishkanConfig) -> FastAPI:
     supervisor.reconcile_all()
     command_lock = asyncio.Lock()
 
+    async def execute_command(command: ApplicationCommand, principal_id: str) -> CommandResult:
+        if command.actor_id != principal_id:
+            raise MishkanError(
+                ErrorCode.AUTHORITY_NOT_GRANTED,
+                "command actor does not match the authenticated client identity",
+                details={"actor_id": command.actor_id},
+            )
+        async with command_lock:
+            target_id = command.target_id or "local-instance"
+            replayed = repository.reserve(command, target_id=target_id)
+            if replayed is not None:
+                return replayed
+            try:
+                event_type, result_payload = _dispatch(
+                    command, artifacts, changes, supervisor, run_repository
+                )
+            except MishkanError:
+                raise
+            except (KeyError, TypeError, ValueError) as exc:
+                raise MishkanError(
+                    ErrorCode.OUTPUT_CONTRACT,
+                    "application command payload does not match its registered contract",
+                    details={"command_type": command.command_type},
+                ) from exc
+            return repository.complete_reserved(
+                command,
+                target_id=target_id,
+                event_type=event_type,
+                result_payload=result_payload,
+                event_payload=command.payload,
+                source="mishkand",
+            )
+
+    mcp_http: McpHttpFacade | None = None
+    mcp_config = config.mcp
+    if mcp_config is not None and mcp_config.facade.enabled:
+        schema_revision = SchemaManager(paths.database).status().head_revision
+        router = McpFacadeRouter(
+            mcp_config,
+            repository,
+            execute_command,
+            schema_revision=schema_revision,
+            event_page_limit=daemon.event_page_limit,
+        )
+        mcp_http = McpHttpFacade(
+            router,
+            token_file,
+            daemon_host=daemon.host,
+            daemon_port=daemon.port,
+        )
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        if mcp_http is None:
+            yield
+            return
+        async with mcp_http.lifespan():
+            yield
+
     app = FastAPI(
         title="MISHKAN application API",
         version="1.0",
         docs_url=None,
         redoc_url=None,
+        lifespan=lifespan,
     )
 
     @app.exception_handler(MishkanError)
@@ -114,37 +176,7 @@ def create_app(config: MishkanConfig) -> FastAPI:
         command: ApplicationCommand,
         principal: TokenRecord = authenticated,
     ) -> CommandResult:
-        if command.actor_id != principal.principal_id:
-            raise MishkanError(
-                ErrorCode.AUTHORITY_NOT_GRANTED,
-                "command actor does not match the authenticated client identity",
-                details={"actor_id": command.actor_id},
-            )
-        async with command_lock:
-            target_id = command.target_id or "local-instance"
-            replayed = repository.reserve(command, target_id=target_id)
-            if replayed is not None:
-                return replayed
-            try:
-                event_type, result_payload = _dispatch(
-                    command, artifacts, changes, supervisor, run_repository
-                )
-            except MishkanError:
-                raise
-            except (KeyError, TypeError, ValueError) as exc:
-                raise MishkanError(
-                    ErrorCode.OUTPUT_CONTRACT,
-                    "application command payload does not match its registered contract",
-                    details={"command_type": command.command_type},
-                ) from exc
-            return repository.complete_reserved(
-                command,
-                target_id=target_id,
-                event_type=event_type,
-                result_payload=result_payload,
-                event_payload=command.payload,
-                source="mishkand",
-            )
+        return await execute_command(command, principal.principal_id)
 
     @app.get("/v1/snapshot")
     async def snapshot(
@@ -321,6 +353,10 @@ def create_app(config: MishkanConfig) -> FastAPI:
         limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
     ) -> tuple[dict[str, object], ...]:
         return repository.tasks(run_id, offset=offset, limit=limit)
+
+    if mcp_http is not None:
+        assert mcp_config is not None
+        app.mount(mcp_config.facade.streamable_http_path, mcp_http.app)
 
     return app
 
