@@ -141,6 +141,7 @@ class BrowserActionRequest(BrowserModel):
     target_reference: str | None = None
     kind: BrowserActionKind
     value: Any = None
+    credential_reference: str | None = None
     resolved_effect: str = Field(min_length=1)
     expected_session_revision: int = Field(ge=0)
     idempotency_key: UUID = Field(default_factory=new_id)
@@ -149,6 +150,11 @@ class BrowserActionRequest(BrowserModel):
     def target_requirement_matches_action(self) -> BrowserActionRequest:
         if self.kind is not BrowserActionKind.NAVIGATE and self.target_reference is None:
             raise ValueError("browser element action requires an observation target")
+        if self.credential_reference is not None:
+            if self.kind is not BrowserActionKind.FILL:
+                raise ValueError("browser credential references are accepted only for fill actions")
+            if self.value is not None:
+                raise ValueError("browser fill cannot contain a value and credential reference")
         return self
 
 

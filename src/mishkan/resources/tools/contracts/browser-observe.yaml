@@ -1,0 +1,26 @@
+schema_version: "1.0"
+tool_id: browser.observe
+version: 1.0.0
+crewai_name: browser_observe
+summary: Capture one bounded immutable observation from an owned Browser page.
+effect_class: read
+source_id: bundled.core
+source_kind: native
+adapter: native.browser.observe
+input_schema:
+  type: object
+  additionalProperties: false
+  required: [request, session_resource, credential_refs, declared_effects]
+  properties:
+    request: {type: object}
+    session_resource: {type: string}
+    credential_refs: {type: array, maxItems: 0}
+    declared_effects: {type: array, items: {type: string}, minItems: 1, maxItems: 1}
+result_schema: {type: object}
+timeout_behavior: cancel_local
+idempotency: idempotent
+target_scopes: [external_resource]
+target_arguments: {external_resource: [session_resource]}
+credential_arguments: [credential_refs]
+policy_arguments: [declared_effects]
+resources: {timeout_seconds: 60, memory_mb: 512, network: false, concurrency: 1}

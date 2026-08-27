@@ -145,6 +145,11 @@ def test_bundled_catalogue_lists_metadata_but_binds_only_available_adapters(
         "web.extract",
         "web.map",
         "web.crawl",
+        "browser.open",
+        "browser.observe",
+        "browser.act",
+        "browser.diagnostics",
+        "browser.close",
     )
     snapshot = catalog.snapshot(("file.readonly",))
     assert tuple(tool.tool_id for tool in snapshot.tools) == (
@@ -168,6 +173,9 @@ def test_bundled_catalogue_lists_metadata_but_binds_only_available_adapters(
     with pytest.raises(MishkanError) as caught:
         catalog.snapshot(("web.complete",))
     assert caught.value.envelope.code is ErrorCode.TOOL_UNAVAILABLE
+    with pytest.raises(MishkanError) as browser_caught:
+        catalog.snapshot(("browser.complete",))
+    assert browser_caught.value.envelope.code is ErrorCode.TOOL_UNAVAILABLE
 
 
 def test_contract_without_an_installed_adapter_cannot_enter_snapshot(tmp_path: Path) -> None:
@@ -219,6 +227,36 @@ def test_complete_web_toolset_binds_only_when_all_concrete_adapters_exist(
         "web.request",
         "web.extract",
         "web.crawl",
+    )
+
+
+def test_complete_browser_toolset_requires_playwright_and_all_governed_adapters(
+    tmp_path: Path,
+) -> None:
+    adapters = frozenset(
+        {
+            "native.browser.open",
+            "native.browser.observe",
+            "native.browser.act",
+            "native.browser.diagnostics",
+            "native.browser.close",
+        }
+    )
+    catalog = ToolCatalog(
+        (CATALOG_URI,),
+        tmp_path,
+        available_dependencies=frozenset({"playwright"}),
+        available_adapters=adapters,
+    )
+
+    snapshot = catalog.snapshot(("browser.complete",))
+
+    assert tuple(contract.tool_id for contract in snapshot.tools) == (
+        "browser.open",
+        "browser.observe",
+        "browser.act",
+        "browser.diagnostics",
+        "browser.close",
     )
 
 

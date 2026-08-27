@@ -1,0 +1,26 @@
+schema_version: "1.0"
+tool_id: browser.close
+version: 1.0.0
+crewai_name: browser_close
+summary: Close one owned Browser session without making its state ambient or reusable.
+effect_class: network
+source_id: bundled.core
+source_kind: native
+adapter: native.browser.close
+input_schema:
+  type: object
+  additionalProperties: false
+  required: [session_id, session_resource, credential_refs, declared_effects]
+  properties:
+    session_id: {type: string, format: uuid}
+    session_resource: {type: string}
+    credential_refs: {type: array, maxItems: 0}
+    declared_effects: {type: array, items: {type: string}, minItems: 1, maxItems: 1}
+result_schema: {type: object}
+timeout_behavior: uncertain_after_dispatch
+idempotency: idempotent
+target_scopes: [external_resource]
+target_arguments: {external_resource: [session_resource]}
+credential_arguments: [credential_refs]
+policy_arguments: [declared_effects]
+resources: {timeout_seconds: 60, memory_mb: 256, network: true, concurrency: 1}

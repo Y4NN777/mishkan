@@ -112,6 +112,42 @@ tools:
     source_id: bundled.core
     source_kind: native
     contract_uri: package://mishkan.resources.tools/contracts/web-crawl.yaml
+  - tool_id: browser.open
+    version: 1.0.0
+    summary: Open one governed Browser session through an explicit configured profile.
+    effect_class: network
+    source_id: bundled.core
+    source_kind: native
+    contract_uri: package://mishkan.resources.tools/contracts/browser-open.yaml
+    availability: {platforms: [linux, darwin], runtimes: [python], dependencies: [playwright]}
+  - tool_id: browser.observe
+    version: 1.0.0
+    summary: Capture a bounded observation tied to one Browser page and session revision.
+    effect_class: read
+    source_id: bundled.core
+    source_kind: native
+    contract_uri: package://mishkan.resources.tools/contracts/browser-observe.yaml
+  - tool_id: browser.act
+    version: 1.0.0
+    summary: Execute an authorized resolved effect against an exact observed Browser target.
+    effect_class: network
+    source_id: bundled.core
+    source_kind: native
+    contract_uri: package://mishkan.resources.tools/contracts/browser-act.yaml
+  - tool_id: browser.diagnostics
+    version: 1.0.0
+    summary: Read bounded filtered Browser and Chrome DevTools diagnostic evidence.
+    effect_class: read
+    source_id: bundled.core
+    source_kind: native
+    contract_uri: package://mishkan.resources.tools/contracts/browser-diagnostics.yaml
+  - tool_id: browser.close
+    version: 1.0.0
+    summary: Close one governed Browser session and preserve its durable record.
+    effect_class: network
+    source_id: bundled.core
+    source_kind: native
+    contract_uri: package://mishkan.resources.tools/contracts/browser-close.yaml
 toolsets:
   - toolset_id: file.readonly
     version: 1.0.0
@@ -149,3 +185,7 @@ toolsets:
     version: 1.0.0
     summary: Complete typed Web capability surface.
     toolsets: [web.discovery, web.retrieval]
+  - toolset_id: browser.complete
+    version: 1.0.0
+    summary: Governed Browser session, observation, action, diagnosis, and closure surface.
+    tools: [browser.open, browser.observe, browser.act, browser.diagnostics, browser.close]

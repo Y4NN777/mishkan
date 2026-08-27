@@ -1,0 +1,27 @@
+schema_version: "1.0"
+tool_id: browser.open
+version: 1.0.0
+crewai_name: browser_open
+summary: Open one governed isolated, persistent, or explicitly attached Browser session.
+effect_class: network
+source_id: bundled.core
+source_kind: native
+adapter: native.browser.open
+input_schema:
+  type: object
+  additionalProperties: false
+  required: [request, paths, network_destinations, credential_refs, declared_effects]
+  properties:
+    request: {type: object}
+    paths: {type: array, items: {type: string}, minItems: 1, maxItems: 1}
+    network_destinations: {type: array, items: {type: string}, uniqueItems: true}
+    credential_refs: {type: array, maxItems: 0}
+    declared_effects: {type: array, items: {type: string}, minItems: 1, maxItems: 1}
+result_schema: {type: object}
+timeout_behavior: uncertain_after_dispatch
+idempotency: none
+target_scopes: [path, network]
+target_arguments: {path: [paths], network: [network_destinations]}
+credential_arguments: [credential_refs]
+policy_arguments: [declared_effects]
+resources: {timeout_seconds: 120, memory_mb: 512, network: true, concurrency: 1}

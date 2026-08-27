@@ -60,6 +60,7 @@ pythonpath = ["tests"]
 testpaths = ["tests"]
 markers = [
   "acceptance: runnable increment acceptance test",
+  "browser: requires an installed Playwright Chromium browser",
   "cloud: requires an explicitly configured cloud model credential",
   "commands: command-boundary security test",
   "ollama: requires a local Ollama service and configured model",

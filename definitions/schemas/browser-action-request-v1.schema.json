@@ -17,6 +17,18 @@
   },
   "additionalProperties": false,
   "properties": {
+    "credential_reference": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Credential Reference"
+    },
     "expected_session_revision": {
       "minimum": 0,
       "title": "Expected Session Revision",

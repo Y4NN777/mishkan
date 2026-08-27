@@ -48,6 +48,11 @@ TEST_ADAPTERS = frozenset(
         "native.web.extract",
         "native.web.map",
         "native.web.crawl",
+        "native.browser.open",
+        "native.browser.observe",
+        "native.browser.act",
+        "native.browser.diagnostics",
+        "native.browser.close",
     }
 )
 
@@ -144,13 +149,14 @@ def context_for(
         or tool_id.startswith("core.process.")
         or tool_id.startswith("core.shell.")
         or tool_id.startswith("web.")
+        or tool_id.startswith("browser.")
         else MECHANISM_CATALOG_URI
     )
     catalog = ToolCatalog(
         (source_uri,),
         root,
         runtime=runtime,
-        available_dependencies=frozenset({"rg", "bash"}),
+        available_dependencies=frozenset({"rg", "bash", "playwright"}),
         available_adapters=TEST_ADAPTERS,
     )
     snapshot = catalog.snapshot((tool_id,))

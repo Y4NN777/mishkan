@@ -1,0 +1,31 @@
+schema_version: "1.0"
+tool_id: browser.act
+version: 1.0.0
+crewai_name: browser_act
+summary: Apply one policy-authorized effect to an exact observation-bound Browser target.
+effect_class: network
+source_id: bundled.core
+source_kind: native
+adapter: native.browser.act
+input_schema:
+  type: object
+  additionalProperties: false
+  required: [request, paths, network_destinations, session_resource, credential_refs, declared_effects]
+  properties:
+    request: {type: object}
+    paths: {type: array, items: {type: string}, uniqueItems: true}
+    network_destinations: {type: array, items: {type: string}, uniqueItems: true}
+    session_resource: {type: string}
+    credential_refs: {type: array, items: {type: string}, uniqueItems: true, maxItems: 1}
+    declared_effects: {type: array, items: {type: string}, minItems: 1, maxItems: 1}
+result_schema: {type: object}
+timeout_behavior: uncertain_after_dispatch
+idempotency: deduplication_key
+target_scopes: [path, network, external_resource]
+target_arguments:
+  path: [paths]
+  network: [network_destinations]
+  external_resource: [session_resource]
+credential_arguments: [credential_refs]
+policy_arguments: [declared_effects]
+resources: {timeout_seconds: 120, memory_mb: 512, network: true, concurrency: 1}
