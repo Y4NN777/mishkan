@@ -86,7 +86,11 @@ def test_job_readiness_cursors_artifacts_and_cross_chunk_secret_filter(tmp_path:
     supervisor, artifacts, _database = _supervisor(tmp_path)
     request = _request(
         SessionMode.JOB,
-        ("-c", "printf CAN; sleep 0.05; printf 'ARY READY\\n'; sleep 0.2"),
+        (
+            "-c",
+            "printf CAN; sleep 0.05; printf 'ARY READY\\n'; "
+            "while [ ! -f continue-job ]; do sleep 0.02; done",
+        ),
     ).model_copy(
         update={
             "credential_environment": {"TOKEN": "CANARY"},
@@ -96,6 +100,7 @@ def test_job_readiness_cursors_artifacts_and_cross_chunk_secret_filter(tmp_path:
     )
     started = supervisor.start(request)
     assert started.state is SessionState.READY
+    (tmp_path / "continue-job").touch()
     settled = _await_settlement(supervisor, started.session_id)
     assert settled.state is SessionState.SETTLED  # type: ignore[attr-defined]
     output = supervisor.read(started.session_id, channel="stdout", offset=0, limit=1024)

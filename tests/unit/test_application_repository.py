@@ -138,7 +138,30 @@ def test_interrupted_reserved_command_is_never_reexecuted_implicitly(tmp_path: P
     assert repository.events().events == ()
 
 
-def test_reserved_completion_is_atomic_and_event_ingestion_exceeds_gate(tmp_path: Path) -> None:
+def test_reserved_completion_is_atomic(tmp_path: Path) -> None:
+    repository = _repository(tmp_path)
+    command = ApplicationCommand(
+        command_type="system.checkpoint",
+        actor_id="local-operator",
+        target_type="checkpoint",
+        target_id="reserved",
+        expected_revision=0,
+        payload={"index": 0},
+    )
+
+    assert repository.reserve(command, target_id="reserved") is None
+    result = repository.complete_reserved(
+        command,
+        target_id="reserved",
+        event_type="system.checkpoint_recorded",
+    )
+
+    assert result.status is CommandStatus.ACCEPTED
+    assert result.event_cursor == 1
+    assert tuple(event.cursor for event in repository.events().events) == (1,)
+
+
+def test_event_ingestion_exceeds_gate(tmp_path: Path) -> None:
     repository = _repository(tmp_path)
     total = 150
     started = perf_counter()
@@ -151,8 +174,7 @@ def test_reserved_completion_is_atomic_and_event_ingestion_exceeds_gate(tmp_path
             expected_revision=0,
             payload={"index": index},
         )
-        assert repository.reserve(command, target_id=str(index)) is None
-        result = repository.complete_reserved(
+        result = repository.accept(
             command,
             target_id=str(index),
             event_type="system.checkpoint_recorded",
