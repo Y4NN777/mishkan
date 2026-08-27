@@ -1,0 +1,99 @@
+{
+  "$defs": {
+    "BrowserActionState": {
+      "enum": [
+        "completed",
+        "refused",
+        "failed",
+        "cancelled",
+        "uncertain"
+      ],
+      "title": "BrowserActionState",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "artifact_references": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Artifact References",
+      "type": "array"
+    },
+    "completed_at": {
+      "format": "date-time",
+      "title": "Completed At",
+      "type": "string"
+    },
+    "error_code": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error Code"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "observation_invalidated": {
+      "title": "Observation Invalidated",
+      "type": "boolean"
+    },
+    "page_id": {
+      "title": "Page Id",
+      "type": "string"
+    },
+    "reason": {
+      "title": "Reason",
+      "type": "string"
+    },
+    "request_id": {
+      "format": "uuid",
+      "title": "Request Id",
+      "type": "string"
+    },
+    "resolved_effect": {
+      "title": "Resolved Effect",
+      "type": "string"
+    },
+    "schema_version": {
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "session_id": {
+      "format": "uuid",
+      "title": "Session Id",
+      "type": "string"
+    },
+    "session_revision": {
+      "minimum": 0,
+      "title": "Session Revision",
+      "type": "integer"
+    },
+    "state": {
+      "$ref": "#/$defs/BrowserActionState"
+    }
+  },
+  "required": [
+    "request_id",
+    "session_id",
+    "page_id",
+    "state",
+    "resolved_effect",
+    "session_revision",
+    "observation_invalidated",
+    "reason"
+  ],
+  "title": "BrowserActionResult",
+  "type": "object"
+}

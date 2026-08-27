@@ -248,6 +248,44 @@ class WebCacheRow(Base):
     fresh_until: Mapped[str] = mapped_column(String(40), nullable=False)
 
 
+class BrowserSessionRow(Base):
+    __tablename__ = "browser_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_identity: Mapped[str] = mapped_column(String(256), nullable=False)
+    run_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    task_attempt_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    state: Mapped[str] = mapped_column(String(32), nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class BrowserObservationRow(Base):
+    __tablename__ = "browser_observations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    session_id: Mapped[str] = mapped_column(ForeignKey("browser_sessions.id"), nullable=False)
+    page_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    session_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+    expires_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class BrowserActionRow(Base):
+    __tablename__ = "browser_actions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    idempotency_key: Mapped[str] = mapped_column(String(36), unique=True, nullable=False)
+    session_id: Mapped[str] = mapped_column(ForeignKey("browser_sessions.id"), nullable=False)
+    state: Mapped[str] = mapped_column(String(32), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+    completed_at: Mapped[str | None] = mapped_column(String(40))
+
+
 class ChangeOperationRow(Base):
     __tablename__ = "change_operations"
 

@@ -21,6 +21,7 @@ dependencies = [
   "jsonschema>=4.23,<5",
   "psutil>=7.2,<8",
   "pydantic>=2.10,<3",
+  "playwright>=1.62,<2",
   "pyyaml>=6,<7",
   "sqlalchemy>=2,<3",
   "trafilatura>=2.2,<3",

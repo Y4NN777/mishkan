@@ -1,0 +1,37 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "expected_session_revision": {
+      "minimum": 0,
+      "title": "Expected Session Revision",
+      "type": "integer"
+    },
+    "include_screenshot": {
+      "default": false,
+      "title": "Include Screenshot",
+      "type": "boolean"
+    },
+    "page_id": {
+      "minLength": 1,
+      "title": "Page Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "session_id": {
+      "format": "uuid",
+      "title": "Session Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "session_id",
+    "page_id",
+    "expected_session_revision"
+  ],
+  "title": "BrowserObservationRequest",
+  "type": "object"
+}

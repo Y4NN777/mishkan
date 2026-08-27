@@ -1,0 +1,85 @@
+{
+  "$defs": {
+    "BrowserActionKind": {
+      "enum": [
+        "click",
+        "fill",
+        "press",
+        "select",
+        "check",
+        "upload",
+        "navigate",
+        "javascript"
+      ],
+      "title": "BrowserActionKind",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "expected_session_revision": {
+      "minimum": 0,
+      "title": "Expected Session Revision",
+      "type": "integer"
+    },
+    "idempotency_key": {
+      "format": "uuid",
+      "title": "Idempotency Key",
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/BrowserActionKind"
+    },
+    "observation_id": {
+      "format": "uuid",
+      "title": "Observation Id",
+      "type": "string"
+    },
+    "page_id": {
+      "minLength": 1,
+      "title": "Page Id",
+      "type": "string"
+    },
+    "resolved_effect": {
+      "minLength": 1,
+      "title": "Resolved Effect",
+      "type": "string"
+    },
+    "schema_version": {
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "session_id": {
+      "format": "uuid",
+      "title": "Session Id",
+      "type": "string"
+    },
+    "target_reference": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Target Reference"
+    },
+    "value": {
+      "default": null,
+      "title": "Value"
+    }
+  },
+  "required": [
+    "session_id",
+    "page_id",
+    "observation_id",
+    "kind",
+    "resolved_effect",
+    "expected_session_revision"
+  ],
+  "title": "BrowserActionRequest",
+  "type": "object"
+}

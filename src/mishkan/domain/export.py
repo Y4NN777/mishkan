@@ -13,6 +13,16 @@ from mishkan.artifacts.models import (
     UploadSession,
     WorkingReference,
 )
+from mishkan.browser.models import (
+    BrowserActionRequest,
+    BrowserActionResult,
+    BrowserDiagnosticRequest,
+    BrowserDiagnosticResult,
+    BrowserObservation,
+    BrowserObservationRequest,
+    BrowserSession,
+    BrowserSessionRequest,
+)
 from mishkan.config.models import MishkanConfig
 from mishkan.domain.errors import ErrorEnvelope
 from mishkan.domain.identity import DomainRecord
@@ -42,6 +52,14 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "artifact-manifest-v1.schema.json": ArtifactManifest,
     "artifact-upload-session-v1.schema.json": UploadSession,
     "artifact-working-reference-v1.schema.json": WorkingReference,
+    "browser-action-request-v1.schema.json": BrowserActionRequest,
+    "browser-action-result-v1.schema.json": BrowserActionResult,
+    "browser-diagnostic-request-v1.schema.json": BrowserDiagnosticRequest,
+    "browser-diagnostic-result-v1.schema.json": BrowserDiagnosticResult,
+    "browser-observation-request-v1.schema.json": BrowserObservationRequest,
+    "browser-observation-v1.schema.json": BrowserObservation,
+    "browser-session-request-v1.schema.json": BrowserSessionRequest,
+    "browser-session-v1.schema.json": BrowserSession,
     "change-set-result-v1.schema.json": ChangeSetResult,
     "change-set-v1.schema.json": ChangeSet,
     "command-result-v1.schema.json": CommandResult,

@@ -1,0 +1,63 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "attached_profile_selected": {
+      "default": false,
+      "title": "Attached Profile Selected",
+      "type": "boolean"
+    },
+    "initial_url": {
+      "anyOf": [
+        {
+          "format": "uri",
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Initial Url"
+    },
+    "owner_identity": {
+      "minLength": 1,
+      "title": "Owner Identity",
+      "type": "string"
+    },
+    "profile_id": {
+      "minLength": 1,
+      "title": "Profile Id",
+      "type": "string"
+    },
+    "run_id": {
+      "minLength": 1,
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "task_attempt_id": {
+      "minLength": 1,
+      "title": "Task Attempt Id",
+      "type": "string"
+    },
+    "workspace": {
+      "minLength": 1,
+      "title": "Workspace",
+      "type": "string"
+    }
+  },
+  "required": [
+    "profile_id",
+    "owner_identity",
+    "run_id",
+    "task_attempt_id",
+    "workspace"
+  ],
+  "title": "BrowserSessionRequest",
+  "type": "object"
+}
