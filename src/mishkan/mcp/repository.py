@@ -43,6 +43,12 @@ class McpCallReservation:
     existing_result: McpCallResult | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class McpRemoteTaskBinding:
+    request: McpCallRequest
+    remote_task_id: str
+
+
 class McpRepository:
     _CALL_TRANSITIONS: ClassVar[dict[McpCallState, frozenset[McpCallState]]] = {
         McpCallState.RESERVED: frozenset(
@@ -216,6 +222,8 @@ class McpRepository:
                     "negotiated_protocol_version": snapshot.protocol_version,
                     "revision": expected_connection_revision + 1,
                     "schema_fingerprint": snapshot.schema_fingerprint,
+                    "task_tool_calls_supported": snapshot.task_tool_calls_supported,
+                    "task_cancellation_supported": snapshot.task_cancellation_supported,
                     "updated_at": now,
                 }
             )
@@ -319,6 +327,34 @@ class McpRepository:
             row.state = state.value
             row.updated_at = utc_now().isoformat()
 
+    def attach_remote_task(self, request_id: UUID, remote_task_id: str) -> None:
+        if not remote_task_id:
+            raise MishkanError(ErrorCode.MCP, "remote MCP task identity is empty")
+        with Session(self._engine) as session, session.begin():
+            row = session.get(McpCallRow, str(request_id))
+            if row is None or row.result_payload is not None:
+                raise MishkanError(ErrorCode.MCP, "MCP call cannot bind a remote task")
+            if McpCallState(row.state) not in {
+                McpCallState.DISPATCHING,
+                McpCallState.RUNNING,
+                McpCallState.CANCEL_REQUESTED,
+            }:
+                raise MishkanError(ErrorCode.REVISION_MISMATCH, "MCP call is not dispatching")
+            if row.remote_task_id is not None and row.remote_task_id != remote_task_id:
+                raise MishkanError(ErrorCode.DUPLICATE_RESULT, "MCP remote task identity changed")
+            row.remote_task_id = remote_task_id
+            row.updated_at = utc_now().isoformat()
+
+    def get_remote_task(self, request_id: UUID) -> McpRemoteTaskBinding:
+        with Session(self._engine) as session:
+            row = session.get(McpCallRow, str(request_id))
+            if row is None or row.result_payload is not None or row.remote_task_id is None:
+                raise MishkanError(ErrorCode.MCP, "recoverable MCP remote task does not exist")
+            return McpRemoteTaskBinding(
+                McpCallRequest.model_validate_json(row.request_payload),
+                row.remote_task_id,
+            )
+
     def complete_call(self, result: McpCallResult) -> McpCallResult:
         with Session(self._engine) as session, session.begin():
             row = session.get(McpCallRow, str(result.request_id))
@@ -334,6 +370,8 @@ class McpRepository:
                 or row.primitive_name != result.primitive_name
             ):
                 raise MishkanError(ErrorCode.MCP, "MCP result identity differs from request")
+            if row.remote_task_id is not None and result.remote_task_id != row.remote_task_id:
+                raise MishkanError(ErrorCode.MCP, "MCP result remote task identity differs")
             current = McpCallState(row.state)
             if result.state not in self._FINAL_CALL_STATES:
                 raise MishkanError(ErrorCode.MCP, "MCP completion state is not final")
@@ -434,6 +472,7 @@ class McpRepository:
                         )
                     ),
                     McpCallRow.result_payload.is_(None),
+                    McpCallRow.remote_task_id.is_(None),
                 )
             ).all()
         reconciled: list[McpCallResult] = []

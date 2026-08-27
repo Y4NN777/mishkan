@@ -64,6 +64,13 @@ class McpEffectDisposition(StrEnum):
     UNKNOWN = "unknown"
 
 
+class McpRemoteTaskTerminal(StrEnum):
+    IMMEDIATE = "immediate"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
 class McpConnectionRecord(McpModel):
     schema_version: str = "1.0"
     id: UUID = Field(default_factory=new_id)
@@ -75,10 +82,13 @@ class McpConnectionRecord(McpModel):
     negotiated_protocol_version: str | None = None
     trust: str = Field(min_length=1)
     exposure_profile: str = Field(min_length=1)
+    remote_tasks_enabled: bool = False
     credential_principal: str | None = None
     state: McpSessionState
     revision: int = Field(ge=0)
     schema_fingerprint: str | None = None
+    task_tool_calls_supported: bool = False
+    task_cancellation_supported: bool = False
     health: str = Field(min_length=1)
     last_error: str | None = None
     created_at: datetime = Field(default_factory=utc_now)
@@ -162,6 +172,8 @@ class McpDiscoverySnapshot(McpModel):
     protocol_version: str
     primitives: tuple[McpPrimitiveDescriptor, ...]
     schema_fingerprint: str
+    task_tool_calls_supported: bool = False
+    task_cancellation_supported: bool = False
     discovered_at: datetime = Field(default_factory=utc_now)
 
     @field_validator("discovered_at")
@@ -171,23 +183,47 @@ class McpDiscoverySnapshot(McpModel):
 
     @model_validator(mode="after")
     def fingerprint_matches_primitives(self) -> Self:
-        expected = hashlib.sha256(
-            json.dumps(
-                [
-                    {
-                        "kind": item.kind.value,
-                        "name": item.name,
-                        "schema_hash": item.schema_hash,
-                    }
-                    for item in sorted(self.primitives, key=lambda value: (value.kind, value.name))
-                ],
-                sort_keys=True,
-                separators=(",", ":"),
-            ).encode()
-        ).hexdigest()
+        expected = self.claim_fingerprint(
+            self.primitives,
+            task_tool_calls_supported=self.task_tool_calls_supported,
+            task_cancellation_supported=self.task_cancellation_supported,
+        )
         if self.schema_fingerprint != expected:
             raise ValueError("MCP discovery fingerprint differs from normalized primitives")
         return self
+
+    @staticmethod
+    def claim_fingerprint(
+        primitives: tuple[McpPrimitiveDescriptor, ...],
+        *,
+        task_tool_calls_supported: bool = False,
+        task_cancellation_supported: bool = False,
+    ) -> str:
+        normalized = [
+            {
+                "kind": item.kind.value,
+                "name": item.name,
+                "schema_hash": item.schema_hash,
+            }
+            for item in sorted(primitives, key=lambda value: (value.kind, value.name))
+        ]
+        claims: object = normalized
+        if task_tool_calls_supported or task_cancellation_supported:
+            claims = {
+                "primitives": normalized,
+                "task_tool_calls_supported": task_tool_calls_supported,
+                "task_cancellation_supported": task_cancellation_supported,
+            }
+        return hashlib.sha256(
+            json.dumps(claims, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+
+
+class McpClientCallOutcome(McpModel):
+    output: dict[str, Any] | None = None
+    remote_task_id: str | None = None
+    terminal: McpRemoteTaskTerminal
+    reason: str
 
 
 class McpCallRequest(McpModel):

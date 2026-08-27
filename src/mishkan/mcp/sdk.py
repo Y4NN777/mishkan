@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
@@ -21,10 +22,12 @@ from mcp.shared.session import ProgressFnT
 from mishkan.config.models import McpConnectionConfig, McpTransport, NetworkProfileConfig
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.mcp.models import (
+    McpClientCallOutcome,
     McpDiscoverySnapshot,
     McpEffectDisposition,
     McpPrimitiveDescriptor,
     McpPrimitiveKind,
+    McpRemoteTaskTerminal,
 )
 from mishkan.web.network import GuardedAsyncHTTPTransport, NetworkGuard
 
@@ -46,6 +49,7 @@ class McpSdkClient:
         async with self._session(configured, credentials=credentials, workspace=workspace) as (
             session,
             protocol_version,
+            capabilities,
         ):
             tools = await self._all_pages(session.list_tools, "tools")
             resources = await self._all_pages(session.list_resources, "resources")
@@ -55,7 +59,14 @@ class McpSdkClient:
             + tuple(self._resource(connection_id, protocol_version, item) for item in resources)
             + tuple(self._prompt(connection_id, protocol_version, item) for item in prompts)
         )
-        return self._snapshot(connection_id, protocol_version, primitives)
+        task_tools, task_cancel = self._task_capabilities(capabilities)
+        return self._snapshot(
+            connection_id,
+            protocol_version,
+            primitives,
+            task_tool_calls_supported=task_tools,
+            task_cancellation_supported=task_cancel,
+        )
 
     async def call_tool(
         self,
@@ -70,36 +81,257 @@ class McpSdkClient:
         credentials: Mapping[str, str],
         workspace: Path,
         progress: ProgressFnT,
-    ) -> types.CallToolResult:
+        remote_task_allowed: bool = False,
+        remote_task_id: str | None = None,
+        remote_task_started: Callable[[str], None] | None = None,
+        task_poll_min_seconds: float | None = None,
+        task_poll_max_seconds: float | None = None,
+    ) -> McpClientCallOutcome:
         async with self._session(configured, credentials=credentials, workspace=workspace) as (
             session,
             _protocol_version,
+            capabilities,
         ):
+            metadata = {
+                "mishkan": {
+                    "caller_identity": caller_identity,
+                    "run_id": run_id,
+                    "task_attempt_id": task_attempt_id,
+                }
+            }
+            if remote_task_allowed or remote_task_id is not None:
+                if (
+                    remote_task_started is None
+                    or task_poll_min_seconds is None
+                    or task_poll_max_seconds is None
+                ):
+                    raise MishkanError(
+                        ErrorCode.CONFIGURATION,
+                        "MCP remote task execution requires public polling bounds and journaling",
+                    )
+                return await self._call_remote_task(
+                    session,
+                    configured,
+                    capabilities,
+                    name=name,
+                    arguments=arguments,
+                    timeout_seconds=timeout_seconds,
+                    metadata=metadata,
+                    progress=progress,
+                    remote_task_id=remote_task_id,
+                    remote_task_started=remote_task_started,
+                    task_poll_min_seconds=task_poll_min_seconds,
+                    task_poll_max_seconds=task_poll_max_seconds,
+                )
             result = await session.call_tool(
                 name,
                 arguments,
                 read_timeout_seconds=timedelta(seconds=timeout_seconds),
                 progress_callback=progress,
-                meta={
-                    "mishkan": {
-                        "caller_identity": caller_identity,
-                        "run_id": run_id,
-                        "task_attempt_id": task_attempt_id,
-                    }
-                },
+                meta=metadata,
             )
-        encoded = json.dumps(
-            result.model_dump(mode="json", by_alias=True, exclude_none=True),
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode()
+        return self._outcome(configured, result, None, McpRemoteTaskTerminal.IMMEDIATE)
+
+    async def _call_remote_task(
+        self,
+        session: ClientSession,
+        configured: McpConnectionConfig,
+        capabilities: types.ServerCapabilities,
+        *,
+        name: str,
+        arguments: dict[str, Any],
+        timeout_seconds: float,
+        metadata: dict[str, Any],
+        progress: ProgressFnT,
+        remote_task_id: str | None,
+        remote_task_started: Callable[[str], None],
+        task_poll_min_seconds: float,
+        task_poll_max_seconds: float,
+    ) -> McpClientCallOutcome:
+        task_tools, task_cancel = self._task_capabilities(capabilities)
+        if not configured.remote_tasks_enabled or not task_tools:
+            raise MishkanError(
+                ErrorCode.MCP,
+                "MCP remote task execution is not configured and negotiated",
+            )
+        task_id = remote_task_id
+        try:
+            with anyio.fail_after(timeout_seconds):
+                if task_id is None:
+                    ttl = max(1, int(timeout_seconds * 1_000))
+                    created = await session.send_request(
+                        types.ClientRequest(
+                            types.CallToolRequest(
+                                params=types.CallToolRequestParams(
+                                    name=name,
+                                    arguments=arguments,
+                                    task=types.TaskMetadata(ttl=ttl),
+                                    _meta=types.RequestParams.Meta(**metadata),
+                                )
+                            )
+                        ),
+                        types.CreateTaskResult,
+                    )
+                    task_id = created.task.taskId
+                    remote_task_started(task_id)
+                    status: types.Task = created.task
+                else:
+                    status = await self._get_task(session, task_id)
+                cursor = 0
+                while True:
+                    await progress(
+                        float(cursor),
+                        None,
+                        status.statusMessage or f"remote MCP task {status.status}",
+                    )
+                    cursor += 1
+                    if status.status == types.TASK_STATUS_COMPLETED:
+                        result = await self._get_task_result(session, task_id)
+                        return self._outcome(
+                            configured,
+                            result,
+                            task_id,
+                            McpRemoteTaskTerminal.COMPLETED,
+                        )
+                    if status.status == types.TASK_STATUS_FAILED:
+                        return McpClientCallOutcome(
+                            remote_task_id=task_id,
+                            terminal=McpRemoteTaskTerminal.FAILED,
+                            reason=status.statusMessage or "remote MCP task failed",
+                        )
+                    if status.status == types.TASK_STATUS_CANCELLED:
+                        return McpClientCallOutcome(
+                            remote_task_id=task_id,
+                            terminal=McpRemoteTaskTerminal.CANCELLED,
+                            reason=status.statusMessage or "remote MCP task was cancelled",
+                        )
+                    interval = (status.pollInterval or int(task_poll_min_seconds * 1_000)) / 1_000
+                    await anyio.sleep(
+                        min(task_poll_max_seconds, max(task_poll_min_seconds, interval))
+                    )
+                    status = await self._get_task(session, task_id)
+        except asyncio.CancelledError:
+            if task_id is None or not task_cancel:
+                raise MishkanError(
+                    ErrorCode.MCP,
+                    "remote MCP task cancellation could not be confirmed",
+                    retryable=True,
+                ) from None
+            try:
+                cancelled = await session.send_request(
+                    types.ClientRequest(
+                        types.CancelTaskRequest(
+                            params=types.CancelTaskRequestParams(taskId=task_id)
+                        )
+                    ),
+                    types.CancelTaskResult,
+                )
+            except Exception as exc:
+                raise MishkanError(
+                    ErrorCode.MCP,
+                    "remote MCP task cancellation could not be confirmed",
+                    details={"reason": type(exc).__name__},
+                    retryable=True,
+                ) from exc
+            if cancelled.status != types.TASK_STATUS_CANCELLED:
+                raise MishkanError(
+                    ErrorCode.MCP,
+                    "remote MCP task cancellation did not reach a terminal cancelled state",
+                    retryable=True,
+                ) from None
+            return McpClientCallOutcome(
+                remote_task_id=task_id,
+                terminal=McpRemoteTaskTerminal.CANCELLED,
+                reason=cancelled.statusMessage or "remote MCP task cancellation confirmed",
+            )
+
+    async def cancel_remote_task(
+        self,
+        configured: McpConnectionConfig,
+        *,
+        remote_task_id: str,
+        timeout_seconds: float,
+        credentials: Mapping[str, str],
+        workspace: Path,
+    ) -> McpClientCallOutcome:
+        async with self._session(configured, credentials=credentials, workspace=workspace) as (
+            session,
+            _protocol_version,
+            capabilities,
+        ):
+            _task_tools, task_cancel = self._task_capabilities(capabilities)
+            if not configured.remote_tasks_enabled or not task_cancel:
+                raise MishkanError(
+                    ErrorCode.MCP,
+                    "MCP remote task cancellation is not configured and negotiated",
+                )
+            with anyio.fail_after(timeout_seconds):
+                cancelled = await session.send_request(
+                    types.ClientRequest(
+                        types.CancelTaskRequest(
+                            params=types.CancelTaskRequestParams(taskId=remote_task_id)
+                        )
+                    ),
+                    types.CancelTaskResult,
+                )
+        if cancelled.status != types.TASK_STATUS_CANCELLED:
+            raise MishkanError(
+                ErrorCode.MCP,
+                "remote MCP task cancellation was not confirmed",
+                retryable=True,
+            )
+        return McpClientCallOutcome(
+            remote_task_id=remote_task_id,
+            terminal=McpRemoteTaskTerminal.CANCELLED,
+            reason=cancelled.statusMessage or "remote MCP task cancellation confirmed",
+        )
+
+    @staticmethod
+    async def _get_task(session: ClientSession, task_id: str) -> types.GetTaskResult:
+        return await session.send_request(
+            types.ClientRequest(
+                types.GetTaskRequest(params=types.GetTaskRequestParams(taskId=task_id))
+            ),
+            types.GetTaskResult,
+        )
+
+    @staticmethod
+    async def _get_task_result(session: ClientSession, task_id: str) -> types.CallToolResult:
+        return await session.send_request(
+            types.ClientRequest(
+                types.GetTaskPayloadRequest(
+                    params=types.GetTaskPayloadRequestParams(taskId=task_id)
+                )
+            ),
+            types.CallToolResult,
+        )
+
+    @staticmethod
+    def _outcome(
+        configured: McpConnectionConfig,
+        result: types.CallToolResult,
+        remote_task_id: str | None,
+        terminal: McpRemoteTaskTerminal,
+    ) -> McpClientCallOutcome:
+        output = result.model_dump(mode="json", by_alias=True, exclude_none=True)
+        encoded = json.dumps(output, sort_keys=True, separators=(",", ":")).encode()
         if len(encoded) > configured.max_result_bytes:
             raise MishkanError(
                 ErrorCode.MCP,
                 "MCP result exceeds the configured transport bound",
                 details={"received_bytes": len(encoded), "limit": configured.max_result_bytes},
             )
-        return result
+        failed = bool(result.isError)
+        return McpClientCallOutcome(
+            output=output,
+            remote_task_id=remote_task_id,
+            terminal=McpRemoteTaskTerminal.FAILED if failed else terminal,
+            reason=(
+                "remote MCP server returned a tool error"
+                if failed
+                else "remote MCP tool result accepted"
+            ),
+        )
 
     @asynccontextmanager
     async def _session(
@@ -108,7 +340,7 @@ class McpSdkClient:
         *,
         credentials: Mapping[str, str],
         workspace: Path,
-    ) -> AsyncIterator[tuple[ClientSession, str]]:
+    ) -> AsyncIterator[tuple[ClientSession, str, types.ServerCapabilities]]:
         resolved = self._require_credentials(configured, credentials)
         client_info = types.Implementation(name="mishkan", version=version("mishkan"))
         timeout = timedelta(seconds=configured.call_timeout_seconds)
@@ -148,7 +380,7 @@ class McpSdkClient:
                     initialized = await session.initialize()
                 protocol = str(initialized.protocolVersion)
                 self._require_protocol(configured, protocol)
-                yield session, protocol
+                yield session, protocol, initialized.capabilities
             return
 
         assert configured.endpoint is not None
@@ -190,7 +422,7 @@ class McpSdkClient:
                 initialized = await session.initialize()
             protocol = str(initialized.protocolVersion)
             self._require_protocol(configured, protocol)
-            yield session, protocol
+            yield session, protocol, initialized.capabilities
 
     @staticmethod
     def _require_credentials(
@@ -358,19 +590,30 @@ class McpSdkClient:
         connection_id: str,
         protocol: str,
         primitives: tuple[McpPrimitiveDescriptor, ...],
+        *,
+        task_tool_calls_supported: bool,
+        task_cancellation_supported: bool,
     ) -> McpDiscoverySnapshot:
-        normalized = [
-            {"kind": item.kind.value, "name": item.name, "schema_hash": item.schema_hash}
-            for item in sorted(primitives, key=lambda item: (item.kind, item.name))
-        ]
-        import hashlib
-
-        fingerprint = hashlib.sha256(
-            json.dumps(normalized, sort_keys=True, separators=(",", ":")).encode()
-        ).hexdigest()
+        fingerprint = McpDiscoverySnapshot.claim_fingerprint(
+            primitives,
+            task_tool_calls_supported=task_tool_calls_supported,
+            task_cancellation_supported=task_cancellation_supported,
+        )
         return McpDiscoverySnapshot(
             connection_id=connection_id,
             protocol_version=protocol,
             primitives=primitives,
             schema_fingerprint=fingerprint,
+            task_tool_calls_supported=task_tool_calls_supported,
+            task_cancellation_supported=task_cancellation_supported,
+        )
+
+    @staticmethod
+    def _task_capabilities(capabilities: types.ServerCapabilities) -> tuple[bool, bool]:
+        tasks = capabilities.tasks
+        requests = tasks.requests if tasks is not None else None
+        tools = requests.tools if requests is not None else None
+        return (
+            tools is not None and tools.call is not None,
+            tasks is not None and tasks.cancel is not None,
         )

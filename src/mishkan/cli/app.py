@@ -807,6 +807,29 @@ def cancel_mcp_call(
     _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
 
 
+@mcp_app.command("reconcile")
+def reconcile_mcp_call(
+    ctx: typer.Context,
+    request_id: Annotated[str, typer.Argument(help="Recoverable MCP call request UUID.")],
+    expected_revision: Annotated[int | None, typer.Option(min=0)] = None,
+) -> None:
+    """Reconnect to a durable remote task and accept only its proven terminal result."""
+    from mishkan.application import ApplicationCommand
+
+    with _daemon_client(ctx) as client:
+        result = client.command(
+            ApplicationCommand(
+                command_type="mcp.call.reconcile",
+                actor_id=client.principal_id,
+                target_type="mcp_call",
+                target_id=request_id,
+                expected_revision=expected_revision,
+                payload={},
+            )
+        )
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
 @schema_app.command("export")
 def export_contract_schemas(
     ctx: typer.Context,

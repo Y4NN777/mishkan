@@ -62,12 +62,41 @@ class McpServiceRunner:
             with self._lock:
                 self._cancellations.pop(request.id, None)
 
-    def cancel(self, request_id: object) -> None:
+    def resume_remote_task(
+        self,
+        request_id: UUID,
+        *,
+        credentials: Mapping[str, str],
+    ) -> McpCallResult:
+        future = self._executor.submit(
+            asyncio.run,
+            self._service.resume_remote_task(request_id, credentials=credentials),
+        )
+        return future.result()
+
+    def cancel_remote_task(
+        self,
+        request_id: UUID,
+        *,
+        credentials: Mapping[str, str],
+    ) -> McpCallResult:
+        future = self._executor.submit(
+            asyncio.run,
+            self._service.cancel_remote_task(request_id, credentials=credentials),
+        )
+        return future.result()
+
+    def cancel(self, request_id: object) -> bool:
         identity = request_id if isinstance(request_id, UUID) else UUID(str(request_id))
         with self._lock:
             signal = self._cancellations.get(identity)
         if signal is not None:
             signal.set()
+            return True
+        return False
+
+    def remote_task_connection_id(self, request_id: UUID) -> str:
+        return self._service.remote_task_connection_id(request_id)
 
     def close(self) -> None:
         self._executor.shutdown(wait=True, cancel_futures=False)

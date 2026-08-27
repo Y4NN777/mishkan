@@ -65,6 +65,8 @@ async def test_official_stdio_sdk_discovers_and_invokes_typed_primitives(
         progress=record,
     )
 
-    assert result.isError is False
-    assert result.structuredContent == {"path": "src", "content": "fixture evidence"}
+    assert result.terminal.value == "immediate"
+    assert result.output is not None
+    assert result.output["isError"] is False
+    assert result.output["structuredContent"] == {"path": "src", "content": "fixture evidence"}
     assert progress == []

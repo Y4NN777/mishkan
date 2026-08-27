@@ -6,6 +6,7 @@ from mishkan.mcp.models import (
     McpCallRequest,
     McpCallResult,
     McpCallState,
+    McpClientCallOutcome,
     McpConnectionRecord,
     McpDirection,
     McpDiscoverySnapshot,
@@ -13,10 +14,11 @@ from mishkan.mcp.models import (
     McpPrimitiveDescriptor,
     McpPrimitiveKind,
     McpProgressEvent,
+    McpRemoteTaskTerminal,
     McpSessionState,
 )
 from mishkan.mcp.remote import DaemonMcpFacade
-from mishkan.mcp.repository import McpCallReservation, McpRepository
+from mishkan.mcp.repository import McpCallReservation, McpRemoteTaskBinding, McpRepository
 from mishkan.mcp.runner import McpServiceRunner
 from mishkan.mcp.sdk import McpSdkClient
 from mishkan.mcp.server import BearerAuthenticatedMcpApp, McpHttpFacade, McpProtocolFacade
@@ -31,6 +33,7 @@ __all__ = [
     "McpCallReservation",
     "McpCallResult",
     "McpCallState",
+    "McpClientCallOutcome",
     "McpClientPort",
     "McpConnectionRecord",
     "McpContractFactory",
@@ -45,6 +48,8 @@ __all__ = [
     "McpPrimitiveToolAdapter",
     "McpProgressEvent",
     "McpProtocolFacade",
+    "McpRemoteTaskBinding",
+    "McpRemoteTaskTerminal",
     "McpRepository",
     "McpSdkClient",
     "McpService",

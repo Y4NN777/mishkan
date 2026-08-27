@@ -576,8 +576,27 @@ def _dispatch(
             raise MishkanError(ErrorCode.OUTPUT_CONTRACT, "MCP cancellation accepts no payload")
         if mcp_runner is None:
             raise MishkanError(ErrorCode.MCP, "MCP mediation is not configured")
-        mcp_runner.cancel(UUID(command.target_id))
-        return "mcp.call_cancellation_requested", {"request_id": command.target_id}
+        request_id = UUID(command.target_id)
+        if mcp_runner.cancel(request_id):
+            return "mcp.call_cancellation_requested", {"request_id": command.target_id}
+        if mcp_config is None:
+            raise MishkanError(ErrorCode.MCP, "MCP mediation is not configured")
+        connection_id = mcp_runner.remote_task_connection_id(request_id)
+        configured = mcp_config.connections[connection_id]
+        credentials = credential_resolver.resolve_exact(configured.credential_refs)
+        mcp_result = mcp_runner.cancel_remote_task(request_id, credentials=credentials)
+        return "mcp.call_cancelled", mcp_result.model_dump(mode="json")
+    if command.command_type == "mcp.call.reconcile" and command.target_id is not None:
+        if command.payload:
+            raise MishkanError(ErrorCode.OUTPUT_CONTRACT, "MCP reconciliation accepts no payload")
+        if mcp_runner is None or mcp_config is None:
+            raise MishkanError(ErrorCode.MCP, "MCP mediation is not configured")
+        request_id = UUID(command.target_id)
+        connection_id = mcp_runner.remote_task_connection_id(request_id)
+        configured = mcp_config.connections[connection_id]
+        credentials = credential_resolver.resolve_exact(configured.credential_refs)
+        mcp_result = mcp_runner.resume_remote_task(request_id, credentials=credentials)
+        return "mcp.call_reconciled", mcp_result.model_dump(mode="json")
     raise MishkanError(
         ErrorCode.OUTPUT_CONTRACT,
         "application command type has no registered I03 handler",

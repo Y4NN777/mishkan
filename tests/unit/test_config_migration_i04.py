@@ -31,6 +31,8 @@ def test_explicit_config_migration_adds_public_i04_surfaces(tmp_path: Path) -> N
     assert config.mcp is not None
     assert config.web.sources["searxng-local"].role.value == "broker"
     assert config.mcp.connections == {}
+    assert config.mcp.task_poll_min_seconds == 0.1
+    assert config.mcp.task_poll_max_seconds == 5.0
 
 
 def test_latest_migration_can_cross_both_explicit_previous_versions(tmp_path: Path) -> None:

@@ -405,6 +405,7 @@ class McpConnectionConfig(StrictConfigModel):
     environment: dict[str, CredentialReference] = Field(default_factory=dict)
     headers: dict[str, CredentialReference] = Field(default_factory=dict)
     enabled: bool = True
+    remote_tasks_enabled: bool = False
     connect_timeout_seconds: float = Field(gt=0, le=3_600)
     call_timeout_seconds: float = Field(gt=0, le=86_400)
     max_result_bytes: int = Field(ge=1)
@@ -456,6 +457,8 @@ class McpConfig(StrictConfigModel):
     facade: McpFacadeConfig
     progress_retention_seconds: int = Field(ge=1, le=31_536_000)
     cancellation_poll_seconds: float = Field(gt=0, le=60)
+    task_poll_min_seconds: float = Field(default=0.1, gt=0, le=60)
+    task_poll_max_seconds: float = Field(default=5.0, gt=0, le=3_600)
 
     @model_validator(mode="after")
     def references_exist(self) -> Self:
@@ -470,6 +473,8 @@ class McpConfig(StrictConfigModel):
             raise ValueError(
                 f"MCP connections reference unknown exposure profiles: {missing_exposures}"
             )
+        if self.task_poll_min_seconds > self.task_poll_max_seconds:
+            raise ValueError("MCP task polling minimum exceeds its maximum")
         return self
 
 
