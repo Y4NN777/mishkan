@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -14,6 +14,21 @@ from mishkan.events import EventPage
 from mishkan.persistence import SQLiteApplicationRepository
 
 CommandExecutor = Callable[[ApplicationCommand, str], Awaitable[CommandResult]]
+
+
+class McpFacadePort(Protocol):
+    operations: tuple[str, ...]
+    resources: tuple[str, ...]
+
+    async def invoke(
+        self,
+        operation: str,
+        arguments: dict[str, Any],
+        *,
+        principal_id: str,
+    ) -> dict[str, Any]: ...
+
+    async def read_resource(self, uri: str, *, principal_id: str) -> dict[str, Any]: ...
 
 
 class FacadeModel(BaseModel):

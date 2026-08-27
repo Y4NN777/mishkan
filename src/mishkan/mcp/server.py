@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from importlib.metadata import version
@@ -21,7 +21,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from mishkan.application import ApplicationCommand
 from mishkan.daemon.auth import TokenFile
 from mishkan.domain.errors import ErrorCode, MishkanError
-from mishkan.mcp.facade import EventQuery, McpFacadeRouter, RunQuery
+from mishkan.mcp.facade import EventQuery, McpFacadePort, McpFacadeRouter, RunQuery
 
 _principal: ContextVar[str | None] = ContextVar("mishkan_mcp_principal", default=None)
 
@@ -73,19 +73,10 @@ class McpHttpFacade:
         daemon_host: str,
         daemon_port: int,
     ) -> None:
-        self._router = router
-        server: Server[None] = Server(
-            "mishkan",
-            version=version("mishkan"),
-            instructions=(
-                "MISHKAN application facade. Discovery never grants authority; "
-                "all mutations remain governed daemon commands."
-            ),
-        )
-        self._register_handlers(server)
+        self.protocol = McpProtocolFacade(router, self._require_principal)
         authority = f"{daemon_host}:{daemon_port}"
         self._manager = StreamableHTTPSessionManager(
-            server,
+            self.protocol.server,
             json_response=True,
             stateless=True,
             security_settings=TransportSecuritySettings(
@@ -100,6 +91,33 @@ class McpHttpFacade:
     async def lifespan(self) -> AsyncIterator[None]:
         async with self._manager.run():
             yield
+
+    @staticmethod
+    def _require_principal() -> str:
+        principal = _principal.get()
+        if principal is None:
+            raise MishkanError(
+                ErrorCode.AUTHORITY_NOT_GRANTED,
+                "MCP request has no authenticated daemon principal",
+            )
+        return principal
+
+
+class McpProtocolFacade:
+    """Protocol handlers shared by HTTP and stateless STDIO transports."""
+
+    def __init__(self, router: McpFacadePort, principal: Callable[[], str]) -> None:
+        self._router = router
+        self._principal = principal
+        self.server: Server[None] = Server(
+            "mishkan",
+            version=version("mishkan"),
+            instructions=(
+                "MISHKAN application facade. Discovery never grants authority; "
+                "all mutations remain governed daemon commands."
+            ),
+        )
+        self._register_handlers(self.server)
 
     def _register_handlers(self, server: Server[None]) -> None:
         @server.list_tools()  # type: ignore[untyped-decorator,no-untyped-call]
@@ -127,7 +145,7 @@ class McpHttpFacade:
                 result = await self._router.invoke(
                     name,
                     arguments,
-                    principal_id=self._require_principal(),
+                    principal_id=self._principal(),
                 )
             except MishkanError as error:
                 envelope = error.envelope.model_dump(mode="json")
@@ -163,7 +181,7 @@ class McpHttpFacade:
         async def read_resource(uri: Any) -> list[ReadResourceContents]:
             result = await self._router.read_resource(
                 str(uri),
-                principal_id=self._require_principal(),
+                principal_id=self._principal(),
             )
             return [
                 ReadResourceContents(
@@ -175,16 +193,6 @@ class McpHttpFacade:
         @server.list_prompts()  # type: ignore[untyped-decorator,no-untyped-call]
         async def list_prompts() -> list[types.Prompt]:
             return []
-
-    @staticmethod
-    def _require_principal() -> str:
-        principal = _principal.get()
-        if principal is None:
-            raise MishkanError(
-                ErrorCode.AUTHORITY_NOT_GRANTED,
-                "MCP request has no authenticated daemon principal",
-            )
-        return principal
 
     @staticmethod
     def _operation_schemas() -> dict[str, dict[str, Any]]:

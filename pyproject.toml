@@ -32,6 +32,7 @@ dependencies = [
 
 [project.scripts]
 mishkan = "mishkan.cli.app:app"
+mishkan-mcp-stdio = "mishkan.mcp.stdio_bridge:main"
 mishkand = "mishkan.daemon.main:main"
 
 [dependency-groups]
