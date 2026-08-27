@@ -12,6 +12,7 @@ import subprocess
 import termios
 import threading
 import time
+from collections.abc import Mapping
 from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
@@ -88,7 +89,12 @@ class SessionSupervisor:
         self._threads: dict[UUID, tuple[threading.Thread, ...]] = {}
         self._locks: dict[tuple[UUID, str], threading.Lock] = {}
 
-    def start(self, request: SessionRequest) -> SessionRecord:
+    def start(
+        self,
+        request: SessionRequest,
+        *,
+        credential_values: Mapping[str, str] | None = None,
+    ) -> SessionRecord:
         profile = self._profile(request.profile)
         workspace = self._session_workspace(request.workspace)
         executable = Path(request.executable)
@@ -103,14 +109,27 @@ class SessionSupervisor:
         stderr_spool = directory / "stderr.spool"
         stdout_spool.touch(mode=0o600)
         stderr_spool.touch(mode=0o600)
+        resolved = dict(credential_values or {})
+        required_locators = {
+            reference.locator for reference in request.credential_environment.values()
+        }
+        if not required_locators.issubset(resolved):
+            raise MishkanError(
+                ErrorCode.AUTHORIZATION_MISSING,
+                "session credential references were not resolved after authorization",
+            )
         environment = dict(request.environment)
-        environment.update(request.credential_environment)
+        environment.update(
+            {
+                name: resolved[reference.locator]
+                for name, reference in request.credential_environment.items()
+            }
+        )
+        secret_values = tuple(resolved.values())
         sanitized_request = request.model_copy(
             update={
                 "environment": {name: "[PRESENT]" for name in request.environment},
-                "credential_environment": {
-                    name: "[CREDENTIAL_REFERENCE]" for name in request.credential_environment
-                },
+                "credential_environment": request.credential_environment,
             }
         )
         if request.mode is SessionMode.PTY:
@@ -121,6 +140,7 @@ class SessionSupervisor:
                 environment,
                 stdout_spool,
                 profile,
+                secret_values,
             )
         else:
             process, threads = self._start_job(
@@ -131,6 +151,7 @@ class SessionSupervisor:
                 stdout_spool,
                 stderr_spool,
                 profile,
+                secret_values,
             )
         identity = psutil.Process(process.pid)
         now = utc_now()
@@ -349,6 +370,7 @@ class SessionSupervisor:
         environment: dict[str, str],
         spool: Path,
         profile: SessionProfileConfig,
+        secrets: tuple[str, ...],
     ) -> tuple[subprocess.Popen[bytes], tuple[threading.Thread, ...]]:
         master, slave = pty.openpty()
         fcntl.ioctl(
@@ -371,7 +393,7 @@ class SessionSupervisor:
             "stdout",
             master,
             spool,
-            tuple(request.credential_environment.values()),
+            secrets,
             profile,
             close_descriptor=False,
         )
@@ -386,6 +408,7 @@ class SessionSupervisor:
         stdout_spool: Path,
         stderr_spool: Path,
         profile: SessionProfileConfig,
+        secrets: tuple[str, ...],
     ) -> tuple[subprocess.Popen[bytes], tuple[threading.Thread, ...]]:
         process = subprocess.Popen(
             [request.executable, *request.arguments],
@@ -402,7 +425,6 @@ class SessionSupervisor:
         stderr_descriptor = os.dup(process.stderr.fileno())
         process.stdout.close()
         process.stderr.close()
-        secrets = tuple(request.credential_environment.values())
         stdout = self._reader_thread(
             session_id,
             "stdout",

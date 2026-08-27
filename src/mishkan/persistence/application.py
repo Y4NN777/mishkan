@@ -42,6 +42,50 @@ class SQLiteApplicationRepository:
         self._engine = create_engine(f"sqlite:///{database_path}")
         event.listen(self._engine, "connect", LocalRunRepository._configure_connection)
 
+    def refuse(
+        self,
+        command: ApplicationCommand,
+        *,
+        target_id: str,
+        error: MishkanError,
+        event_payload: Mapping[str, Any],
+    ) -> CommandResult:
+        """Persist one idempotent typed refusal without advancing target revision."""
+
+        with Session(self._engine) as session, session.begin():
+            existing = session.get(CommandRow, str(command.command_id))
+            if existing is not None:
+                return self._existing(existing, command)
+            now = utc_now()
+            event_row = OutboxRow(
+                id=str(new_id()),
+                schema_version="1.0",
+                aggregate_id=target_id,
+                entity_type=command.target_type,
+                event_type="application.command_refused",
+                source="mishkand.policy",
+                payload=json.dumps(dict(event_payload), sort_keys=True, separators=(",", ":")),
+                occurred_at=now.isoformat(),
+                command_id=str(command.command_id),
+                correlation_id=str(command.command_id),
+                causation_id=None,
+                sensitivity="security",
+                published_at=None,
+            )
+            session.add(event_row)
+            session.flush()
+            result = CommandResult(
+                command_id=command.command_id,
+                status=CommandStatus.REFUSED,
+                target_type=command.target_type,
+                target_id=target_id,
+                event_cursor=event_row.cursor,
+                error=error.envelope,
+                completed_at=now,
+            )
+            session.add(self._command_row(command, result))
+            return result
+
     def accept(
         self,
         command: ApplicationCommand,

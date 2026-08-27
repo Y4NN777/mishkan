@@ -1,6 +1,6 @@
 schema_version: "1.0"
 source_id: bundled.local
-revision: "4"
+revision: "5"
 adoption_authority: MISHKAN release
 priority: 0
 rules:
@@ -93,3 +93,62 @@ rules:
       max_memory_mb: 512
       allow_network: true
       max_concurrency: 1
+  - rule_id: local.application-commands
+    priority: 50
+    decision: allow
+    scope:
+      identities: ["*"]
+      objective_classes: [application-command]
+      repositories: ["*"]
+      outcomes:
+        - system.checkpoint
+        - run.initialize
+        - run.cancel
+        - run.recover
+        - artifact.upload.open
+        - artifact.upload.chunk
+        - artifact.upload.commit
+        - artifact.reference.update
+        - artifact.gc.plan
+        - artifact.gc.apply
+        - change.plan
+        - change.apply
+        - change.reconcile
+        - session.start
+        - session.write
+        - session.resize
+        - session.signal
+        - session.cancel
+        - session.settle
+        - mcp.connection.connect
+        - mcp.call.cancel
+        - mcp.call.reconcile
+      roles: [application-client]
+      capabilities:
+        - application.system.checkpoint
+        - application.run.initialize
+        - application.run.control
+        - application.artifact.upload
+        - application.artifact.reference
+        - application.artifact.gc
+        - application.change.plan
+        - application.change.apply
+        - application.change.reconcile
+        - application.session.start
+        - application.session.io
+        - application.session.control
+        - application.session.settle
+        - application.mcp.connect
+        - application.mcp.control
+      effect_classes: [control, coordination, artifact, filesystem, process, external]
+      effects: ["*"]
+      paths: ["*"]
+      executables: ["*"]
+      arguments: ["*"]
+      network_destinations: ["*"]
+      remotes: ["*"]
+      branches: ["*"]
+      environments: ["*"]
+      credentials: ["*"]
+      external_resources: ["*"]
+      isolation_profiles: ["*"]

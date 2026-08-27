@@ -9,6 +9,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from mishkan.config.models import CredentialReference
+
 
 class SessionMode(StrEnum):
     PTY = "pty"
@@ -45,8 +47,8 @@ class SessionRequest(BaseModel):
     executable: str = Field(min_length=1)
     arguments: tuple[str, ...] = ()
     environment: dict[str, str] = Field(default_factory=dict)
-    credential_environment: dict[str, str] = Field(default_factory=dict)
-    credential_references: tuple[str, ...] = ()
+    credential_environment: dict[str, CredentialReference] = Field(default_factory=dict)
+    credential_references: tuple[CredentialReference, ...] = ()
     profile: str = Field(min_length=1)
     deadline: datetime
     rows: int = Field(default=24, ge=1, le=1000)

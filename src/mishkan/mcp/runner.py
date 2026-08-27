@@ -98,6 +98,9 @@ class McpServiceRunner:
     def remote_task_connection_id(self, request_id: UUID) -> str:
         return self._service.remote_task_connection_id(request_id)
 
+    def call_connection_id(self, request_id: UUID) -> str:
+        return self._service.call_connection_id(request_id)
+
     def close(self) -> None:
         self._executor.shutdown(wait=True, cancel_futures=False)
 

@@ -21,10 +21,14 @@ from mishkan.application import (
     RunInitializationRequest,
     SnapshotEnvelope,
 )
+from mishkan.application.authorization import (
+    ApplicationCommandAuthority,
+    AuthorizedApplicationCommand,
+)
 from mishkan.application.initialize import MishkanInitializer
 from mishkan.artifacts import ArtifactManifest, ArtifactProvenance
 from mishkan.artifacts.service import DurableArtifactService
-from mishkan.config.models import McpConfig, MishkanConfig
+from mishkan.config.models import CredentialReference, McpConfig, MishkanConfig
 from mishkan.crewai.credentials import CredentialPoolResolver
 from mishkan.daemon.auth import TokenFile, TokenRecord
 from mishkan.daemon.bootstrap import DaemonPaths
@@ -43,6 +47,7 @@ from mishkan.mcp import (
     McpServiceRunner,
 )
 from mishkan.persistence import LocalRunRepository, SchemaManager, SQLiteApplicationRepository
+from mishkan.policy import Decision
 from mishkan.tools.inspection import ContentInspector, InspectionProfileLoader
 
 
@@ -114,6 +119,9 @@ def create_app(config: MishkanConfig) -> FastAPI:
         mcp_service.reconcile_after_restart()
         mcp_runner = McpServiceRunner(mcp_service)
     credential_resolver = CredentialPoolResolver()
+    command_authority = ApplicationCommandAuthority(
+        config, paths.workspace, changes, supervisor, mcp_runner
+    )
 
     async def execute_command(command: ApplicationCommand, principal_id: str) -> CommandResult:
         if command.actor_id != principal_id:
@@ -122,6 +130,44 @@ def create_app(config: MishkanConfig) -> FastAPI:
                 "command actor does not match the authenticated client identity",
                 details={"actor_id": command.actor_id},
             )
+        replayed = repository.replay(command)
+        if replayed is not None:
+            return replayed
+        authorized = command_authority.authorize(command)
+        if authorized.decision.decision is not Decision.ALLOW:
+            code = (
+                ErrorCode.AUTHORIZATION_MISSING
+                if authorized.decision.decision is Decision.REQUIRE_APPROVAL
+                else ErrorCode.AUTHORITY_NOT_GRANTED
+            )
+            refusal = MishkanError(
+                code,
+                "public policy did not authorize the exact application command scope",
+                details={
+                    "request_fingerprint": authorized.request.fingerprint,
+                    "policy_fingerprint": authorized.decision.policy_fingerprint,
+                    "policy_revisions": list(authorized.decision.policy_revisions),
+                    "matched_rule_ids": list(authorized.decision.matched_rule_ids),
+                    "decision": authorized.decision.decision.value,
+                },
+            )
+            return repository.refuse(
+                authorized.command,
+                target_id=authorized.command.target_id or "local-instance",
+                error=refusal,
+                event_payload={
+                    "command_type": authorized.command.command_type,
+                    **_authorization_projection(authorized),
+                    "error_code": refusal.envelope.code,
+                },
+            )
+        command = authorized.command
+        resolved_credentials = _resolve_command_credentials(
+            authorized,
+            credential_resolver,
+            mcp_runner,
+            mcp_config,
+        )
         if command.command_type == "run.initialize":
             if command.target_type != "run" or command.target_id is not None:
                 raise MishkanError(
@@ -162,6 +208,7 @@ def create_app(config: MishkanConfig) -> FastAPI:
                                 event_payload={
                                     "run_id": run_id,
                                     "request_schema_version": request.schema_version,
+                                    **_authorization_projection(authorized),
                                 },
                                 source="mishkand",
                             )
@@ -207,13 +254,14 @@ def create_app(config: MishkanConfig) -> FastAPI:
             try:
                 event_type, result_payload = _dispatch(
                     command,
+                    authorized,
                     artifacts,
                     changes,
                     supervisor,
                     run_repository,
                     mcp_runner,
                     mcp_config,
-                    credential_resolver,
+                    resolved_credentials,
                 )
             except MishkanError:
                 raise
@@ -228,7 +276,7 @@ def create_app(config: MishkanConfig) -> FastAPI:
                 target_id=target_id,
                 event_type=event_type,
                 result_payload=result_payload,
-                event_payload=_event_projection(command, result_payload),
+                event_payload=_event_projection(command, result_payload, authorized),
                 source="mishkand",
             )
 
@@ -553,6 +601,7 @@ def create_app(config: MishkanConfig) -> FastAPI:
 def _event_projection(
     command: ApplicationCommand,
     result_payload: dict[str, object],
+    authorized: AuthorizedApplicationCommand,
 ) -> dict[str, object]:
     """Describe a command settlement without copying effect inputs or result bodies."""
 
@@ -561,18 +610,32 @@ def _event_projection(
         "request_schema_version": command.schema_version,
         "payload_fields": sorted(command.payload),
         "result_fields": sorted(result_payload),
+        **_authorization_projection(authorized),
+    }
+
+
+def _authorization_projection(
+    authorized: AuthorizedApplicationCommand,
+) -> dict[str, object]:
+    return {
+        "authorization_request_fingerprint": authorized.request.fingerprint,
+        "policy_fingerprint": authorized.decision.policy_fingerprint,
+        "policy_revisions": list(authorized.decision.policy_revisions),
+        "matched_rule_ids": list(authorized.decision.matched_rule_ids),
+        "authorization_decision": authorized.decision.decision.value,
     }
 
 
 def _dispatch(
     command: ApplicationCommand,
+    authorized: AuthorizedApplicationCommand,
     artifacts: DurableArtifactService,
     changes: ChangeSetService,
     supervisor: SessionSupervisor,
     runs: LocalRunRepository,
     mcp_runner: McpServiceRunner | None,
     mcp_config: McpConfig | None,
-    credential_resolver: CredentialPoolResolver,
+    resolved_credentials: dict[str, str],
 ) -> tuple[str, dict[str, object]]:
     payload = command.payload
     if command.command_type == "system.checkpoint" and command.target_type == "system":
@@ -625,7 +688,13 @@ def _dispatch(
         result = changes.reconcile(UUID(command.target_id))
         return "change_set.reconciled", result.model_dump(mode="json")
     if command.command_type == "session.start":
-        record = supervisor.start(SessionRequest.model_validate(payload["request"]))
+        request = authorized.session_request
+        if request is None:
+            raise MishkanError(ErrorCode.OUTPUT_CONTRACT, "authorized session request is absent")
+        effective_request = request.model_copy(
+            update={"policy_fingerprint": authorized.decision.policy_fingerprint}
+        )
+        record = supervisor.start(effective_request, credential_values=resolved_credentials)
         return "session.started", record.model_dump(mode="json")
     if command.command_type == "session.write" and command.target_id is not None:
         content = base64.b64decode(str(payload["content_base64"]), validate=True)
@@ -663,11 +732,10 @@ def _dispatch(
         configured = mcp_config.connections.get(command.target_id)
         if configured is None or not configured.enabled:
             raise MishkanError(ErrorCode.MCP, "MCP connection is not enabled")
-        credentials = credential_resolver.resolve_exact(configured.credential_refs)
         mcp_record = mcp_runner.connect(
             command.target_id,
             principal=command.actor_id,
-            credentials=credentials,
+            credentials=resolved_credentials,
         )
         return "mcp.connection_ready", mcp_record.model_dump(mode="json")
     if command.command_type == "mcp.call.cancel" and command.target_id is not None:
@@ -680,10 +748,7 @@ def _dispatch(
             return "mcp.call_cancellation_requested", {"request_id": command.target_id}
         if mcp_config is None:
             raise MishkanError(ErrorCode.MCP, "MCP mediation is not configured")
-        connection_id = mcp_runner.remote_task_connection_id(request_id)
-        configured = mcp_config.connections[connection_id]
-        credentials = credential_resolver.resolve_exact(configured.credential_refs)
-        mcp_result = mcp_runner.cancel_remote_task(request_id, credentials=credentials)
+        mcp_result = mcp_runner.cancel_remote_task(request_id, credentials=resolved_credentials)
         return "mcp.call_cancelled", mcp_result.model_dump(mode="json")
     if command.command_type == "mcp.call.reconcile" and command.target_id is not None:
         if command.payload:
@@ -691,13 +756,46 @@ def _dispatch(
         if mcp_runner is None or mcp_config is None:
             raise MishkanError(ErrorCode.MCP, "MCP mediation is not configured")
         request_id = UUID(command.target_id)
-        connection_id = mcp_runner.remote_task_connection_id(request_id)
-        configured = mcp_config.connections[connection_id]
-        credentials = credential_resolver.resolve_exact(configured.credential_refs)
-        mcp_result = mcp_runner.resume_remote_task(request_id, credentials=credentials)
+        mcp_result = mcp_runner.resume_remote_task(request_id, credentials=resolved_credentials)
         return "mcp.call_reconciled", mcp_result.model_dump(mode="json")
     raise MishkanError(
         ErrorCode.OUTPUT_CONTRACT,
         "application command type has no registered I03 handler",
         details={"command_type": command.command_type},
     )
+
+
+def _session_credential_references(request: SessionRequest) -> tuple[CredentialReference, ...]:
+    references = (*request.credential_environment.values(), *request.credential_references)
+    by_locator: dict[str, CredentialReference] = {}
+    for reference in references:
+        current = by_locator.get(reference.locator)
+        if current is not None and current != reference:
+            raise MishkanError(
+                ErrorCode.CONFIGURATION,
+                "session credential locator maps to conflicting credential sources",
+            )
+        by_locator[reference.locator] = reference
+    return tuple(by_locator[key] for key in sorted(by_locator))
+
+
+def _resolve_command_credentials(
+    authorized: AuthorizedApplicationCommand,
+    resolver: CredentialPoolResolver,
+    mcp_runner: McpServiceRunner | None,
+    mcp_config: McpConfig | None,
+) -> dict[str, str]:
+    command = authorized.command
+    references: tuple[CredentialReference, ...] = ()
+    if authorized.session_request is not None:
+        references = _session_credential_references(authorized.session_request)
+    elif command.command_type == "mcp.connection.connect" and command.target_id is not None:
+        if mcp_config is None:
+            raise MishkanError(ErrorCode.MCP, "MCP mediation is not configured")
+        references = mcp_config.connections[command.target_id].credential_refs
+    elif command.command_type in {"mcp.call.cancel", "mcp.call.reconcile"}:
+        if mcp_config is None or mcp_runner is None or command.target_id is None:
+            raise MishkanError(ErrorCode.MCP, "MCP mediation is not configured")
+        connection_id = mcp_runner.call_connection_id(UUID(command.target_id))
+        references = mcp_config.connections[connection_id].credential_refs
+    return resolver.resolve_exact(references)

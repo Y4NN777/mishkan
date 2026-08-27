@@ -188,6 +188,11 @@ class ChangeSetService:
         with Session(self._engine) as session:
             return self._result(session, str(change_set_id))
 
+    def definition(self, change_set_id: UUID) -> ChangeSet:
+        """Return the immutable planned contract for pre-dispatch authorization."""
+
+        return self._load(change_set_id)
+
     def list(self, *, offset: int = 0, limit: int = 100) -> tuple[ChangeSetResult, ...]:
         if offset < 0 or limit < 1 or limit > 1_000:
             raise MishkanError(ErrorCode.OUTPUT_CONTRACT, "change-set query bound is invalid")

@@ -355,6 +355,13 @@ class McpRepository:
                 row.remote_task_id,
             )
 
+    def call_connection_id(self, request_id: UUID) -> str:
+        with Session(self._engine) as session:
+            row = session.get(McpCallRow, str(request_id))
+            if row is None:
+                raise MishkanError(ErrorCode.MCP, "MCP call does not exist")
+            return row.connection_id
+
     def complete_call(self, result: McpCallResult) -> McpCallResult:
         with Session(self._engine) as session, session.begin():
             row = session.get(McpCallRow, str(result.request_id))

@@ -384,6 +384,9 @@ class McpService:
     def remote_task_connection_id(self, request_id: UUID) -> str:
         return self._repository.get_remote_task(request_id).request.connection_id
 
+    def call_connection_id(self, request_id: UUID) -> str:
+        return self._repository.call_connection_id(request_id)
+
     def _validate_call(
         self,
         request: McpCallRequest,

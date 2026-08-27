@@ -9,7 +9,7 @@ from sqlalchemy import create_engine, text
 
 from mishkan.artifacts.service import DurableArtifactService
 from mishkan.config.loader import ConfigLoader
-from mishkan.config.models import ProjectConfig
+from mishkan.config.models import CredentialReference, CredentialSource, ProjectConfig
 from mishkan.config.presets import preset_text
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.time import utc_now
@@ -93,12 +93,14 @@ def test_job_readiness_cursors_artifacts_and_cross_chunk_secret_filter(tmp_path:
         ),
     ).model_copy(
         update={
-            "credential_environment": {"TOKEN": "CANARY"},
-            "credential_references": ("env:TOKEN",),
+            "credential_environment": {
+                "TOKEN": CredentialReference(source=CredentialSource.ENV, locator="TEST_TOKEN")
+            },
+            "credential_references": (),
             "readiness": ReadinessProbe(kind="output_contains", value="READY"),
         }
     )
-    started = supervisor.start(request)
+    started = supervisor.start(request, credential_values={"TEST_TOKEN": "CANARY"})
     assert started.state is SessionState.READY
     (tmp_path / "continue-job").touch()
     settled = _await_settlement(supervisor, started.session_id)

@@ -91,12 +91,20 @@ async def test_authenticated_command_and_event_query_share_durable_contract(
     assert events.status_code == 200
     assert len(events.json()["events"]) == 1
     assert events.json()["events"][0]["command_id"] == str(command.command_id)
-    assert events.json()["events"][0]["payload"] == {
+    event_payload = events.json()["events"][0]["payload"]
+    assert event_payload == {
+        "authorization_decision": "allow",
+        "authorization_request_fingerprint": event_payload["authorization_request_fingerprint"],
         "command_type": "system.checkpoint",
+        "matched_rule_ids": ["local.application-commands"],
+        "policy_fingerprint": event_payload["policy_fingerprint"],
+        "policy_revisions": ["bundled.local@5"],
         "request_schema_version": "1.0",
         "payload_fields": ["checkpoint"],
         "result_fields": ["recorded"],
     }
+    assert len(event_payload["authorization_request_fingerprint"]) == 64
+    assert len(event_payload["policy_fingerprint"]) == 64
 
 
 @pytest.mark.anyio
@@ -121,6 +129,110 @@ async def test_command_cannot_claim_another_actor(tmp_path: Path) -> None:
 
     assert response.status_code == 403
     assert response.json()["code"] == "ERR-POL-001"
+
+
+@pytest.mark.anyio
+async def test_public_policy_refusal_is_idempotent_audited_and_prevents_effect(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    policy = tmp_path / "operator-policy.yaml"
+    policy.write_text(
+        """\
+schema_version: "1.0"
+source_id: test.operator
+revision: "1"
+adoption_authority: test
+priority: 100
+rules:
+  - rule_id: test.deny-session-start
+    priority: 100
+    decision: deny
+    scope:
+      identities: [local-operator]
+      objective_classes: [application-command]
+      repositories: ["*"]
+      outcomes: [session.start]
+      roles: [application-client]
+      capabilities: [application.session.start]
+      effect_classes: [process]
+""",
+        encoding="utf-8",
+    )
+    config = config.model_copy(update={"policy_sources": (str(policy),)})
+    paths = DaemonBootstrap().setup(config)
+    token = TokenFile(paths.token_file).read().token
+    headers = {"Authorization": f"Bearer {token}"}
+    request = {
+        "mode": "job",
+        "owner": "local-operator",
+        "run_id": "run-denied",
+        "task_id": "task-denied",
+        "workspace": ".",
+        "executable": "/bin/sh",
+        "arguments": ["-c", "touch must-not-exist"],
+        "environment": {},
+        "credential_environment": {},
+        "credential_references": [],
+        "profile": "standard",
+        "deadline": (utc_now() + timedelta(minutes=1)).isoformat(),
+        "policy_fingerprint": "0" * 64,
+    }
+    command = ApplicationCommand(
+        command_type="session.start",
+        actor_id="local-operator",
+        target_type="session_service",
+        payload={"request": request},
+    )
+    transport = httpx.ASGITransport(app=create_app(config))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        first = await client.post(
+            "/v1/commands", headers=headers, json=command.model_dump(mode="json")
+        )
+        replayed = await client.post(
+            "/v1/commands", headers=headers, json=command.model_dump(mode="json")
+        )
+        sessions = await client.get("/v1/sessions", headers=headers)
+        events = await client.get("/v1/events", headers=headers)
+
+    assert first.status_code == 200
+    assert first.json()["status"] == "refused"
+    assert first.json()["error"]["code"] == "ERR-POL-001"
+    assert replayed.json() == first.json()
+    assert sessions.json() == []
+    assert not (tmp_path / "must-not-exist").exists()
+    assert events.json()["events"][0]["event_type"] == "application.command_refused"
+    assert events.json()["events"][0]["sensitivity"] == "security"
+    assert events.json()["events"][0]["payload"]["authorization_decision"] == "deny"
+
+
+@pytest.mark.anyio
+async def test_invalid_effect_command_is_rejected_before_reservation(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    paths = DaemonBootstrap().setup(config)
+    token = TokenFile(paths.token_file).read().token
+    command = ApplicationCommand(
+        command_type="session.start",
+        actor_id="local-operator",
+        target_type="session",
+        target_id="not-a-session",
+        payload={"request": {}},
+    )
+    transport = httpx.ASGITransport(app=create_app(config))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/commands",
+            headers={"Authorization": f"Bearer {token}"},
+            json=command.model_dump(mode="json"),
+        )
+        sessions = await client.get("/v1/sessions", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "ERR-OUT-001"
+    assert sessions.json() == []
+    assert (
+        SQLiteApplicationRepository(paths.database).command_result(str(command.command_id)) is None
+    )
 
 
 @pytest.mark.anyio
@@ -241,6 +353,72 @@ async def test_managed_job_is_started_and_observed_through_commands(tmp_path: Pa
     assert started.status_code == 200
     assert observed.json()["state"] == "settled"
     assert output.json()["data"] == "daemon-job"
+
+
+@pytest.mark.anyio
+async def test_session_credentials_are_references_resolved_after_policy_and_never_persisted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = _config(tmp_path)
+    paths = DaemonBootstrap().setup(config)
+    token = TokenFile(paths.token_file).read().token
+    headers = {"Authorization": f"Bearer {token}"}
+    secret = "SESSION-CREDENTIAL-CANARY"
+    monkeypatch.setenv("MISHKAN_SESSION_TEST_TOKEN", secret)
+    request = {
+        "mode": "job",
+        "owner": "local-operator",
+        "run_id": "run-credential",
+        "task_id": "task-credential",
+        "workspace": ".",
+        "executable": "/bin/sh",
+        "arguments": ["-c", 'printf %s "$TOKEN"'],
+        "environment": {},
+        "credential_environment": {
+            "TOKEN": {"source": "env", "locator": "MISHKAN_SESSION_TEST_TOKEN"}
+        },
+        "credential_references": [],
+        "profile": "standard",
+        "deadline": (utc_now() + timedelta(minutes=1)).isoformat(),
+        "policy_fingerprint": "f" * 64,
+    }
+    transport = httpx.ASGITransport(app=create_app(config))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        started = await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=ApplicationCommand(
+                command_type="session.start",
+                actor_id="local-operator",
+                target_type="session_service",
+                payload={"request": request},
+            ).model_dump(mode="json"),
+        )
+        session_id = started.json()["payload"]["session_id"]
+        for _ in range(50):
+            observed = await client.get(f"/v1/sessions/{session_id}", headers=headers)
+            if observed.json()["state"] in {"settled", "failed"}:
+                break
+            await asyncio.sleep(0.01)
+        output = await client.get(
+            f"/v1/sessions/{session_id}/output",
+            headers=headers,
+            params={"channel": "stdout", "offset": 0},
+        )
+        events = await client.get("/v1/events", headers=headers)
+
+    with create_engine(f"sqlite:///{paths.database}").connect() as connection:
+        persisted = connection.execute(
+            text("SELECT request_payload FROM execution_sessions WHERE id = :id"),
+            {"id": session_id},
+        ).scalar_one()
+    assert started.status_code == 200
+    assert observed.json()["state"] == "settled"
+    assert secret not in output.json()["data"]
+    assert "[REDACTED]" in output.json()["data"]
+    assert secret not in str(persisted)
+    assert "MISHKAN_SESSION_TEST_TOKEN" in str(persisted)
+    assert secret not in str(events.json())
 
 
 def test_token_rotation_invalidates_previous_credential(tmp_path: Path) -> None:
