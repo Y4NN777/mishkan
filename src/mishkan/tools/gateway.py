@@ -327,6 +327,10 @@ class CapabilityGateway:
                     cancellation_requested=lambda: self._cancellation.requested(
                         context.run_id, context.task_attempt_id
                     ),
+                    run_id=context.run_id,
+                    task_attempt_id=context.task_attempt_id,
+                    acting_identity=context.identity,
+                    capability=contract.tool_id,
                 )
             )
             dispatched_status = adapter_result.call_status

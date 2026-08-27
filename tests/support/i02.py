@@ -42,6 +42,12 @@ TEST_ADAPTERS = frozenset(
         "operator.deployment.apply",
         "operator.release.publish",
         "operator.migration.apply",
+        "native.web.search",
+        "native.web.fetch",
+        "native.web.request",
+        "native.web.extract",
+        "native.web.map",
+        "native.web.crawl",
     }
 )
 
@@ -137,6 +143,7 @@ def context_for(
         or tool_id.startswith("search.")
         or tool_id.startswith("core.process.")
         or tool_id.startswith("core.shell.")
+        or tool_id.startswith("web.")
         else MECHANISM_CATALOG_URI
     )
     catalog = ToolCatalog(

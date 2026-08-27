@@ -53,6 +53,10 @@ class AdapterCall:
     resources: ResourceRequest
     isolation_profile: str | None
     cancellation_requested: Callable[[], bool]
+    run_id: str
+    task_attempt_id: str
+    acting_identity: str
+    capability: str
 
 
 class CapabilityAdapter(Protocol):

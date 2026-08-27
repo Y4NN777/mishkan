@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 import yaml
 from pydantic import AnyHttpUrl
+from support.i02 import context_for, inspector, policy_for
 
 from mishkan.artifacts import ArtifactProvenance
 from mishkan.artifacts.service import DurableArtifactService
@@ -23,6 +24,9 @@ from mishkan.config.presets import preset_text
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.time import utc_now
 from mishkan.persistence import SchemaManager
+from mishkan.policy import Decision, PolicyAuthority
+from mishkan.tools.gateway import CapabilityGateway, MappingCredentialResolver, MemoryEvidenceSink
+from mishkan.tools.gateway_models import CallStatus, DeclaredTargets
 from mishkan.web.adapters import (
     ProviderSearchResult,
     SearxngSearchAdapter,
@@ -43,6 +47,7 @@ from mishkan.web.models import (
 )
 from mishkan.web.network import ConnectionEvidence, HttpExchange
 from mishkan.web.service import WebService
+from mishkan.web.tools import build_web_tool_adapters
 
 
 def _web_config() -> WebConfig:
@@ -201,6 +206,7 @@ def test_cross_origin_redirect_never_forwards_late_resolved_credential(
         credential_header="Authorization",
         credential_prefix="Bearer ",
         redirect_policy=RedirectPolicy.SAFE_GET_HEAD,
+        allowed_redirect_origins=("https://other.example",),
         accepted_media=("text/*",),
     )
 
@@ -210,6 +216,32 @@ def test_cross_origin_redirect_never_forwards_late_resolved_credential(
     assert "Authorization" not in transport.calls[1][2]
     assert result.redirects[0].credential_forwarded is False
     assert result.artifact_reference.startswith("artifact:")
+
+
+def test_cross_origin_redirect_requires_an_explicit_origin_scope(tmp_path: Path) -> None:
+    transport = RecordingTransport(
+        [_exchange(b"", status=302, headers={"location": "https://other.example/final"})]
+    )
+    service = WebService(
+        _web_config(),
+        _artifacts(tmp_path),
+        search_adapters={},
+        extraction_adapters={},
+        transport=transport,  # type: ignore[arg-type]
+    )
+    request = FetchRequest(
+        url=AnyHttpUrl("https://first.example/start"),
+        network_profile="public-read",
+        redirect_policy=RedirectPolicy.SAFE_GET_HEAD,
+        cache=False,
+    )
+
+    with pytest.raises(MishkanError) as caught:
+        service.fetch(request, _context())
+
+    assert caught.value.envelope.code is ErrorCode.WEB
+    assert caught.value.envelope.details["origin"] == "https://other.example"
+    assert len(transport.calls) == 1
 
 
 def test_plain_credential_header_is_refused_before_transport(tmp_path: Path) -> None:
@@ -261,6 +293,117 @@ def test_stateful_http_request_is_distinct_from_fetch(tmp_path: Path) -> None:
     assert result.method == "POST"
     assert result.cache.value == "bypass"
     assert transport.calls[0][0] == "POST"
+
+
+def test_fetch_runs_through_the_same_governed_gateway_used_by_crewai(tmp_path: Path) -> None:
+    transport = RecordingTransport([_exchange(b"governed Web evidence")])
+    config = _web_config()
+    artifacts = _artifacts(tmp_path)
+    service = WebService(
+        config,
+        artifacts,
+        search_adapters={},
+        extraction_adapters={},
+        transport=transport,  # type: ignore[arg-type]
+    )
+    adapters = build_web_tool_adapters(config, service)
+    origin = "https://example.com"
+    policy = policy_for(
+        "web.fetch",
+        Decision.ALLOW,
+        effect_class="network",
+        network_destinations=(origin,),
+        allow_network=True,
+    )
+    context = context_for(tmp_path, "web.fetch", policy, (origin,), network=True)
+    gateway = CapabilityGateway(
+        tmp_path,
+        PolicyAuthority(),
+        MappingCredentialResolver({}),
+        inspector(tmp_path),
+        adapters,
+        MemoryEvidenceSink(),
+    )
+    request = FetchRequest(
+        url=AnyHttpUrl("https://example.com/proof"),
+        network_profile="public-read",
+        redirect_policy=RedirectPolicy.SAFE_GET_HEAD,
+        cache=False,
+    )
+    arguments = {
+        "request": request.model_dump(mode="json"),
+        "network_destinations": [origin],
+        "credential_refs": [],
+        "declared_effects": ["external_read"],
+    }
+
+    result = gateway.invoke(
+        context,
+        arguments,
+        DeclaredTargets(network_destinations=(origin,)),
+    )
+
+    assert result.status is CallStatus.COMPLETED
+    assert result.output is not None
+    assert result.output["artifact_reference"].startswith("artifact:")
+    assert len(transport.calls) == 1
+
+
+def test_web_adapter_refuses_target_drift_before_network_dispatch(tmp_path: Path) -> None:
+    transport = RecordingTransport([_exchange(b"must remain unused")])
+    config = _web_config()
+    service = WebService(
+        config,
+        _artifacts(tmp_path),
+        search_adapters={},
+        extraction_adapters={},
+        transport=transport,  # type: ignore[arg-type]
+    )
+    adapters = build_web_tool_adapters(config, service)
+    declared_origin = "https://wrong.example"
+    policy = policy_for(
+        "web.fetch",
+        Decision.ALLOW,
+        effect_class="network",
+        network_destinations=("*",),
+        allow_network=True,
+    )
+    context = context_for(
+        tmp_path,
+        "web.fetch",
+        policy,
+        (declared_origin,),
+        network=True,
+    )
+    gateway = CapabilityGateway(
+        tmp_path,
+        PolicyAuthority(),
+        MappingCredentialResolver({}),
+        inspector(tmp_path),
+        adapters,
+        MemoryEvidenceSink(),
+    )
+    request = FetchRequest(
+        url=AnyHttpUrl("https://example.com/proof"),
+        network_profile="public-read",
+        redirect_policy=RedirectPolicy.SAFE_GET_HEAD,
+        cache=False,
+    )
+
+    result = gateway.invoke(
+        context,
+        {
+            "request": request.model_dump(mode="json"),
+            "network_destinations": [declared_origin],
+            "credential_refs": [],
+            "declared_effects": ["external_read"],
+        },
+        DeclaredTargets(network_destinations=(declared_origin,)),
+    )
+
+    assert result.status is CallStatus.FAILED
+    assert result.error_code == ErrorCode.TOOL_SCHEMA
+    assert transport.calls == []
 
 
 def test_fetch_cache_is_persistent_and_reports_freshness(tmp_path: Path) -> None:

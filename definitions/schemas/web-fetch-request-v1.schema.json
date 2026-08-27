@@ -59,6 +59,14 @@
       "title": "Allow Stale Seconds",
       "type": "integer"
     },
+    "allowed_redirect_origins": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Allowed Redirect Origins",
+      "type": "array"
+    },
     "body_artifact_reference": {
       "anyOf": [
         {

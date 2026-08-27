@@ -118,6 +118,7 @@ class HttpRequest(WebModel):
     body_artifact_reference: str | None = Field(default=None, pattern=r"^artifact:[0-9a-f-]{36}$")
     accepted_media: tuple[str, ...] = ("*/*",)
     redirect_policy: RedirectPolicy
+    allowed_redirect_origins: tuple[str, ...] = ()
     timeout_seconds: float | None = Field(default=None, gt=0, le=3_600)
     cache: bool = True
     cache_max_age_seconds: int | None = Field(default=None, ge=0, le=31_536_000)
@@ -131,6 +132,13 @@ class HttpRequest(WebModel):
             for key, item in value.items()
         ):
             raise ValueError("HTTP headers must not contain line separators")
+        return value
+
+    @field_validator("allowed_redirect_origins")
+    @classmethod
+    def redirect_origins_are_unique(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if len(value) != len(set(value)):
+            raise ValueError("allowed redirect origins must be unique")
         return value
 
     @model_validator(mode="after")

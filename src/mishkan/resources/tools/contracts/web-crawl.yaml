@@ -1,0 +1,28 @@
+schema_version: "1.0"
+tool_id: web.crawl
+version: 1.0.0
+crewai_name: web_crawl
+summary: Crawl and extract content within explicit bounded scope and stop conditions.
+effect_class: network
+source_id: bundled.core
+source_kind: native
+adapter: native.web.crawl
+input_schema:
+  type: object
+  additionalProperties: false
+  required: [request, network_destinations, credential_refs, declared_effects]
+  properties:
+    request: {type: object}
+    network_destinations: {type: array, items: {type: string}, uniqueItems: true}
+    credential_refs: {type: array, maxItems: 0}
+    declared_effects: {type: array, items: {type: string}, uniqueItems: true}
+    sensitivity: {type: string}
+    retention: {type: string}
+result_schema: {type: object}
+timeout_behavior: cancel_local
+idempotency: idempotent
+target_scopes: [network]
+target_arguments: {network: [network_destinations]}
+credential_arguments: [credential_refs]
+policy_arguments: [declared_effects]
+resources: {timeout_seconds: 600, memory_mb: 1024, network: true, concurrency: 8}

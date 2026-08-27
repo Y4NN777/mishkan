@@ -8,13 +8,14 @@ import time
 from collections.abc import Mapping
 from datetime import datetime
 from fnmatch import fnmatchcase
+from typing import Protocol
 from urllib.parse import urljoin
 
 from pydantic import AnyHttpUrl, ValidationError
 
 from mishkan.artifacts import ArtifactProvenance
 from mishkan.artifacts.service import DurableArtifactService
-from mishkan.config.models import SearchStrategy, WebConfig
+from mishkan.config.models import CredentialReference, SearchStrategy, WebConfig
 from mishkan.crewai.credentials import CredentialPoolResolver
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.web.adapters import ExtractionAdapter, SearchAdapter
@@ -46,6 +47,10 @@ from mishkan.web.models import (
 from mishkan.web.network import HttpxWebTransport, NetworkGuard
 
 
+class WebCredentialResolver(Protocol):
+    def resolve(self, references: tuple[CredentialReference, ...]) -> tuple[str | None, ...]: ...
+
+
 class WebService:
     def __init__(
         self,
@@ -66,7 +71,12 @@ class WebService:
         self._credentials = credential_resolver or CredentialPoolResolver()
         self._cache = cache
 
-    def search(self, request: SearchRequest) -> SearchResponse:
+    def search(
+        self,
+        request: SearchRequest,
+        *,
+        credential_resolver: WebCredentialResolver | None = None,
+    ) -> SearchResponse:
         source_ids = self._search_sources(request)
         cache_key = self._cache_key(
             "search",
@@ -135,12 +145,13 @@ class WebService:
                     break
                 continue
             try:
+                resolver = credential_resolver or self._credentials
                 result = adapter.search(
                     request,
                     source_id=source_id,
                     source=source,
                     profile=self._config.network_profiles[source.network_profile],
-                    credentials=self._credentials.resolve(source.credential_refs),
+                    credentials=resolver.resolve(source.credential_refs),
                 )
             except MishkanError as error:
                 routes.append(
@@ -213,14 +224,38 @@ class WebService:
         )
         return response
 
-    def fetch(self, request: FetchRequest, context: WebOperationContext) -> FetchResult:
-        result = self._request(request, context, kind="fetch", result_type=FetchResult)
+    def fetch(
+        self,
+        request: FetchRequest,
+        context: WebOperationContext,
+        *,
+        credential_resolver: WebCredentialResolver | None = None,
+    ) -> FetchResult:
+        result = self._request(
+            request,
+            context,
+            kind="fetch",
+            result_type=FetchResult,
+            credential_resolver=credential_resolver,
+        )
         if not isinstance(result, FetchResult):
             raise MishkanError(ErrorCode.WEB, "Web fetch returned the wrong result type")
         return result
 
-    def request(self, request: HttpRequest, context: WebOperationContext) -> HttpResult:
-        return self._request(request, context, kind="request", result_type=HttpResult)
+    def request(
+        self,
+        request: HttpRequest,
+        context: WebOperationContext,
+        *,
+        credential_resolver: WebCredentialResolver | None = None,
+    ) -> HttpResult:
+        return self._request(
+            request,
+            context,
+            kind="request",
+            result_type=HttpResult,
+            credential_resolver=credential_resolver,
+        )
 
     def _request(
         self,
@@ -229,6 +264,7 @@ class WebService:
         *,
         kind: str,
         result_type: type[HttpResult],
+        credential_resolver: WebCredentialResolver | None,
     ) -> HttpResult:
         try:
             profile = self._config.network_profiles[request.network_profile]
@@ -276,13 +312,19 @@ class WebService:
                         "fresh_until": cached.fresh_until,
                     }
                 )
-        current = NetworkGuard(profile).validate_url(str(request.url))
+        guard = NetworkGuard(profile)
+        current = guard.validate_url(str(request.url))
+        initial_origin = current.origin
+        allowed_redirect_origins = {
+            guard.validate_url(value).origin for value in request.allowed_redirect_origins
+        }
         credential_origin = (
             NetworkGuard(profile).validate_url(request.credential_origin).origin
             if request.credential_origin
             else None
         )
-        credentials = self._credentials.resolve(request.credential_refs)
+        resolver = credential_resolver or self._credentials
+        credentials = resolver.resolve(request.credential_refs)
         body = (
             self._artifacts.read_bytes(request.body_artifact_reference)
             if request.body_artifact_reference
@@ -328,6 +370,15 @@ class WebService:
                         details={"limit": profile.max_redirects},
                     )
                 target = NetworkGuard(profile).validate_url(urljoin(current.value, location))
+                if (
+                    target.origin != initial_origin
+                    and target.origin not in allowed_redirect_origins
+                ):
+                    raise MishkanError(
+                        ErrorCode.WEB,
+                        "web redirect origin is outside the explicit request scope",
+                        details={"origin": target.origin},
+                    )
                 redirects.append(
                     RedirectEvidence(
                         status_code=exchange.status_code,

@@ -106,7 +106,9 @@ def test_availability_is_visible_and_not_an_authorization_decision(tmp_path: Pat
     assert caught.value.envelope.code is ErrorCode.TOOL_UNAVAILABLE
 
 
-def test_bundled_catalog_advertises_only_runnable_native_adapters(tmp_path: Path) -> None:
+def test_bundled_catalogue_lists_metadata_but_binds_only_available_adapters(
+    tmp_path: Path,
+) -> None:
     adapters = frozenset(
         {
             READ_ADAPTER,
@@ -137,6 +139,12 @@ def test_bundled_catalog_advertises_only_runnable_native_adapters(tmp_path: Path
         "repository.read_file",
         "core.process.exec",
         "core.shell.run",
+        "web.search",
+        "web.fetch",
+        "web.request",
+        "web.extract",
+        "web.map",
+        "web.crawl",
     )
     snapshot = catalog.snapshot(("file.readonly",))
     assert tuple(tool.tool_id for tool in snapshot.tools) == (
@@ -157,6 +165,9 @@ def test_bundled_catalog_advertises_only_runnable_native_adapters(tmp_path: Path
         "core.process.exec",
         "core.shell.run",
     )
+    with pytest.raises(MishkanError) as caught:
+        catalog.snapshot(("web.complete",))
+    assert caught.value.envelope.code is ErrorCode.TOOL_UNAVAILABLE
 
 
 def test_contract_without_an_installed_adapter_cannot_enter_snapshot(tmp_path: Path) -> None:
@@ -182,6 +193,33 @@ def test_contract_with_installed_adapter_enters_snapshot(tmp_path: Path) -> None
     snapshot = catalog.snapshot(("repository.read_file",))
 
     assert snapshot.require("repository.read_file").adapter == READ_ADAPTER
+
+
+def test_complete_web_toolset_binds_only_when_all_concrete_adapters_exist(
+    tmp_path: Path,
+) -> None:
+    adapters = frozenset(
+        {
+            "native.web.search",
+            "native.web.fetch",
+            "native.web.request",
+            "native.web.extract",
+            "native.web.map",
+            "native.web.crawl",
+        }
+    )
+    catalog = ToolCatalog((CATALOG_URI,), tmp_path, available_adapters=adapters)
+
+    snapshot = catalog.snapshot(("web.complete",))
+
+    assert tuple(contract.tool_id for contract in snapshot.tools) == (
+        "web.search",
+        "web.map",
+        "web.fetch",
+        "web.request",
+        "web.extract",
+        "web.crawl",
+    )
 
 
 def test_identity_collision_blocks_registry_snapshot(tmp_path: Path) -> None:

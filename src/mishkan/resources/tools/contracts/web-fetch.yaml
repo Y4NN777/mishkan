@@ -1,0 +1,30 @@
+schema_version: "1.0"
+tool_id: web.fetch
+version: 1.0.0
+crewai_name: web_fetch
+summary: Retrieve one GET or HEAD resource through an explicit bounded network profile.
+effect_class: network
+source_id: bundled.core
+source_kind: native
+adapter: native.web.fetch
+input_schema: &request_input
+  type: object
+  additionalProperties: false
+  required: [request, network_destinations, credential_refs, declared_effects]
+  properties:
+    request: {type: object}
+    network_destinations: {type: array, items: {type: string}, uniqueItems: true}
+    credential_refs: {type: array, items: {type: string}, uniqueItems: true}
+    declared_effects: {type: array, items: {type: string}, uniqueItems: true}
+    sensitivity: {type: string}
+    retention: {type: string}
+result_schema: {type: object}
+timeout_behavior: cancel_local
+idempotency: idempotent
+target_scopes: [network, external_resource]
+target_arguments:
+  network: [network_destinations]
+  external_resource: [request.body_artifact_reference]
+credential_arguments: [credential_refs]
+policy_arguments: [declared_effects]
+resources: {timeout_seconds: 120, memory_mb: 256, network: true, concurrency: 1}

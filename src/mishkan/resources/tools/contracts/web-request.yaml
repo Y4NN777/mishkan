@@ -1,0 +1,30 @@
+schema_version: "1.0"
+tool_id: web.request
+version: 1.0.0
+crewai_name: web_request
+summary: Execute one explicitly governed HTTP method with declared effects and origins.
+effect_class: network
+source_id: bundled.core
+source_kind: native
+adapter: native.web.request
+input_schema:
+  type: object
+  additionalProperties: false
+  required: [request, network_destinations, credential_refs, declared_effects]
+  properties:
+    request: {type: object}
+    network_destinations: {type: array, items: {type: string}, uniqueItems: true}
+    credential_refs: {type: array, items: {type: string}, uniqueItems: true}
+    declared_effects: {type: array, minItems: 1, items: {type: string}, uniqueItems: true}
+    sensitivity: {type: string}
+    retention: {type: string}
+result_schema: {type: object}
+timeout_behavior: uncertain_after_dispatch
+idempotency: deduplication_key
+target_scopes: [network, external_resource]
+target_arguments:
+  network: [network_destinations]
+  external_resource: [request.body_artifact_reference]
+credential_arguments: [credential_refs]
+policy_arguments: [declared_effects]
+resources: {timeout_seconds: 120, memory_mb: 256, network: true, concurrency: 1}

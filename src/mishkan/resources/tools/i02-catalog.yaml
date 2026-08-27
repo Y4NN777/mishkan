@@ -1,7 +1,7 @@
 schema_version: "1.0"
 source_id: bundled.core
 source_kind: native
-revision: "8"
+revision: "9"
 adoption_authority: MISHKAN release
 tools:
   - tool_id: file.resolve
@@ -70,6 +70,48 @@ tools:
     source_kind: native
     contract_uri: package://mishkan.resources.tools/contracts/shell-run.yaml
     availability: {platforms: [linux, darwin], runtimes: [python], dependencies: [bash]}
+  - tool_id: web.search
+    version: 1.0.0
+    summary: Search through explicit configured sources with attributable routes and fallbacks.
+    effect_class: network
+    source_id: bundled.core
+    source_kind: native
+    contract_uri: package://mishkan.resources.tools/contracts/web-search.yaml
+  - tool_id: web.fetch
+    version: 1.0.0
+    summary: Retrieve one GET or HEAD resource through an explicit bounded network profile.
+    effect_class: network
+    source_id: bundled.core
+    source_kind: native
+    contract_uri: package://mishkan.resources.tools/contracts/web-fetch.yaml
+  - tool_id: web.request
+    version: 1.0.0
+    summary: Execute one explicitly governed HTTP method with declared effects and origins.
+    effect_class: network
+    source_id: bundled.core
+    source_kind: native
+    contract_uri: package://mishkan.resources.tools/contracts/web-request.yaml
+  - tool_id: web.extract
+    version: 1.0.0
+    summary: Derive attributable text from one immutable retrieved artifact.
+    effect_class: read
+    source_id: bundled.core
+    source_kind: native
+    contract_uri: package://mishkan.resources.tools/contracts/web-extract.yaml
+  - tool_id: web.map
+    version: 1.0.0
+    summary: Map links within an explicit bounded origin and crawler profile.
+    effect_class: network
+    source_id: bundled.core
+    source_kind: native
+    contract_uri: package://mishkan.resources.tools/contracts/web-map.yaml
+  - tool_id: web.crawl
+    version: 1.0.0
+    summary: Crawl and extract content within explicit bounded scope and stop conditions.
+    effect_class: network
+    source_id: bundled.core
+    source_kind: native
+    contract_uri: package://mishkan.resources.tools/contracts/web-crawl.yaml
 toolsets:
   - toolset_id: file.readonly
     version: 1.0.0
@@ -95,3 +137,15 @@ toolsets:
     version: 1.0.0
     summary: Direct process and Bash execution selected by required semantics.
     tools: [core.process.exec, core.shell.run]
+  - toolset_id: web.discovery
+    version: 1.0.0
+    summary: Search and bounded link mapping without hidden provider selection.
+    tools: [web.search, web.map]
+  - toolset_id: web.retrieval
+    version: 1.0.0
+    summary: Typed retrieval, HTTP requests, extraction, and bounded crawl.
+    tools: [web.fetch, web.request, web.extract, web.crawl]
+  - toolset_id: web.complete
+    version: 1.0.0
+    summary: Complete typed Web capability surface.
+    toolsets: [web.discovery, web.retrieval]
