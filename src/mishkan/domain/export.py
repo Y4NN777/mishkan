@@ -29,6 +29,14 @@ from mishkan.domain.identity import DomainRecord
 from mishkan.edits.models import ChangeSet, ChangeSetResult
 from mishkan.events.models import EventEnvelope, EventPage
 from mishkan.execution.sessions import CursorRead, SessionRecord, SessionRequest
+from mishkan.mcp.models import (
+    McpCallRequest,
+    McpCallResult,
+    McpConnectionRecord,
+    McpDiscoverySnapshot,
+    McpPrimitiveDescriptor,
+    McpProgressEvent,
+)
 from mishkan.web.models import (
     CitationEvidence,
     CrawlRequest,
@@ -68,6 +76,12 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "error-envelope-v1.schema.json": ErrorEnvelope,
     "event-envelope-v1.schema.json": EventEnvelope,
     "event-page-v1.schema.json": EventPage,
+    "mcp-call-request-v1.schema.json": McpCallRequest,
+    "mcp-call-result-v1.schema.json": McpCallResult,
+    "mcp-connection-v1.schema.json": McpConnectionRecord,
+    "mcp-discovery-v1.schema.json": McpDiscoverySnapshot,
+    "mcp-primitive-v1.schema.json": McpPrimitiveDescriptor,
+    "mcp-progress-v1.schema.json": McpProgressEvent,
     "web-citation-evidence-v1.schema.json": CitationEvidence,
     "web-crawl-request-v1.schema.json": CrawlRequest,
     "web-crawl-result-v1.schema.json": CrawlResult,

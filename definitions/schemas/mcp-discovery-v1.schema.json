@@ -1,0 +1,184 @@
+{
+  "$defs": {
+    "McpEffectDisposition": {
+      "enum": [
+        "read_only",
+        "idempotent",
+        "non_idempotent",
+        "unknown"
+      ],
+      "title": "McpEffectDisposition",
+      "type": "string"
+    },
+    "McpPrimitiveDescriptor": {
+      "additionalProperties": false,
+      "properties": {
+        "annotations": {
+          "additionalProperties": true,
+          "title": "Annotations",
+          "type": "object"
+        },
+        "connection_id": {
+          "minLength": 1,
+          "title": "Connection Id",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "discovered_at": {
+          "format": "date-time",
+          "title": "Discovered At",
+          "type": "string"
+        },
+        "effect_disposition": {
+          "$ref": "#/$defs/McpEffectDisposition",
+          "default": "unknown"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "input_schema": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Input Schema"
+        },
+        "kind": {
+          "$ref": "#/$defs/McpPrimitiveKind"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "output_schema": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Output Schema"
+        },
+        "protocol_version": {
+          "minLength": 1,
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "provenance": {
+          "minLength": 1,
+          "title": "Provenance",
+          "type": "string"
+        },
+        "schema_hash": {
+          "title": "Schema Hash",
+          "type": "string"
+        },
+        "schema_version": {
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "sensitivity": {
+          "default": "untrusted",
+          "title": "Sensitivity",
+          "type": "string"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        }
+      },
+      "required": [
+        "connection_id",
+        "protocol_version",
+        "kind",
+        "name",
+        "schema_hash",
+        "provenance"
+      ],
+      "title": "McpPrimitiveDescriptor",
+      "type": "object"
+    },
+    "McpPrimitiveKind": {
+      "enum": [
+        "tool",
+        "resource",
+        "prompt"
+      ],
+      "title": "McpPrimitiveKind",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "connection_id": {
+      "title": "Connection Id",
+      "type": "string"
+    },
+    "discovered_at": {
+      "format": "date-time",
+      "title": "Discovered At",
+      "type": "string"
+    },
+    "primitives": {
+      "items": {
+        "$ref": "#/$defs/McpPrimitiveDescriptor"
+      },
+      "title": "Primitives",
+      "type": "array"
+    },
+    "protocol_version": {
+      "title": "Protocol Version",
+      "type": "string"
+    },
+    "schema_fingerprint": {
+      "title": "Schema Fingerprint",
+      "type": "string"
+    },
+    "schema_version": {
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "connection_id",
+    "protocol_version",
+    "primitives",
+    "schema_fingerprint"
+  ],
+  "title": "McpDiscoverySnapshot",
+  "type": "object"
+}

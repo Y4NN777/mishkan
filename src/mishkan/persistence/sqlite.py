@@ -286,6 +286,57 @@ class BrowserActionRow(Base):
     completed_at: Mapped[str | None] = mapped_column(String(40))
 
 
+class McpConnectionRow(Base):
+    __tablename__ = "mcp_connections"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    connection_id: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    direction: Mapped[str] = mapped_column(String(16), nullable=False)
+    transport: Mapped[str] = mapped_column(String(32), nullable=False)
+    state: Mapped[str] = mapped_column(String(32), nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    schema_fingerprint: Mapped[str | None] = mapped_column(String(64))
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class McpPrimitiveRow(Base):
+    __tablename__ = "mcp_primitives"
+
+    connection_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16), primary_key=True)
+    name: Mapped[str] = mapped_column(String(256), primary_key=True)
+    schema_hash: Mapped[str] = mapped_column(String(71), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    discovered_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class McpCallRow(Base):
+    __tablename__ = "mcp_calls"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    idempotency_key: Mapped[str] = mapped_column(String(36), unique=True, nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    connection_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    primitive_name: Mapped[str] = mapped_column(String(256), nullable=False)
+    state: Mapped[str] = mapped_column(String(32), nullable=False)
+    request_payload: Mapped[str] = mapped_column(Text, nullable=False)
+    result_payload: Mapped[str | None] = mapped_column(Text)
+    remote_task_id: Mapped[str | None] = mapped_column(String(256))
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class McpProgressRow(Base):
+    __tablename__ = "mcp_progress"
+
+    request_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    cursor: Mapped[int] = mapped_column(Integer, primary_key=True)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
 class ChangeOperationRow(Base):
     __tablename__ = "change_operations"
 

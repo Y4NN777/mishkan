@@ -1,0 +1,176 @@
+{
+  "$defs": {
+    "McpDirection": {
+      "enum": [
+        "outbound",
+        "inbound"
+      ],
+      "title": "McpDirection",
+      "type": "string"
+    },
+    "McpProtocolStrategy": {
+      "enum": [
+        "pinned",
+        "compatible_set",
+        "isolated_legacy"
+      ],
+      "title": "McpProtocolStrategy",
+      "type": "string"
+    },
+    "McpSessionState": {
+      "enum": [
+        "stopped",
+        "starting",
+        "negotiating",
+        "ready",
+        "degraded",
+        "reconnecting",
+        "cancelling",
+        "closed",
+        "lost",
+        "uncertain",
+        "failed"
+      ],
+      "title": "McpSessionState",
+      "type": "string"
+    },
+    "McpTransport": {
+      "enum": [
+        "stdio",
+        "streamable_http"
+      ],
+      "title": "McpTransport",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "configured_protocol_versions": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Configured Protocol Versions",
+      "type": "array"
+    },
+    "connection_id": {
+      "minLength": 1,
+      "title": "Connection Id",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "credential_principal": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Credential Principal"
+    },
+    "direction": {
+      "$ref": "#/$defs/McpDirection",
+      "default": "outbound"
+    },
+    "exposure_profile": {
+      "minLength": 1,
+      "title": "Exposure Profile",
+      "type": "string"
+    },
+    "health": {
+      "minLength": 1,
+      "title": "Health",
+      "type": "string"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "last_error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Error"
+    },
+    "negotiated_protocol_version": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Negotiated Protocol Version"
+    },
+    "protocol_strategy": {
+      "$ref": "#/$defs/McpProtocolStrategy"
+    },
+    "revision": {
+      "minimum": 0,
+      "title": "Revision",
+      "type": "integer"
+    },
+    "schema_fingerprint": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Schema Fingerprint"
+    },
+    "schema_version": {
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "state": {
+      "$ref": "#/$defs/McpSessionState"
+    },
+    "transport": {
+      "$ref": "#/$defs/McpTransport"
+    },
+    "trust": {
+      "minLength": 1,
+      "title": "Trust",
+      "type": "string"
+    },
+    "updated_at": {
+      "format": "date-time",
+      "title": "Updated At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "connection_id",
+    "transport",
+    "protocol_strategy",
+    "configured_protocol_versions",
+    "trust",
+    "exposure_profile",
+    "state",
+    "revision",
+    "health"
+  ],
+  "title": "McpConnectionRecord",
+  "type": "object"
+}
