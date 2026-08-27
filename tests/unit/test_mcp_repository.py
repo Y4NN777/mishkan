@@ -146,6 +146,10 @@ def test_call_reservation_is_idempotent_and_bound_to_discovery(tmp_path: Path) -
 
     assert repository.reserve_call(request).created is True
     assert repository.reserve_call(request).created is False
+    pending = repository.list_calls()
+    assert pending[0]["request"]["id"] == str(request.id)
+    assert pending[0]["state"] == McpCallState.RESERVED.value
+    assert pending[0]["result"] is None
     with pytest.raises(MishkanError) as conflict:
         repository.reserve_call(request.model_copy(update={"arguments": {"path": "tests"}}))
     assert conflict.value.envelope.code is ErrorCode.DUPLICATE_RESULT
@@ -154,6 +158,11 @@ def test_call_reservation_is_idempotent_and_bound_to_discovery(tmp_path: Path) -
     with pytest.raises(MishkanError) as drift:
         repository.reserve_call(unknown)
     assert drift.value.envelope.code is ErrorCode.TOOL_DRIFT
+
+    for offset, limit in ((-1, 1), (0, 0), (0, 1_001)):
+        with pytest.raises(MishkanError) as invalid_bound:
+            repository.list_calls(offset=offset, limit=limit)
+        assert invalid_bound.value.envelope.code is ErrorCode.OUTPUT_CONTRACT
 
 
 def test_call_lifecycle_progress_and_completion_are_monotone(tmp_path: Path) -> None:

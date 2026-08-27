@@ -395,7 +395,7 @@ class McpRepository:
         *,
         offset: int = 0,
         limit: int = 100,
-    ) -> tuple[McpCallResult | McpCallRequest, ...]:
+    ) -> tuple[dict[str, object], ...]:
         self._query_bound(offset, limit)
         with Session(self._engine) as session:
             rows = session.scalars(
@@ -405,9 +405,20 @@ class McpRepository:
                 .limit(limit)
             ).all()
         return tuple(
-            McpCallResult.model_validate_json(row.result_payload)
-            if row.result_payload is not None
-            else McpCallRequest.model_validate_json(row.request_payload)
+            {
+                "request": McpCallRequest.model_validate_json(row.request_payload).model_dump(
+                    mode="json"
+                ),
+                "state": row.state,
+                "result": (
+                    McpCallResult.model_validate_json(row.result_payload).model_dump(mode="json")
+                    if row.result_payload is not None
+                    else None
+                ),
+                "remote_task_id": row.remote_task_id,
+                "created_at": row.created_at,
+                "updated_at": row.updated_at,
+            }
             for row in rows
         )
 

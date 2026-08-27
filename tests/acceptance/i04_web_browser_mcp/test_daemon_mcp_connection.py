@@ -97,6 +97,7 @@ async def test_daemon_connect_command_discovers_without_receiving_secret_values(
             "/v1/mcp/connections/fixture/contracts",
             headers=headers,
         )
+        calls = await client.get("/v1/mcp/calls", headers=headers)
 
     assert connected.status_code == 200
     assert connected.json()["payload"]["state"] == "ready"
@@ -109,6 +110,8 @@ async def test_daemon_connect_command_discovers_without_receiving_secret_values(
     assert len(contracts.json()) == 1
     assert contracts.json()[0]["adapter"] == "mcp.outbound.tool"
     assert contracts.json()[0]["adapter_config"]["primitive_name"] == "repository.read"
+    assert calls.status_code == 200
+    assert calls.json() == []
 
 
 @pytest.mark.acceptance

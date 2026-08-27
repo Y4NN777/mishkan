@@ -249,6 +249,11 @@ async def test_connect_invoke_progress_and_exact_replay_are_durable(tmp_path: Pa
     assert replay == result
     assert client.calls == 1
     assert repository.progress_after(request.id, 0)[0].message == "complete"
+    journal = repository.list_calls()
+    assert journal[0]["request"]["id"] == str(request.id)
+    assert journal[0]["state"] == McpCallState.COMPLETED.value
+    assert journal[0]["result"] == result.model_dump(mode="json")
+    assert journal[0]["remote_task_id"] is None
 
 
 @pytest.mark.anyio

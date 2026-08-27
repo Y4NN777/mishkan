@@ -1,26 +1,20 @@
 from __future__ import annotations
 
-import asyncio
-import socket
 import sys
-import threading
-import time
-from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
 
 import anyio
 import pytest
-import uvicorn
 import yaml
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
+from support.i04 import loopback_listener, running_daemon
 
 from mishkan.application import ApplicationCommand
 from mishkan.config.loader import ConfigLoader
 from mishkan.config.models import MishkanConfig
 from mishkan.config.presets import preset_text
-from mishkan.daemon import DaemonBootstrap, create_app
+from mishkan.daemon import DaemonBootstrap
 from mishkan.daemon.auth import TokenFile
 
 
@@ -38,44 +32,10 @@ def _config(tmp_path: Path, port: int) -> tuple[MishkanConfig, Path]:
     return ConfigLoader().load([source]).value, source
 
 
-def _loopback_listener() -> socket.socket:
-    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    listener.bind(("127.0.0.1", 0))
-    listener.listen(128)
-    return listener
-
-
-@contextmanager
-def _running_daemon(config: MishkanConfig, listener: socket.socket) -> Iterator[None]:
-    server = uvicorn.Server(uvicorn.Config(create_app(config), log_level="error", lifespan="on"))
-    thread = threading.Thread(
-        target=lambda: asyncio.run(server.serve(sockets=[listener])),
-        name="mishkand-acceptance",
-        daemon=True,
-    )
-    thread.start()
-    deadline = time.monotonic() + 10
-    while not server.started and thread.is_alive() and time.monotonic() < deadline:
-        time.sleep(0.01)
-    if not server.started:
-        server.should_exit = True
-        thread.join(timeout=10)
-        raise RuntimeError("acceptance mishkand did not start")
-    try:
-        yield
-    finally:
-        server.should_exit = True
-        thread.join(timeout=10)
-        listener.close()
-        if thread.is_alive():
-            raise RuntimeError("acceptance mishkand did not stop")
-
-
 @pytest.mark.acceptance
 @pytest.mark.anyio
 async def test_stdio_bridge_is_a_stateless_client_of_mishkand(tmp_path: Path) -> None:
-    listener = _loopback_listener()
+    listener = loopback_listener()
     port = int(listener.getsockname()[1])
     config, source = _config(tmp_path, port)
     paths = DaemonBootstrap().setup(config)
@@ -94,7 +54,7 @@ async def test_stdio_bridge_is_a_stateless_client_of_mishkand(tmp_path: Path) ->
         payload={"checkpoint": "mcp-stdio-bridge"},
     )
 
-    with _running_daemon(config, listener), anyio.fail_after(30):
+    with running_daemon(config, listener), anyio.fail_after(30):
         async with (
             stdio_client(parameters) as (read_stream, write_stream),
             ClientSession(read_stream, write_stream) as session,

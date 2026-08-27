@@ -443,10 +443,7 @@ def create_app(config: MishkanConfig) -> FastAPI:
     ) -> tuple[dict[str, object], ...]:
         if mcp_repository is None:
             return ()
-        return tuple(
-            item.model_dump(mode="json")
-            for item in mcp_repository.list_calls(offset=offset, limit=limit)
-        )
+        return mcp_repository.list_calls(offset=offset, limit=limit)
 
     @app.get("/v1/mcp/calls/{request_id}/progress")
     async def mcp_progress_list(

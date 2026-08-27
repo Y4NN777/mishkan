@@ -26,6 +26,10 @@ class _PageHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        self.send_header(
+            "Set-Cookie",
+            "mishkan_session=authenticated-state; Path=/; Max-Age=3600; HttpOnly; SameSite=Strict",
+        )
         self.end_headers()
         self.wfile.write(body)
 
@@ -161,6 +165,8 @@ def test_real_playwright_observation_action_and_cdp_diagnostics(tmp_path: Path) 
             "storage",
             "service_worker",
         }
+        storage = next(item for item in diagnostics.entries if item["channel"] == "storage")
+        assert storage["cookie_count"] == 1
         driver.close(opened.handle)
 
         persistent = profile.model_copy(
@@ -169,9 +175,26 @@ def test_real_playwright_observation_action_and_cdp_diagnostics(tmp_path: Path) 
                 "user_data_dir": Path("browser-profile"),
             }
         )
-        persisted = driver.open(persistent, workspace=str(tmp_path), initial_url=None)
+        persisted = driver.open(
+            persistent,
+            workspace=str(tmp_path),
+            initial_url=f"http://127.0.0.1:{port}/authenticated",
+        )
         assert persisted.page_ids
         driver.close(persisted.handle)
+        restored = driver.open(persistent, workspace=str(tmp_path), initial_url=None)
+        persisted_state = driver.diagnostics(
+            restored.handle,
+            restored.page_ids[0],
+            ("storage",),
+            0,
+            10,
+        )
+        restored_storage = next(
+            item for item in persisted_state.entries if item["channel"] == "storage"
+        )
+        assert restored_storage["cookie_count"] == 1
+        driver.close(restored.handle)
     finally:
         driver.shutdown()
         server.shutdown()
