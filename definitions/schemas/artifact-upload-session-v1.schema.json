@@ -1,0 +1,59 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "expected_digest": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Expected Digest",
+      "type": "string"
+    },
+    "expected_size": {
+      "minimum": 0,
+      "title": "Expected Size",
+      "type": "integer"
+    },
+    "lifecycle": {
+      "enum": [
+        "staging",
+        "committed",
+        "aborted"
+      ],
+      "title": "Lifecycle",
+      "type": "string"
+    },
+    "media_type": {
+      "minLength": 1,
+      "title": "Media Type",
+      "type": "string"
+    },
+    "offset": {
+      "minimum": 0,
+      "title": "Offset",
+      "type": "integer"
+    },
+    "schema_version": {
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "upload_id": {
+      "format": "uuid",
+      "title": "Upload Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "upload_id",
+    "expected_size",
+    "expected_digest",
+    "media_type",
+    "offset",
+    "lifecycle"
+  ],
+  "title": "UploadSession",
+  "type": "object"
+}

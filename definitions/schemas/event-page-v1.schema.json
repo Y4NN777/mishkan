@@ -1,0 +1,153 @@
+{
+  "$defs": {
+    "EventEnvelope": {
+      "additionalProperties": false,
+      "properties": {
+        "causation_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Causation Id"
+        },
+        "command_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Command Id"
+        },
+        "correlation_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Correlation Id"
+        },
+        "cursor": {
+          "minimum": 1,
+          "title": "Cursor",
+          "type": "integer"
+        },
+        "entity_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Entity Id",
+          "type": "string"
+        },
+        "entity_type": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Entity Type",
+          "type": "string"
+        },
+        "event_id": {
+          "format": "uuid",
+          "title": "Event Id",
+          "type": "string"
+        },
+        "event_type": {
+          "pattern": "^[a-z][a-z0-9_.-]{2,127}$",
+          "title": "Event Type",
+          "type": "string"
+        },
+        "occurred_at": {
+          "format": "date-time",
+          "title": "Occurred At",
+          "type": "string"
+        },
+        "payload": {
+          "additionalProperties": true,
+          "title": "Payload",
+          "type": "object"
+        },
+        "schema_version": {
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "sensitivity": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Sensitivity",
+          "type": "string"
+        },
+        "source": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "event_id",
+        "cursor",
+        "event_type",
+        "source",
+        "entity_type",
+        "entity_id",
+        "occurred_at",
+        "sensitivity",
+        "payload"
+      ],
+      "title": "EventEnvelope",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "after_cursor": {
+      "minimum": 0,
+      "title": "After Cursor",
+      "type": "integer"
+    },
+    "events": {
+      "items": {
+        "$ref": "#/$defs/EventEnvelope"
+      },
+      "title": "Events",
+      "type": "array"
+    },
+    "next_cursor": {
+      "minimum": 0,
+      "title": "Next Cursor",
+      "type": "integer"
+    },
+    "retained_from_cursor": {
+      "minimum": 0,
+      "title": "Retained From Cursor",
+      "type": "integer"
+    },
+    "schema_version": {
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "after_cursor",
+    "next_cursor",
+    "retained_from_cursor",
+    "events"
+  ],
+  "title": "EventPage",
+  "type": "object"
+}

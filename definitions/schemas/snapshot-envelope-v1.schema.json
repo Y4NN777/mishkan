@@ -1,0 +1,31 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "cursor": {
+      "minimum": 0,
+      "title": "Cursor",
+      "type": "integer"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "projections": {
+      "additionalProperties": true,
+      "title": "Projections",
+      "type": "object"
+    },
+    "schema_version": {
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "cursor",
+    "projections"
+  ],
+  "title": "SnapshotEnvelope",
+  "type": "object"
+}

@@ -1,0 +1,161 @@
+{
+  "$defs": {
+    "ReadinessProbe": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "default": "process_running",
+          "enum": [
+            "process_running",
+            "output_contains"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "default": 30,
+          "exclusiveMinimum": 0,
+          "maximum": 3600,
+          "title": "Timeout Seconds",
+          "type": "number"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        }
+      },
+      "title": "ReadinessProbe",
+      "type": "object"
+    },
+    "SessionMode": {
+      "enum": [
+        "pty",
+        "job"
+      ],
+      "title": "SessionMode",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "arguments": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Arguments",
+      "type": "array"
+    },
+    "columns": {
+      "default": 80,
+      "maximum": 4000,
+      "minimum": 1,
+      "title": "Columns",
+      "type": "integer"
+    },
+    "credential_environment": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Credential Environment",
+      "type": "object"
+    },
+    "credential_references": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Credential References",
+      "type": "array"
+    },
+    "deadline": {
+      "format": "date-time",
+      "title": "Deadline",
+      "type": "string"
+    },
+    "environment": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Environment",
+      "type": "object"
+    },
+    "executable": {
+      "minLength": 1,
+      "title": "Executable",
+      "type": "string"
+    },
+    "mode": {
+      "$ref": "#/$defs/SessionMode"
+    },
+    "owner": {
+      "minLength": 1,
+      "title": "Owner",
+      "type": "string"
+    },
+    "policy_fingerprint": {
+      "maxLength": 64,
+      "minLength": 64,
+      "title": "Policy Fingerprint",
+      "type": "string"
+    },
+    "profile": {
+      "minLength": 1,
+      "title": "Profile",
+      "type": "string"
+    },
+    "readiness": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ReadinessProbe"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "rows": {
+      "default": 24,
+      "maximum": 1000,
+      "minimum": 1,
+      "title": "Rows",
+      "type": "integer"
+    },
+    "run_id": {
+      "minLength": 1,
+      "title": "Run Id",
+      "type": "string"
+    },
+    "task_id": {
+      "minLength": 1,
+      "title": "Task Id",
+      "type": "string"
+    },
+    "workspace": {
+      "default": ".",
+      "title": "Workspace",
+      "type": "string"
+    }
+  },
+  "required": [
+    "mode",
+    "owner",
+    "run_id",
+    "task_id",
+    "executable",
+    "profile",
+    "deadline",
+    "policy_fingerprint"
+  ],
+  "title": "SessionRequest",
+  "type": "object"
+}

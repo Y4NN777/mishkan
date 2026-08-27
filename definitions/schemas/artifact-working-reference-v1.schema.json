@@ -1,0 +1,44 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "artifact_reference": {
+      "pattern": "^artifact:[0-9a-f-]{36}$",
+      "title": "Artifact Reference",
+      "type": "string"
+    },
+    "name": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,255}$",
+      "title": "Name",
+      "type": "string"
+    },
+    "revision": {
+      "minimum": 1,
+      "title": "Revision",
+      "type": "integer"
+    },
+    "schema_version": {
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "scope": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Scope",
+      "type": "string"
+    },
+    "updated_at": {
+      "format": "date-time",
+      "title": "Updated At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "scope",
+    "name",
+    "artifact_reference",
+    "revision"
+  ],
+  "title": "WorkingReference",
+  "type": "object"
+}

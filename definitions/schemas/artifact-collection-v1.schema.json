@@ -1,0 +1,33 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "collection_id": {
+      "format": "uuid",
+      "title": "Collection Id",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "entries": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Entries",
+      "type": "object"
+    },
+    "schema_version": {
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "collection_id",
+    "entries"
+  ],
+  "title": "ArtifactCollection",
+  "type": "object"
+}

@@ -1,8 +1,10 @@
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
 from mishkan.domain.errors import ErrorCode, MishkanError
+from mishkan.domain.export import SCHEMAS, export_schemas
 from mishkan.domain.identity import DomainRecord, new_id
 from mishkan.domain.schema import SchemaRegistry
 from mishkan.domain.time import render_timestamp
@@ -74,3 +76,34 @@ def test_error_catalogue_matches_the_srs_namespace() -> None:
         "ERR-WRK-001",
         "ERR-VER-001",
     }
+
+
+def test_i03_public_contract_catalogue_exports_deterministically(tmp_path: Path) -> None:
+    expected = {
+        "application-command-v1.schema.json",
+        "artifact-collection-v1.schema.json",
+        "artifact-gc-plan-v1.schema.json",
+        "artifact-manifest-v1.schema.json",
+        "artifact-upload-session-v1.schema.json",
+        "artifact-working-reference-v1.schema.json",
+        "change-set-result-v1.schema.json",
+        "change-set-v1.schema.json",
+        "command-result-v1.schema.json",
+        "config-v1.schema.json",
+        "domain-record-v1.schema.json",
+        "error-envelope-v1.schema.json",
+        "event-envelope-v1.schema.json",
+        "event-page-v1.schema.json",
+        "session-cursor-read-v1.schema.json",
+        "session-record-v1.schema.json",
+        "session-request-v1.schema.json",
+        "snapshot-envelope-v1.schema.json",
+    }
+    assert set(SCHEMAS) == expected
+
+    first = export_schemas(tmp_path)
+    initial_content = {path.name: path.read_bytes() for path in first}
+    second = export_schemas(tmp_path)
+
+    assert {path.name for path in first} == expected
+    assert {path.name: path.read_bytes() for path in second} == initial_content

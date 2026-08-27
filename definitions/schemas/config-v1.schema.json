@@ -1,5 +1,38 @@
 {
   "$defs": {
+    "ArtifactConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "chunk_bytes": {
+          "minimum": 1,
+          "title": "Chunk Bytes",
+          "type": "integer"
+        },
+        "max_artifact_bytes": {
+          "minimum": 1,
+          "title": "Max Artifact Bytes",
+          "type": "integer"
+        },
+        "root": {
+          "format": "path",
+          "title": "Root",
+          "type": "string"
+        },
+        "staging_ttl_seconds": {
+          "minimum": 1,
+          "title": "Staging Ttl Seconds",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "root",
+        "max_artifact_bytes",
+        "chunk_bytes",
+        "staging_ttl_seconds"
+      ],
+      "title": "ArtifactConfig",
+      "type": "object"
+    },
     "CredentialReference": {
       "additionalProperties": false,
       "description": "A late-resolution locator; never a credential value.",
@@ -110,6 +143,61 @@
       "title": "CrewAIRuntimeConfig",
       "type": "object"
     },
+    "DaemonConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "event_page_limit": {
+          "maximum": 1000,
+          "minimum": 1,
+          "title": "Event Page Limit",
+          "type": "integer"
+        },
+        "event_poll_seconds": {
+          "maximum": 30,
+          "minimum": 0.05,
+          "title": "Event Poll Seconds",
+          "type": "number"
+        },
+        "heartbeat_seconds": {
+          "maximum": 300,
+          "minimum": 1,
+          "title": "Heartbeat Seconds",
+          "type": "integer"
+        },
+        "host": {
+          "title": "Host",
+          "type": "string"
+        },
+        "port": {
+          "maximum": 65535,
+          "minimum": 1,
+          "title": "Port",
+          "type": "integer"
+        },
+        "request_timeout_seconds": {
+          "maximum": 3600,
+          "minimum": 1,
+          "title": "Request Timeout Seconds",
+          "type": "integer"
+        },
+        "token_file": {
+          "format": "path",
+          "title": "Token File",
+          "type": "string"
+        }
+      },
+      "required": [
+        "host",
+        "port",
+        "token_file",
+        "heartbeat_seconds",
+        "event_poll_seconds",
+        "event_page_limit",
+        "request_timeout_seconds"
+      ],
+      "title": "DaemonConfig",
+      "type": "object"
+    },
     "ModelCandidate": {
       "additionalProperties": false,
       "properties": {
@@ -158,6 +246,35 @@
       ],
       "title": "OperatingMode",
       "type": "string"
+    },
+    "PersistenceConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "busy_timeout_ms": {
+          "maximum": 300000,
+          "minimum": 1,
+          "title": "Busy Timeout Ms",
+          "type": "integer"
+        },
+        "database": {
+          "format": "path",
+          "title": "Database",
+          "type": "string"
+        },
+        "event_retention_days": {
+          "maximum": 36500,
+          "minimum": 1,
+          "title": "Event Retention Days",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "database",
+        "busy_timeout_ms",
+        "event_retention_days"
+      ],
+      "title": "PersistenceConfig",
+      "type": "object"
     },
     "ProjectConfig": {
       "additionalProperties": false,
@@ -266,6 +383,88 @@
       ],
       "title": "ServiceConfig",
       "type": "object"
+    },
+    "SessionConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "default_profile": {
+          "minLength": 1,
+          "title": "Default Profile",
+          "type": "string"
+        },
+        "profiles": {
+          "additionalProperties": {
+            "$ref": "#/$defs/SessionProfileConfig"
+          },
+          "minProperties": 1,
+          "title": "Profiles",
+          "type": "object"
+        },
+        "spool_root": {
+          "format": "path",
+          "title": "Spool Root",
+          "type": "string"
+        }
+      },
+      "required": [
+        "spool_root",
+        "default_profile",
+        "profiles"
+      ],
+      "title": "SessionConfig",
+      "type": "object"
+    },
+    "SessionProfileConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "cancellation_signals": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Cancellation Signals",
+          "type": "array"
+        },
+        "grace_seconds": {
+          "maximum": 300,
+          "minimum": 0.05,
+          "title": "Grace Seconds",
+          "type": "number"
+        },
+        "max_output_bytes": {
+          "minimum": 1,
+          "title": "Max Output Bytes",
+          "type": "integer"
+        },
+        "read_chunk_bytes": {
+          "maximum": 16777216,
+          "minimum": 1,
+          "title": "Read Chunk Bytes",
+          "type": "integer"
+        },
+        "readiness_poll_seconds": {
+          "maximum": 60,
+          "minimum": 0.01,
+          "title": "Readiness Poll Seconds",
+          "type": "number"
+        },
+        "settle_timeout_seconds": {
+          "maximum": 3600,
+          "minimum": 0.1,
+          "title": "Settle Timeout Seconds",
+          "type": "number"
+        }
+      },
+      "required": [
+        "cancellation_signals",
+        "grace_seconds",
+        "settle_timeout_seconds",
+        "max_output_bytes",
+        "read_chunk_bytes",
+        "readiness_poll_seconds"
+      ],
+      "title": "SessionProfileConfig",
+      "type": "object"
     }
   },
   "additionalProperties": false,
@@ -278,8 +477,30 @@
       "title": "Agent Routes",
       "type": "object"
     },
+    "artifacts": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ArtifactConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
     "crewai": {
       "$ref": "#/$defs/CrewAIRuntimeConfig"
+    },
+    "daemon": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DaemonConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "inspection_profile": {
       "anyOf": [
@@ -312,6 +533,17 @@
       "title": "Model Routes",
       "type": "object"
     },
+    "persistence": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PersistenceConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
     "policy_sources": {
       "items": {
         "type": "string"
@@ -341,6 +573,17 @@
       },
       "title": "Services",
       "type": "object"
+    },
+    "sessions": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SessionConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "timezone": {
       "title": "Timezone",

@@ -1,0 +1,186 @@
+{
+  "$defs": {
+    "CommandStatus": {
+      "enum": [
+        "accepted",
+        "refused",
+        "duplicate"
+      ],
+      "title": "CommandStatus",
+      "type": "string"
+    },
+    "ErrorCode": {
+      "enum": [
+        "ERR-CFG-001",
+        "ERR-PRJ-001",
+        "ERR-PLN-001",
+        "ERR-PLN-002",
+        "ERR-DEC-001",
+        "ERR-DEC-002",
+        "ERR-POL-001",
+        "ERR-POL-002",
+        "ERR-ROL-001",
+        "ERR-OUT-001",
+        "ERR-REV-001",
+        "ERR-RUN-001",
+        "ERR-RUN-002",
+        "ERR-DEP-001",
+        "ERR-DEP-002",
+        "ERR-SEC-001",
+        "ERR-SKL-001",
+        "ERR-SKL-002",
+        "ERR-SKL-003",
+        "ERR-TOL-001",
+        "ERR-TOL-002",
+        "ERR-TOL-003",
+        "ERR-TOL-004",
+        "ERR-TOL-005",
+        "ERR-CTX-001",
+        "ERR-MSN-001",
+        "ERR-FIL-001",
+        "ERR-EDT-001",
+        "ERR-EXE-001",
+        "ERR-WEB-001",
+        "ERR-BRW-001",
+        "ERR-ART-001",
+        "ERR-MCP-001",
+        "ERR-ENG-001",
+        "ERR-SCH-001",
+        "ERR-WRK-001",
+        "ERR-VER-001"
+      ],
+      "title": "ErrorCode",
+      "type": "string"
+    },
+    "ErrorEnvelope": {
+      "additionalProperties": false,
+      "description": "Versioned, serializable failure returned by every public interface.",
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/ErrorCode"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "details": {
+          "additionalProperties": true,
+          "title": "Details",
+          "type": "object"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "retryable": {
+          "default": false,
+          "title": "Retryable",
+          "type": "boolean"
+        },
+        "schema_version": {
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "ErrorEnvelope",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "command_id": {
+      "format": "uuid",
+      "title": "Command Id",
+      "type": "string"
+    },
+    "completed_at": {
+      "format": "date-time",
+      "title": "Completed At",
+      "type": "string"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ErrorEnvelope"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "event_cursor": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Event Cursor"
+    },
+    "payload": {
+      "additionalProperties": true,
+      "title": "Payload",
+      "type": "object"
+    },
+    "revision": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Revision"
+    },
+    "schema_version": {
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/CommandStatus"
+    },
+    "target_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Target Id"
+    },
+    "target_type": {
+      "title": "Target Type",
+      "type": "string"
+    }
+  },
+  "required": [
+    "command_id",
+    "status",
+    "target_type"
+  ],
+  "title": "CommandResult",
+  "type": "object"
+}

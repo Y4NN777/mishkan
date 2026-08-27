@@ -1,0 +1,55 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "channel": {
+      "enum": [
+        "stdout",
+        "stderr"
+      ],
+      "title": "Channel",
+      "type": "string"
+    },
+    "data": {
+      "title": "Data",
+      "type": "string"
+    },
+    "encoding": {
+      "enum": [
+        "utf-8",
+        "base64"
+      ],
+      "title": "Encoding",
+      "type": "string"
+    },
+    "eof": {
+      "title": "Eof",
+      "type": "boolean"
+    },
+    "next_offset": {
+      "minimum": 0,
+      "title": "Next Offset",
+      "type": "integer"
+    },
+    "offset": {
+      "minimum": 0,
+      "title": "Offset",
+      "type": "integer"
+    },
+    "session_id": {
+      "format": "uuid",
+      "title": "Session Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "session_id",
+    "channel",
+    "offset",
+    "next_offset",
+    "encoding",
+    "data",
+    "eof"
+  ],
+  "title": "CursorRead",
+  "type": "object"
+}

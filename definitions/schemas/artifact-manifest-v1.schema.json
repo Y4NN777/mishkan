@@ -1,0 +1,157 @@
+{
+  "$defs": {
+    "ArtifactLifecycle": {
+      "enum": [
+        "staging",
+        "available",
+        "quarantined",
+        "missing",
+        "corrupt",
+        "tombstoned"
+      ],
+      "title": "ArtifactLifecycle",
+      "type": "string"
+    },
+    "ArtifactProvenance": {
+      "additionalProperties": false,
+      "properties": {
+        "call_id": {
+          "minLength": 1,
+          "title": "Call Id",
+          "type": "string"
+        },
+        "capability": {
+          "minLength": 1,
+          "title": "Capability",
+          "type": "string"
+        },
+        "channel": {
+          "pattern": "^[a-z][a-z0-9_.-]{1,63}$",
+          "title": "Channel",
+          "type": "string"
+        },
+        "producer_identity": {
+          "minLength": 1,
+          "title": "Producer Identity",
+          "type": "string"
+        },
+        "run_id": {
+          "minLength": 1,
+          "title": "Run Id",
+          "type": "string"
+        },
+        "task_attempt_id": {
+          "minLength": 1,
+          "title": "Task Attempt Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "producer_identity",
+        "run_id",
+        "task_attempt_id",
+        "call_id",
+        "capability",
+        "channel"
+      ],
+      "title": "ArtifactProvenance",
+      "type": "object"
+    },
+    "ArtifactValidation": {
+      "enum": [
+        "integrity_verified",
+        "partial"
+      ],
+      "title": "ArtifactValidation",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "acceptance": {
+      "const": "unaccepted",
+      "default": "unaccepted",
+      "title": "Acceptance",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "declared_media_type": {
+      "minLength": 1,
+      "title": "Declared Media Type",
+      "type": "string"
+    },
+    "detected_media_type": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Detected Media Type"
+    },
+    "digest": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Digest",
+      "type": "string"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "lifecycle": {
+      "$ref": "#/$defs/ArtifactLifecycle"
+    },
+    "provenance": {
+      "$ref": "#/$defs/ArtifactProvenance"
+    },
+    "retention": {
+      "minLength": 1,
+      "title": "Retention",
+      "type": "string"
+    },
+    "schema_version": {
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "sensitivity": {
+      "minLength": 1,
+      "title": "Sensitivity",
+      "type": "string"
+    },
+    "size_bytes": {
+      "minimum": 0,
+      "title": "Size Bytes",
+      "type": "integer"
+    },
+    "storage_ref": {
+      "pattern": "^sha256/[a-f0-9]{2}/[a-f0-9]{62}$",
+      "title": "Storage Ref",
+      "type": "string"
+    },
+    "validation": {
+      "$ref": "#/$defs/ArtifactValidation"
+    }
+  },
+  "required": [
+    "digest",
+    "size_bytes",
+    "declared_media_type",
+    "provenance",
+    "sensitivity",
+    "retention",
+    "validation",
+    "lifecycle",
+    "storage_ref"
+  ],
+  "title": "ArtifactManifest",
+  "type": "object"
+}

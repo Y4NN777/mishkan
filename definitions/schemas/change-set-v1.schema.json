@@ -1,0 +1,267 @@
+{
+  "$defs": {
+    "ChangeOperation": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_reference": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Artifact Reference"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "destination": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Destination"
+        },
+        "expected_digest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Digest"
+        },
+        "expected_occurrences": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Occurrences"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "inline_content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Inline Content"
+        },
+        "kind": {
+          "$ref": "#/$defs/ChangeOperationKind"
+        },
+        "match": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Match"
+        },
+        "path": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "precondition": {
+          "$ref": "#/$defs/PreconditionKind"
+        },
+        "precondition_value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Precondition Value"
+        },
+        "replacement": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Replacement"
+        },
+        "rewrite_engine": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rewrite Engine"
+        },
+        "rewrite_rule": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rewrite Rule"
+        },
+        "rewrite_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rewrite Version"
+        },
+        "rollback": {
+          "$ref": "#/$defs/RollbackPolicy",
+          "default": "restore"
+        },
+        "schema_version": {
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "path",
+        "precondition"
+      ],
+      "title": "ChangeOperation",
+      "type": "object"
+    },
+    "ChangeOperationKind": {
+      "enum": [
+        "mkdir",
+        "create",
+        "write",
+        "replace",
+        "patch",
+        "rewrite",
+        "move",
+        "copy",
+        "delete"
+      ],
+      "title": "ChangeOperationKind",
+      "type": "string"
+    },
+    "PreconditionKind": {
+      "enum": [
+        "absent",
+        "digest",
+        "revision",
+        "git_blob"
+      ],
+      "title": "PreconditionKind",
+      "type": "string"
+    },
+    "RollbackPolicy": {
+      "enum": [
+        "restore",
+        "retain"
+      ],
+      "title": "RollbackPolicy",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "declared_effects": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Declared Effects",
+      "type": "array"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "operations": {
+      "items": {
+        "$ref": "#/$defs/ChangeOperation"
+      },
+      "maxItems": 1000,
+      "minItems": 1,
+      "title": "Operations",
+      "type": "array"
+    },
+    "schema_version": {
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "scope": {
+      "minLength": 1,
+      "title": "Scope",
+      "type": "string"
+    },
+    "workspace": {
+      "default": ".",
+      "title": "Workspace",
+      "type": "string"
+    }
+  },
+  "required": [
+    "scope",
+    "operations",
+    "declared_effects"
+  ],
+  "title": "ChangeSet",
+  "type": "object"
+}

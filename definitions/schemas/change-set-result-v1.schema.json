@@ -1,0 +1,93 @@
+{
+  "$defs": {
+    "ChangeSetState": {
+      "enum": [
+        "planned",
+        "applying",
+        "applied",
+        "verified",
+        "rollback_pending",
+        "rolled_back",
+        "conflict",
+        "uncertain"
+      ],
+      "title": "ChangeSetState",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "change_set_id": {
+      "title": "Change Set Id",
+      "type": "string"
+    },
+    "completed_operations": {
+      "minimum": 0,
+      "title": "Completed Operations",
+      "type": "integer"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "diff_reference": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Diff Reference"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "preimage_references": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Preimage References",
+      "type": "array"
+    },
+    "reason": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Reason"
+    },
+    "revision": {
+      "minimum": 0,
+      "title": "Revision",
+      "type": "integer"
+    },
+    "schema_version": {
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "state": {
+      "$ref": "#/$defs/ChangeSetState"
+    }
+  },
+  "required": [
+    "change_set_id",
+    "state",
+    "completed_operations",
+    "revision"
+  ],
+  "title": "ChangeSetResult",
+  "type": "object"
+}

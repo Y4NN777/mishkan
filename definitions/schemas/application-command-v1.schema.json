@@ -1,0 +1,76 @@
+{
+  "additionalProperties": false,
+  "description": "One idempotent request to mutate authoritative application state.",
+  "properties": {
+    "actor_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Actor Id",
+      "type": "string"
+    },
+    "command_id": {
+      "format": "uuid",
+      "title": "Command Id",
+      "type": "string"
+    },
+    "command_type": {
+      "pattern": "^[a-z][a-z0-9_.-]{2,127}$",
+      "title": "Command Type",
+      "type": "string"
+    },
+    "expected_revision": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Expected Revision"
+    },
+    "issued_at": {
+      "format": "date-time",
+      "title": "Issued At",
+      "type": "string"
+    },
+    "payload": {
+      "additionalProperties": true,
+      "title": "Payload",
+      "type": "object"
+    },
+    "schema_version": {
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "target_id": {
+      "anyOf": [
+        {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Target Id"
+    },
+    "target_type": {
+      "pattern": "^[a-z][a-z0-9_.-]{1,63}$",
+      "title": "Target Type",
+      "type": "string"
+    }
+  },
+  "required": [
+    "command_type",
+    "actor_id",
+    "target_type"
+  ],
+  "title": "ApplicationCommand",
+  "type": "object"
+}
