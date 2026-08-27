@@ -125,6 +125,22 @@ class McpRepository:
             )
             return self._connection(row) if row is not None else None
 
+    def list_connections(
+        self,
+        *,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> tuple[McpConnectionRecord, ...]:
+        self._query_bound(offset, limit)
+        with Session(self._engine) as session:
+            rows = session.scalars(
+                select(McpConnectionRow)
+                .order_by(McpConnectionRow.connection_id)
+                .offset(offset)
+                .limit(limit)
+            ).all()
+        return tuple(self._connection(row) for row in rows)
+
     def update_connection(
         self,
         record: McpConnectionRecord,
@@ -361,6 +377,8 @@ class McpRepository:
         return progress
 
     def progress_after(self, request_id: UUID, cursor: int) -> tuple[McpProgressEvent, ...]:
+        if cursor < 0:
+            raise MishkanError(ErrorCode.OUTPUT_CONTRACT, "MCP progress cursor is invalid")
         with Session(self._engine) as session:
             rows = session.scalars(
                 select(McpProgressRow)
@@ -371,6 +389,27 @@ class McpRepository:
                 .order_by(McpProgressRow.cursor)
             ).all()
         return tuple(McpProgressEvent.model_validate_json(row.payload) for row in rows)
+
+    def list_calls(
+        self,
+        *,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> tuple[McpCallResult | McpCallRequest, ...]:
+        self._query_bound(offset, limit)
+        with Session(self._engine) as session:
+            rows = session.scalars(
+                select(McpCallRow)
+                .order_by(McpCallRow.created_at, McpCallRow.id)
+                .offset(offset)
+                .limit(limit)
+            ).all()
+        return tuple(
+            McpCallResult.model_validate_json(row.result_payload)
+            if row.result_payload is not None
+            else McpCallRequest.model_validate_json(row.request_payload)
+            for row in rows
+        )
 
     def reconcile_incomplete(self) -> tuple[McpCallResult, ...]:
         with Session(self._engine) as session:
@@ -411,6 +450,11 @@ class McpRepository:
             )
             reconciled.append(self.complete_call(result))
         return tuple(reconciled)
+
+    @staticmethod
+    def _query_bound(offset: int, limit: int) -> None:
+        if offset < 0 or limit < 1 or limit > 1_000:
+            raise MishkanError(ErrorCode.OUTPUT_CONTRACT, "MCP query bound is invalid")
 
     @staticmethod
     def _request_fingerprint(request: McpCallRequest) -> str:

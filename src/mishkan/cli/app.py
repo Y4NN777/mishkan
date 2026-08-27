@@ -29,6 +29,7 @@ change_app = typer.Typer(help="Plan, apply, and inspect recoverable change sets.
 terminal_app = typer.Typer(help="Open and control daemon-owned PTY sessions.")
 job_app = typer.Typer(help="Start and control daemon-owned managed jobs.")
 run_app = typer.Typer(help="Inspect, cancel, and recover durable runs.")
+mcp_app = typer.Typer(help="Connect and inspect governed MCP peers through mishkand.")
 app.add_typer(config_app, name="config")
 app.add_typer(schema_app, name="schema")
 app.add_typer(daemon_app, name="daemon")
@@ -39,6 +40,7 @@ app.add_typer(change_app, name="change")
 app.add_typer(terminal_app, name="terminal")
 app.add_typer(job_app, name="job")
 app.add_typer(run_app, name="run")
+app.add_typer(mcp_app, name="mcp")
 
 
 @dataclass(frozen=True, slots=True)
@@ -696,6 +698,110 @@ def _run_effect(
                 target_id=run_id,
                 expected_revision=expected_revision,
                 payload=payload,
+            )
+        )
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@mcp_app.command("connect")
+def connect_mcp(
+    ctx: typer.Context,
+    connection_id: Annotated[str, typer.Argument(help="Configured MCP connection identity.")],
+    expected_revision: Annotated[int | None, typer.Option(min=0)] = None,
+) -> None:
+    """Explicitly connect or reconnect one configured MCP peer and discover its claims."""
+    from mishkan.application import ApplicationCommand
+
+    with _daemon_client(ctx) as client:
+        result = client.command(
+            ApplicationCommand(
+                command_type="mcp.connection.connect",
+                actor_id=client.principal_id,
+                target_type="mcp_connection",
+                target_id=connection_id,
+                expected_revision=expected_revision,
+                payload={},
+            )
+        )
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@mcp_app.command("connections")
+def list_mcp_connections(
+    ctx: typer.Context,
+    offset: Annotated[int, typer.Option(min=0)] = 0,
+    limit: Annotated[int, typer.Option(min=1, max=1_000)] = 100,
+) -> None:
+    """List bounded durable MCP connection states."""
+    with _daemon_client(ctx) as client:
+        values = client.mcp_connections(offset=offset, limit=limit)
+    _emit(list(values), as_json=_state(ctx).json_output)
+
+
+@mcp_app.command("primitives")
+def list_mcp_primitives(
+    ctx: typer.Context,
+    connection_id: Annotated[str, typer.Argument(help="Configured MCP connection identity.")],
+) -> None:
+    """List normalized claims from the accepted discovery snapshot."""
+    with _daemon_client(ctx) as client:
+        values = client.mcp_primitives(connection_id)
+    _emit(list(values), as_json=_state(ctx).json_output)
+
+
+@mcp_app.command("calls")
+def list_mcp_calls(
+    ctx: typer.Context,
+    offset: Annotated[int, typer.Option(min=0)] = 0,
+    limit: Annotated[int, typer.Option(min=1, max=1_000)] = 100,
+) -> None:
+    """List bounded durable outbound MCP call journals."""
+    with _daemon_client(ctx) as client:
+        values = client.mcp_calls(offset=offset, limit=limit)
+    _emit(list(values), as_json=_state(ctx).json_output)
+
+
+@mcp_app.command("contracts")
+def list_mcp_contracts(
+    ctx: typer.Context,
+    connection_id: Annotated[str, typer.Argument(help="Configured MCP connection identity.")],
+) -> None:
+    """List candidate Gateway contracts derived from one accepted discovery snapshot."""
+    with _daemon_client(ctx) as client:
+        values = client.mcp_contracts(connection_id)
+    _emit(list(values), as_json=_state(ctx).json_output)
+
+
+@mcp_app.command("progress")
+def list_mcp_progress(
+    ctx: typer.Context,
+    request_id: Annotated[str, typer.Argument(help="MCP call request UUID.")],
+    cursor: Annotated[int, typer.Option(min=0)] = 0,
+) -> None:
+    """Read durable progress from an exact monotone cursor."""
+    with _daemon_client(ctx) as client:
+        values = client.mcp_progress(request_id, cursor=cursor)
+    _emit(list(values), as_json=_state(ctx).json_output)
+
+
+@mcp_app.command("cancel")
+def cancel_mcp_call(
+    ctx: typer.Context,
+    request_id: Annotated[str, typer.Argument(help="MCP call request UUID.")],
+    expected_revision: Annotated[int | None, typer.Option(min=0)] = None,
+) -> None:
+    """Request cancellation without claiming that a remote effect was stopped."""
+    from mishkan.application import ApplicationCommand
+
+    with _daemon_client(ctx) as client:
+        result = client.command(
+            ApplicationCommand(
+                command_type="mcp.call.cancel",
+                actor_id=client.principal_id,
+                target_type="mcp_call",
+                target_id=request_id,
+                expected_revision=expected_revision,
+                payload={},
             )
         )
     _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)

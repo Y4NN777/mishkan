@@ -25,6 +25,28 @@ class CredentialPoolResolver:
             )
         return resolved
 
+    def resolve_exact(
+        self,
+        references: tuple[CredentialReference, ...],
+    ) -> dict[str, str]:
+        """Resolve every named reference for a contract that requires exact mappings."""
+        resolved: dict[str, str] = {}
+        for reference in references:
+            value = self._resolve(reference)
+            if value is None:
+                raise MishkanError(
+                    ErrorCode.AUTHORIZATION_MISSING,
+                    "required credential reference is unavailable",
+                    details={"source": reference.source.value, "locator": reference.locator},
+                )
+            resolved[reference.locator] = value
+        if len(resolved) != len(references):
+            raise MishkanError(
+                ErrorCode.CONFIGURATION,
+                "credential references contain duplicate locators",
+            )
+        return resolved
+
     def _resolve(self, reference: CredentialReference) -> str | None:
         if reference.source is CredentialSource.ENV:
             return os.environ.get(reference.locator)

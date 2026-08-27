@@ -38,6 +38,7 @@ from mishkan.mcp.tools import McpPrimitiveToolAdapter
 from mishkan.persistence.migration import SchemaManager
 from mishkan.policy.models import ResourceRequest
 from mishkan.tools.adapters import AdapterCall
+from mishkan.tools.catalog import ToolCatalog
 from mishkan.tools.gateway_models import CallStatus, ResolvedTargets
 from mishkan.tools.inspection import ContentInspector, InspectionProfile
 
@@ -338,6 +339,24 @@ def test_dynamic_contract_and_common_adapter_preserve_exact_policy_targets(
     assert contract.target_scopes == ("external_resource", "executable")
     assert result.call_status is CallStatus.COMPLETED
     assert result.external_references == (external,)
+
+
+def test_discovered_mcp_contract_enters_registry_with_runtime_provenance(tmp_path: Path) -> None:
+    contract = McpContractFactory(_config()).build("graph", _primitive())
+    catalog = ToolCatalog(
+        ("package://mishkan.resources.tools/i02-catalog.yaml",),
+        tmp_path,
+        available_adapters=frozenset({"mcp.outbound.tool"}),
+        runtime_contracts=(contract,),
+    )
+
+    snapshot = catalog.snapshot((contract.tool_id,))
+
+    assert snapshot.require(contract.tool_id) == contract
+    assert (
+        f"runtime:{contract.source_id}:{contract.tool_id}",
+        contract.provenance_fingerprint,
+    ) in snapshot.source_fingerprints
 
 
 def test_runner_cancellation_settles_read_only_call_without_uncertainty(tmp_path: Path) -> None:

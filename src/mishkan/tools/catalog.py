@@ -38,6 +38,7 @@ class ToolCatalog:
         available_dependencies: frozenset[str] = frozenset(),
         available_credentials: frozenset[str] = frozenset(),
         available_adapters: frozenset[str] = frozenset(),
+        runtime_contracts: tuple[ToolContract, ...] = (),
         memory_mb: int | None = None,
     ) -> None:
         if not source_uris:
@@ -52,12 +53,29 @@ class ToolCatalog:
         self._dependencies = available_dependencies
         self._credentials = available_credentials
         self._adapters = available_adapters
+        self._runtime_contracts = {contract.tool_id: contract for contract in runtime_contracts}
+        if len(self._runtime_contracts) != len(runtime_contracts):
+            raise MishkanError(ErrorCode.TOOL_DRIFT, "runtime tool contract identity collides")
         self._memory_mb = memory_mb
         self._indices = tuple(self._load_index(uri) for uri in source_uris)
         self._validate_collisions()
 
     def list_metadata(self) -> tuple[ToolMetadata, ...]:
-        return tuple(tool for index in self._indices for tool in index.tools)
+        configured = tuple(tool for index in self._indices for tool in index.tools)
+        runtime = tuple(
+            ToolMetadata(
+                tool_id=contract.tool_id,
+                version=contract.version,
+                summary=contract.summary,
+                effect_class=contract.effect_class,
+                source_id=contract.source_id,
+                source_kind=contract.source_kind,
+                contract_uri=f"runtime://{contract.provenance_fingerprint}",
+                availability=contract.availability,
+            )
+            for contract in self._runtime_contracts.values()
+        )
+        return (*configured, *runtime)
 
     def search(self, query: str) -> tuple[ToolMetadata, ...]:
         normalized = query.casefold()
@@ -120,7 +138,8 @@ class ToolCatalog:
                         "missing_conditions": availability.missing_conditions,
                     },
                 )
-            contract = self._load_contract(metadata.contract_uri)
+            runtime_contract = self._runtime_contracts.get(tool_id)
+            contract = runtime_contract or self._load_contract(metadata.contract_uri)
             if (
                 contract.tool_id != metadata.tool_id
                 or contract.version != metadata.version
@@ -148,7 +167,18 @@ class ToolCatalog:
             if self._toolset(item) is not None
         )
         source_fingerprints = tuple(
-            sorted((index.source_id, index.fingerprint) for index in self._indices)
+            sorted(
+                (
+                    *((index.source_id, index.fingerprint) for index in self._indices),
+                    *(
+                        (
+                            f"runtime:{contract.source_id}:{contract.tool_id}",
+                            contract.provenance_fingerprint,
+                        )
+                        for contract in self._runtime_contracts.values()
+                    ),
+                )
+            )
         )
         payload = {
             "tools": [tool.model_dump(mode="json") for tool in contracts],
@@ -256,6 +286,8 @@ class ToolCatalog:
                 claims.setdefault(tool.tool_id, []).append(index.source_id)
             for toolset in index.toolsets:
                 toolset_claims.setdefault(toolset.toolset_id, []).append(index.source_id)
+        for contract in self._runtime_contracts.values():
+            claims.setdefault(contract.tool_id, []).append(f"runtime:{contract.source_id}")
         collisions = {
             identity: sources
             for identity, sources in {**claims, **toolset_claims}.items()

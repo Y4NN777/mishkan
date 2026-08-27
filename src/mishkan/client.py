@@ -7,6 +7,7 @@ import os
 import tempfile
 from collections.abc import Iterator
 from pathlib import Path
+from urllib.parse import quote
 
 import httpx
 
@@ -226,6 +227,62 @@ class Mishkan:
             f"/v1/runs/{run_id}/tasks",
             headers=self._headers(),
             params={"offset": offset, "limit": limit},
+        )
+        response.raise_for_status()
+        return tuple(dict(item) for item in response.json())
+
+    def mcp_connections(
+        self,
+        *,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> tuple[dict[str, object], ...]:
+        response = self._client.get(
+            "/v1/mcp/connections",
+            headers=self._headers(),
+            params={"offset": offset, "limit": limit},
+        )
+        response.raise_for_status()
+        return tuple(dict(item) for item in response.json())
+
+    def mcp_primitives(self, connection_id: str) -> tuple[dict[str, object], ...]:
+        identity = quote(connection_id, safe="")
+        response = self._client.get(
+            f"/v1/mcp/connections/{identity}/primitives",
+            headers=self._headers(),
+        )
+        response.raise_for_status()
+        return tuple(dict(item) for item in response.json())
+
+    def mcp_contracts(self, connection_id: str) -> tuple[dict[str, object], ...]:
+        identity = quote(connection_id, safe="")
+        response = self._client.get(
+            f"/v1/mcp/connections/{identity}/contracts",
+            headers=self._headers(),
+        )
+        response.raise_for_status()
+        return tuple(dict(item) for item in response.json())
+
+    def mcp_calls(
+        self,
+        *,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> tuple[dict[str, object], ...]:
+        response = self._client.get(
+            "/v1/mcp/calls",
+            headers=self._headers(),
+            params={"offset": offset, "limit": limit},
+        )
+        response.raise_for_status()
+        return tuple(dict(item) for item in response.json())
+
+    def mcp_progress(self, request_id: str, *, cursor: int = 0) -> tuple[dict[str, object], ...]:
+        identity = quote(request_id, safe="")
+        response = self._client.get(
+            f"/v1/mcp/calls/{identity}/progress",
+            headers=self._headers(),
+            params={"cursor": cursor},
         )
         response.raise_for_status()
         return tuple(dict(item) for item in response.json())

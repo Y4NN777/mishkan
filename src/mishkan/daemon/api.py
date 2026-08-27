@@ -18,15 +18,26 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from mishkan.application import ApplicationCommand, CommandResult, SnapshotEnvelope
 from mishkan.artifacts import ArtifactManifest, ArtifactProvenance
 from mishkan.artifacts.service import DurableArtifactService
-from mishkan.config.models import MishkanConfig
+from mishkan.config.models import McpConfig, MishkanConfig
+from mishkan.crewai.credentials import CredentialPoolResolver
 from mishkan.daemon.auth import TokenFile, TokenRecord
 from mishkan.daemon.bootstrap import DaemonPaths
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.edits import ChangeSet, ChangeSetResult, ChangeSetService
 from mishkan.events import EventPage
 from mishkan.execution import CursorRead, SessionRecord, SessionRequest, SessionSupervisor
-from mishkan.mcp import McpFacadeRouter, McpHttpFacade
+from mishkan.mcp import (
+    McpContractFactory,
+    McpFacadeRouter,
+    McpHttpFacade,
+    McpPrimitiveKind,
+    McpRepository,
+    McpSdkClient,
+    McpService,
+    McpServiceRunner,
+)
 from mishkan.persistence import LocalRunRepository, SchemaManager, SQLiteApplicationRepository
+from mishkan.tools.inspection import ContentInspector, InspectionProfileLoader
 
 
 def _http_status(error: MishkanError) -> int:
@@ -73,6 +84,28 @@ def create_app(config: MishkanConfig) -> FastAPI:
     )
     supervisor.reconcile_all()
     command_lock = asyncio.Lock()
+    mcp_repository: McpRepository | None = None
+    mcp_runner: McpServiceRunner | None = None
+    mcp_config = config.mcp
+    if mcp_config is not None:
+        web_config = config.web
+        inspection_source = config.inspection_profile
+        if web_config is None or inspection_source is None:
+            raise MishkanError(
+                ErrorCode.CONFIGURATION,
+                "daemon MCP mediation requires Web and inspection configuration",
+            )
+        mcp_repository = McpRepository(paths.database)
+        mcp_service = McpService(
+            paths.workspace,
+            mcp_config,
+            mcp_repository,
+            McpSdkClient(web_config.network_profiles),
+            ContentInspector(InspectionProfileLoader().load(inspection_source, paths.workspace)),
+        )
+        mcp_service.reconcile_after_restart()
+        mcp_runner = McpServiceRunner(mcp_service)
+    credential_resolver = CredentialPoolResolver()
 
     async def execute_command(command: ApplicationCommand, principal_id: str) -> CommandResult:
         if command.actor_id != principal_id:
@@ -88,7 +121,14 @@ def create_app(config: MishkanConfig) -> FastAPI:
                 return replayed
             try:
                 event_type, result_payload = _dispatch(
-                    command, artifacts, changes, supervisor, run_repository
+                    command,
+                    artifacts,
+                    changes,
+                    supervisor,
+                    run_repository,
+                    mcp_runner,
+                    mcp_config,
+                    credential_resolver,
                 )
             except MishkanError:
                 raise
@@ -108,7 +148,6 @@ def create_app(config: MishkanConfig) -> FastAPI:
             )
 
     mcp_http: McpHttpFacade | None = None
-    mcp_config = config.mcp
     if mcp_config is not None and mcp_config.facade.enabled:
         schema_revision = SchemaManager(paths.database).status().head_revision
         router = McpFacadeRouter(
@@ -127,11 +166,15 @@ def create_app(config: MishkanConfig) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-        if mcp_http is None:
-            yield
-            return
-        async with mcp_http.lifespan():
-            yield
+        try:
+            if mcp_http is None:
+                yield
+                return
+            async with mcp_http.lifespan():
+                yield
+        finally:
+            if mcp_runner is not None:
+                mcp_runner.close()
 
     app = FastAPI(
         title="MISHKAN application API",
@@ -354,6 +397,70 @@ def create_app(config: MishkanConfig) -> FastAPI:
     ) -> tuple[dict[str, object], ...]:
         return repository.tasks(run_id, offset=offset, limit=limit)
 
+    @app.get("/v1/mcp/connections")
+    async def mcp_connection_list(
+        _principal: TokenRecord = authenticated,
+        offset: Annotated[int, Query(ge=0)] = 0,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
+    ) -> tuple[dict[str, object], ...]:
+        if mcp_repository is None:
+            return ()
+        return tuple(
+            item.model_dump(mode="json")
+            for item in mcp_repository.list_connections(offset=offset, limit=limit)
+        )
+
+    @app.get("/v1/mcp/connections/{connection_id}/primitives")
+    async def mcp_primitive_list(
+        connection_id: str,
+        _principal: TokenRecord = authenticated,
+    ) -> tuple[dict[str, object], ...]:
+        if mcp_repository is None:
+            return ()
+        return tuple(
+            item.model_dump(mode="json") for item in mcp_repository.list_primitives(connection_id)
+        )
+
+    @app.get("/v1/mcp/connections/{connection_id}/contracts")
+    async def mcp_contract_list(
+        connection_id: str,
+        _principal: TokenRecord = authenticated,
+    ) -> tuple[dict[str, object], ...]:
+        if mcp_repository is None or mcp_config is None:
+            return ()
+        factory = McpContractFactory(mcp_config)
+        return tuple(
+            factory.build(connection_id, item).model_dump(mode="json")
+            for item in mcp_repository.list_primitives(connection_id)
+            if item.kind is McpPrimitiveKind.TOOL
+        )
+
+    @app.get("/v1/mcp/calls")
+    async def mcp_call_list(
+        _principal: TokenRecord = authenticated,
+        offset: Annotated[int, Query(ge=0)] = 0,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
+    ) -> tuple[dict[str, object], ...]:
+        if mcp_repository is None:
+            return ()
+        return tuple(
+            item.model_dump(mode="json")
+            for item in mcp_repository.list_calls(offset=offset, limit=limit)
+        )
+
+    @app.get("/v1/mcp/calls/{request_id}/progress")
+    async def mcp_progress_list(
+        request_id: UUID,
+        _principal: TokenRecord = authenticated,
+        cursor: Annotated[int, Query(ge=0)] = 0,
+    ) -> tuple[dict[str, object], ...]:
+        if mcp_repository is None:
+            return ()
+        return tuple(
+            item.model_dump(mode="json")
+            for item in mcp_repository.progress_after(request_id, cursor)
+        )
+
     if mcp_http is not None:
         assert mcp_config is not None
         app.mount(mcp_config.facade.streamable_http_path, mcp_http.app)
@@ -367,6 +474,9 @@ def _dispatch(
     changes: ChangeSetService,
     supervisor: SessionSupervisor,
     runs: LocalRunRepository,
+    mcp_runner: McpServiceRunner | None,
+    mcp_config: McpConfig | None,
+    credential_resolver: CredentialPoolResolver,
 ) -> tuple[str, dict[str, object]]:
     payload = command.payload
     if command.command_type == "system.checkpoint" and command.target_type == "system":
@@ -446,6 +556,31 @@ def _dispatch(
         effects = tuple(str(value) for value in payload.get("uncertain_effects", []))
         released = runs.recover_interrupted(command.target_id, uncertain_effects=effects)
         return "run.recovered", {"run_id": command.target_id, "released_tasks": released}
+    if command.command_type == "mcp.connection.connect" and command.target_id is not None:
+        if command.payload:
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT,
+                "MCP connection command accepts no credential values or payload",
+            )
+        if mcp_runner is None or mcp_config is None:
+            raise MishkanError(ErrorCode.MCP, "MCP mediation is not configured")
+        configured = mcp_config.connections.get(command.target_id)
+        if configured is None or not configured.enabled:
+            raise MishkanError(ErrorCode.MCP, "MCP connection is not enabled")
+        credentials = credential_resolver.resolve_exact(configured.credential_refs)
+        mcp_record = mcp_runner.connect(
+            command.target_id,
+            principal=command.actor_id,
+            credentials=credentials,
+        )
+        return "mcp.connection_ready", mcp_record.model_dump(mode="json")
+    if command.command_type == "mcp.call.cancel" and command.target_id is not None:
+        if command.payload:
+            raise MishkanError(ErrorCode.OUTPUT_CONTRACT, "MCP cancellation accepts no payload")
+        if mcp_runner is None:
+            raise MishkanError(ErrorCode.MCP, "MCP mediation is not configured")
+        mcp_runner.cancel(UUID(command.target_id))
+        return "mcp.call_cancellation_requested", {"request_id": command.target_id}
     raise MishkanError(
         ErrorCode.OUTPUT_CONTRACT,
         "application command type has no registered I03 handler",
