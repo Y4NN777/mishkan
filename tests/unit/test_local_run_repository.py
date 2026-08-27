@@ -76,6 +76,9 @@ def test_state_and_outbox_are_durable_and_resumable(tmp_path: Path) -> None:
     started = repository.start_or_resume(discovery, "Initialize this repository", "mishkan.init")
     plan = _accepted_plan(discovery)
     repository.accept_plan(started.run_id, plan)
+    repository.start_run(started.run_id)
+    repository.claim_task(started.run_id, "read-readme")
+    repository.mark_validating(started.run_id, "read-readme")
     result = InitializationResult(
         repository_revision=discovery.binding.base_revision,
         task_id="read-readme",
@@ -84,6 +87,7 @@ def test_state_and_outbox_are_durable_and_resumable(tmp_path: Path) -> None:
         findings=("The repository contains a project overview.",),
     )
     repository.accept_result(started.run_id, result, _review())
+    repository.start_run(started.run_id)
 
     resumed = LocalRunRepository(database).start_or_resume(
         discovery, "Initialize this repository", "mishkan.init"
@@ -96,6 +100,10 @@ def test_state_and_outbox_are_durable_and_resumable(tmp_path: Path) -> None:
     assert [event["event_type"] for event in repository.outbox_events()] == [
         "run.started",
         "plan.accepted",
+        "run.queued",
+        "run.running",
+        "task.claimed",
+        "task.validating",
         "task.result_accepted",
         "run.completed",
     ]
@@ -111,6 +119,9 @@ def test_conflicting_duplicate_result_is_refused(tmp_path: Path) -> None:
     repository = LocalRunRepository(database)
     run = repository.start_or_resume(discovery, "Initialize this repository", "mishkan.init")
     repository.accept_plan(run.run_id, _accepted_plan(discovery))
+    repository.start_run(run.run_id)
+    repository.claim_task(run.run_id, "read-readme")
+    repository.mark_validating(run.run_id, "read-readme")
     first = InitializationResult(
         repository_revision=discovery.binding.base_revision,
         task_id="read-readme",

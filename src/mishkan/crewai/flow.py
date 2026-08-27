@@ -20,6 +20,7 @@ from mishkan.planning.models import (
 from mishkan.planning.result_validator import ResultValidator
 from mishkan.planning.validator import PlanValidator
 from mishkan.repository.models import DiscoverySnapshot
+from mishkan.runtime import BoundedPredicateLoop
 
 
 class InitializationFlowState(BaseModel):
@@ -77,6 +78,7 @@ class CrewAIInitializationFlow(Flow[InitializationFlowState]):
                     self.state.objective,
                     validation_feedback,
                 )
+                self._repository.mark_awaiting_approval(self.state.run_id)
                 try:
                     accepted = self._plan_validator.accept(
                         candidate,
@@ -106,6 +108,7 @@ class CrewAIInitializationFlow(Flow[InitializationFlowState]):
     def execute_plan(self, plan: AcceptedPlan) -> InitializationReport:
         if self.state.resumed:
             self._repository.recover_interrupted(self.state.run_id)
+        self._repository.start_run(self.state.run_id)
         completed = {result.task_id for result in self.state.accepted_results}
         pending = {task.task_id: task for task in plan.tasks if task.task_id not in completed}
         while pending:
@@ -132,7 +135,11 @@ class CrewAIInitializationFlow(Flow[InitializationFlowState]):
                 last_review: ReviewDecision | None = None
                 verified: InitializationResult | None = None
                 attempts = self._coordinator.review_retries + 1
-                for _attempt in range(attempts):
+                review_loop = BoundedPredicateLoop(
+                    {"eq": ["review.accepted", True]},
+                    maximum_iterations=attempts,
+                )
+                for review_sequence in review_loop:
                     proposed = self._coordinator.execute_task(
                         plan,
                         self.state.discovery,
@@ -145,7 +152,7 @@ class CrewAIInitializationFlow(Flow[InitializationFlowState]):
                         task,
                         self.state.discovery,
                     )
-                    if _attempt == 0:
+                    if review_sequence == 1:
                         self._repository.mark_validating(self.state.run_id, task.task_id)
                     review_contract_feedback: tuple[str, ...] = ()
                     review_attempts = self._coordinator.review_retries + 1
@@ -158,6 +165,12 @@ class CrewAIInitializationFlow(Flow[InitializationFlowState]):
                         )
                         last_review = proposed_review
                         if proposed_review.verdict != "accepted":
+                            self._repository.record_rejected_review(
+                                self.state.run_id,
+                                verified,
+                                proposed_review,
+                                review_sequence=review_sequence,
+                            )
                             break
                         try:
                             accepted_review = self._result_validator.accept_review(
@@ -170,16 +183,30 @@ class CrewAIInitializationFlow(Flow[InitializationFlowState]):
                             raw_violations = error.envelope.details.get("violations", [])
                             review_contract_feedback = tuple(str(item) for item in raw_violations)
                             if review_attempt + 1 >= review_attempts:
+                                self._repository.mark_task_failure(
+                                    self.state.run_id,
+                                    task.task_id,
+                                    rejected=True,
+                                )
                                 raise
                         else:
                             break
                     if accepted_review is not None:
+                        if not review_loop.is_complete({"review": {"accepted": True}}):
+                            raise RuntimeError("accepted review did not satisfy its loop condition")
                         break
+                    if review_loop.is_complete({"review": {"accepted": False}}):
+                        raise RuntimeError("rejected review satisfied its completion condition")
                 if verified is None:
                     raise RuntimeError("review loop produced no task result")
                 if accepted_review is None:
                     if last_review is None:
                         raise RuntimeError("review loop produced no result")
+                    self._repository.mark_task_failure(
+                        self.state.run_id,
+                        task.task_id,
+                        rejected=True,
+                    )
                     self._result_validator.accept_review(last_review, verified)
                     raise RuntimeError("rejected review was unexpectedly accepted")
                 self._repository.accept_result(

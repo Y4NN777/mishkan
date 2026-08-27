@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any
 
@@ -105,3 +106,30 @@ class PredicateEvaluator:
             else:
                 return False, None
         return True, current
+
+
+@dataclass(frozen=True, slots=True)
+class BoundedPredicateLoop:
+    """Finite iteration helper whose exit decision is evaluated by the safe DSL."""
+
+    completion_condition: dict[str, Any]
+    maximum_iterations: int
+    evaluator: PredicateEvaluator
+
+    def __init__(
+        self,
+        completion_condition: dict[str, Any],
+        maximum_iterations: int,
+        evaluator: PredicateEvaluator | None = None,
+    ) -> None:
+        selected = evaluator or PredicateEvaluator()
+        selected.validate_loop(maximum_iterations=maximum_iterations)
+        object.__setattr__(self, "completion_condition", completion_condition)
+        object.__setattr__(self, "maximum_iterations", maximum_iterations)
+        object.__setattr__(self, "evaluator", selected)
+
+    def __iter__(self) -> Iterator[int]:
+        return iter(range(1, self.maximum_iterations + 1))
+
+    def is_complete(self, validated_results: dict[str, Any]) -> bool:
+        return self.evaluator.evaluate(self.completion_condition, validated_results)

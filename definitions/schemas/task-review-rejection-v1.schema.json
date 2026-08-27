@@ -1,0 +1,164 @@
+{
+  "$defs": {
+    "InitializationResult": {
+      "additionalProperties": false,
+      "properties": {
+        "cited_paths": {
+          "description": "Exact repository-relative evidence paths from the accepted task.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Cited Paths",
+          "type": "array"
+        },
+        "findings": {
+          "description": "Factual findings directly supported by the cited repository paths.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Findings",
+          "type": "array"
+        },
+        "repository_revision": {
+          "minLength": 7,
+          "title": "Repository Revision",
+          "type": "string"
+        },
+        "schema_version": {
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "summary": {
+          "maxLength": 2000,
+          "minLength": 3,
+          "title": "Summary",
+          "type": "string"
+        },
+        "task_id": {
+          "minLength": 2,
+          "title": "Task Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository_revision",
+        "task_id",
+        "summary",
+        "cited_paths",
+        "findings"
+      ],
+      "title": "InitializationResult",
+      "type": "object"
+    },
+    "ReviewDecision": {
+      "additionalProperties": false,
+      "properties": {
+        "checked_citations": {
+          "description": "Exact repository-relative path strings copied from the proposed result's cited_paths; never findings or explanations.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Checked Citations",
+          "type": "array"
+        },
+        "issues": {
+          "default": [],
+          "description": "Concrete evidence or contract defects; empty when the verdict is accepted.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Issues",
+          "type": "array"
+        },
+        "schema_version": {
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "summary": {
+          "maxLength": 2000,
+          "minLength": 3,
+          "title": "Summary",
+          "type": "string"
+        },
+        "task_id": {
+          "minLength": 2,
+          "title": "Task Id",
+          "type": "string"
+        },
+        "verdict": {
+          "enum": [
+            "accepted",
+            "rejected"
+          ],
+          "title": "Verdict",
+          "type": "string"
+        }
+      },
+      "required": [
+        "task_id",
+        "verdict",
+        "summary",
+        "checked_citations"
+      ],
+      "title": "ReviewDecision",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Durable evidence for one independently rejected task-result proposal.",
+  "properties": {
+    "recorded_at": {
+      "format": "date-time",
+      "title": "Recorded At",
+      "type": "string"
+    },
+    "result": {
+      "$ref": "#/$defs/InitializationResult"
+    },
+    "review": {
+      "$ref": "#/$defs/ReviewDecision"
+    },
+    "review_sequence": {
+      "minimum": 1,
+      "title": "Review Sequence",
+      "type": "integer"
+    },
+    "run_id": {
+      "minLength": 1,
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "task_attempt": {
+      "minimum": 1,
+      "title": "Task Attempt",
+      "type": "integer"
+    },
+    "task_id": {
+      "minLength": 1,
+      "title": "Task Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_id",
+    "task_id",
+    "task_attempt",
+    "review_sequence",
+    "result",
+    "review",
+    "recorded_at"
+  ],
+  "title": "TaskReviewRejection",
+  "type": "object"
+}

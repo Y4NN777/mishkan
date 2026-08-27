@@ -13,7 +13,13 @@ from mishkan.planning.models import (
     ReviewDecision,
 )
 from mishkan.repository.models import DiscoverySnapshot, RepositoryBinding
-from mishkan.runtime import PredicateEvaluator, PredicateLimits, TaskState
+from mishkan.runtime import (
+    BoundedPredicateLoop,
+    PredicateEvaluator,
+    PredicateLimits,
+    RunState,
+    TaskState,
+)
 
 
 def _discovery(tmp_path: Path) -> DiscoverySnapshot:
@@ -82,7 +88,11 @@ def _repository(tmp_path: Path) -> tuple[LocalRunRepository, str]:
     SchemaManager(database).initialize()
     repository = LocalRunRepository(database)
     run = repository.start_or_resume(_discovery(tmp_path), "Execute graph", "mission")
+    repository.mark_awaiting_approval(run.run_id)
+    assert repository.run_state(run.run_id) == RunState.AWAITING_APPROVAL.value
     repository.accept_plan(run.run_id, _plan())
+    assert repository.run_state(run.run_id) == RunState.QUEUED.value
+    repository.start_run(run.run_id)
     return repository, run.run_id
 
 
@@ -113,7 +123,9 @@ def test_duplicate_completion_has_no_duplicate_event_and_cancellation_is_monoton
     repository.accept_result(run_id, result, review)
     count = len(repository.outbox_events())
     repository.accept_result(run_id, result, review)
-    assert len(repository.outbox_events()) == count
+    duplicate = repository.outbox_events()[count]
+    assert duplicate["event_type"] == "task.completion_duplicated"
+    assert duplicate["payload"] == {"ignored": True, "task_id": "root-task"}
 
     repository.cancel_run(run_id)
     assert repository.task_states(run_id)["dependent-task"] == TaskState.CANCELLED.value
@@ -127,8 +139,17 @@ def test_interrupted_task_requires_effect_reconciliation_before_retry(tmp_path: 
     with pytest.raises(MishkanError) as blocked:
         repository.recover_interrupted(run_id, uncertain_effects=("change:1",))
     assert blocked.value.envelope.details["automatic_retry"] is False
+    assert repository.run_state(run_id) == RunState.BLOCKED.value
     assert repository.recover_interrupted(run_id) == ("root-task",)
+    assert repository.run_state(run_id) == RunState.RUNNING.value
     assert repository.claim_task(run_id, "root-task") == 2
+
+
+def test_bounded_loop_uses_the_predicate_dsl_for_its_exit() -> None:
+    loop = BoundedPredicateLoop({"eq": ["review.accepted", True]}, maximum_iterations=2)
+    assert list(loop) == [1, 2]
+    assert loop.is_complete({"review": {"accepted": False}}) is False
+    assert loop.is_complete({"review": {"accepted": True}}) is True
 
 
 def test_predicate_dsl_is_bounded_and_never_evaluates_python() -> None:

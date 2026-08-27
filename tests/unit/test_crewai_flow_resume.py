@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from mishkan.crewai.flow import CrewAIInitializationFlow, InitializationFlowState
+from mishkan.domain.errors import MishkanError
 from mishkan.organization import load_initialization_definitions
 from mishkan.persistence import LocalRunRepository, SchemaManager
 from mishkan.planning.models import (
@@ -249,6 +250,38 @@ def test_review_rejection_resynthesizes_without_reexecuting_evidence(tmp_path: P
     ]
     assert coordinator.reviewed == 3
     assert report.completed_task_ids == ("inspect-overview", "inspect-details")
+    rejections = repository.rejected_reviews(started.run_id)
+    assert len(rejections) == 1
+    assert rejections[0].task_id == "inspect-overview"
+    assert rejections[0].review_sequence == 1
+
+
+def test_exhausted_review_loop_fails_task_and_preserves_every_rejection(tmp_path: Path) -> None:
+    (tmp_path / "README.md").write_text("evidence", encoding="utf-8")
+    discovery = _discovery(tmp_path)
+    repository = _repository(tmp_path)
+    started = repository.start_or_resume(
+        discovery,
+        "Initialize after a forced crash",
+        "mishkan.init",
+    )
+    plan = _plan()
+    repository.accept_plan(started.run_id, plan)
+    coordinator = FakeCoordinator(rejected_reviews=2)
+    coordinator.review_retries = 1
+    state = InitializationFlowState(
+        run_id=started.run_id,
+        objective=plan.objective,
+        discovery=discovery,
+        accepted_plan=plan,
+    )
+
+    with pytest.raises(MishkanError, match="independent CrewAI review"):
+        _flow(state, coordinator, repository).execute_plan(plan)
+
+    assert repository.run_state(started.run_id) == "failed"
+    assert repository.task_states(started.run_id)["inspect-overview"] == "rejected"
+    assert [item.review_sequence for item in repository.rejected_reviews(started.run_id)] == [1, 2]
 
 
 def test_invalid_accepted_review_is_corrected_without_resynthesizing_task(

@@ -48,6 +48,7 @@ from mishkan.mcp import (
 )
 from mishkan.persistence import LocalRunRepository, SchemaManager, SQLiteApplicationRepository
 from mishkan.policy import Decision
+from mishkan.runtime import TaskReviewRejection
 from mishkan.tools.inspection import ContentInspector, InspectionProfileLoader
 
 
@@ -529,6 +530,13 @@ def create_app(config: MishkanConfig) -> FastAPI:
         limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
     ) -> tuple[dict[str, object], ...]:
         return repository.tasks(run_id, offset=offset, limit=limit)
+
+    @app.get("/v1/runs/{run_id}/review-rejections")
+    async def review_rejection_list(
+        run_id: str,
+        _principal: TokenRecord = authenticated,
+    ) -> tuple[TaskReviewRejection, ...]:
+        return run_repository.rejected_reviews(run_id)
 
     @app.get("/v1/mcp/connections")
     async def mcp_connection_list(

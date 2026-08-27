@@ -127,6 +127,7 @@ def test_public_contract_catalogue_exports_deterministically(tmp_path: Path) -> 
         "session-record-v1.schema.json",
         "session-request-v1.schema.json",
         "snapshot-envelope-v1.schema.json",
+        "task-review-rejection-v1.schema.json",
     }
     assert set(SCHEMAS) == expected
 

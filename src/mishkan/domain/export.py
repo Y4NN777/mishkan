@@ -43,6 +43,7 @@ from mishkan.mcp.models import (
     McpPrimitiveDescriptor,
     McpProgressEvent,
 )
+from mishkan.runtime import TaskReviewRejection
 from mishkan.web.models import (
     CitationEvidence,
     CrawlRequest,
@@ -107,6 +108,7 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "session-record-v1.schema.json": SessionRecord,
     "session-request-v1.schema.json": SessionRequest,
     "snapshot-envelope-v1.schema.json": SnapshotEnvelope,
+    "task-review-rejection-v1.schema.json": TaskReviewRejection,
 }
 
 
