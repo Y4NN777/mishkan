@@ -168,3 +168,4 @@ mcp:
     stdio_bridge_enabled: true
     exposure_profile: governed-harness
   progress_retention_seconds: 86400
+  cancellation_poll_seconds: 0.1

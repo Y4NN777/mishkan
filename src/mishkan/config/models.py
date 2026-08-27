@@ -455,6 +455,7 @@ class McpConfig(StrictConfigModel):
     exposure_profiles: dict[str, McpExposureProfileConfig] = Field(min_length=1)
     facade: McpFacadeConfig
     progress_retention_seconds: int = Field(ge=1, le=31_536_000)
+    cancellation_poll_seconds: float = Field(gt=0, le=60)
 
     @model_validator(mode="after")
     def references_exist(self) -> Self:

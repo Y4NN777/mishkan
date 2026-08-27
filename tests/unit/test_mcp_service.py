@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 from datetime import timedelta
@@ -23,15 +24,21 @@ from mishkan.domain.time import utc_now
 from mishkan.mcp import (
     McpCallRequest,
     McpCallState,
+    McpContractFactory,
     McpDiscoverySnapshot,
     McpEffectDisposition,
     McpPrimitiveDescriptor,
     McpPrimitiveKind,
     McpRepository,
     McpService,
+    McpServiceRunner,
     McpSessionState,
 )
+from mishkan.mcp.tools import McpPrimitiveToolAdapter
 from mishkan.persistence.migration import SchemaManager
+from mishkan.policy.models import ResourceRequest
+from mishkan.tools.adapters import AdapterCall
+from mishkan.tools.gateway_models import CallStatus, ResolvedTargets
 from mishkan.tools.inspection import ContentInspector, InspectionProfile
 
 
@@ -62,6 +69,7 @@ def _config() -> McpConfig:
             exposure_profile="repository-read",
         ),
         progress_retention_seconds=60,
+        cancellation_poll_seconds=0.01,
     )
 
 
@@ -159,6 +167,37 @@ class FakeClient:
         )
 
 
+class BlockingClient(FakeClient):
+    async def call_tool(
+        self,
+        configured: McpConnectionConfig,
+        *,
+        name: str,
+        arguments: dict[str, Any],
+        caller_identity: str,
+        run_id: str,
+        task_attempt_id: str,
+        timeout_seconds: float,
+        credentials: Any,
+        workspace: Path,
+        progress: ProgressFnT,
+    ) -> types.CallToolResult:
+        del (
+            configured,
+            name,
+            arguments,
+            caller_identity,
+            run_id,
+            task_attempt_id,
+            timeout_seconds,
+            credentials,
+            workspace,
+            progress,
+        )
+        await asyncio.Event().wait()
+        raise AssertionError("cancelled MCP fixture resumed unexpectedly")
+
+
 def _service(
     tmp_path: Path,
     client: FakeClient,
@@ -254,3 +293,66 @@ async def test_transport_loss_marks_non_idempotent_call_uncertain(tmp_path: Path
 
     assert result.state is McpCallState.UNCERTAIN
     assert result.output is None
+
+
+def test_dynamic_contract_and_common_adapter_preserve_exact_policy_targets(
+    tmp_path: Path,
+) -> None:
+    primitive = _primitive()
+    client = FakeClient(_snapshot(primitive))
+    service, _repository = _service(tmp_path, client)
+    request = _request(primitive)
+    external = f"mcp:{request.connection_id}:{request.primitive_name}"
+    contract = McpContractFactory(_config()).build("graph", primitive)
+
+    with McpServiceRunner(service) as runner:
+        runner.connect("graph", principal="role:Engineer", credentials={})
+        adapter = McpPrimitiveToolAdapter(_config(), runner, {})
+        result = adapter.invoke(
+            AdapterCall(
+                arguments={
+                    "request": request.model_dump(mode="json"),
+                    "executables": ["fixture-mcp"],
+                    "network_destinations": [],
+                    "external_resources": [external],
+                    "credential_refs": [],
+                },
+                targets=ResolvedTargets(
+                    executables=("fixture-mcp",),
+                    external_resources=(external,),
+                ),
+                credentials={},
+                execution_id="call-1",
+                resources=ResourceRequest(timeout_seconds=30),
+                isolation_profile=None,
+                cancellation_requested=lambda: False,
+                run_id=request.run_id,
+                task_attempt_id=request.task_attempt_id,
+                acting_identity=request.caller_identity,
+                capability=contract.tool_id,
+            )
+        )
+
+    assert contract.adapter == "mcp.outbound.tool"
+    assert contract.adapter_config["schema_hash"] == primitive.schema_hash
+    assert contract.target_scopes == ("external_resource", "executable")
+    assert result.call_status is CallStatus.COMPLETED
+    assert result.external_references == (external,)
+
+
+def test_runner_cancellation_settles_read_only_call_without_uncertainty(tmp_path: Path) -> None:
+    primitive = _primitive()
+    client = BlockingClient(_snapshot(primitive))
+    service, _repository = _service(tmp_path, client)
+    request = _request(primitive)
+
+    with McpServiceRunner(service) as runner:
+        runner.connect("graph", principal="role:Engineer", credentials={})
+        result = runner.invoke(
+            request,
+            credentials={},
+            cancellation_requested=lambda: True,
+            poll_seconds=0.01,
+        )
+
+    assert result.state is McpCallState.CANCELLED

@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any, Protocol, cast
 from uuid import UUID
 
+from jsonschema import Draft202012Validator  # type: ignore[import-untyped]
+from jsonschema.exceptions import SchemaError, ValidationError  # type: ignore[import-untyped]
 from mcp import types
 from mcp.shared.session import ProgressFnT
 
@@ -172,6 +174,15 @@ class McpService:
                 ErrorCode.TOOL_DRIFT,
                 "MCP call effect disposition differs from discovery evidence",
             )
+        if primitive.input_schema is not None:
+            try:
+                Draft202012Validator.check_schema(primitive.input_schema)
+                Draft202012Validator(primitive.input_schema).validate(request.arguments)
+            except (SchemaError, ValidationError) as exc:
+                raise MishkanError(
+                    ErrorCode.TOOL_SCHEMA,
+                    "MCP call arguments differ from the discovered input schema",
+                ) from exc
         reservation = self._repository.reserve_call(request)
         if not reservation.created:
             if reservation.existing_result is not None:

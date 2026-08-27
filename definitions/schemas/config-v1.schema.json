@@ -365,6 +365,12 @@
     "McpConfig": {
       "additionalProperties": false,
       "properties": {
+        "cancellation_poll_seconds": {
+          "exclusiveMinimum": 0,
+          "maximum": 60,
+          "title": "Cancellation Poll Seconds",
+          "type": "number"
+        },
         "connections": {
           "additionalProperties": {
             "$ref": "#/$defs/McpConnectionConfig"
@@ -393,7 +399,8 @@
       "required": [
         "exposure_profiles",
         "facade",
-        "progress_retention_seconds"
+        "progress_retention_seconds",
+        "cancellation_poll_seconds"
       ],
       "title": "McpConfig",
       "type": "object"
