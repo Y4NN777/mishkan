@@ -1,6 +1,7 @@
 """Public MCP connectivity contracts."""
 
 from mishkan.mcp.contracts import McpContractFactory
+from mishkan.mcp.facade import EventQuery, McpFacadeRouter, RunQuery
 from mishkan.mcp.models import (
     McpCallRequest,
     McpCallResult,
@@ -21,6 +22,7 @@ from mishkan.mcp.service import McpClientPort, McpService
 from mishkan.mcp.tools import McpPrimitiveToolAdapter, build_mcp_tool_adapters
 
 __all__ = [
+    "EventQuery",
     "McpCallRequest",
     "McpCallReservation",
     "McpCallResult",
@@ -31,6 +33,7 @@ __all__ = [
     "McpDirection",
     "McpDiscoverySnapshot",
     "McpEffectDisposition",
+    "McpFacadeRouter",
     "McpPrimitiveDescriptor",
     "McpPrimitiveKind",
     "McpPrimitiveToolAdapter",
@@ -40,5 +43,6 @@ __all__ = [
     "McpService",
     "McpServiceRunner",
     "McpSessionState",
+    "RunQuery",
     "build_mcp_tool_adapters",
 ]
