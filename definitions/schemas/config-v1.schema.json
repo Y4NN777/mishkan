@@ -33,6 +33,170 @@
       "title": "ArtifactConfig",
       "type": "object"
     },
+    "BrowserConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "default_profile": {
+          "minLength": 1,
+          "title": "Default Profile",
+          "type": "string"
+        },
+        "max_diagnostic_entries": {
+          "maximum": 1000000,
+          "minimum": 1,
+          "title": "Max Diagnostic Entries",
+          "type": "integer"
+        },
+        "max_observation_bytes": {
+          "minimum": 1,
+          "title": "Max Observation Bytes",
+          "type": "integer"
+        },
+        "observation_ttl_seconds": {
+          "exclusiveMinimum": 0,
+          "maximum": 3600,
+          "title": "Observation Ttl Seconds",
+          "type": "number"
+        },
+        "profiles": {
+          "additionalProperties": {
+            "$ref": "#/$defs/BrowserProfileConfig"
+          },
+          "minProperties": 1,
+          "title": "Profiles",
+          "type": "object"
+        },
+        "staging_root": {
+          "format": "path",
+          "title": "Staging Root",
+          "type": "string"
+        }
+      },
+      "required": [
+        "staging_root",
+        "default_profile",
+        "profiles",
+        "observation_ttl_seconds",
+        "max_observation_bytes",
+        "max_diagnostic_entries"
+      ],
+      "title": "BrowserConfig",
+      "type": "object"
+    },
+    "BrowserProfileConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "action_timeout_seconds": {
+          "exclusiveMinimum": 0,
+          "maximum": 3600,
+          "title": "Action Timeout Seconds",
+          "type": "number"
+        },
+        "adapter": {
+          "minLength": 1,
+          "title": "Adapter",
+          "type": "string"
+        },
+        "allowed_origins": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Allowed Origins",
+          "type": "array"
+        },
+        "cdp_endpoint": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cdp Endpoint"
+        },
+        "engine": {
+          "minLength": 1,
+          "title": "Engine",
+          "type": "string"
+        },
+        "headless": {
+          "title": "Headless",
+          "type": "boolean"
+        },
+        "kind": {
+          "$ref": "#/$defs/BrowserProfileKind"
+        },
+        "max_pages": {
+          "maximum": 1000,
+          "minimum": 1,
+          "title": "Max Pages",
+          "type": "integer"
+        },
+        "navigation_timeout_seconds": {
+          "exclusiveMinimum": 0,
+          "maximum": 3600,
+          "title": "Navigation Timeout Seconds",
+          "type": "number"
+        },
+        "network_profile": {
+          "minLength": 1,
+          "title": "Network Profile",
+          "type": "string"
+        },
+        "retention": {
+          "minLength": 1,
+          "title": "Retention",
+          "type": "string"
+        },
+        "sensitivity": {
+          "minLength": 1,
+          "title": "Sensitivity",
+          "type": "string"
+        },
+        "user_data_dir": {
+          "anyOf": [
+            {
+              "format": "path",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "User Data Dir"
+        }
+      },
+      "required": [
+        "kind",
+        "adapter",
+        "engine",
+        "network_profile",
+        "allowed_origins",
+        "sensitivity",
+        "retention",
+        "headless",
+        "max_pages",
+        "action_timeout_seconds",
+        "navigation_timeout_seconds"
+      ],
+      "title": "BrowserProfileConfig",
+      "type": "object"
+    },
+    "BrowserProfileKind": {
+      "enum": [
+        "isolated",
+        "project_persistent",
+        "attached_existing"
+      ],
+      "title": "BrowserProfileKind",
+      "type": "string"
+    },
     "CredentialReference": {
       "additionalProperties": false,
       "description": "A late-resolution locator; never a credential value.",
@@ -198,6 +362,248 @@
       "title": "DaemonConfig",
       "type": "object"
     },
+    "McpConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "connections": {
+          "additionalProperties": {
+            "$ref": "#/$defs/McpConnectionConfig"
+          },
+          "title": "Connections",
+          "type": "object"
+        },
+        "exposure_profiles": {
+          "additionalProperties": {
+            "$ref": "#/$defs/McpExposureProfileConfig"
+          },
+          "minProperties": 1,
+          "title": "Exposure Profiles",
+          "type": "object"
+        },
+        "facade": {
+          "$ref": "#/$defs/McpFacadeConfig"
+        },
+        "progress_retention_seconds": {
+          "maximum": 31536000,
+          "minimum": 1,
+          "title": "Progress Retention Seconds",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "exposure_profiles",
+        "facade",
+        "progress_retention_seconds"
+      ],
+      "title": "McpConfig",
+      "type": "object"
+    },
+    "McpConnectionConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Arguments",
+          "type": "array"
+        },
+        "call_timeout_seconds": {
+          "exclusiveMinimum": 0,
+          "maximum": 86400,
+          "title": "Call Timeout Seconds",
+          "type": "number"
+        },
+        "command": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Command"
+        },
+        "connect_timeout_seconds": {
+          "exclusiveMinimum": 0,
+          "maximum": 3600,
+          "title": "Connect Timeout Seconds",
+          "type": "number"
+        },
+        "credential_refs": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CredentialReference"
+          },
+          "title": "Credential Refs",
+          "type": "array"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "endpoint": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Endpoint"
+        },
+        "environment": {
+          "additionalProperties": {
+            "$ref": "#/$defs/CredentialReference"
+          },
+          "title": "Environment",
+          "type": "object"
+        },
+        "exposure_profile": {
+          "minLength": 1,
+          "title": "Exposure Profile",
+          "type": "string"
+        },
+        "max_result_bytes": {
+          "minimum": 1,
+          "title": "Max Result Bytes",
+          "type": "integer"
+        },
+        "network_profile": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Network Profile"
+        },
+        "protocol_strategy": {
+          "$ref": "#/$defs/McpProtocolStrategy"
+        },
+        "protocol_versions": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Protocol Versions",
+          "type": "array"
+        },
+        "transport": {
+          "$ref": "#/$defs/McpTransport"
+        },
+        "trust": {
+          "minLength": 1,
+          "title": "Trust",
+          "type": "string"
+        }
+      },
+      "required": [
+        "transport",
+        "protocol_strategy",
+        "protocol_versions",
+        "trust",
+        "exposure_profile",
+        "connect_timeout_seconds",
+        "call_timeout_seconds",
+        "max_result_bytes"
+      ],
+      "title": "McpConnectionConfig",
+      "type": "object"
+    },
+    "McpExposureProfileConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "operations": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Operations",
+          "type": "array"
+        },
+        "prompts": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Prompts",
+          "type": "array"
+        },
+        "resources": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Resources",
+          "type": "array"
+        }
+      },
+      "required": [
+        "operations"
+      ],
+      "title": "McpExposureProfileConfig",
+      "type": "object"
+    },
+    "McpFacadeConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "exposure_profile": {
+          "minLength": 1,
+          "title": "Exposure Profile",
+          "type": "string"
+        },
+        "stdio_bridge_enabled": {
+          "title": "Stdio Bridge Enabled",
+          "type": "boolean"
+        },
+        "streamable_http_path": {
+          "pattern": "^/[A-Za-z0-9._~!$&'()*+,;=:@%/-]+$",
+          "title": "Streamable Http Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "enabled",
+        "streamable_http_path",
+        "stdio_bridge_enabled",
+        "exposure_profile"
+      ],
+      "title": "McpFacadeConfig",
+      "type": "object"
+    },
+    "McpProtocolStrategy": {
+      "enum": [
+        "pinned",
+        "compatible_set",
+        "isolated_legacy"
+      ],
+      "title": "McpProtocolStrategy",
+      "type": "string"
+    },
+    "McpTransport": {
+      "enum": [
+        "stdio",
+        "streamable_http"
+      ],
+      "title": "McpTransport",
+      "type": "string"
+    },
     "ModelCandidate": {
       "additionalProperties": false,
       "properties": {
@@ -235,6 +641,98 @@
         "candidates"
       ],
       "title": "ModelRoute",
+      "type": "object"
+    },
+    "NetworkProfileConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "allow_link_local": {
+          "title": "Allow Link Local",
+          "type": "boolean"
+        },
+        "allow_loopback": {
+          "title": "Allow Loopback",
+          "type": "boolean"
+        },
+        "allow_multicast": {
+          "title": "Allow Multicast",
+          "type": "boolean"
+        },
+        "allow_private": {
+          "title": "Allow Private",
+          "type": "boolean"
+        },
+        "allow_public": {
+          "title": "Allow Public",
+          "type": "boolean"
+        },
+        "allowed_ports": {
+          "items": {
+            "type": "integer"
+          },
+          "minItems": 1,
+          "title": "Allowed Ports",
+          "type": "array"
+        },
+        "allowed_schemes": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Allowed Schemes",
+          "type": "array"
+        },
+        "connect_timeout_seconds": {
+          "exclusiveMinimum": 0,
+          "maximum": 3600,
+          "title": "Connect Timeout Seconds",
+          "type": "number"
+        },
+        "max_concurrency": {
+          "maximum": 10000,
+          "minimum": 1,
+          "title": "Max Concurrency",
+          "type": "integer"
+        },
+        "max_decompressed_bytes": {
+          "minimum": 1,
+          "title": "Max Decompressed Bytes",
+          "type": "integer"
+        },
+        "max_redirects": {
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Max Redirects",
+          "type": "integer"
+        },
+        "max_response_bytes": {
+          "minimum": 1,
+          "title": "Max Response Bytes",
+          "type": "integer"
+        },
+        "read_timeout_seconds": {
+          "exclusiveMinimum": 0,
+          "maximum": 3600,
+          "title": "Read Timeout Seconds",
+          "type": "number"
+        }
+      },
+      "required": [
+        "allowed_schemes",
+        "allowed_ports",
+        "allow_public",
+        "allow_private",
+        "allow_loopback",
+        "allow_link_local",
+        "allow_multicast",
+        "max_redirects",
+        "connect_timeout_seconds",
+        "read_timeout_seconds",
+        "max_response_bytes",
+        "max_decompressed_bytes",
+        "max_concurrency"
+      ],
+      "title": "NetworkProfileConfig",
       "type": "object"
     },
     "OperatingMode": {
@@ -334,6 +832,16 @@
       ],
       "title": "ProviderConfig",
       "type": "object"
+    },
+    "SearchStrategy": {
+      "enum": [
+        "direct",
+        "aggregate",
+        "verification",
+        "automatic"
+      ],
+      "title": "SearchStrategy",
+      "type": "string"
     },
     "ServiceConfig": {
       "additionalProperties": false,
@@ -465,6 +973,274 @@
       ],
       "title": "SessionProfileConfig",
       "type": "object"
+    },
+    "WebComponentRole": {
+      "enum": [
+        "direct_source",
+        "broker",
+        "composite_gateway",
+        "transport",
+        "extractor",
+        "crawler"
+      ],
+      "title": "WebComponentRole",
+      "type": "string"
+    },
+    "WebConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "cache_ttl_seconds": {
+          "maximum": 31536000,
+          "minimum": 0,
+          "title": "Cache Ttl Seconds",
+          "type": "integer"
+        },
+        "crawlers": {
+          "additionalProperties": {
+            "$ref": "#/$defs/WebCrawlerConfig"
+          },
+          "minProperties": 1,
+          "title": "Crawlers",
+          "type": "object"
+        },
+        "default_crawler": {
+          "minLength": 1,
+          "title": "Default Crawler",
+          "type": "string"
+        },
+        "default_extractor": {
+          "minLength": 1,
+          "title": "Default Extractor",
+          "type": "string"
+        },
+        "default_network_profile": {
+          "minLength": 1,
+          "title": "Default Network Profile",
+          "type": "string"
+        },
+        "default_search_sources": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Default Search Sources",
+          "type": "array"
+        },
+        "default_search_strategy": {
+          "$ref": "#/$defs/SearchStrategy"
+        },
+        "extractors": {
+          "additionalProperties": {
+            "$ref": "#/$defs/WebExtractorConfig"
+          },
+          "minProperties": 1,
+          "title": "Extractors",
+          "type": "object"
+        },
+        "network_profiles": {
+          "additionalProperties": {
+            "$ref": "#/$defs/NetworkProfileConfig"
+          },
+          "minProperties": 1,
+          "title": "Network Profiles",
+          "type": "object"
+        },
+        "sources": {
+          "additionalProperties": {
+            "$ref": "#/$defs/WebSourceConfig"
+          },
+          "minProperties": 1,
+          "title": "Sources",
+          "type": "object"
+        }
+      },
+      "required": [
+        "network_profiles",
+        "sources",
+        "extractors",
+        "crawlers",
+        "default_network_profile",
+        "default_search_strategy",
+        "default_search_sources",
+        "default_extractor",
+        "default_crawler",
+        "cache_ttl_seconds"
+      ],
+      "title": "WebConfig",
+      "type": "object"
+    },
+    "WebCrawlerConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter": {
+          "minLength": 1,
+          "title": "Adapter",
+          "type": "string"
+        },
+        "delay_seconds": {
+          "maximum": 3600,
+          "minimum": 0,
+          "title": "Delay Seconds",
+          "type": "number"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "max_concurrency": {
+          "maximum": 10000,
+          "minimum": 1,
+          "title": "Max Concurrency",
+          "type": "integer"
+        },
+        "max_depth": {
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Max Depth",
+          "type": "integer"
+        },
+        "max_pages": {
+          "maximum": 1000000,
+          "minimum": 1,
+          "title": "Max Pages",
+          "type": "integer"
+        },
+        "network_profile": {
+          "minLength": 1,
+          "title": "Network Profile",
+          "type": "string"
+        },
+        "render_mode": {
+          "minLength": 1,
+          "title": "Render Mode",
+          "type": "string"
+        },
+        "robots_profile": {
+          "minLength": 1,
+          "title": "Robots Profile",
+          "type": "string"
+        },
+        "role": {
+          "$ref": "#/$defs/WebComponentRole"
+        }
+      },
+      "required": [
+        "role",
+        "adapter",
+        "network_profile",
+        "max_depth",
+        "max_pages",
+        "max_concurrency",
+        "delay_seconds",
+        "robots_profile",
+        "render_mode"
+      ],
+      "title": "WebCrawlerConfig",
+      "type": "object"
+    },
+    "WebExtractorConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter": {
+          "minLength": 1,
+          "title": "Adapter",
+          "type": "string"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "max_input_bytes": {
+          "minimum": 1,
+          "title": "Max Input Bytes",
+          "type": "integer"
+        },
+        "output_format": {
+          "minLength": 1,
+          "title": "Output Format",
+          "type": "string"
+        },
+        "role": {
+          "$ref": "#/$defs/WebComponentRole"
+        }
+      },
+      "required": [
+        "role",
+        "adapter",
+        "max_input_bytes",
+        "output_format"
+      ],
+      "title": "WebExtractorConfig",
+      "type": "object"
+    },
+    "WebSourceConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter": {
+          "minLength": 1,
+          "title": "Adapter",
+          "type": "string"
+        },
+        "credential_refs": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CredentialReference"
+          },
+          "title": "Credential Refs",
+          "type": "array"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "endpoint": {
+          "format": "uri",
+          "minLength": 1,
+          "title": "Endpoint",
+          "type": "string"
+        },
+        "max_results": {
+          "maximum": 1000,
+          "minimum": 1,
+          "title": "Max Results",
+          "type": "integer"
+        },
+        "network_profile": {
+          "minLength": 1,
+          "title": "Network Profile",
+          "type": "string"
+        },
+        "reported_upstreams": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reported Upstreams"
+        },
+        "role": {
+          "$ref": "#/$defs/WebComponentRole"
+        }
+      },
+      "required": [
+        "role",
+        "adapter",
+        "endpoint",
+        "network_profile",
+        "max_results"
+      ],
+      "title": "WebSourceConfig",
+      "type": "object"
     }
   },
   "additionalProperties": false,
@@ -481,6 +1257,17 @@
       "anyOf": [
         {
           "$ref": "#/$defs/ArtifactConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "browser": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/BrowserConfig"
         },
         {
           "type": "null"
@@ -521,6 +1308,17 @@
       },
       "title": "Isolation Profiles",
       "type": "array"
+    },
+    "mcp": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/McpConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "mode": {
       "$ref": "#/$defs/OperatingMode"
@@ -596,6 +1394,17 @@
       },
       "title": "Tool Sources",
       "type": "array"
+    },
+    "web": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/WebConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     }
   },
   "required": [

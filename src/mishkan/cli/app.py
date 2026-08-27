@@ -186,14 +186,14 @@ def set_config(
 @config_app.command("migrate")
 def migrate_config(
     ctx: typer.Context,
-    source: Annotated[Path, typer.Option("--file", help="Explicit schema 1.1 YAML source.")],
+    source: Annotated[Path, typer.Option("--file", help="Explicit schema 1.1 or 1.2 YAML source.")],
 ) -> None:
-    """Explicitly migrate one configuration source to schema 1.2."""
-    from mishkan.config.migration import migrate_to_1_2
+    """Explicitly migrate one configuration source to the current schema."""
+    from mishkan.config.migration import migrate_to_latest
 
     state = _state(ctx)
     try:
-        target = migrate_to_1_2(source)
+        target = migrate_to_latest(source)
         effective = ConfigLoader().load([target])
     except MishkanError as error:
         _emit_error(error, as_json=state.json_output)

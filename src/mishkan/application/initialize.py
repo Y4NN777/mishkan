@@ -30,7 +30,7 @@ class MishkanInitializer:
         repository_path: Path,
         objective: str,
     ) -> InitializationReport:
-        if config.schema_version not in {"1.1", "1.2"}:
+        if config.schema_version not in {"1.1", "1.2", "1.3"}:
             raise MishkanError(
                 ErrorCode.VERSION,
                 "governed initialization requires configuration schema 1.1 or 1.2",

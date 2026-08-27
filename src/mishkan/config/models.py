@@ -5,7 +5,15 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Self
 
-from pydantic import AnyUrl, BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    AnyHttpUrl,
+    AnyUrl,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from mishkan.domain.time import validate_timezone
 
@@ -160,6 +168,283 @@ class SessionConfig(StrictConfigModel):
         return self
 
 
+class WebComponentRole(StrEnum):
+    DIRECT_SOURCE = "direct_source"
+    BROKER = "broker"
+    COMPOSITE_GATEWAY = "composite_gateway"
+    TRANSPORT = "transport"
+    EXTRACTOR = "extractor"
+    CRAWLER = "crawler"
+
+
+class SearchStrategy(StrEnum):
+    DIRECT = "direct"
+    AGGREGATE = "aggregate"
+    VERIFICATION = "verification"
+    AUTOMATIC = "automatic"
+
+
+class NetworkProfileConfig(StrictConfigModel):
+    allowed_schemes: tuple[str, ...] = Field(min_length=1)
+    allowed_ports: tuple[int, ...] = Field(min_length=1)
+    allow_public: bool
+    allow_private: bool
+    allow_loopback: bool
+    allow_link_local: bool
+    allow_multicast: bool
+    max_redirects: int = Field(ge=0, le=100)
+    connect_timeout_seconds: float = Field(gt=0, le=3_600)
+    read_timeout_seconds: float = Field(gt=0, le=3_600)
+    max_response_bytes: int = Field(ge=1)
+    max_decompressed_bytes: int = Field(ge=1)
+    max_concurrency: int = Field(ge=1, le=10_000)
+
+    @field_validator("allowed_schemes")
+    @classmethod
+    def schemes_are_explicit(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        normalized = tuple(item.casefold() for item in value)
+        if len(normalized) != len(set(normalized)) or any(
+            not item or not item.isascii() or not item.isalpha() for item in normalized
+        ):
+            raise ValueError("network schemes must be unique ASCII names")
+        return normalized
+
+    @field_validator("allowed_ports")
+    @classmethod
+    def ports_are_explicit(cls, value: tuple[int, ...]) -> tuple[int, ...]:
+        if len(value) != len(set(value)) or any(port < 1 or port > 65_535 for port in value):
+            raise ValueError("network ports must be unique values in the TCP port range")
+        return value
+
+    @model_validator(mode="after")
+    def decompression_bound_covers_wire_bound(self) -> Self:
+        if self.max_decompressed_bytes < self.max_response_bytes:
+            raise ValueError("decompressed response bound cannot be below the wire response bound")
+        return self
+
+
+class WebSourceConfig(StrictConfigModel):
+    role: WebComponentRole
+    adapter: str = Field(min_length=1)
+    endpoint: AnyHttpUrl
+    network_profile: str = Field(min_length=1)
+    credential_refs: tuple[CredentialReference, ...] = ()
+    reported_upstreams: tuple[str, ...] | None = None
+    enabled: bool = True
+    max_results: int = Field(ge=1, le=1_000)
+
+    @model_validator(mode="after")
+    def source_role_is_search_capable(self) -> Self:
+        if self.role not in {
+            WebComponentRole.DIRECT_SOURCE,
+            WebComponentRole.BROKER,
+            WebComponentRole.COMPOSITE_GATEWAY,
+        }:
+            raise ValueError("web search source must declare a search-capable role")
+        return self
+
+
+class WebExtractorConfig(StrictConfigModel):
+    role: WebComponentRole
+    adapter: str = Field(min_length=1)
+    enabled: bool = True
+    max_input_bytes: int = Field(ge=1)
+    output_format: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def role_is_extractor(self) -> Self:
+        if self.role is not WebComponentRole.EXTRACTOR:
+            raise ValueError("web extractor must declare the extractor role")
+        return self
+
+
+class WebCrawlerConfig(StrictConfigModel):
+    role: WebComponentRole
+    adapter: str = Field(min_length=1)
+    network_profile: str = Field(min_length=1)
+    enabled: bool = True
+    max_depth: int = Field(ge=0, le=100)
+    max_pages: int = Field(ge=1, le=1_000_000)
+    max_concurrency: int = Field(ge=1, le=10_000)
+    delay_seconds: float = Field(ge=0, le=3_600)
+    robots_profile: str = Field(min_length=1)
+    render_mode: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def role_is_crawler(self) -> Self:
+        if self.role is not WebComponentRole.CRAWLER:
+            raise ValueError("web crawler must declare the crawler role")
+        return self
+
+
+class WebConfig(StrictConfigModel):
+    network_profiles: dict[str, NetworkProfileConfig] = Field(min_length=1)
+    sources: dict[str, WebSourceConfig] = Field(min_length=1)
+    extractors: dict[str, WebExtractorConfig] = Field(min_length=1)
+    crawlers: dict[str, WebCrawlerConfig] = Field(min_length=1)
+    default_network_profile: str = Field(min_length=1)
+    default_search_strategy: SearchStrategy
+    default_search_sources: tuple[str, ...] = Field(min_length=1)
+    default_extractor: str = Field(min_length=1)
+    default_crawler: str = Field(min_length=1)
+    cache_ttl_seconds: int = Field(ge=0, le=31_536_000)
+
+    @model_validator(mode="after")
+    def references_exist(self) -> Self:
+        missing_profiles = sorted(
+            {
+                self.default_network_profile,
+                *(source.network_profile for source in self.sources.values()),
+                *(crawler.network_profile for crawler in self.crawlers.values()),
+            }
+            - set(self.network_profiles)
+        )
+        missing_sources = sorted(set(self.default_search_sources) - set(self.sources))
+        if missing_profiles or missing_sources:
+            raise ValueError(
+                f"web configuration references unknown profiles/sources: "
+                f"profiles={missing_profiles}, sources={missing_sources}"
+            )
+        if self.default_extractor not in self.extractors:
+            raise ValueError("default web extractor does not exist")
+        if self.default_crawler not in self.crawlers:
+            raise ValueError("default web crawler does not exist")
+        return self
+
+
+class BrowserProfileKind(StrEnum):
+    ISOLATED = "isolated"
+    PROJECT_PERSISTENT = "project_persistent"
+    ATTACHED_EXISTING = "attached_existing"
+
+
+class BrowserProfileConfig(StrictConfigModel):
+    kind: BrowserProfileKind
+    adapter: str = Field(min_length=1)
+    engine: str = Field(min_length=1)
+    network_profile: str = Field(min_length=1)
+    allowed_origins: tuple[str, ...] = Field(min_length=1)
+    sensitivity: str = Field(min_length=1)
+    retention: str = Field(min_length=1)
+    headless: bool
+    max_pages: int = Field(ge=1, le=1_000)
+    action_timeout_seconds: float = Field(gt=0, le=3_600)
+    navigation_timeout_seconds: float = Field(gt=0, le=3_600)
+    user_data_dir: Path | None = None
+    cdp_endpoint: AnyHttpUrl | None = None
+
+    @model_validator(mode="after")
+    def profile_inputs_match_kind(self) -> Self:
+        if self.kind is BrowserProfileKind.PROJECT_PERSISTENT:
+            if self.user_data_dir is None or self.user_data_dir.is_absolute():
+                raise ValueError("persistent browser profile requires a project-relative directory")
+        elif self.user_data_dir is not None:
+            raise ValueError("only persistent browser profiles may declare a user-data directory")
+        if self.kind is BrowserProfileKind.ATTACHED_EXISTING:
+            if self.cdp_endpoint is None:
+                raise ValueError("attached browser profile requires an explicit CDP endpoint")
+        elif self.cdp_endpoint is not None:
+            raise ValueError("only attached browser profiles may declare a CDP endpoint")
+        return self
+
+
+class BrowserConfig(StrictConfigModel):
+    staging_root: Path
+    default_profile: str = Field(min_length=1)
+    profiles: dict[str, BrowserProfileConfig] = Field(min_length=1)
+    observation_ttl_seconds: float = Field(gt=0, le=3_600)
+    max_observation_bytes: int = Field(ge=1)
+    max_diagnostic_entries: int = Field(ge=1, le=1_000_000)
+
+    @field_validator("staging_root")
+    @classmethod
+    def staging_root_is_project_relative(cls, value: Path) -> Path:
+        if value.is_absolute() or not value.parts:
+            raise ValueError("browser staging root must be project-relative")
+        return value
+
+    @model_validator(mode="after")
+    def default_profile_exists(self) -> Self:
+        if self.default_profile not in self.profiles:
+            raise ValueError("default browser profile does not exist")
+        return self
+
+
+class McpTransport(StrEnum):
+    STDIO = "stdio"
+    STREAMABLE_HTTP = "streamable_http"
+
+
+class McpProtocolStrategy(StrEnum):
+    PINNED = "pinned"
+    COMPATIBLE_SET = "compatible_set"
+    ISOLATED_LEGACY = "isolated_legacy"
+
+
+class McpConnectionConfig(StrictConfigModel):
+    transport: McpTransport
+    protocol_strategy: McpProtocolStrategy
+    protocol_versions: tuple[str, ...] = Field(min_length=1)
+    trust: str = Field(min_length=1)
+    exposure_profile: str = Field(min_length=1)
+    credential_refs: tuple[CredentialReference, ...] = ()
+    network_profile: str | None = None
+    endpoint: AnyHttpUrl | None = None
+    command: str | None = None
+    arguments: tuple[str, ...] = ()
+    environment: dict[str, CredentialReference] = Field(default_factory=dict)
+    enabled: bool = True
+    connect_timeout_seconds: float = Field(gt=0, le=3_600)
+    call_timeout_seconds: float = Field(gt=0, le=86_400)
+    max_result_bytes: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def transport_inputs_are_disjoint(self) -> Self:
+        if self.transport is McpTransport.STDIO:
+            if not self.command or self.endpoint is not None or self.network_profile is not None:
+                raise ValueError("STDIO MCP connection requires only an explicit command")
+        elif self.endpoint is None or not self.network_profile or self.command is not None:
+            raise ValueError("Streamable HTTP MCP connection requires endpoint and network profile")
+        if len(self.protocol_versions) != len(set(self.protocol_versions)):
+            raise ValueError("MCP protocol versions must be unique")
+        return self
+
+
+class McpExposureProfileConfig(StrictConfigModel):
+    operations: tuple[str, ...] = Field(min_length=1)
+    resources: tuple[str, ...] = ()
+    prompts: tuple[str, ...] = ()
+
+
+class McpFacadeConfig(StrictConfigModel):
+    enabled: bool
+    streamable_http_path: str = Field(pattern=r"^/[A-Za-z0-9._~!$&'()*+,;=:@%/-]+$")
+    stdio_bridge_enabled: bool
+    exposure_profile: str = Field(min_length=1)
+
+
+class McpConfig(StrictConfigModel):
+    connections: dict[str, McpConnectionConfig] = Field(default_factory=dict)
+    exposure_profiles: dict[str, McpExposureProfileConfig] = Field(min_length=1)
+    facade: McpFacadeConfig
+    progress_retention_seconds: int = Field(ge=1, le=31_536_000)
+
+    @model_validator(mode="after")
+    def references_exist(self) -> Self:
+        missing_exposures = sorted(
+            {
+                self.facade.exposure_profile,
+                *(connection.exposure_profile for connection in self.connections.values()),
+            }
+            - set(self.exposure_profiles)
+        )
+        if missing_exposures:
+            raise ValueError(
+                f"MCP connections reference unknown exposure profiles: {missing_exposures}"
+            )
+        return self
+
+
 class MishkanConfig(StrictConfigModel):
     """Complete effective configuration required before a run can be accepted."""
 
@@ -180,6 +465,9 @@ class MishkanConfig(StrictConfigModel):
     persistence: PersistenceConfig | None = None
     artifacts: ArtifactConfig | None = None
     sessions: SessionConfig | None = None
+    web: WebConfig | None = None
+    browser: BrowserConfig | None = None
+    mcp: McpConfig | None = None
 
     @field_validator("timezone")
     @classmethod
@@ -188,7 +476,7 @@ class MishkanConfig(StrictConfigModel):
 
     @model_validator(mode="after")
     def references_exist(self) -> Self:
-        if self.schema_version == "1.1":
+        if self.schema_version in {"1.1", "1.2", "1.3"}:
             missing = [
                 field
                 for field, value in (
@@ -202,7 +490,7 @@ class MishkanConfig(StrictConfigModel):
                 raise ValueError(
                     f"configuration 1.1 requires governed capability fields: {missing}"
                 )
-        if self.schema_version == "1.2":
+        if self.schema_version in {"1.2", "1.3"}:
             missing_i03 = [
                 field
                 for field, value in (
@@ -215,6 +503,36 @@ class MishkanConfig(StrictConfigModel):
             ]
             if missing_i03:
                 raise ValueError(f"configuration 1.2 requires I03 fields: {missing_i03}")
+        if self.schema_version == "1.3":
+            missing_i04 = [
+                field
+                for field, value in (
+                    ("web", self.web),
+                    ("browser", self.browser),
+                    ("mcp", self.mcp),
+                )
+                if value is None
+            ]
+            if missing_i04:
+                raise ValueError(f"configuration 1.3 requires I04 fields: {missing_i04}")
+            assert self.web is not None
+            assert self.browser is not None
+            assert self.mcp is not None
+            referenced_network_profiles = {
+                profile.network_profile for profile in self.browser.profiles.values()
+            } | {
+                connection.network_profile
+                for connection in self.mcp.connections.values()
+                if connection.network_profile is not None
+            }
+            missing_network_profiles = sorted(
+                referenced_network_profiles - set(self.web.network_profiles)
+            )
+            if missing_network_profiles:
+                raise ValueError(
+                    f"browser/MCP configuration references unknown network profiles: "
+                    f"{missing_network_profiles}"
+                )
 
         missing_providers = sorted(
             {

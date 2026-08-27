@@ -21,12 +21,12 @@ class DaemonPaths:
 
     @classmethod
     def from_config(cls, config: MishkanConfig) -> DaemonPaths:
-        if config.schema_version != "1.2" or not all(
+        if config.schema_version not in {"1.2", "1.3"} or not all(
             (config.daemon, config.persistence, config.artifacts, config.sessions)
         ):
             raise MishkanError(
                 ErrorCode.VERSION,
-                "daemon operation requires configuration schema 1.2",
+                "daemon operation requires configuration schema 1.2 or later",
                 details={"received": config.schema_version, "automatic_migration": False},
             )
         assert config.daemon is not None
