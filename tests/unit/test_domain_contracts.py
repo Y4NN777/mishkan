@@ -78,7 +78,7 @@ def test_error_catalogue_matches_the_srs_namespace() -> None:
     }
 
 
-def test_i03_public_contract_catalogue_exports_deterministically(tmp_path: Path) -> None:
+def test_public_contract_catalogue_exports_deterministically(tmp_path: Path) -> None:
     expected = {
         "application-command-v1.schema.json",
         "artifact-collection-v1.schema.json",
@@ -95,10 +95,16 @@ def test_i03_public_contract_catalogue_exports_deterministically(tmp_path: Path)
         "event-envelope-v1.schema.json",
         "event-page-v1.schema.json",
         "web-citation-evidence-v1.schema.json",
+        "web-crawl-request-v1.schema.json",
+        "web-crawl-result-v1.schema.json",
         "web-extraction-request-v1.schema.json",
         "web-extraction-result-v1.schema.json",
         "web-fetch-request-v1.schema.json",
         "web-fetch-result-v1.schema.json",
+        "web-http-request-v1.schema.json",
+        "web-http-result-v1.schema.json",
+        "web-map-request-v1.schema.json",
+        "web-map-result-v1.schema.json",
         "web-search-request-v1.schema.json",
         "web-search-response-v1.schema.json",
         "session-cursor-read-v1.schema.json",

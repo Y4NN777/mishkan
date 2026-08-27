@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import time
 from collections.abc import Mapping
 from datetime import datetime
 from fnmatch import fnmatchcase
 from urllib.parse import urljoin
 
-from pydantic import AnyHttpUrl
+from pydantic import AnyHttpUrl, ValidationError
 
 from mishkan.artifacts import ArtifactProvenance
 from mishkan.artifacts.service import DurableArtifactService
@@ -17,13 +18,21 @@ from mishkan.config.models import SearchStrategy, WebConfig
 from mishkan.crewai.credentials import CredentialPoolResolver
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.web.adapters import ExtractionAdapter, SearchAdapter
+from mishkan.web.cache import CacheHit, SQLiteWebCache
+from mishkan.web.crawl import NativeWebCrawler
 from mishkan.web.models import (
     CacheDisposition,
     CitationEvidence,
+    CrawlRequest,
+    CrawlResult,
     ExtractionRequest,
     ExtractionResult,
     FetchRequest,
     FetchResult,
+    HttpRequest,
+    HttpResult,
+    MapRequest,
+    MapResult,
     RedirectEvidence,
     RedirectPolicy,
     RouteStatus,
@@ -47,6 +56,7 @@ class WebService:
         extraction_adapters: Mapping[str, ExtractionAdapter],
         transport: HttpxWebTransport | None = None,
         credential_resolver: CredentialPoolResolver | None = None,
+        cache: SQLiteWebCache | None = None,
     ) -> None:
         self._config = config
         self._artifacts = artifacts
@@ -54,9 +64,41 @@ class WebService:
         self._extraction_adapters = dict(extraction_adapters)
         self._transport = transport or HttpxWebTransport()
         self._credentials = credential_resolver or CredentialPoolResolver()
+        self._cache = cache
 
     def search(self, request: SearchRequest) -> SearchResponse:
         source_ids = self._search_sources(request)
+        cache_key = self._cache_key(
+            "search",
+            request.model_dump(
+                mode="json",
+                exclude={"cache", "cache_max_age_seconds", "allow_stale_seconds"},
+            ),
+            {
+                source_id: self._config.sources[source_id].model_dump(mode="json")
+                for source_id in source_ids
+            },
+        )
+        cached = self._cache_get(
+            cache_key,
+            kind="search",
+            enabled=request.cache,
+            allow_stale_seconds=request.allow_stale_seconds,
+        )
+        if cached is not None:
+            try:
+                response = SearchResponse.model_validate_json(cached.payload)
+            except ValidationError:
+                assert self._cache is not None
+                self._cache.delete(cache_key)
+            else:
+                return response.model_copy(
+                    update={
+                        "cache": cached.disposition,
+                        "cached_at": cached.stored_at,
+                        "fresh_until": cached.fresh_until,
+                    }
+                )
         hits: list[SearchHit] = []
         routes: list[SearchRoute] = []
         lost: list[str] = []
@@ -146,22 +188,54 @@ class WebService:
                 },
                 retryable=any(route.status is RouteStatus.FAILED for route in routes),
             )
-        return SearchResponse(
+        cache_unavailable = request.cache and self._cache is None
+        response = SearchResponse(
             query=request.query,
             strategy=request.strategy,
             hits=tuple(hits[: request.limit]),
             routes=tuple(routes),
-            degraded=bool(lost) or any(route.limitation for route in routes),
-            lost_coverage=tuple(lost),
+            degraded=bool(lost) or any(route.limitation for route in routes) or cache_unavailable,
+            lost_coverage=tuple([*lost, "cache"] if cache_unavailable else lost),
+            cache=(
+                CacheDisposition.UNAVAILABLE
+                if cache_unavailable
+                else CacheDisposition.MISS
+                if request.cache
+                else CacheDisposition.BYPASS
+            ),
         )
+        self._cache_put(
+            cache_key,
+            kind="search",
+            value=response,
+            enabled=request.cache,
+            max_age_seconds=request.cache_max_age_seconds,
+        )
+        return response
 
     def fetch(self, request: FetchRequest, context: WebOperationContext) -> FetchResult:
+        result = self._request(request, context, kind="fetch", result_type=FetchResult)
+        if not isinstance(result, FetchResult):
+            raise MishkanError(ErrorCode.WEB, "Web fetch returned the wrong result type")
+        return result
+
+    def request(self, request: HttpRequest, context: WebOperationContext) -> HttpResult:
+        return self._request(request, context, kind="request", result_type=HttpResult)
+
+    def _request(
+        self,
+        request: HttpRequest,
+        context: WebOperationContext,
+        *,
+        kind: str,
+        result_type: type[HttpResult],
+    ) -> HttpResult:
         try:
             profile = self._config.network_profiles[request.network_profile]
         except KeyError as exc:
             raise MishkanError(
                 ErrorCode.WEB,
-                "fetch references an unknown network profile",
+                "Web request references an unknown network profile",
                 details={"network_profile": request.network_profile},
             ) from exc
         unsafe_headers = sorted(
@@ -173,6 +247,35 @@ class WebService:
                 "credential-bearing Web headers require late credential references",
                 details={"headers": unsafe_headers},
             )
+        cache_enabled = request.cache and not request.credential_refs
+        cache_key = self._cache_key(
+            kind,
+            request.model_dump(
+                mode="json",
+                exclude={"cache", "cache_max_age_seconds", "allow_stale_seconds"},
+            ),
+        )
+        cached = self._cache_get(
+            cache_key,
+            kind=kind,
+            enabled=cache_enabled,
+            allow_stale_seconds=request.allow_stale_seconds,
+        )
+        if cached is not None:
+            try:
+                result = result_type.model_validate_json(cached.payload)
+                self._artifacts.manifest(result.artifact_reference)
+            except (ValidationError, MishkanError):
+                assert self._cache is not None
+                self._cache.delete(cache_key)
+            else:
+                return result.model_copy(
+                    update={
+                        "cache": cached.disposition,
+                        "cached_at": cached.stored_at,
+                        "fresh_until": cached.fresh_until,
+                    }
+                )
         current = NetworkGuard(profile).validate_url(str(request.url))
         credential_origin = (
             NetworkGuard(profile).validate_url(request.credential_origin).origin
@@ -259,7 +362,7 @@ class WebService:
             sensitivity=context.sensitivity,
             retention=context.retention,
         )
-        return FetchResult(
+        result = result_type(
             method=request.method,
             requested_url=request.url,
             final_url=AnyHttpUrl(current.value),
@@ -272,8 +375,22 @@ class WebService:
             redirects=tuple(redirects),
             dns_answers=final_exchange.connection.dns_answers,
             connected_address=final_exchange.connection.connected_address,
-            cache=CacheDisposition.MISS if request.cache else CacheDisposition.BYPASS,
+            cache=(
+                CacheDisposition.UNAVAILABLE
+                if cache_enabled and self._cache is None
+                else CacheDisposition.MISS
+                if cache_enabled
+                else CacheDisposition.BYPASS
+            ),
         )
+        self._cache_put(
+            cache_key,
+            kind=kind,
+            value=result,
+            enabled=cache_enabled,
+            max_age_seconds=request.cache_max_age_seconds,
+        )
+        return result
 
     def extract(
         self,
@@ -332,6 +449,48 @@ class WebService:
             spans=(span,),
         )
 
+    def map(self, request: MapRequest, context: WebOperationContext) -> MapResult:
+        result = self._crawl(request, context, operation="map")
+        if not isinstance(result, MapResult):
+            raise MishkanError(ErrorCode.WEB, "Web map adapter returned the wrong result type")
+        return result
+
+    def crawl(self, request: CrawlRequest, context: WebOperationContext) -> CrawlResult:
+        return self._crawl(request, context, operation="crawl")
+
+    def _crawl(
+        self,
+        request: CrawlRequest,
+        context: WebOperationContext,
+        *,
+        operation: str,
+    ) -> CrawlResult | MapResult:
+        try:
+            configured = self._config.crawlers[request.crawler_id]
+        except KeyError as exc:
+            raise MishkanError(
+                ErrorCode.WEB,
+                "crawl references an unknown configured crawler",
+                details={"crawler_id": request.crawler_id},
+            ) from exc
+        if not configured.enabled or configured.adapter != NativeWebCrawler.adapter_id:
+            raise MishkanError(
+                ErrorCode.REQUIRED_DEPENDENCY,
+                "configured crawler adapter is unavailable",
+                details={"adapter": configured.adapter},
+            )
+        return NativeWebCrawler(
+            self,
+            self._artifacts,
+            configured,
+            NetworkGuard(self._config.network_profiles[configured.network_profile]),
+        ).run(
+            request,
+            context,
+            operation=operation,
+            default_extractor=self._config.default_extractor,
+        )
+
     def citation(
         self,
         *,
@@ -381,4 +540,45 @@ class WebService:
             call_id=context.call_id,
             capability=context.capability,
             channel=channel,
+        )
+
+    @staticmethod
+    def _cache_key(kind: str, *payloads: object) -> str:
+        canonical = json.dumps(payloads, sort_keys=True, separators=(",", ":"))
+        return "sha256:" + hashlib.sha256(f"{kind}:{canonical}".encode()).hexdigest()
+
+    def _cache_get(
+        self,
+        key: str,
+        *,
+        kind: str,
+        enabled: bool,
+        allow_stale_seconds: int,
+    ) -> CacheHit | None:
+        if not enabled or self._cache is None:
+            return None
+        return self._cache.get(
+            key,
+            kind=kind,
+            allow_stale_seconds=allow_stale_seconds,
+        )
+
+    def _cache_put(
+        self,
+        key: str,
+        *,
+        kind: str,
+        value: SearchResponse | HttpResult,
+        enabled: bool,
+        max_age_seconds: int | None,
+    ) -> None:
+        if not enabled or self._cache is None:
+            return
+        self._cache.put(
+            key,
+            kind=kind,
+            payload=value.model_dump_json(),
+            ttl_seconds=(
+                self._config.cache_ttl_seconds if max_age_seconds is None else max_age_seconds
+            ),
         )

@@ -1,0 +1,128 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "accepted_media": {
+      "default": [
+        "text/html",
+        "application/xhtml+xml"
+      ],
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Accepted Media",
+      "type": "array"
+    },
+    "allowed_origins": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Allowed Origins",
+      "type": "array"
+    },
+    "cache": {
+      "default": true,
+      "title": "Cache",
+      "type": "boolean"
+    },
+    "crawler_id": {
+      "title": "Crawler Id",
+      "type": "string"
+    },
+    "delay_seconds": {
+      "maximum": 3600,
+      "minimum": 0,
+      "title": "Delay Seconds",
+      "type": "number"
+    },
+    "exclude_patterns": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Exclude Patterns",
+      "type": "array"
+    },
+    "extractor_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Extractor Id"
+    },
+    "include_patterns": {
+      "default": [
+        "*"
+      ],
+      "items": {
+        "type": "string"
+      },
+      "title": "Include Patterns",
+      "type": "array"
+    },
+    "max_concurrency": {
+      "maximum": 10000,
+      "minimum": 1,
+      "title": "Max Concurrency",
+      "type": "integer"
+    },
+    "max_depth": {
+      "maximum": 100,
+      "minimum": 0,
+      "title": "Max Depth",
+      "type": "integer"
+    },
+    "max_pages": {
+      "maximum": 1000000,
+      "minimum": 1,
+      "title": "Max Pages",
+      "type": "integer"
+    },
+    "render_mode": {
+      "minLength": 1,
+      "title": "Render Mode",
+      "type": "string"
+    },
+    "robots_profile": {
+      "minLength": 1,
+      "title": "Robots Profile",
+      "type": "string"
+    },
+    "root_url": {
+      "format": "uri",
+      "minLength": 1,
+      "title": "Root Url",
+      "type": "string"
+    },
+    "schema_version": {
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "stop_after_errors": {
+      "default": 10,
+      "maximum": 1000000,
+      "minimum": 1,
+      "title": "Stop After Errors",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "root_url",
+    "crawler_id",
+    "max_depth",
+    "max_pages",
+    "max_concurrency",
+    "delay_seconds",
+    "robots_profile",
+    "render_mode"
+  ],
+  "title": "MapRequest",
+  "type": "object"
+}

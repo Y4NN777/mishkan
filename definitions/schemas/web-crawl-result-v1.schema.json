@@ -1,0 +1,167 @@
+{
+  "$defs": {
+    "CrawlPage": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_reference": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Artifact Reference"
+        },
+        "depth": {
+          "minimum": 0,
+          "title": "Depth",
+          "type": "integer"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error Code"
+        },
+        "extracted_artifact_reference": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Extracted Artifact Reference"
+        },
+        "limitation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Limitation"
+        },
+        "links": {
+          "default": [],
+          "items": {
+            "format": "uri",
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Links",
+          "type": "array"
+        },
+        "status_code": {
+          "anyOf": [
+            {
+              "maximum": 599,
+              "minimum": 100,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Status Code"
+        },
+        "url": {
+          "format": "uri",
+          "minLength": 1,
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url",
+        "depth"
+      ],
+      "title": "CrawlPage",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "completed_at": {
+      "format": "date-time",
+      "title": "Completed At",
+      "type": "string"
+    },
+    "crawler_id": {
+      "title": "Crawler Id",
+      "type": "string"
+    },
+    "degraded": {
+      "title": "Degraded",
+      "type": "boolean"
+    },
+    "lost_coverage": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Lost Coverage",
+      "type": "array"
+    },
+    "operation": {
+      "default": "crawl",
+      "enum": [
+        "crawl",
+        "map"
+      ],
+      "title": "Operation",
+      "type": "string"
+    },
+    "pages": {
+      "items": {
+        "$ref": "#/$defs/CrawlPage"
+      },
+      "title": "Pages",
+      "type": "array"
+    },
+    "root_url": {
+      "format": "uri",
+      "minLength": 1,
+      "title": "Root Url",
+      "type": "string"
+    },
+    "schema_version": {
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "stop_reason": {
+      "title": "Stop Reason",
+      "type": "string"
+    },
+    "truncated": {
+      "title": "Truncated",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "root_url",
+    "crawler_id",
+    "pages",
+    "truncated",
+    "stop_reason",
+    "degraded"
+  ],
+  "title": "CrawlResult",
+  "type": "object"
+}

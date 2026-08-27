@@ -238,6 +238,16 @@ class ChangeSetRow(Base):
     updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
 
 
+class WebCacheRow(Base):
+    __tablename__ = "web_cache_entries"
+
+    key: Mapped[str] = mapped_column(String(71), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    stored_at: Mapped[str] = mapped_column(String(40), nullable=False)
+    fresh_until: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
 class ChangeOperationRow(Base):
     __tablename__ = "change_operations"
 

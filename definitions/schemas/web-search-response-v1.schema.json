@@ -1,5 +1,16 @@
 {
   "$defs": {
+    "CacheDisposition": {
+      "enum": [
+        "bypass",
+        "miss",
+        "fresh",
+        "stale",
+        "unavailable"
+      ],
+      "title": "CacheDisposition",
+      "type": "string"
+    },
     "RouteStatus": {
       "enum": [
         "completed",
@@ -198,6 +209,23 @@
   },
   "additionalProperties": false,
   "properties": {
+    "cache": {
+      "$ref": "#/$defs/CacheDisposition",
+      "default": "bypass"
+    },
+    "cached_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Cached At"
+    },
     "completed_at": {
       "format": "date-time",
       "title": "Completed At",
@@ -206,6 +234,19 @@
     "degraded": {
       "title": "Degraded",
       "type": "boolean"
+    },
+    "fresh_until": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Fresh Until"
     },
     "hits": {
       "items": {

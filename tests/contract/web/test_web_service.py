@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -27,9 +28,13 @@ from mishkan.web.adapters import (
     SearxngSearchAdapter,
     TrafilaturaExtractionAdapter,
 )
+from mishkan.web.cache import SQLiteWebCache
 from mishkan.web.models import (
+    CrawlRequest,
     ExtractionRequest,
     FetchRequest,
+    HttpRequest,
+    MapRequest,
     RedirectPolicy,
     SearchHit,
     SearchRequest,
@@ -122,7 +127,8 @@ def test_automatic_search_exposes_failed_route_before_compatible_fallback(
     )
 
     assert [route.status.value for route in result.routes] == ["failed", "completed"]
-    assert result.lost_coverage == ("first",)
+    assert result.lost_coverage == ("first", "cache")
+    assert result.cache.value == "unavailable"
     assert result.degraded
     assert result.hits[0].source_id == "second"
 
@@ -228,6 +234,173 @@ def test_plain_credential_header_is_refused_before_transport(tmp_path: Path) -> 
 
     assert caught.value.envelope.code is ErrorCode.SECRET_CONTENT
     assert transport.calls == []
+
+
+def test_stateful_http_request_is_distinct_from_fetch(tmp_path: Path) -> None:
+    transport = RecordingTransport(
+        [_exchange(b'{"updated": true}', headers={"content-type": "application/json"})]
+    )
+    service = WebService(
+        _web_config(),
+        _artifacts(tmp_path),
+        search_adapters={},
+        extraction_adapters={},
+        transport=transport,  # type: ignore[arg-type]
+    )
+    request = HttpRequest(
+        method="POST",
+        url=AnyHttpUrl("https://example.com/items"),
+        network_profile="public-read",
+        accepted_media=("application/json",),
+        redirect_policy=RedirectPolicy.SAME_METHOD,
+        cache=False,
+    )
+
+    result = service.request(request, _context())
+
+    assert result.method == "POST"
+    assert result.cache.value == "bypass"
+    assert transport.calls[0][0] == "POST"
+
+
+def test_fetch_cache_is_persistent_and_reports_freshness(tmp_path: Path) -> None:
+    database = tmp_path / "mishkan.db"
+    artifacts = _artifacts(tmp_path)
+    transport = RecordingTransport([_exchange(b"cache proof")])
+    cache = SQLiteWebCache(database)
+    service = WebService(
+        _web_config(),
+        artifacts,
+        search_adapters={},
+        extraction_adapters={},
+        transport=transport,  # type: ignore[arg-type]
+        cache=cache,
+    )
+    request = FetchRequest(
+        method="GET",
+        url=AnyHttpUrl("https://example.com/cache"),
+        network_profile="public-read",
+        redirect_policy=RedirectPolicy.SAFE_GET_HEAD,
+    )
+
+    first = service.fetch(request, _context())
+    second = service.fetch(request, _context())
+
+    assert first.cache.value == "miss"
+    assert second.cache.value == "fresh"
+    assert second.cached_at is not None
+    assert second.fresh_until is not None
+    assert second.artifact_reference == first.artifact_reference
+    assert len(transport.calls) == 1
+
+
+def test_cache_staleness_is_explicit_and_bounded(tmp_path: Path) -> None:
+    database = tmp_path / "mishkan.db"
+    SchemaManager(database).initialize()
+    cache = SQLiteWebCache(database)
+    now = utc_now()
+    cache.put("sha256:" + "a" * 64, kind="fixture", payload="{}", ttl_seconds=5, now=now)
+
+    stale = cache.get(
+        "sha256:" + "a" * 64,
+        kind="fixture",
+        allow_stale_seconds=10,
+        now=now + timedelta(seconds=6),
+    )
+    expired = cache.get(
+        "sha256:" + "a" * 64,
+        kind="fixture",
+        allow_stale_seconds=10,
+        now=now + timedelta(seconds=16),
+    )
+
+    assert stale is not None and stale.disposition.value == "stale"
+    assert expired is None
+
+
+def test_cache_replacement_pruning_and_kind_separation_are_durable(tmp_path: Path) -> None:
+    database = tmp_path / "mishkan.db"
+    SchemaManager(database).initialize()
+    cache = SQLiteWebCache(database)
+    key = "sha256:" + "b" * 64
+    now = utc_now()
+    cache.put(key, kind="search", payload='{"value": 1}', ttl_seconds=1, now=now)
+    cache.put(key, kind="search", payload='{"value": 2}', ttl_seconds=1, now=now)
+
+    assert cache.get(key, kind="fetch", allow_stale_seconds=0, now=now) is None
+    current = cache.get(key, kind="search", allow_stale_seconds=0, now=now)
+    assert current is not None and current.payload == '{"value": 2}'
+    assert cache.prune(before=now + timedelta(seconds=2)) == 1
+    assert cache.prune(before=now + timedelta(seconds=2)) == 0
+    cache.delete(key)
+
+
+def test_map_is_origin_scoped_and_stops_at_the_declared_page_bound(tmp_path: Path) -> None:
+    base = _web_config()
+    crawler = base.crawlers["bounded-http"].model_copy(
+        update={"robots_profile": "ignore", "delay_seconds": 0.0}
+    )
+    config = base.model_copy(update={"crawlers": {"bounded-http": crawler}})
+    transport = RecordingTransport(
+        [
+            _exchange(
+                b'<html><body><a href="/two">two</a>'
+                b'<a href="https://outside.example/escape">outside</a></body></html>'
+            ),
+            _exchange(b"<html><body>second page</body></html>"),
+        ]
+    )
+    service = WebService(
+        config,
+        _artifacts(tmp_path),
+        search_adapters={},
+        extraction_adapters={},
+        transport=transport,  # type: ignore[arg-type]
+    )
+    request = MapRequest(
+        root_url=AnyHttpUrl("https://example.com/root"),
+        crawler_id="bounded-http",
+        max_depth=2,
+        max_pages=2,
+        max_concurrency=1,
+        delay_seconds=0,
+        robots_profile="ignore",
+        render_mode="http",
+    )
+
+    result = service.map(request, _context())
+
+    assert result.operation == "map"
+    assert [str(page.url) for page in result.pages] == [
+        "https://example.com/root",
+        "https://example.com/two",
+    ]
+    assert all("outside.example" not in call[1] for call in transport.calls)
+
+
+def test_crawl_refuses_request_bounds_above_configured_profile(tmp_path: Path) -> None:
+    service = WebService(
+        _web_config(),
+        _artifacts(tmp_path),
+        search_adapters={},
+        extraction_adapters={},
+    )
+    request = CrawlRequest(
+        root_url=AnyHttpUrl("https://example.com/root"),
+        crawler_id="bounded-http",
+        max_depth=4,
+        max_pages=1,
+        max_concurrency=1,
+        delay_seconds=0.25,
+        robots_profile="respect",
+        render_mode="http",
+    )
+
+    with pytest.raises(MishkanError) as caught:
+        service.crawl(request, _context())
+
+    assert caught.value.envelope.code is ErrorCode.WEB
+    assert "max_depth" in caught.value.envelope.details["bounds"]
 
 
 def test_searxng_broker_preserves_observed_upstreams_and_source_score() -> None:

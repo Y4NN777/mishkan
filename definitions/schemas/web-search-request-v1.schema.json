@@ -13,6 +13,32 @@
   },
   "additionalProperties": false,
   "properties": {
+    "allow_stale_seconds": {
+      "default": 0,
+      "maximum": 31536000,
+      "minimum": 0,
+      "title": "Allow Stale Seconds",
+      "type": "integer"
+    },
+    "cache": {
+      "default": true,
+      "title": "Cache",
+      "type": "boolean"
+    },
+    "cache_max_age_seconds": {
+      "anyOf": [
+        {
+          "maximum": 31536000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Cache Max Age Seconds"
+    },
     "language": {
       "anyOf": [
         {

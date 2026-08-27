@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -27,6 +27,7 @@ class CacheDisposition(StrEnum):
     MISS = "miss"
     FRESH = "fresh"
     STALE = "stale"
+    UNAVAILABLE = "unavailable"
 
 
 class RedirectPolicy(StrEnum):
@@ -44,6 +45,9 @@ class SearchRequest(WebModel):
     language: str | None = Field(default=None, min_length=2, max_length=35)
     time_range: str | None = Field(default=None, pattern=r"^(day|month|year)$")
     safe_search: int = Field(default=1, ge=0, le=2)
+    cache: bool = True
+    cache_max_age_seconds: int | None = Field(default=None, ge=0, le=31_536_000)
+    allow_stale_seconds: int = Field(default=0, ge=0, le=31_536_000)
 
     @field_validator("source_ids")
     @classmethod
@@ -90,10 +94,18 @@ class SearchResponse(WebModel):
     routes: tuple[SearchRoute, ...]
     degraded: bool
     lost_coverage: tuple[str, ...] = ()
+    cache: CacheDisposition = CacheDisposition.BYPASS
+    cached_at: datetime | None = None
+    fresh_until: datetime | None = None
     completed_at: datetime = Field(default_factory=utc_now)
 
+    @field_validator("cached_at", "fresh_until")
+    @classmethod
+    def cache_times_are_aware(cls, value: datetime | None) -> datetime | None:
+        return require_aware(value) if value is not None else None
 
-class FetchRequest(WebModel):
+
+class HttpRequest(WebModel):
     schema_version: str = "1.0"
     method: str = Field(pattern=r"^[A-Z]+$")
     url: AnyHttpUrl
@@ -108,6 +120,8 @@ class FetchRequest(WebModel):
     redirect_policy: RedirectPolicy
     timeout_seconds: float | None = Field(default=None, gt=0, le=3_600)
     cache: bool = True
+    cache_max_age_seconds: int | None = Field(default=None, ge=0, le=31_536_000)
+    allow_stale_seconds: int = Field(default=0, ge=0, le=31_536_000)
 
     @field_validator("headers")
     @classmethod
@@ -120,13 +134,17 @@ class FetchRequest(WebModel):
         return value
 
     @model_validator(mode="after")
-    def credential_binding_is_complete(self) -> FetchRequest:
+    def credential_binding_is_complete(self) -> HttpRequest:
         declared = bool(self.credential_refs)
         if declared != bool(self.credential_origin and self.credential_header):
             raise ValueError(
                 "web credential references require an exact origin and injection header"
             )
         return self
+
+
+class FetchRequest(HttpRequest):
+    method: Literal["GET", "HEAD"] = "GET"
 
 
 class WebOperationContext(WebModel):
@@ -148,7 +166,7 @@ class RedirectEvidence(WebModel):
     connected_address: str
 
 
-class FetchResult(WebModel):
+class HttpResult(WebModel):
     schema_version: str = "1.0"
     method: str
     requested_url: AnyHttpUrl
@@ -164,6 +182,17 @@ class FetchResult(WebModel):
     connected_address: str
     cache: CacheDisposition
     retrieved_at: datetime = Field(default_factory=utc_now)
+    cached_at: datetime | None = None
+    fresh_until: datetime | None = None
+
+    @field_validator("retrieved_at", "cached_at", "fresh_until")
+    @classmethod
+    def result_times_are_aware(cls, value: datetime | None) -> datetime | None:
+        return require_aware(value) if value is not None else None
+
+
+class FetchResult(HttpResult):
+    method: Literal["GET", "HEAD"]
 
 
 class ExtractionRequest(WebModel):
@@ -210,3 +239,63 @@ class CitationEvidence(WebModel):
     @classmethod
     def retrieval_time_is_aware(cls, value: datetime) -> datetime:
         return require_aware(value)
+
+
+class CrawlRequest(WebModel):
+    schema_version: str = "1.0"
+    root_url: AnyHttpUrl
+    crawler_id: str
+    allowed_origins: tuple[str, ...] = ()
+    include_patterns: tuple[str, ...] = ("*",)
+    exclude_patterns: tuple[str, ...] = ()
+    max_depth: int = Field(ge=0, le=100)
+    max_pages: int = Field(ge=1, le=1_000_000)
+    max_concurrency: int = Field(ge=1, le=10_000)
+    delay_seconds: float = Field(ge=0, le=3_600)
+    robots_profile: str = Field(min_length=1)
+    render_mode: str = Field(min_length=1)
+    stop_after_errors: int = Field(default=10, ge=1, le=1_000_000)
+    accepted_media: tuple[str, ...] = Field(
+        default=("text/html", "application/xhtml+xml"), min_length=1
+    )
+    cache: bool = True
+    extractor_id: str | None = None
+
+    @field_validator("allowed_origins")
+    @classmethod
+    def origins_are_unique(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if len(value) != len(set(value)):
+            raise ValueError("crawl origins must be unique")
+        return value
+
+
+class MapRequest(CrawlRequest):
+    pass
+
+
+class CrawlPage(WebModel):
+    url: AnyHttpUrl
+    depth: int = Field(ge=0)
+    status_code: int | None = Field(default=None, ge=100, le=599)
+    artifact_reference: str | None = None
+    extracted_artifact_reference: str | None = None
+    links: tuple[AnyHttpUrl, ...] = ()
+    error_code: str | None = None
+    limitation: str | None = None
+
+
+class CrawlResult(WebModel):
+    schema_version: str = "1.0"
+    root_url: AnyHttpUrl
+    crawler_id: str
+    operation: Literal["crawl", "map"] = "crawl"
+    pages: tuple[CrawlPage, ...]
+    truncated: bool
+    stop_reason: str
+    degraded: bool
+    lost_coverage: tuple[str, ...] = ()
+    completed_at: datetime = Field(default_factory=utc_now)
+
+
+class MapResult(CrawlResult):
+    operation: Literal["map"] = "map"

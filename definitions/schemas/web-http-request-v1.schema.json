@@ -136,11 +136,7 @@
       "type": "object"
     },
     "method": {
-      "default": "GET",
-      "enum": [
-        "GET",
-        "HEAD"
-      ],
+      "pattern": "^[A-Z]+$",
       "title": "Method",
       "type": "string"
     },
@@ -178,10 +174,11 @@
     }
   },
   "required": [
+    "method",
     "url",
     "network_profile",
     "redirect_policy"
   ],
-  "title": "FetchRequest",
+  "title": "HttpRequest",
   "type": "object"
 }
