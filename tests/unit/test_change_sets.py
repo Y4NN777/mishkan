@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Callable
 from pathlib import Path
 from uuid import uuid4
 
@@ -23,7 +24,7 @@ from mishkan.persistence import SchemaManager
 def _services(
     tmp_path: Path,
     *,
-    hook=None,  # type: ignore[no-untyped-def]
+    hook: Callable[[int], None] | None = None,
 ) -> tuple[ChangeSetService, DurableArtifactService, Path]:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -81,7 +82,7 @@ def test_create_and_exact_replace_are_verified_and_journaled(tmp_path: Path) -> 
     assert (workspace / "app.txt").read_text() == "hello MISHKAN"
 
 
-def test_ambiguous_replace_is_a_conflict_without_mutation(tmp_path: Path) -> None:
+def test_unified_patch_with_stale_context_is_a_conflict_without_mutation(tmp_path: Path) -> None:
     service, _artifacts, workspace = _services(tmp_path)
     target = workspace / "app.txt"
     target.write_text("x x")
@@ -94,9 +95,7 @@ def test_ambiguous_replace_is_a_conflict_without_mutation(tmp_path: Path) -> Non
                 path="app.txt",
                 precondition=PreconditionKind.DIGEST,
                 precondition_value=_digest(b"x x"),
-                match="x",
-                replacement="y",
-                expected_occurrences=1,
+                patch="--- a/app.txt\n+++ b/app.txt\n@@ -1 +1 @@\n-x y\n+y y\n",
             ),
         ),
     )
@@ -104,6 +103,48 @@ def test_ambiguous_replace_is_a_conflict_without_mutation(tmp_path: Path) -> Non
 
     assert service.apply(change.id).state is ChangeSetState.CONFLICT
     assert target.read_text() == "x x"
+
+
+def test_exact_unified_patch_applies_multiple_hunks_without_fuzzy_matching(
+    tmp_path: Path,
+) -> None:
+    service, artifacts, workspace = _services(tmp_path)
+    target = workspace / "app.txt"
+    target.write_text("one\ntwo\nthree\nfour\n")
+    expected = b"ONE\ntwo\nthree\nFOUR\n"
+    change = ChangeSet(
+        scope="workspace",
+        declared_effects=("filesystem.write",),
+        operations=(
+            ChangeOperation(
+                kind=ChangeOperationKind.PATCH,
+                path="app.txt",
+                precondition=PreconditionKind.DIGEST,
+                precondition_value=_digest(target.read_bytes()),
+                patch=(
+                    "--- a/app.txt\n"
+                    "+++ b/app.txt\n"
+                    "@@ -1,2 +1,2 @@\n"
+                    "-one\n"
+                    "+ONE\n"
+                    " two\n"
+                    "@@ -3,2 +3,2 @@\n"
+                    " three\n"
+                    "-four\n"
+                    "+FOUR\n"
+                ),
+                expected_digest=_digest(expected),
+            ),
+        ),
+    )
+
+    service.plan(change)
+    result = service.apply(change.id)
+
+    assert result.state is ChangeSetState.VERIFIED
+    assert target.read_bytes() == expected
+    assert result.diff_reference is not None
+    assert b"+FOUR" in artifacts.read_bytes(result.diff_reference)
 
 
 def test_crash_after_effect_is_reconciled_without_reapplying(tmp_path: Path) -> None:

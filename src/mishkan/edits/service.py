@@ -6,6 +6,7 @@ import difflib
 import hashlib
 import json
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -286,7 +287,11 @@ class ChangeSetService:
             return operation.inline_content.encode()
         if operation.artifact_reference is not None:
             return self._artifacts.read_bytes(operation.artifact_reference)
-        if operation.kind in {ChangeOperationKind.REPLACE, ChangeOperationKind.PATCH}:
+        if operation.kind is ChangeOperationKind.PATCH:
+            if before is None or operation.patch is None:
+                raise MishkanError(ErrorCode.REVISION_MISMATCH, "exact patch target is absent")
+            return self._apply_unified_patch(before, operation.patch, operation.path)
+        if operation.kind is ChangeOperationKind.REPLACE:
             if before is None:
                 raise MishkanError(
                     ErrorCode.REVISION_MISMATCH, "exact replacement target is absent"
@@ -302,6 +307,83 @@ class ChangeSetService:
                 )
             return before.replace(match, replacement)
         return None
+
+    @staticmethod
+    def _apply_unified_patch(before: bytes, patch: str, logical_path: str) -> bytes:
+        try:
+            source = before.decode("utf-8").splitlines(keepends=True)
+        except UnicodeDecodeError as exc:
+            raise MishkanError(
+                ErrorCode.EDIT, "unified patch target must be valid UTF-8 text"
+            ) from exc
+        lines = patch.splitlines(keepends=True)
+        if len(lines) < 3 or not lines[0].startswith("--- ") or not lines[1].startswith("+++ "):
+            raise MishkanError(ErrorCode.EDIT, "unified patch requires exact file headers")
+        ChangeSetService._require_patch_path(lines[0][4:], logical_path)
+        ChangeSetService._require_patch_path(lines[1][4:], logical_path)
+        hunk = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(?: .*)?$")
+        output: list[str] = []
+        cursor = 0
+        index = 2
+        hunks = 0
+        while index < len(lines):
+            header = lines[index].rstrip("\r\n")
+            match = hunk.fullmatch(header)
+            if match is None:
+                raise MishkanError(ErrorCode.EDIT, "unified patch contains data outside a hunk")
+            hunks += 1
+            old_start = int(match.group(1))
+            old_count = int(match.group(2) or "1")
+            new_count = int(match.group(4) or "1")
+            if old_start < 1 or old_start - 1 < cursor or old_start - 1 > len(source):
+                raise MishkanError(
+                    ErrorCode.REVISION_MISMATCH, "unified patch hunk position differs"
+                )
+            output.extend(source[cursor : old_start - 1])
+            cursor = old_start - 1
+            consumed_old = 0
+            produced_new = 0
+            index += 1
+            while index < len(lines) and not lines[index].startswith("@@ "):
+                line = lines[index]
+                if not line or line[0] not in {" ", "+", "-"}:
+                    raise MishkanError(ErrorCode.EDIT, "unified patch hunk line is invalid")
+                prefix = line[0]
+                value = line[1:]
+                if index + 1 < len(lines) and lines[index + 1].rstrip("\r\n") == (
+                    "\\ No newline at end of file"
+                ):
+                    value = value.rstrip("\r\n")
+                    index += 1
+                if prefix in {" ", "-"}:
+                    if cursor >= len(source) or source[cursor] != value:
+                        raise MishkanError(
+                            ErrorCode.REVISION_MISMATCH,
+                            "unified patch context differs from the exact target",
+                        )
+                    cursor += 1
+                    consumed_old += 1
+                if prefix in {" ", "+"}:
+                    output.append(value)
+                    produced_new += 1
+                index += 1
+            if consumed_old != old_count or produced_new != new_count:
+                raise MishkanError(ErrorCode.EDIT, "unified patch hunk counts are inconsistent")
+        if hunks == 0:
+            raise MishkanError(ErrorCode.EDIT, "unified patch contains no hunks")
+        output.extend(source[cursor:])
+        return "".join(output).encode("utf-8")
+
+    @staticmethod
+    def _require_patch_path(header: str, logical_path: str) -> None:
+        candidate = header.rstrip("\r\n").split("\t", 1)[0]
+        if candidate.startswith(("a/", "b/")):
+            candidate = candidate[2:]
+        if candidate != logical_path:
+            raise MishkanError(
+                ErrorCode.AUTHORITY_NOT_GRANTED,
+                "unified patch header differs from the authorized logical path",
+            )
 
     def _check_precondition(self, operation: ChangeOperation, path: Path) -> None:
         token = self._token(path)

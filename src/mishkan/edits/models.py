@@ -56,6 +56,7 @@ class ChangeOperation(DomainRecord):
     match: str | None = None
     replacement: str | None = None
     expected_occurrences: int | None = Field(default=None, ge=0)
+    patch: str | None = None
     expected_digest: str | None = None
     rewrite_engine: str | None = None
     rewrite_version: str | None = None
@@ -76,10 +77,18 @@ class ChangeOperation(DomainRecord):
         }
         if self.kind in content_kinds and sources != 1:
             raise ValueError("content operation requires exactly one content source")
-        if self.kind in {ChangeOperationKind.REPLACE, ChangeOperationKind.PATCH} and (
+        if self.kind is ChangeOperationKind.REPLACE and (
             self.match is None or self.replacement is None or self.expected_occurrences is None
         ):
-            raise ValueError("replace and patch require exact match, replacement, and count")
+            raise ValueError("replace requires exact match, replacement, and count")
+        if self.kind is ChangeOperationKind.PATCH and not self.patch:
+            raise ValueError("patch requires one non-empty unified diff")
+        if self.kind is ChangeOperationKind.PATCH and any(
+            value is not None for value in (self.match, self.replacement, self.expected_occurrences)
+        ):
+            raise ValueError("patch cannot also declare replacement fields")
+        if self.kind is not ChangeOperationKind.PATCH and self.patch is not None:
+            raise ValueError("unified diff content is accepted only by patch operations")
         if self.kind in {ChangeOperationKind.MOVE, ChangeOperationKind.COPY}:
             if self.destination is None:
                 raise ValueError("move and copy require a destination")
