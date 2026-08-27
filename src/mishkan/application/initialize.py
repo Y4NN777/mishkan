@@ -1,8 +1,10 @@
 """Repository initialization application service."""
 
+from dataclasses import replace
 from pathlib import Path
 
-from mishkan.artifacts import FilesystemArtifactStore
+from mishkan.artifacts import ArtifactStore, FilesystemArtifactStore
+from mishkan.artifacts.service import DurableArtifactService
 from mishkan.config.models import MishkanConfig
 from mishkan.crewai.environment import configure_crewai_environment
 from mishkan.domain.errors import ErrorCode, MishkanError
@@ -14,6 +16,7 @@ from mishkan.policy import PolicyAuthority, PolicyLoader
 from mishkan.repository import RepositoryInspector
 from mishkan.tools.catalog import ToolCatalog
 from mishkan.tools.gateway import CapabilityGateway, MappingCredentialResolver
+from mishkan.tools.i04_runtime import I04CapabilityRuntime, build_i04_capability_runtime
 from mishkan.tools.inspection import ContentInspector, InspectionProfileLoader
 from mishkan.tools.isolation import IsolationProfileLoader
 from mishkan.tools.native import (
@@ -49,12 +52,6 @@ class MishkanInitializer:
         SchemaManager(database).initialize_if_empty()
         state_repository = LocalRunRepository(database)
         native_environment = discover_native_environment()
-        catalog = ToolCatalog(
-            config.tool_sources,
-            discovery.binding.root,
-            available_dependencies=native_environment.dependencies,
-            available_adapters=native_environment.adapter_ids,
-        )
         policy = PolicyLoader().load(config.policy_sources, discovery.binding.root)
         inspection_source = config.inspection_profile
         if inspection_source is None:
@@ -64,6 +61,37 @@ class MishkanInitializer:
             )
         inspector = ContentInspector(
             InspectionProfileLoader().load(inspection_source, discovery.binding.root)
+        )
+        runtime: I04CapabilityRuntime | None = None
+        artifact_store: ArtifactStore
+        available_environment = native_environment
+        if config.schema_version == "1.3":
+            artifact_config = config.artifacts
+            assert artifact_config is not None
+            durable_artifacts = DurableArtifactService(
+                database,
+                discovery.binding.root / artifact_config.root,
+                max_artifact_bytes=artifact_config.max_artifact_bytes,
+                max_chunk_bytes=artifact_config.chunk_bytes,
+            )
+            runtime = build_i04_capability_runtime(
+                config,
+                database,
+                discovery.binding.root,
+                durable_artifacts,
+                inspector,
+            )
+            artifact_store = durable_artifacts
+            available_environment = replace(
+                native_environment,
+                adapter_ids=native_environment.adapter_ids | runtime.adapter_ids,
+                dependencies=native_environment.dependencies | runtime.dependencies,
+            )
+        catalog = ToolCatalog(
+            config.tool_sources,
+            discovery.binding.root,
+            available_dependencies=available_environment.dependencies,
+            available_adapters=available_environment.adapter_ids,
         )
         isolation_loader = IsolationProfileLoader()
         isolation_profiles = tuple(
@@ -78,7 +106,9 @@ class MishkanInitializer:
             )
         authority = PolicyAuthority()
         contracts = available_contracts(catalog, outcome.allowed_tools)
-        adapters = build_native_adapters(catalog, outcome.allowed_tools, native_environment)
+        adapters = dict(build_native_adapters(catalog, outcome.allowed_tools, native_environment))
+        if runtime is not None:
+            adapters.update(runtime.adapters)
         artifact_limit = max(
             (
                 value
@@ -87,6 +117,11 @@ class MishkanInitializer:
             ),
             default=1,
         )
+        if runtime is None:
+            artifact_store = FilesystemArtifactStore(
+                discovery.binding.root / ".mishkan" / "artifacts",
+                max_artifact_bytes=artifact_limit,
+            )
         gateway = CapabilityGateway(
             discovery.binding.root,
             authority,
@@ -94,10 +129,7 @@ class MishkanInitializer:
             inspector,
             adapters,
             state_repository,
-            artifact_store=FilesystemArtifactStore(
-                discovery.binding.root / ".mishkan" / "artifacts",
-                max_artifact_bytes=artifact_limit,
-            ),
+            artifact_store=artifact_store,
         )
         snapshot = state_repository.start_or_resume(discovery, objective, outcome.outcome_id)
         state = InitializationFlowState(
@@ -133,7 +165,11 @@ class MishkanInitializer:
             ),
             tracing=config.crewai.tracing,
         )
-        output = flow.kickoff()
+        try:
+            output = flow.kickoff()
+        finally:
+            if runtime is not None:
+                runtime.close()
         if not isinstance(output, InitializationReport):
             return InitializationReport.model_validate(output)
         return output

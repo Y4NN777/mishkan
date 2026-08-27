@@ -663,3 +663,84 @@ class PlaywrightChromiumDriver:
             return str(url.copy_with(query=None, fragment=None, userinfo=b""))
         except (TypeError, ValueError):
             return "[INVALID_URL]"
+
+
+class LazyPlaywrightChromiumDriver:
+    """Start Playwright only when an accepted Browser call reaches dispatch."""
+
+    adapter_id = PlaywrightChromiumDriver.adapter_id
+
+    def __init__(
+        self,
+        network_profiles: Mapping[str, NetworkProfileConfig],
+        *,
+        resolver: Resolver | None = None,
+    ) -> None:
+        self._network_profiles = dict(network_profiles)
+        self._resolver = resolver
+        self._lock = threading.Lock()
+        self._driver: PlaywrightChromiumDriver | None = None
+
+    def open(
+        self,
+        profile: BrowserProfileConfig,
+        *,
+        workspace: str,
+        initial_url: str | None,
+    ) -> DriverSession:
+        return self._instance().open(
+            profile,
+            workspace=workspace,
+            initial_url=initial_url,
+        )
+
+    def observe(
+        self,
+        handle: str,
+        page_id: str,
+        *,
+        screenshot: bool,
+    ) -> DriverObservation:
+        return self._instance().observe(handle, page_id, screenshot=screenshot)
+
+    def act(
+        self,
+        handle: str,
+        request: BrowserActionRequest,
+        target: BrowserTarget | None,
+    ) -> DriverActionOutcome:
+        return self._instance().act(handle, request, target)
+
+    def diagnostics(
+        self,
+        handle: str,
+        page_id: str,
+        channels: tuple[str, ...],
+        cursor: int,
+        limit: int,
+    ) -> DriverDiagnostics:
+        return self._instance().diagnostics(handle, page_id, channels, cursor, limit)
+
+    def close(self, handle: str) -> None:
+        self._instance().close(handle)
+
+    def shutdown(self) -> None:
+        with self._lock:
+            driver = self._driver
+            self._driver = None
+        if driver is not None:
+            driver.shutdown()
+
+    @property
+    def started(self) -> bool:
+        with self._lock:
+            return self._driver is not None
+
+    def _instance(self) -> PlaywrightChromiumDriver:
+        with self._lock:
+            if self._driver is None:
+                self._driver = PlaywrightChromiumDriver(
+                    self._network_profiles,
+                    resolver=self._resolver,
+                )
+            return self._driver
