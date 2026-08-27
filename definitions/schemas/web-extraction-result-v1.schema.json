@@ -1,0 +1,135 @@
+{
+  "$defs": {
+    "SourceSpan": {
+      "additionalProperties": false,
+      "properties": {
+        "end": {
+          "minimum": 0,
+          "title": "End",
+          "type": "integer"
+        },
+        "start": {
+          "minimum": 0,
+          "title": "Start",
+          "type": "integer"
+        },
+        "text_hash": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Text Hash",
+          "type": "string"
+        }
+      },
+      "required": [
+        "start",
+        "end",
+        "text_hash"
+      ],
+      "title": "SourceSpan",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "canonical_url": {
+      "anyOf": [
+        {
+          "format": "uri",
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Canonical Url"
+    },
+    "configuration_fingerprint": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Configuration Fingerprint",
+      "type": "string"
+    },
+    "engine_version": {
+      "title": "Engine Version",
+      "type": "string"
+    },
+    "extracted_at": {
+      "format": "date-time",
+      "title": "Extracted At",
+      "type": "string"
+    },
+    "extractor_id": {
+      "title": "Extractor Id",
+      "type": "string"
+    },
+    "input_artifact_reference": {
+      "title": "Input Artifact Reference",
+      "type": "string"
+    },
+    "input_digest": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Input Digest",
+      "type": "string"
+    },
+    "output_artifact_reference": {
+      "title": "Output Artifact Reference",
+      "type": "string"
+    },
+    "output_digest": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Output Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "source_url": {
+      "format": "uri",
+      "minLength": 1,
+      "title": "Source Url",
+      "type": "string"
+    },
+    "spans": {
+      "items": {
+        "$ref": "#/$defs/SourceSpan"
+      },
+      "title": "Spans",
+      "type": "array"
+    },
+    "title": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Title"
+    },
+    "warnings": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Warnings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "input_artifact_reference",
+    "input_digest",
+    "source_url",
+    "extractor_id",
+    "engine_version",
+    "configuration_fingerprint",
+    "output_artifact_reference",
+    "output_digest",
+    "spans"
+  ],
+  "title": "ExtractionResult",
+  "type": "object"
+}

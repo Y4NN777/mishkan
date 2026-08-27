@@ -198,6 +198,7 @@ class NetworkProfileConfig(StrictConfigModel):
     max_response_bytes: int = Field(ge=1)
     max_decompressed_bytes: int = Field(ge=1)
     max_concurrency: int = Field(ge=1, le=10_000)
+    credential_header_names: tuple[str, ...] = Field(min_length=1)
 
     @field_validator("allowed_schemes")
     @classmethod
@@ -215,6 +216,14 @@ class NetworkProfileConfig(StrictConfigModel):
         if len(value) != len(set(value)) or any(port < 1 or port > 65_535 for port in value):
             raise ValueError("network ports must be unique values in the TCP port range")
         return value
+
+    @field_validator("credential_header_names")
+    @classmethod
+    def credential_headers_are_explicit(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        normalized = tuple(item.casefold() for item in value)
+        if len(normalized) != len(set(normalized)) or any(not item for item in normalized):
+            raise ValueError("credential header names must be non-empty and unique")
+        return normalized
 
     @model_validator(mode="after")
     def decompression_bound_covers_wire_bound(self) -> Self:

@@ -688,6 +688,14 @@
           "title": "Connect Timeout Seconds",
           "type": "number"
         },
+        "credential_header_names": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Credential Header Names",
+          "type": "array"
+        },
         "max_concurrency": {
           "maximum": 10000,
           "minimum": 1,
@@ -730,7 +738,8 @@
         "read_timeout_seconds",
         "max_response_bytes",
         "max_decompressed_bytes",
-        "max_concurrency"
+        "max_concurrency",
+        "credential_header_names"
       ],
       "title": "NetworkProfileConfig",
       "type": "object"

@@ -70,6 +70,7 @@ web:
       max_response_bytes: 16777216
       max_decompressed_bytes: 67108864
       max_concurrency: 8
+      credential_header_names: [authorization, cookie, proxy-authorization, x-api-key, x-subscription-token]
     local-services:
       allowed_schemes: [http, https]
       allowed_ports: [7776, 7777, 7778, 8080, 8888, 11434]
@@ -84,6 +85,7 @@ web:
       max_response_bytes: 16777216
       max_decompressed_bytes: 67108864
       max_concurrency: 8
+      credential_header_names: [authorization, cookie, proxy-authorization, x-api-key, x-subscription-token]
   sources:
     searxng-local:
       role: broker

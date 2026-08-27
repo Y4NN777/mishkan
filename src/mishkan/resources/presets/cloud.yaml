@@ -73,6 +73,7 @@ web:
       max_response_bytes: 16777216
       max_decompressed_bytes: 67108864
       max_concurrency: 8
+      credential_header_names: [authorization, cookie, proxy-authorization, x-api-key, x-subscription-token]
   sources:
     brave-direct:
       role: direct_source

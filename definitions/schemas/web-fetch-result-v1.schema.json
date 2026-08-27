@@ -1,0 +1,165 @@
+{
+  "$defs": {
+    "CacheDisposition": {
+      "enum": [
+        "bypass",
+        "miss",
+        "fresh",
+        "stale"
+      ],
+      "title": "CacheDisposition",
+      "type": "string"
+    },
+    "RedirectEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "connected_address": {
+          "title": "Connected Address",
+          "type": "string"
+        },
+        "credential_forwarded": {
+          "title": "Credential Forwarded",
+          "type": "boolean"
+        },
+        "dns_answers": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Dns Answers",
+          "type": "array"
+        },
+        "source_url": {
+          "format": "uri",
+          "minLength": 1,
+          "title": "Source Url",
+          "type": "string"
+        },
+        "status_code": {
+          "maximum": 399,
+          "minimum": 300,
+          "title": "Status Code",
+          "type": "integer"
+        },
+        "target_url": {
+          "format": "uri",
+          "minLength": 1,
+          "title": "Target Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status_code",
+        "source_url",
+        "target_url",
+        "credential_forwarded",
+        "dns_answers",
+        "connected_address"
+      ],
+      "title": "RedirectEvidence",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "artifact_reference": {
+      "title": "Artifact Reference",
+      "type": "string"
+    },
+    "cache": {
+      "$ref": "#/$defs/CacheDisposition"
+    },
+    "connected_address": {
+      "title": "Connected Address",
+      "type": "string"
+    },
+    "content_digest": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Content Digest",
+      "type": "string"
+    },
+    "decoded_bytes": {
+      "minimum": 0,
+      "title": "Decoded Bytes",
+      "type": "integer"
+    },
+    "dns_answers": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Dns Answers",
+      "type": "array"
+    },
+    "final_url": {
+      "format": "uri",
+      "minLength": 1,
+      "title": "Final Url",
+      "type": "string"
+    },
+    "media_type": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Media Type"
+    },
+    "method": {
+      "title": "Method",
+      "type": "string"
+    },
+    "redirects": {
+      "items": {
+        "$ref": "#/$defs/RedirectEvidence"
+      },
+      "title": "Redirects",
+      "type": "array"
+    },
+    "requested_url": {
+      "format": "uri",
+      "minLength": 1,
+      "title": "Requested Url",
+      "type": "string"
+    },
+    "retrieved_at": {
+      "format": "date-time",
+      "title": "Retrieved At",
+      "type": "string"
+    },
+    "schema_version": {
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "status_code": {
+      "maximum": 599,
+      "minimum": 100,
+      "title": "Status Code",
+      "type": "integer"
+    },
+    "wire_bytes": {
+      "minimum": 0,
+      "title": "Wire Bytes",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "method",
+    "requested_url",
+    "final_url",
+    "status_code",
+    "media_type",
+    "artifact_reference",
+    "content_digest",
+    "wire_bytes",
+    "decoded_bytes",
+    "redirects",
+    "dns_answers",
+    "connected_address",
+    "cache"
+  ],
+  "title": "FetchResult",
+  "type": "object"
+}

@@ -19,6 +19,15 @@ from mishkan.domain.identity import DomainRecord
 from mishkan.edits.models import ChangeSet, ChangeSetResult
 from mishkan.events.models import EventEnvelope, EventPage
 from mishkan.execution.sessions import CursorRead, SessionRecord, SessionRequest
+from mishkan.web.models import (
+    CitationEvidence,
+    ExtractionRequest,
+    ExtractionResult,
+    FetchRequest,
+    FetchResult,
+    SearchRequest,
+    SearchResponse,
+)
 
 SCHEMAS: dict[str, type[BaseModel]] = {
     "application-command-v1.schema.json": ApplicationCommand,
@@ -35,6 +44,13 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "error-envelope-v1.schema.json": ErrorEnvelope,
     "event-envelope-v1.schema.json": EventEnvelope,
     "event-page-v1.schema.json": EventPage,
+    "web-citation-evidence-v1.schema.json": CitationEvidence,
+    "web-extraction-request-v1.schema.json": ExtractionRequest,
+    "web-extraction-result-v1.schema.json": ExtractionResult,
+    "web-fetch-request-v1.schema.json": FetchRequest,
+    "web-fetch-result-v1.schema.json": FetchResult,
+    "web-search-request-v1.schema.json": SearchRequest,
+    "web-search-response-v1.schema.json": SearchResponse,
     "session-cursor-read-v1.schema.json": CursorRead,
     "session-record-v1.schema.json": SessionRecord,
     "session-request-v1.schema.json": SessionRequest,

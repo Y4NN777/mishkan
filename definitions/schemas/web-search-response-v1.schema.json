@@ -1,0 +1,254 @@
+{
+  "$defs": {
+    "RouteStatus": {
+      "enum": [
+        "completed",
+        "failed",
+        "unavailable"
+      ],
+      "title": "RouteStatus",
+      "type": "string"
+    },
+    "SearchHit": {
+      "additionalProperties": false,
+      "properties": {
+        "published_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Published At"
+        },
+        "rank": {
+          "minimum": 1,
+          "title": "Rank",
+          "type": "integer"
+        },
+        "raw_score": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Raw Score"
+        },
+        "score_scale": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Score Scale"
+        },
+        "snippet": {
+          "title": "Snippet",
+          "type": "string"
+        },
+        "source_id": {
+          "title": "Source Id",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "upstream": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Upstream"
+        },
+        "url": {
+          "format": "uri",
+          "minLength": 1,
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_id",
+        "rank",
+        "title",
+        "url",
+        "snippet"
+      ],
+      "title": "SearchHit",
+      "type": "object"
+    },
+    "SearchRoute": {
+      "additionalProperties": false,
+      "properties": {
+        "elapsed_ms": {
+          "minimum": 0,
+          "title": "Elapsed Ms",
+          "type": "number"
+        },
+        "endpoint_origin": {
+          "title": "Endpoint Origin",
+          "type": "string"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error Code"
+        },
+        "limitation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Limitation"
+        },
+        "result_count": {
+          "minimum": 0,
+          "title": "Result Count",
+          "type": "integer"
+        },
+        "role": {
+          "$ref": "#/$defs/WebComponentRole"
+        },
+        "source_id": {
+          "title": "Source Id",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/RouteStatus"
+        },
+        "upstreams": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Upstreams"
+        }
+      },
+      "required": [
+        "source_id",
+        "role",
+        "endpoint_origin",
+        "upstreams",
+        "status",
+        "elapsed_ms",
+        "result_count"
+      ],
+      "title": "SearchRoute",
+      "type": "object"
+    },
+    "SearchStrategy": {
+      "enum": [
+        "direct",
+        "aggregate",
+        "verification",
+        "automatic"
+      ],
+      "title": "SearchStrategy",
+      "type": "string"
+    },
+    "WebComponentRole": {
+      "enum": [
+        "direct_source",
+        "broker",
+        "composite_gateway",
+        "transport",
+        "extractor",
+        "crawler"
+      ],
+      "title": "WebComponentRole",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "completed_at": {
+      "format": "date-time",
+      "title": "Completed At",
+      "type": "string"
+    },
+    "degraded": {
+      "title": "Degraded",
+      "type": "boolean"
+    },
+    "hits": {
+      "items": {
+        "$ref": "#/$defs/SearchHit"
+      },
+      "title": "Hits",
+      "type": "array"
+    },
+    "lost_coverage": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Lost Coverage",
+      "type": "array"
+    },
+    "query": {
+      "title": "Query",
+      "type": "string"
+    },
+    "routes": {
+      "items": {
+        "$ref": "#/$defs/SearchRoute"
+      },
+      "title": "Routes",
+      "type": "array"
+    },
+    "schema_version": {
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "strategy": {
+      "$ref": "#/$defs/SearchStrategy"
+    }
+  },
+  "required": [
+    "query",
+    "strategy",
+    "hits",
+    "routes",
+    "degraded"
+  ],
+  "title": "SearchResponse",
+  "type": "object"
+}

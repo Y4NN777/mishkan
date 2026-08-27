@@ -1,0 +1,163 @@
+{
+  "$defs": {
+    "CredentialReference": {
+      "additionalProperties": false,
+      "description": "A late-resolution locator; never a credential value.",
+      "properties": {
+        "locator": {
+          "minLength": 1,
+          "title": "Locator",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/CredentialSource"
+        }
+      },
+      "required": [
+        "source",
+        "locator"
+      ],
+      "title": "CredentialReference",
+      "type": "object"
+    },
+    "CredentialSource": {
+      "enum": [
+        "env",
+        "file",
+        "keyring",
+        "command"
+      ],
+      "title": "CredentialSource",
+      "type": "string"
+    },
+    "RedirectPolicy": {
+      "enum": [
+        "none",
+        "safe_get_head",
+        "same_method"
+      ],
+      "title": "RedirectPolicy",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "accepted_media": {
+      "default": [
+        "*/*"
+      ],
+      "items": {
+        "type": "string"
+      },
+      "title": "Accepted Media",
+      "type": "array"
+    },
+    "body_artifact_reference": {
+      "anyOf": [
+        {
+          "pattern": "^artifact:[0-9a-f-]{36}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Body Artifact Reference"
+    },
+    "cache": {
+      "default": true,
+      "title": "Cache",
+      "type": "boolean"
+    },
+    "credential_header": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Credential Header"
+    },
+    "credential_origin": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Credential Origin"
+    },
+    "credential_prefix": {
+      "default": "",
+      "title": "Credential Prefix",
+      "type": "string"
+    },
+    "credential_refs": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/CredentialReference"
+      },
+      "title": "Credential Refs",
+      "type": "array"
+    },
+    "headers": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Headers",
+      "type": "object"
+    },
+    "method": {
+      "pattern": "^[A-Z]+$",
+      "title": "Method",
+      "type": "string"
+    },
+    "network_profile": {
+      "title": "Network Profile",
+      "type": "string"
+    },
+    "redirect_policy": {
+      "$ref": "#/$defs/RedirectPolicy"
+    },
+    "schema_version": {
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "timeout_seconds": {
+      "anyOf": [
+        {
+          "exclusiveMinimum": 0,
+          "maximum": 3600,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Timeout Seconds"
+    },
+    "url": {
+      "format": "uri",
+      "minLength": 1,
+      "title": "Url",
+      "type": "string"
+    }
+  },
+  "required": [
+    "method",
+    "url",
+    "network_profile",
+    "redirect_policy"
+  ],
+  "title": "FetchRequest",
+  "type": "object"
+}

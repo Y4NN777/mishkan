@@ -1,0 +1,77 @@
+{
+  "$defs": {
+    "SourceSpan": {
+      "additionalProperties": false,
+      "properties": {
+        "end": {
+          "minimum": 0,
+          "title": "End",
+          "type": "integer"
+        },
+        "start": {
+          "minimum": 0,
+          "title": "Start",
+          "type": "integer"
+        },
+        "text_hash": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Text Hash",
+          "type": "string"
+        }
+      },
+      "required": [
+        "start",
+        "end",
+        "text_hash"
+      ],
+      "title": "SourceSpan",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "artifact_reference": {
+      "pattern": "^artifact:[0-9a-f-]{36}$",
+      "title": "Artifact Reference",
+      "type": "string"
+    },
+    "claim_id": {
+      "title": "Claim Id",
+      "type": "string"
+    },
+    "content_digest": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Content Digest",
+      "type": "string"
+    },
+    "retrieved_at": {
+      "format": "date-time",
+      "title": "Retrieved At",
+      "type": "string"
+    },
+    "schema_version": {
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "source_url": {
+      "format": "uri",
+      "minLength": 1,
+      "title": "Source Url",
+      "type": "string"
+    },
+    "span": {
+      "$ref": "#/$defs/SourceSpan"
+    }
+  },
+  "required": [
+    "claim_id",
+    "source_url",
+    "retrieved_at",
+    "content_digest",
+    "artifact_reference",
+    "span"
+  ],
+  "title": "CitationEvidence",
+  "type": "object"
+}
