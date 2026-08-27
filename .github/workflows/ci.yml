@@ -43,11 +43,15 @@ jobs:
 
       - name: Install Chromium and system dependencies
         if: runner.os == 'Linux'
-        run: uv run --python "${{ matrix.python-version }}" playwright install --with-deps chromium
+        run: |
+          uv run --python "${{ matrix.python-version }}" playwright install --with-deps chromium
+          sudo apt-get install --yes ripgrep
 
-      - name: Install Chromium
+      - name: Install Chromium and system dependencies
         if: runner.os == 'macOS'
-        run: uv run --python "${{ matrix.python-version }}" playwright install chromium
+        run: |
+          uv run --python "${{ matrix.python-version }}" playwright install chromium
+          brew install ripgrep
 
       - name: Test with branch coverage
         run: uv run --python "${{ matrix.python-version }}" pytest --cov=mishkan --cov-branch --cov-fail-under=80
