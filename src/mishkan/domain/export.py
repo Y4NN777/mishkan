@@ -5,7 +5,12 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from mishkan.application.contracts import ApplicationCommand, CommandResult, SnapshotEnvelope
+from mishkan.application.contracts import (
+    ApplicationCommand,
+    CommandResult,
+    RunInitializationRequest,
+    SnapshotEnvelope,
+)
 from mishkan.artifacts.models import (
     ArtifactCollection,
     ArtifactManifest,
@@ -82,6 +87,7 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "mcp-discovery-v1.schema.json": McpDiscoverySnapshot,
     "mcp-primitive-v1.schema.json": McpPrimitiveDescriptor,
     "mcp-progress-v1.schema.json": McpProgressEvent,
+    "run-initialization-request-v1.schema.json": RunInitializationRequest,
     "web-citation-evidence-v1.schema.json": CitationEvidence,
     "web-crawl-request-v1.schema.json": CrawlRequest,
     "web-crawl-result-v1.schema.json": CrawlResult,

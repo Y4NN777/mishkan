@@ -1,5 +1,6 @@
 """Repository initialization application service."""
 
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
@@ -32,6 +33,8 @@ class MishkanInitializer:
         config: MishkanConfig,
         repository_path: Path,
         objective: str,
+        *,
+        on_run_started: Callable[[str], None] | None = None,
     ) -> InitializationReport:
         if config.schema_version not in {"1.1", "1.2", "1.3"}:
             raise MishkanError(
@@ -132,6 +135,8 @@ class MishkanInitializer:
             artifact_store=artifact_store,
         )
         snapshot = state_repository.start_or_resume(discovery, objective, outcome.outcome_id)
+        if on_run_started is not None:
+            on_run_started(snapshot.run_id)
         state = InitializationFlowState(
             run_id=snapshot.run_id,
             objective=objective,

@@ -15,7 +15,13 @@ from fastapi import Depends, FastAPI, Header, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from mishkan.application import ApplicationCommand, CommandResult, SnapshotEnvelope
+from mishkan.application import (
+    ApplicationCommand,
+    CommandResult,
+    RunInitializationRequest,
+    SnapshotEnvelope,
+)
+from mishkan.application.initialize import MishkanInitializer
 from mishkan.artifacts import ArtifactManifest, ArtifactProvenance
 from mishkan.artifacts.service import DurableArtifactService
 from mishkan.config.models import McpConfig, MishkanConfig
@@ -84,6 +90,8 @@ def create_app(config: MishkanConfig) -> FastAPI:
     )
     supervisor.reconcile_all()
     command_lock = asyncio.Lock()
+    run_execution_lock = asyncio.Lock()
+    active_run_commands: dict[UUID, tuple[str, asyncio.Task[CommandResult]]] = {}
     mcp_repository: McpRepository | None = None
     mcp_runner: McpServiceRunner | None = None
     mcp_config = config.mcp
@@ -114,6 +122,83 @@ def create_app(config: MishkanConfig) -> FastAPI:
                 "command actor does not match the authenticated client identity",
                 details={"actor_id": command.actor_id},
             )
+        if command.command_type == "run.initialize":
+            if command.target_type != "run" or command.target_id is not None:
+                raise MishkanError(
+                    ErrorCode.OUTPUT_CONTRACT,
+                    "run.initialize targets the daemon's configured repository",
+                )
+            try:
+                request = RunInitializationRequest.model_validate(command.payload)
+            except (TypeError, ValueError) as exc:
+                raise MishkanError(
+                    ErrorCode.OUTPUT_CONTRACT,
+                    "run.initialize payload does not match its public contract",
+                ) from exc
+
+            async with command_lock:
+                active = active_run_commands.get(command.command_id)
+                if active is not None:
+                    fingerprint, task = active
+                    if fingerprint != command.fingerprint:
+                        raise MishkanError(
+                            ErrorCode.DUPLICATE_RESULT,
+                            "command identity was already used for different content",
+                            details={"command_id": str(command.command_id)},
+                        )
+                else:
+                    replayed = repository.reserve(command, target_id="local-instance")
+                    if replayed is not None:
+                        return replayed
+                    accepted: list[CommandResult] = []
+
+                    def accept_run(run_id: str) -> None:
+                        accepted.append(
+                            repository.complete_reserved(
+                                command,
+                                target_id="local-instance",
+                                event_type="run.request_accepted",
+                                result_payload={"run_id": run_id},
+                                event_payload={
+                                    "run_id": run_id,
+                                    "request_schema_version": request.schema_version,
+                                },
+                                source="mishkand",
+                            )
+                        )
+
+                    async def execute_run() -> CommandResult:
+                        async with run_execution_lock:
+                            await asyncio.to_thread(
+                                MishkanInitializer().run,
+                                config,
+                                paths.workspace,
+                                request.objective,
+                                on_run_started=accept_run,
+                            )
+                        if len(accepted) != 1:
+                            raise MishkanError(
+                                ErrorCode.RUN_INTERRUPTED,
+                                "CrewAI run did not establish exactly one durable run identity",
+                            )
+                        return accepted[0]
+
+                    task = asyncio.create_task(
+                        execute_run(),
+                        name=f"run.initialize:{command.command_id}",
+                    )
+                    active_run_commands[command.command_id] = (command.fingerprint, task)
+
+                    def forget(completed: asyncio.Task[CommandResult]) -> None:
+                        current = active_run_commands.get(command.command_id)
+                        if current is not None and current[1] is completed:
+                            active_run_commands.pop(command.command_id, None)
+                        if not completed.cancelled():
+                            completed.exception()
+
+                    task.add_done_callback(forget)
+            return await asyncio.shield(task)
+
         async with command_lock:
             target_id = command.target_id or "local-instance"
             replayed = repository.reserve(command, target_id=target_id)

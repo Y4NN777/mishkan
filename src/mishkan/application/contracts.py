@@ -6,7 +6,7 @@ import hashlib
 import json
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -50,6 +50,13 @@ class ApplicationCommand(ApplicationModel):
         return hashlib.sha256(
             json.dumps(body, sort_keys=True, separators=(",", ":")).encode()
         ).hexdigest()
+
+
+class RunInitializationRequest(ApplicationModel):
+    """One governed objective for the daemon's configured repository."""
+
+    schema_version: Literal["1.0"] = "1.0"
+    objective: str = Field(min_length=3, max_length=2_000)
 
 
 class CommandResult(ApplicationModel):
