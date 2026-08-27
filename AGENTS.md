@@ -12,8 +12,9 @@ integrated before `feat/i03-mutations-sessions-durability` began. I03 now has a 
 local gate, a passing tracked live CrewAI/Ollama regression, and a green remote Linux/macOS Python
 3.11–3.13 matrix recorded in `docs/VALIDATION/I03.md`. D-038 accepts I03. I04 is implemented on
 `feat/i04-web-browser-mcp-harnesses`; its complete local, real-browser/MCP, live-model, and remote
-evidence is recorded in `docs/VALIDATION/I04.md`. D-039 is proposed and awaits explicit engineer
-acceptance. Do not promote I04 into `develop` or begin I05 before D-039 is accepted. The rejected
+evidence is recorded in `docs/VALIDATION/I04.md`. D-039 accepted I04 on 2026-08-27. Do not promote
+I04 into `develop` or begin I05 until the engineer-requested cross-baseline conformance audit is
+complete. The rejected
 universal workflow, mandatory outcome catalogue, capability-family matrix, static role/tool matrix,
 competing runtime, and private operational deny-list must not return.
 
