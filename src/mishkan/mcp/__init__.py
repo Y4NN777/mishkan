@@ -14,6 +14,7 @@ from mishkan.mcp.models import (
     McpSessionState,
 )
 from mishkan.mcp.repository import McpCallReservation, McpRepository
+from mishkan.mcp.sdk import McpSdkClient
 
 __all__ = [
     "McpCallRequest",
@@ -28,5 +29,6 @@ __all__ = [
     "McpPrimitiveKind",
     "McpProgressEvent",
     "McpRepository",
+    "McpSdkClient",
     "McpSessionState",
 ]

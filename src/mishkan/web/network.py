@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ipaddress
 import socket
+import ssl
 from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, Protocol, cast
@@ -220,6 +221,80 @@ class GuardedNetworkBackend(httpcore.NetworkBackend):
         self._backend.sleep(seconds)
 
 
+class GuardedAsyncNetworkBackend(httpcore.AsyncNetworkBackend):
+    """Async peer-verified equivalent used by long-lived HTTP protocols such as MCP."""
+
+    def __init__(
+        self,
+        guard: NetworkGuard,
+        backend: httpcore.AsyncNetworkBackend | None = None,
+    ) -> None:
+        self._guard = guard
+        self._backend = backend or httpcore.AnyIOBackend()
+        self.evidence: ConnectionEvidence | None = None
+        self.failure: MishkanError | None = None
+
+    async def connect_tcp(
+        self,
+        host: str,
+        port: int,
+        timeout: float | None = None,
+        local_address: str | None = None,
+        socket_options: Iterable[
+            tuple[int, int, int] | tuple[int, int, bytes | bytearray] | tuple[int, int, None, int]
+        ]
+        | None = None,
+    ) -> httpcore.AsyncNetworkStream:
+        try:
+            answers = self._guard.resolve_allowed(host, port)
+        except MishkanError as error:
+            self.failure = error
+            raise httpcore.ConnectError("network profile refused DNS answers") from error
+        last_error: Exception | None = None
+        for address in answers:
+            try:
+                stream = await self._backend.connect_tcp(
+                    address,
+                    port,
+                    timeout=timeout,
+                    local_address=local_address,
+                    socket_options=socket_options,
+                )
+                server_address: Any = stream.get_extra_info("server_addr")
+                peer = str(server_address[0]) if isinstance(server_address, tuple) else ""
+                self._guard.validate_address(peer)
+                if ipaddress.ip_address(peer) != ipaddress.ip_address(address):
+                    await stream.aclose()
+                    raise MishkanError(
+                        ErrorCode.WEB,
+                        "connected web peer differs from the DNS-locked destination",
+                        details={"expected": address, "connected": peer},
+                    )
+                self.evidence = ConnectionEvidence(answers, peer)
+                return stream
+            except MishkanError as error:
+                self.failure = error
+                raise httpcore.ConnectError("network profile refused connected peer") from error
+            except (OSError, httpcore.NetworkError) as exc:
+                last_error = exc
+        raise httpcore.ConnectError("all DNS-locked destination addresses failed") from last_error
+
+    async def connect_unix_socket(
+        self,
+        path: str,
+        timeout: float | None = None,
+        socket_options: Iterable[
+            tuple[int, int, int] | tuple[int, int, bytes | bytearray] | tuple[int, int, None, int]
+        ]
+        | None = None,
+    ) -> httpcore.AsyncNetworkStream:
+        del path, timeout, socket_options
+        raise httpcore.UnsupportedProtocol("web transport does not accept Unix sockets")
+
+    async def sleep(self, seconds: float) -> None:
+        await self._backend.sleep(seconds)
+
+
 class GuardedHTTPTransport(httpx.HTTPTransport):
     def __init__(self, guard: NetworkGuard) -> None:
         super().__init__(retries=0)
@@ -228,6 +303,19 @@ class GuardedHTTPTransport(httpx.HTTPTransport):
         self._pool = httpcore.ConnectionPool(
             max_connections=1,
             max_keepalive_connections=0,
+            retries=0,
+            network_backend=self.backend,
+        )
+
+
+class GuardedAsyncHTTPTransport(httpx.AsyncHTTPTransport):
+    def __init__(self, guard: NetworkGuard) -> None:
+        super().__init__(trust_env=False, retries=0)
+        self.backend = GuardedAsyncNetworkBackend(guard)
+        self._pool = httpcore.AsyncConnectionPool(
+            ssl_context=ssl.create_default_context(),
+            max_connections=1,
+            max_keepalive_connections=1,
             retries=0,
             network_backend=self.backend,
         )

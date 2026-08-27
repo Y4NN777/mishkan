@@ -10,6 +10,7 @@ import pytest
 from mishkan.config.models import NetworkProfileConfig
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.web.network import (
+    GuardedAsyncNetworkBackend,
     GuardedNetworkBackend,
     HttpxWebTransport,
     NetworkGuard,
@@ -142,6 +143,82 @@ def test_connected_peer_must_equal_the_dns_locked_address() -> None:
 
     with pytest.raises(httpcore.ConnectError):
         locked.connect_tcp("service.test", 443)
+
+    assert backend.stream.closed
+    assert locked.failure is not None
+    assert locked.failure.envelope.code is ErrorCode.WEB
+
+
+class AsyncPeerStream(httpcore.AsyncNetworkStream):
+    def __init__(self, peer: str) -> None:
+        self.peer = peer
+        self.closed = False
+
+    async def read(self, max_bytes: int, timeout: float | None = None) -> bytes:
+        del max_bytes, timeout
+        return b""
+
+    async def write(self, buffer: bytes, timeout: float | None = None) -> None:
+        del buffer, timeout
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+    async def start_tls(
+        self,
+        ssl_context: object,
+        server_hostname: bytes | str | None = None,
+        timeout: float | None = None,
+    ) -> httpcore.AsyncNetworkStream:
+        del ssl_context, server_hostname, timeout
+        return self
+
+    def get_extra_info(self, info: str) -> object:
+        return (self.peer, 443) if info == "server_addr" else None
+
+
+class AsyncPeerBackend(httpcore.AsyncNetworkBackend):
+    def __init__(self, peer: str) -> None:
+        self.stream = AsyncPeerStream(peer)
+
+    async def connect_tcp(
+        self,
+        host: str,
+        port: int,
+        timeout: float | None = None,
+        local_address: str | None = None,
+        socket_options: Iterable[
+            tuple[int, int, int] | tuple[int, int, bytes | bytearray] | tuple[int, int, None, int]
+        ]
+        | None = None,
+    ) -> httpcore.AsyncNetworkStream:
+        del host, port, timeout, local_address, socket_options
+        return self.stream
+
+    async def connect_unix_socket(
+        self,
+        path: str,
+        timeout: float | None = None,
+        socket_options: Iterable[
+            tuple[int, int, int] | tuple[int, int, bytes | bytearray] | tuple[int, int, None, int]
+        ]
+        | None = None,
+    ) -> httpcore.AsyncNetworkStream:
+        del path, timeout, socket_options
+        raise AssertionError("unexpected Unix connection")
+
+    async def sleep(self, seconds: float) -> None:
+        del seconds
+
+
+@pytest.mark.anyio
+async def test_async_connected_peer_must_equal_dns_lock_for_mcp() -> None:
+    backend = AsyncPeerBackend("127.0.0.2")
+    guard = NetworkGuard(_profile(loopback=True), StaticResolver("127.0.0.1"))
+    locked = GuardedAsyncNetworkBackend(guard, backend)
+
+    with pytest.raises(httpcore.ConnectError):
+        await locked.connect_tcp("service.test", 443)
 
     assert backend.stream.closed
     assert locked.failure is not None

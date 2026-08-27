@@ -472,6 +472,21 @@
           "title": "Exposure Profile",
           "type": "string"
         },
+        "headers": {
+          "additionalProperties": {
+            "$ref": "#/$defs/CredentialReference"
+          },
+          "title": "Headers",
+          "type": "object"
+        },
+        "inherit_environment": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Inherit Environment",
+          "type": "array"
+        },
         "max_result_bytes": {
           "minimum": 1,
           "title": "Max Result Bytes",

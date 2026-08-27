@@ -401,7 +401,9 @@ class McpConnectionConfig(StrictConfigModel):
     endpoint: AnyHttpUrl | None = None
     command: str | None = None
     arguments: tuple[str, ...] = ()
+    inherit_environment: tuple[str, ...] = ()
     environment: dict[str, CredentialReference] = Field(default_factory=dict)
+    headers: dict[str, CredentialReference] = Field(default_factory=dict)
     enabled: bool = True
     connect_timeout_seconds: float = Field(gt=0, le=3_600)
     call_timeout_seconds: float = Field(gt=0, le=86_400)
@@ -410,12 +412,28 @@ class McpConnectionConfig(StrictConfigModel):
     @model_validator(mode="after")
     def transport_inputs_are_disjoint(self) -> Self:
         if self.transport is McpTransport.STDIO:
-            if not self.command or self.endpoint is not None or self.network_profile is not None:
+            if (
+                not self.command
+                or self.endpoint is not None
+                or self.network_profile is not None
+                or self.headers
+            ):
                 raise ValueError("STDIO MCP connection requires only an explicit command")
-        elif self.endpoint is None or not self.network_profile or self.command is not None:
+        elif (
+            self.endpoint is None
+            or not self.network_profile
+            or self.command is not None
+            or self.environment
+        ):
             raise ValueError("Streamable HTTP MCP connection requires endpoint and network profile")
+        if self.transport is McpTransport.STREAMABLE_HTTP and self.inherit_environment:
+            raise ValueError("Streamable HTTP MCP connections do not inherit process environment")
         if len(self.protocol_versions) != len(set(self.protocol_versions)):
             raise ValueError("MCP protocol versions must be unique")
+        declared = {item.locator for item in self.credential_refs}
+        mapped = {item.locator for item in (*self.environment.values(), *self.headers.values())}
+        if not mapped.issubset(declared):
+            raise ValueError("MCP credential mappings must reference declared credentials")
         return self
 
 
