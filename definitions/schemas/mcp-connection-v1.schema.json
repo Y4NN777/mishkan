@@ -121,6 +121,11 @@
     "protocol_strategy": {
       "$ref": "#/$defs/McpProtocolStrategy"
     },
+    "remote_tasks_enabled": {
+      "default": false,
+      "title": "Remote Tasks Enabled",
+      "type": "boolean"
+    },
     "revision": {
       "minimum": 0,
       "title": "Revision",
@@ -145,6 +150,16 @@
     },
     "state": {
       "$ref": "#/$defs/McpSessionState"
+    },
+    "task_cancellation_supported": {
+      "default": false,
+      "title": "Task Cancellation Supported",
+      "type": "boolean"
+    },
+    "task_tool_calls_supported": {
+      "default": false,
+      "title": "Task Tool Calls Supported",
+      "type": "boolean"
     },
     "transport": {
       "$ref": "#/$defs/McpTransport"

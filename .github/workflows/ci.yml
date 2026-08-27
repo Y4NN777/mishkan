@@ -41,6 +41,14 @@ jobs:
       - name: Synchronize locked environment
         run: uv sync --locked --dev --python "${{ matrix.python-version }}"
 
+      - name: Install Chromium and system dependencies
+        if: runner.os == 'Linux'
+        run: uv run --python "${{ matrix.python-version }}" playwright install --with-deps chromium
+
+      - name: Install Chromium
+        if: runner.os == 'macOS'
+        run: uv run --python "${{ matrix.python-version }}" playwright install chromium
+
       - name: Test with branch coverage
         run: uv run --python "${{ matrix.python-version }}" pytest --cov=mishkan --cov-branch --cov-fail-under=80
 

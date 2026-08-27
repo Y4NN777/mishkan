@@ -171,6 +171,16 @@
       "default": "1.0",
       "title": "Schema Version",
       "type": "string"
+    },
+    "task_cancellation_supported": {
+      "default": false,
+      "title": "Task Cancellation Supported",
+      "type": "boolean"
+    },
+    "task_tool_calls_supported": {
+      "default": false,
+      "title": "Task Tool Calls Supported",
+      "type": "boolean"
     }
   },
   "required": [

@@ -394,6 +394,20 @@
           "minimum": 1,
           "title": "Progress Retention Seconds",
           "type": "integer"
+        },
+        "task_poll_max_seconds": {
+          "default": 5.0,
+          "exclusiveMinimum": 0,
+          "maximum": 3600,
+          "title": "Task Poll Max Seconds",
+          "type": "number"
+        },
+        "task_poll_min_seconds": {
+          "default": 0.1,
+          "exclusiveMinimum": 0,
+          "maximum": 60,
+          "title": "Task Poll Min Seconds",
+          "type": "number"
         }
       },
       "required": [
@@ -521,6 +535,11 @@
           "minItems": 1,
           "title": "Protocol Versions",
           "type": "array"
+        },
+        "remote_tasks_enabled": {
+          "default": false,
+          "title": "Remote Tasks Enabled",
+          "type": "boolean"
         },
         "transport": {
           "$ref": "#/$defs/McpTransport"
