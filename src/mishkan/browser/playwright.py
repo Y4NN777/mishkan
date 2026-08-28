@@ -329,9 +329,7 @@ class PlaywrightChromiumDriver:
             for item in observed_downloads:
                 with suppress(PlaywrightError):
                     item.cancel()
-            raise BrowserUncertainEffect(
-                "browser action produced an undeclared download effect"
-            )
+            raise BrowserUncertainEffect("browser action produced an undeclared download effect")
         if download is None:
             return DriverActionOutcome(tuple(live.pages))
         if len(observed_downloads) > 1:
