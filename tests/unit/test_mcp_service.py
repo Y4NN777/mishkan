@@ -237,6 +237,12 @@ class ElicitingClient(FakeClient):
         super().__init__(snapshot)
         self.response: types.ElicitResult | types.ErrorData | None = None
 
+    def params(self) -> types.ElicitRequestParams:
+        return types.ElicitRequestFormParams(
+            message=self.message,
+            requestedSchema=self.schema,
+        )
+
     async def call_tool(
         self,
         configured: McpConnectionConfig,
@@ -276,10 +282,7 @@ class ElicitingClient(FakeClient):
         )
         self.response = await elicitation(  # type: ignore[arg-type]
             None,
-            types.ElicitRequestFormParams(
-                message=self.message,
-                requestedSchema=self.schema,
-            ),
+            self.params(),
         )
         return McpClientCallOutcome(
             terminal=(
@@ -288,6 +291,15 @@ class ElicitingClient(FakeClient):
                 else McpRemoteTaskTerminal.FAILED
             ),
             reason="fixture elicitation settled",
+        )
+
+
+class UrlElicitingClient(ElicitingClient):
+    def params(self) -> types.ElicitRequestParams:
+        return types.ElicitRequestURLParams(
+            message="Complete the separately authorized external step",
+            url="https://identity.example/authorize",
+            elicitationId="authorization-1",
         )
 
 
@@ -527,6 +539,64 @@ async def test_unplanned_elicitation_is_declined_and_remains_visible(tmp_path: P
     assert evidence[0].kind is McpProgressKind.ELICITATION
     assert evidence[0].elicitation_action is McpElicitationAction.DECLINE
     assert evidence[0].elicitation_content_hash is None
+
+
+@pytest.mark.anyio
+async def test_url_elicitation_accepts_contentless_pre_authorized_acknowledgement(
+    tmp_path: Path,
+) -> None:
+    primitive = _primitive()
+    client = UrlElicitingClient(_snapshot(primitive))
+    service, repository = _service(tmp_path, client)
+    await service.connect(
+        "graph",
+        principal="role:Engineer",
+        policy_fingerprint="policy:test",
+        credentials={},
+    )
+    params = client.params().model_dump(mode="json", by_alias=True, exclude_none=True)
+    answer = McpElicitationAnswer(
+        sequence=0,
+        expected_request_hash=McpElicitationAnswer.request_hash(params),
+        action=McpElicitationAction.ACCEPT,
+    )
+    request = _request(primitive).model_copy(update={"elicitation_answers": (answer,)})
+
+    result = await service.invoke(request, credentials={})
+
+    assert result.state is McpCallState.COMPLETED
+    assert client.response == types.ElicitResult(action="accept")
+    evidence = repository.progress_after(request.id, 0)
+    assert evidence[0].elicitation_mode == "url"
+    assert evidence[0].elicitation_action is McpElicitationAction.ACCEPT
+    assert evidence[0].elicitation_content_hash is None
+
+
+@pytest.mark.anyio
+async def test_invalid_form_answer_is_journaled_as_cancelled_before_refusal(tmp_path: Path) -> None:
+    primitive = _primitive()
+    client = ElicitingClient(_snapshot(primitive))
+    service, repository = _service(tmp_path, client)
+    await service.connect(
+        "graph",
+        principal="role:Engineer",
+        policy_fingerprint="policy:test",
+        credentials={},
+    )
+    params = client.params().model_dump(mode="json", by_alias=True, exclude_none=True)
+    answer = McpElicitationAnswer(
+        sequence=0,
+        expected_request_hash=McpElicitationAnswer.request_hash(params),
+        action=McpElicitationAction.ACCEPT,
+    )
+    request = _request(primitive).model_copy(update={"elicitation_answers": (answer,)})
+
+    result = await service.invoke(request, credentials={})
+
+    assert result.state is McpCallState.FAILED
+    evidence = repository.progress_after(request.id, 0)
+    assert evidence[0].elicitation_action is McpElicitationAction.CANCEL
+    assert evidence[0].elicitation_request_hash == answer.expected_request_hash
 
 
 @pytest.mark.anyio

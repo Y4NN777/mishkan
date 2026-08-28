@@ -298,8 +298,18 @@ class McpService:
             )
             action = answer.action if answer is not None else None
             content = answer.content if answer is not None else None
-            if answer is not None and isinstance(params, types.ElicitRequestFormParams):
-                self._validate_elicitation_content(params.requestedSchema, answer)
+            answer_error: MishkanError | None = None
+            if answer is not None:
+                try:
+                    if isinstance(params, types.ElicitRequestFormParams):
+                        self._validate_elicitation_content(params.requestedSchema, answer)
+                    elif answer.content is not None:
+                        raise MishkanError(
+                            ErrorCode.TOOL_SCHEMA,
+                            "MCP URL elicitation acknowledgement cannot carry in-band content",
+                        )
+                except MishkanError as error:
+                    answer_error = error
             content_hash = (
                 "sha256:"
                 + hashlib.sha256(
@@ -308,7 +318,11 @@ class McpService:
                 if content is not None
                 else None
             )
-            recorded_action = action or McpElicitationAction.DECLINE
+            recorded_action = (
+                McpElicitationAction.CANCEL
+                if answer_error is not None
+                else action or McpElicitationAction.DECLINE
+            )
             self._repository.append_progress(
                 McpProgressEvent(
                     request_id=request.id,
@@ -326,6 +340,8 @@ class McpService:
             )
             cursor += 1
             elicitation_sequence += 1
+            if answer_error is not None:
+                raise answer_error
             if answer is None:
                 return types.ErrorData(
                     code=types.INVALID_REQUEST,
@@ -544,6 +560,11 @@ class McpService:
         schema: dict[str, Any],
         answer: McpElicitationAnswer,
     ) -> None:
+        if answer.action is McpElicitationAction.ACCEPT and answer.content is None:
+            raise MishkanError(
+                ErrorCode.TOOL_SCHEMA,
+                "accepted MCP form elicitation requires explicit content",
+            )
         if answer.content is None:
             return
         try:

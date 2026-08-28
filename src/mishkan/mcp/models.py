@@ -92,8 +92,6 @@ class McpElicitationAnswer(McpModel):
 
     @model_validator(mode="after")
     def content_matches_action(self) -> Self:
-        if self.action is McpElicitationAction.ACCEPT and self.content is None:
-            raise ValueError("accepted MCP elicitation requires explicit content")
         if self.action is not McpElicitationAction.ACCEPT and self.content is not None:
             raise ValueError("declined or cancelled MCP elicitation cannot carry content")
         return self
