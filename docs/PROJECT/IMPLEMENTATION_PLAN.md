@@ -103,12 +103,12 @@ These are initial modular ownership boundaries, not service boundaries or permis
 ### I00 — Contract-bearing foundation — accepted
 
 The installable CLI, versioned configuration, provenance, stable errors, schema compatibility,
-UUID/time contracts, and initial verification baseline remain accepted. See `docs/VALIDATION/I00.md`.
+UUID/time contracts, and initial verification baseline remain accepted. See `docs/VALIDATION/foundation.md`.
 
 ### I01 — Real local CrewAI walking skeleton — accepted
 
 The real CrewAI/Ollama repository-bound initialization path, structured acceptance, durable state,
-and repository-specific planning evidence remain accepted. See `docs/VALIDATION/I01.md`.
+and repository-specific planning evidence remain accepted. See `docs/VALIDATION/local-crewai.md`.
 
 Neither increment is retroactively claimed to implement requirements introduced after its gate.
 

@@ -57,8 +57,8 @@ cannot be represented clearly in one row.
 | D-035 | Architecture | Accepted | System Model 1.2 and Architecture 1.2 are authoritative | The mission-centered behavioral model and single-authority transactional modular monolith supersede D-017, D-022, and the unaccepted D-030 model/architecture amendment while retaining CrewAI as the sole internal production runtime | Engineer validation after assistant coherence audit, 2026-08-25 |
 | D-036 | Delivery | Accepted | Implementation Plan 1.4 is authoritative and I02 resumes on `feat/i02-policy-tools` | It supersedes D-023 and the unaccepted D-030 plan amendment; delivery follows I02–I11 and their complete SRS ownership; I00/I01 evidence remains accepted and later increments retain their gates | Engineer validation after assistant coherence audit, 2026-08-25 |
 | D-037 | Architecture / Delivery | Accepted | System Model 1.3, Architecture 1.3, and Implementation Plan 1.5 are authoritative without changing PRD 1.4 or SRS 1.6 | Makes the agent-authored plan, per-context binding lifecycle, Dev Container/Podman/Compose descriptor boundaries, ordinary Artifact/Edit/Process effects, work packages, and acceptance scenarios explicit; preserves D-036's I02 authority and the later increment gates | Engineer confirmation after assistant coherence audit, 2026-08-25 |
-| D-038 | Delivery | Accepted | I03 mutations, sessions, artifacts, and durable-daemon increment has passed its acceptance gate | The deterministic 207-test suite, 81.10% branch coverage, live CrewAI/Ollama regression, and six-job Linux/macOS Python 3.11–3.13 matrix are accepted evidence; I03 may be promoted topic-to-`develop`, and I04 may begin on a new topic branch only after that promotion | `VALIDATION/I03.md`; GitHub Actions run 33058347691; engineer continuation authorization, 2026-08-27 |
-| D-039 | Delivery | Accepted | I04 Web, Browser, MCP, and external-harness increment has passed its acceptance gate | The 275-test deterministic suite, 80.21% branch coverage, real Playwright/MCP fixtures, governed harness-to-CrewAI objective path, live CrewAI/Ollama regression, and six-job Linux/macOS Python 3.11–3.13 matrix are accepted evidence; the engineer requested a cross-baseline conformance audit before promotion or I05 begins | `VALIDATION/I04.md`; GitHub Actions runs 33079214948 and 33079611836; engineer validation, 2026-08-27 |
+| D-038 | Delivery | Accepted | I03 mutations, sessions, artifacts, and durable-daemon increment has passed its acceptance gate | The deterministic 207-test suite, 81.10% branch coverage, live CrewAI/Ollama regression, and six-job Linux/macOS Python 3.11–3.13 matrix are accepted evidence; I03 may be promoted topic-to-`develop`, and I04 may begin on a new topic branch only after that promotion | `VALIDATION/durability.md`; GitHub Actions run 33058347691; engineer continuation authorization, 2026-08-27 |
+| D-039 | Delivery | Accepted | I04 Web, Browser, MCP, and external-harness increment has passed its acceptance gate | The 275-test deterministic suite, 80.21% branch coverage, real Playwright/MCP fixtures, governed harness-to-CrewAI objective path, live CrewAI/Ollama regression, and six-job Linux/macOS Python 3.11–3.13 matrix are accepted evidence; the engineer requested a cross-baseline conformance audit before promotion or I05 begins | `VALIDATION/web-browser-mcp.md`; GitHub Actions runs 33079214948 and 33079611836; engineer validation, 2026-08-27 |
 
 ## Working-decision promotion matrix
 
@@ -100,9 +100,9 @@ left solely in that register; authority transferred through accepted decisions D
 
 No documentary-baseline or I03 acceptance decision remains open. D-030 was superseded without
 acceptance; D-032 through D-037 were accepted in order on 2026-08-25, and D-038 accepts I03 from
-the complete local, live-model, and remote evidence recorded in `VALIDATION/I03.md`. D-039 accepts
+the complete local, live-model, and remote evidence recorded in `VALIDATION/durability.md`. D-039 accepts
 I04 from the complete local, live-model, real-browser/MCP, and remote evidence recorded in
-`VALIDATION/I04.md`; promotion waits for the engineer-requested cross-baseline conformance audit.
+`VALIDATION/web-browser-mcp.md`; promotion waits for the engineer-requested cross-baseline conformance audit.
 
 ## Review rules
 

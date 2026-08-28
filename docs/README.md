@@ -23,11 +23,11 @@ This index is the entry point for durable MISHKAN documentation.
 | [`SYSTEM/RESPONSIBILITIES.md`](SYSTEM/RESPONSIBILITIES.md) | Accepted 1.2 — D-034 | Sequence 04 exact primary ownership and handoffs for RSP-001–026 |
 | [`SYSTEM/MODEL.md`](SYSTEM/MODEL.md) | Accepted 1.3 — D-037 | Mission-centered Sequence 05 behavior, including agent-authored environment planning, binding lifecycle, and governed generation |
 | [`SYSTEM/ARCHITECTURE.md`](SYSTEM/ARCHITECTURE.md) | Accepted 1.3 — D-037 | Transactional modular-monolith structure, environment-module ports, format/engine boundaries, and architecture decisions |
-| [`VALIDATION/I00.md`](VALIDATION/I00.md) | Passed | Observed local and remote acceptance evidence for the I00 foundation |
-| [`VALIDATION/I01.md`](VALIDATION/I01.md) | Passed | Observed local and remote acceptance evidence for real CrewAI execution |
-| [`VALIDATION/I02.md`](VALIDATION/I02.md) | Reopened | Narrow mechanism evidence and remaining corrected I02 acceptance conditions |
-| [`VALIDATION/I03.md`](VALIDATION/I03.md) | Passed — D-038 | Local, live CrewAI/Ollama, and remote Linux/macOS evidence for the durable daemon, mutations, artifacts, sessions, recovery, security, and performance |
-| [`VALIDATION/I04.md`](VALIDATION/I04.md) | Passed — D-039 | Local, real-browser/MCP, live CrewAI/Ollama, and remote Linux/macOS evidence for Web, Browser, MCP, and governed harness clients |
+| [`VALIDATION/foundation.md`](VALIDATION/foundation.md) | Passed | Observed local and remote acceptance evidence for the foundation |
+| [`VALIDATION/local-crewai.md`](VALIDATION/local-crewai.md) | Passed | Observed local and remote acceptance evidence for real CrewAI execution |
+| [`VALIDATION/policy-tools.md`](VALIDATION/policy-tools.md) | Reopened | Narrow mechanism evidence and remaining corrected policy/tool acceptance conditions |
+| [`VALIDATION/durability.md`](VALIDATION/durability.md) | Passed — D-038 | Local, live CrewAI/Ollama, and remote Linux/macOS evidence for the durable daemon, mutations, artifacts, sessions, recovery, security, and performance |
+| [`VALIDATION/web-browser-mcp.md`](VALIDATION/web-browser-mcp.md) | Passed — D-039 | Local, real-browser/MCP, live CrewAI/Ollama, and remote Linux/macOS evidence for Web, Browser, MCP, and governed harness clients |
 
 ## Authority rules
 
