@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine, text
-from support.capabilities import plan_validator
+from support.capabilities import inspector, plan_validator
 
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.organization import load_initialization_definitions
@@ -110,6 +110,26 @@ def test_state_and_outbox_are_durable_and_resumable(tmp_path: Path) -> None:
     engine = create_engine(f"sqlite:///{database}")
     with engine.connect() as connection:
         assert connection.execute(text("PRAGMA journal_mode")).scalar_one().lower() == "wal"
+
+
+@pytest.mark.secrets
+def test_secret_like_objective_is_blocked_before_run_persistence(tmp_path: Path) -> None:
+    discovery = _discovery(tmp_path)
+    database = tmp_path / "mishkan.db"
+    SchemaManager(database).initialize()
+    repository = LocalRunRepository(database, content_inspector=inspector(tmp_path))
+
+    with pytest.raises(MishkanError) as caught:
+        repository.start_or_resume(
+            discovery,
+            "Investigate api_key=must-not-persist",
+            "mishkan.init",
+        )
+
+    assert caught.value.envelope.code is ErrorCode.SECRET_CONTENT
+    engine = create_engine(f"sqlite:///{database}")
+    with engine.connect() as connection:
+        assert connection.execute(text("SELECT count(*) FROM runs")).scalar_one() == 0
 
 
 def test_conflicting_duplicate_result_is_refused(tmp_path: Path) -> None:

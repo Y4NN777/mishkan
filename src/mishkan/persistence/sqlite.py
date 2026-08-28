@@ -7,7 +7,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from sqlalchemy import (
     Boolean,
@@ -486,12 +486,17 @@ class RunSnapshot:
         return frozenset(result.task_id for result in self.results)
 
 
+class RunContentInspector(Protocol):
+    def inspect(self, content: str, resolved_secrets: tuple[str, ...] = ()) -> str: ...
+
+
 class LocalRunRepository:
     def __init__(
         self,
         database_path: Path,
         *,
         busy_timeout_ms: int = DEFAULT_BUSY_TIMEOUT_MS,
+        content_inspector: RunContentInspector | None = None,
     ) -> None:
         from mishkan.persistence.migration import SchemaManager
 
@@ -500,6 +505,7 @@ class LocalRunRepository:
             database_path,
             busy_timeout_ms=busy_timeout_ms,
         )
+        self._content_inspector = content_inspector
 
     def start_or_resume(
         self,
@@ -507,6 +513,7 @@ class LocalRunRepository:
         objective: str,
         outcome_id: str,
     ) -> RunSnapshot:
+        self._require_safe_content(objective)
         resume_key = self._resume_key(discovery, objective, outcome_id)
         with Session(self._engine) as session, session.begin():
             run = session.scalar(select(RunRow).where(RunRow.resume_key == resume_key))
@@ -537,6 +544,7 @@ class LocalRunRepository:
             return self._snapshot(session, run, resumed=resumed)
 
     def accept_plan(self, run_id: str, plan: AcceptedPlan) -> RunSnapshot:
+        self._require_safe_content(plan.model_dump_json())
         with Session(self._engine) as session, session.begin():
             run = self._require_run(session, run_id)
             existing = session.scalar(select(PlanRow).where(PlanRow.run_id == run_id))
@@ -678,6 +686,7 @@ class LocalRunRepository:
         review_sequence: int,
     ) -> TaskReviewRejection:
         """Persist rejection evidence before another synthesis attempt can begin."""
+        self._require_safe_content(result.model_dump_json(), review.model_dump_json())
         with Session(self._engine) as session, session.begin():
             run = self._require_run(session, run_id)
             task = self._require_task(session, run_id, result.task_id)
@@ -903,6 +912,7 @@ class LocalRunRepository:
         result: InitializationResult,
         review: ReviewDecision,
     ) -> RunSnapshot:
+        self._require_safe_content(result.model_dump_json(), review.model_dump_json())
         with Session(self._engine) as session, session.begin():
             run = self._require_run(session, run_id)
             task = session.scalar(
@@ -1047,6 +1057,7 @@ class LocalRunRepository:
 
     def record(self, audit: AuditEvent) -> None:
         """Persist already-inspected capability evidence in the authoritative outbox."""
+        self._require_safe_content(audit.model_dump_json())
         with Session(self._engine) as session, session.begin():
             self._require_run(session, audit.run_id)
             session.add(
@@ -1073,6 +1084,16 @@ class LocalRunRepository:
                     published_at=None,
                 )
             )
+
+    def _require_safe_content(self, *payloads: str) -> None:
+        if self._content_inspector is None:
+            return
+        for payload in payloads:
+            if self._content_inspector.inspect(payload) != payload:
+                raise MishkanError(
+                    ErrorCode.SECRET_CONTENT,
+                    "run evidence requires redaction and cannot be persisted faithfully",
+                )
 
     @staticmethod
     def _resume_key(

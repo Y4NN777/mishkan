@@ -57,7 +57,6 @@ class MishkanInitializer:
         busy_timeout_ms = (
             persistence_config.busy_timeout_ms if persistence_config is not None else 5_000
         )
-        state_repository = LocalRunRepository(database, busy_timeout_ms=busy_timeout_ms)
         native_environment = discover_native_environment()
         policy = PolicyLoader().load(config.policy_sources, discovery.binding.root)
         inspection_source = config.inspection_profile
@@ -68,6 +67,11 @@ class MishkanInitializer:
             )
         inspector = ContentInspector(
             InspectionProfileLoader().load(inspection_source, discovery.binding.root)
+        )
+        state_repository = LocalRunRepository(
+            database,
+            busy_timeout_ms=busy_timeout_ms,
+            content_inspector=inspector,
         )
         runtime: CapabilityRuntime | None = None
         artifact_store: ArtifactStore

@@ -96,10 +96,6 @@ def create_app(config: MishkanConfig) -> FastAPI:
         paths.database,
         busy_timeout_ms=persistence.busy_timeout_ms,
     )
-    run_repository = LocalRunRepository(
-        paths.database,
-        busy_timeout_ms=persistence.busy_timeout_ms,
-    )
     security = HTTPBearer(auto_error=False)
     security_dependency = Depends(security)
     daemon = config.daemon
@@ -114,6 +110,11 @@ def create_app(config: MishkanConfig) -> FastAPI:
         )
     content_inspector = ContentInspector(
         InspectionProfileLoader().load(inspection_source, paths.workspace)
+    )
+    run_repository = LocalRunRepository(
+        paths.database,
+        busy_timeout_ms=persistence.busy_timeout_ms,
+        content_inspector=content_inspector,
     )
     artifacts = DurableArtifactService(
         paths.database,
