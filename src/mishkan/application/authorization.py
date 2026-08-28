@@ -20,6 +20,7 @@ from pydantic import ValidationError
 
 from mishkan.application.contracts import ApplicationCommand, RunInitializationRequest
 from mishkan.config.models import (
+    CredentialReference,
     McpConfig,
     McpConnectionConfig,
     McpTransport,
@@ -29,7 +30,7 @@ from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.time import utc_now
 from mishkan.edits import ChangeSet
 from mishkan.edits.git import GitEffectMode, GitEffectRequest
-from mishkan.execution import SessionRecord, SessionRequest
+from mishkan.execution import ExecutionRequest, ExecutionSession
 from mishkan.policy import (
     AuthorizationDecision,
     AuthorizationRequest,
@@ -46,7 +47,7 @@ class ChangeSetLookup(Protocol):
 
 
 class SessionLookup(Protocol):
-    def status(self, session_id: UUID) -> SessionRecord: ...
+    def status(self, session_id: UUID) -> ExecutionSession: ...
 
 
 class McpCallLookup(Protocol):
@@ -83,6 +84,9 @@ COMMAND_SEMANTICS = MappingProxyType(
         ),
         "artifact.upload.commit": CommandSemantics(
             "application.artifact.upload", "artifact", ("artifact.publish",)
+        ),
+        "artifact.upload.abort": CommandSemantics(
+            "application.artifact.upload", "artifact", ("artifact.abort",)
         ),
         "artifact.reference.update": CommandSemantics(
             "application.artifact.reference", "artifact", ("artifact.reference.update",)
@@ -179,6 +183,7 @@ _COMMAND_TARGETS = MappingProxyType(
         "artifact.upload.open": ("artifact_service", "absent"),
         "artifact.upload.chunk": ("artifact_upload", "uuid"),
         "artifact.upload.commit": ("artifact_upload", "uuid"),
+        "artifact.upload.abort": ("artifact_upload", "uuid"),
         "artifact.reference.update": ("artifact_reference", "absent"),
         "artifact.collection.create": ("artifact_service", "absent"),
         "artifact.hold.set": ("artifact", "uuid"),
@@ -224,6 +229,7 @@ _COMMAND_PAYLOAD_FIELDS = MappingProxyType(
             frozenset(),
         ),
         "artifact.upload.commit": (frozenset(), frozenset()),
+        "artifact.upload.abort": (frozenset(), frozenset()),
         "artifact.reference.update": (
             frozenset({"scope", "name", "artifact_reference", "expected_reference_revision"}),
             frozenset(),
@@ -269,7 +275,7 @@ class AuthorizedApplicationCommand:
     command: ApplicationCommand
     request: AuthorizationRequest
     decision: AuthorizationDecision
-    session_request: SessionRequest | None = None
+    session_request: ExecutionRequest | None = None
     git_request: GitEffectRequest | None = None
 
 
@@ -319,7 +325,7 @@ class ApplicationCommandAuthority:
         uses_network = semantics.network
         effects = semantics.effects
         timeout = 120
-        session_request: SessionRequest | None = None
+        session_request: ExecutionRequest | None = None
         git_request: GitEffectRequest | None = None
 
         try:
@@ -372,15 +378,16 @@ class ApplicationCommandAuthority:
                 )
                 timeout = git_request.timeout_seconds
             elif normalized.command_type == "session.start":
-                session_request = SessionRequest.model_validate(normalized.payload["request"])
+                session_request = ExecutionRequest.model_validate(normalized.payload["request"])
                 if session_request.owner != normalized.actor_id:
                     raise MishkanError(
                         ErrorCode.AUTHORITY_NOT_GRANTED,
                         "session owner must match the authenticated command actor",
                     )
-                paths = (session_request.workspace,)
+                paths = tuple(dict.fromkeys((session_request.cwd, *session_request.declared_paths)))
+                assert session_request.executable is not None
                 executables = (session_request.executable,)
-                arguments = session_request.arguments
+                arguments = session_request.args
                 environments = tuple(sorted(session_request.environment))
                 credentials = tuple(
                     sorted(
@@ -388,6 +395,7 @@ class ApplicationCommandAuthority:
                             *(
                                 item.locator
                                 for item in session_request.credential_environment.values()
+                                if isinstance(item, CredentialReference)
                             ),
                             *(item.locator for item in session_request.credential_references),
                         }
@@ -399,6 +407,7 @@ class ApplicationCommandAuthority:
                     for value in session_request.network_destinations
                 )
                 uses_network = bool(network_destinations)
+                assert session_request.deadline is not None
                 timeout = self._remaining_seconds(session_request.deadline)
             elif normalized.command_type.startswith("session."):
                 record = self._sessions.status(self._target_uuid(normalized))

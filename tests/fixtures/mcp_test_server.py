@@ -73,7 +73,7 @@ for line in sys.stdin:
             {
                 "protocolVersion": "2025-11-25",
                 "capabilities": capabilities,
-                "serverInfo": {"name": "mishkan-i04-fixture", "version": "1.0"},
+                "serverInfo": {"name": "mishkan-mcp-fixture", "version": "1.0"},
             },
         )
     elif method == "tools/list":

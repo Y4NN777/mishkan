@@ -17,7 +17,7 @@ rules:
       effect_classes: [command]
       paths: ["*"]
       executables: ["*/bash", "*/git"]
-      arguments: ["*/git show HEAD:go.mod", i02.fixture-bash, "1"]
+      arguments: ["*/git show HEAD:go.mod", acceptance.fixture-bash, "1"]
       network_destinations: ["*"]
       remotes: ["*"]
       branches: ["*"]

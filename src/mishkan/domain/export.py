@@ -47,7 +47,7 @@ from mishkan.events.models import (
 from mishkan.events.models import (
     EventHold as EventEvidenceHold,
 )
-from mishkan.execution.sessions import CursorRead, SessionRecord, SessionRequest
+from mishkan.execution.sessions import CursorRead, ExecutionSession
 from mishkan.mcp.models import (
     McpCallRequest,
     McpCallResult,
@@ -127,9 +127,8 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "web-map-result-v1.schema.json": MapResult,
     "web-search-request-v1.schema.json": SearchRequest,
     "web-search-response-v1.schema.json": SearchResponse,
-    "session-cursor-read-v1.schema.json": CursorRead,
-    "session-record-v1.schema.json": SessionRecord,
-    "session-request-v1.schema.json": SessionRequest,
+    "execution-cursor-read-v1.schema.json": CursorRead,
+    "execution-session-v1.schema.json": ExecutionSession,
     "snapshot-envelope-v1.schema.json": SnapshotEnvelope,
     "task-review-rejection-v1.schema.json": TaskReviewRejection,
 }

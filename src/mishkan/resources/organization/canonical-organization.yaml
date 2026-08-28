@@ -1,5 +1,5 @@
 schema_version: "1.0"
-organization_id: mishkan-i01
+organization_id: mishkan-canonical
 roles:
   - name: Repository_Planner
     goal: Propose the smallest evidence-grounded plan for the requested repository outcome.

@@ -142,7 +142,7 @@ def _supervisor(
     )
     inspector = ContentInspector(
         InspectionProfileLoader().load(
-            "package://mishkan.resources.inspection/i02-default.yaml",
+            "package://mishkan.resources.inspection/default-security.yaml",
             tmp_path,
         )
     )

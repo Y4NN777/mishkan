@@ -14,9 +14,9 @@ from mishkan.config.presets import preset_text
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.time import utc_now
 from mishkan.execution import (
+    ExecutionMode,
+    ExecutionRequest,
     ReadinessProbe,
-    SessionMode,
-    SessionRequest,
     SessionState,
     SessionSupervisor,
 )
@@ -58,15 +58,15 @@ def _supervisor(tmp_path: Path) -> tuple[SessionSupervisor, DurableArtifactServi
     return supervisor, artifacts, database
 
 
-def _request(mode: SessionMode, arguments: tuple[str, ...]) -> SessionRequest:
-    return SessionRequest(
+def _request(mode: ExecutionMode, arguments: tuple[str, ...]) -> ExecutionRequest:
+    return ExecutionRequest(
         mode=mode,
         owner="engineer",
         run_id="run-1",
         task_id="task-1",
         executable="/bin/sh",
-        arguments=arguments,
-        profile="standard",
+        args=arguments,
+        session_profile="standard",
         deadline=utc_now() + timedelta(minutes=1),
         policy_fingerprint="a" * 64,
     )
@@ -85,7 +85,7 @@ def _await_settlement(supervisor: SessionSupervisor, session_id) -> object:  # t
 def test_job_readiness_cursors_artifacts_and_cross_chunk_secret_filter(tmp_path: Path) -> None:
     supervisor, artifacts, _database = _supervisor(tmp_path)
     request = _request(
-        SessionMode.JOB,
+        ExecutionMode.JOB,
         (
             "-c",
             "printf CAN; sleep 0.05; printf 'ARY READY\\n'; "
@@ -113,9 +113,12 @@ def test_job_readiness_cursors_artifacts_and_cross_chunk_secret_filter(tmp_path:
     assert b"CANARY" not in artifacts.read_bytes(reference)
 
 
-def test_stateful_pty_input_is_bounded_and_settles_as_uncertain(tmp_path: Path) -> None:
+def test_stateful_pty_input_is_bounded_and_settles_with_observed_artifacts(tmp_path: Path) -> None:
     supervisor, _artifacts, _database = _supervisor(tmp_path)
-    started = supervisor.start(_request(SessionMode.PTY, ()))
+    started = supervisor.start(
+        _request(ExecutionMode.PTY, ()).model_copy(update={"declared_paths": ("governed-effect",)})
+    )
+    assert started.result is None
 
     with pytest.raises(MishkanError) as oversized:
         supervisor.write(started.session_id, b"x" * 1_048_577)
@@ -130,7 +133,15 @@ def test_stateful_pty_input_is_bounded_and_settles_as_uncertain(tmp_path: Path) 
 
     assert (tmp_path / "governed-effect").is_file()
     assert settled.declared_effects == ("filesystem.write",)  # type: ignore[attr-defined]
-    assert settled.effect_settlement == "uncertain"  # type: ignore[attr-defined]
+    assert settled.effect_settlement == "completed"  # type: ignore[attr-defined]
+    assert settled.observed_effects == (  # type: ignore[attr-defined]
+        "filesystem.change:governed-effect",
+    )
+    assert len(settled.result.produced_artifact_refs) == 1  # type: ignore[attr-defined,union-attr]
+    assert settled.result.started_at < settled.result.finished_at  # type: ignore[attr-defined,union-attr]
+    rooted = _artifacts.plan_gc(watermark=utc_now() + timedelta(seconds=1))
+    assert settled.stdout_artifact_reference not in rooted.candidates  # type: ignore[attr-defined]
+    assert settled.result.produced_artifact_refs[0] not in rooted.candidates  # type: ignore[attr-defined,union-attr]
     assert settled.retryable is False  # type: ignore[attr-defined]
     assert "done" in settled.stdout_preview  # type: ignore[attr-defined]
     assert settled.execution_location == "local"  # type: ignore[attr-defined]
@@ -138,9 +149,11 @@ def test_stateful_pty_input_is_bounded_and_settles_as_uncertain(tmp_path: Path) 
 
 def test_pty_input_resize_cursor_and_lost_on_new_supervisor(tmp_path: Path) -> None:
     supervisor, artifacts, database = _supervisor(tmp_path)
-    request = _request(SessionMode.PTY, ())
+    request = _request(ExecutionMode.PTY, ())
     started = supervisor.start(request)
     supervisor.resize(started.session_id, rows=40, columns=120)
+    with pytest.raises(MishkanError):
+        supervisor.resize(started.session_id, rows=0, columns=120)
     supervisor.write(started.session_id, b"printf 'hello\\n'\n")
     deadline = time.monotonic() + 3
     while time.monotonic() < deadline:
@@ -161,13 +174,16 @@ def test_pty_input_resize_cursor_and_lost_on_new_supervisor(tmp_path: Path) -> N
         config.sessions,
         artifacts,
     )
-    assert replacement.status(started.session_id).state is SessionState.LOST
+    lost = replacement.status(started.session_id)
+    assert lost.state is SessionState.LOST
+    assert lost.result is not None and lost.result.status == "lost"
+    assert lost.stdout_artifact_reference is not None
     supervisor.cancel(started.session_id)
 
 
 def test_cancellation_and_recycled_pid_identity_fail_closed(tmp_path: Path) -> None:
     supervisor, _artifacts, database = _supervisor(tmp_path)
-    running = supervisor.start(_request(SessionMode.JOB, ("-c", "sleep 10")))
+    running = supervisor.start(_request(ExecutionMode.JOB, ("-c", "sleep 10")))
     with create_engine(f"sqlite:///{database}").begin() as connection:
         connection.execute(
             text(

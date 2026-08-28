@@ -17,6 +17,7 @@ from mishkan.artifacts import (
     ArtifactCollection,
     ArtifactManifest,
     ArtifactPin,
+    UploadSession,
     WorkingReference,
 )
 from mishkan.artifacts import (
@@ -33,7 +34,7 @@ from mishkan.events import (
 from mishkan.events import (
     EventHold as EventEvidenceHold,
 )
-from mishkan.execution import CursorRead, SessionRecord
+from mishkan.execution import CursorRead, ExecutionSession
 
 
 class Mishkan:
@@ -280,6 +281,11 @@ class Mishkan:
             response.raise_for_status()
             yield from response.iter_bytes()
 
+    def artifact_upload(self, upload_id: str) -> UploadSession:
+        response = self._client.get(f"/v1/artifact-uploads/{upload_id}", headers=self._headers())
+        response.raise_for_status()
+        return UploadSession.model_validate(response.json())
+
     def artifact_collections(
         self, *, offset: int = 0, limit: int = 100
     ) -> tuple[ArtifactCollection, ...]:
@@ -336,19 +342,19 @@ class Mishkan:
         response.raise_for_status()
         return ChangeSetResult.model_validate(response.json())
 
-    def sessions(self, *, offset: int = 0, limit: int = 100) -> tuple[SessionRecord, ...]:
+    def sessions(self, *, offset: int = 0, limit: int = 100) -> tuple[ExecutionSession, ...]:
         response = self._client.get(
             "/v1/sessions",
             headers=self._headers(),
             params={"offset": offset, "limit": limit},
         )
         response.raise_for_status()
-        return tuple(SessionRecord.model_validate(item) for item in response.json())
+        return tuple(ExecutionSession.model_validate(item) for item in response.json())
 
-    def session(self, session_id: str) -> SessionRecord:
+    def session(self, session_id: str) -> ExecutionSession:
         response = self._client.get(f"/v1/sessions/{session_id}", headers=self._headers())
         response.raise_for_status()
-        return SessionRecord.model_validate(response.json())
+        return ExecutionSession.model_validate(response.json())
 
     def session_output(
         self,

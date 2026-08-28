@@ -196,13 +196,13 @@ rules:
         "owner": "local-operator",
         "run_id": "run-denied",
         "task_id": "task-denied",
-        "workspace": ".",
+        "cwd": ".",
         "executable": "/bin/sh",
-        "arguments": ["-c", "touch must-not-exist"],
+        "args": ["-c", "touch must-not-exist"],
         "environment": {},
         "credential_environment": {},
         "credential_references": [],
-        "profile": "standard",
+        "session_profile": "standard",
         "deadline": (utc_now() + timedelta(minutes=1)).isoformat(),
         "policy_fingerprint": "0" * 64,
     }
@@ -376,10 +376,10 @@ rules:
         "owner": "local-operator",
         "run_id": "run-effect",
         "task_id": "task-effect",
-        "workspace": ".",
+        "cwd": ".",
         "executable": "/bin/sh",
-        "arguments": ["-c", "touch must-not-exist"],
-        "profile": "standard",
+        "args": ["-c", "touch must-not-exist"],
+        "session_profile": "standard",
         "deadline": (utc_now() + timedelta(minutes=1)).isoformat(),
         "declared_effects": ["filesystem.write"],
         "network_destinations": [],
@@ -571,13 +571,13 @@ async def test_managed_job_is_started_and_observed_through_commands(tmp_path: Pa
         "owner": "local-operator",
         "run_id": "run-1",
         "task_id": "task-1",
-        "workspace": ".",
+        "cwd": ".",
         "executable": "/bin/sh",
-        "arguments": ["-c", "printf daemon-job"],
+        "args": ["-c", "printf daemon-job"],
         "environment": {},
         "credential_environment": {},
         "credential_references": [],
-        "profile": "standard",
+        "session_profile": "standard",
         "deadline": (utc_now() + timedelta(minutes=1)).isoformat(),
         "policy_fingerprint": "a" * 64,
     }
@@ -593,7 +593,7 @@ async def test_managed_job_is_started_and_observed_through_commands(tmp_path: Pa
                 payload={"request": request},
             ).model_dump(mode="json"),
         )
-        session_id = started.json()["payload"]["session_id"]
+        session_id = started.json()["payload"]["execution_id"]
         for _ in range(50):
             observed = await client.get(f"/v1/sessions/{session_id}", headers=headers)
             if observed.json()["state"] in {"settled", "failed"}:
@@ -625,15 +625,15 @@ async def test_session_credentials_are_references_resolved_after_policy_and_neve
         "owner": "local-operator",
         "run_id": "run-credential",
         "task_id": "task-credential",
-        "workspace": ".",
+        "cwd": ".",
         "executable": "/bin/sh",
-        "arguments": ["-c", 'printf %s "$TOKEN"'],
+        "args": ["-c", 'printf %s "$TOKEN"'],
         "environment": {},
         "credential_environment": {
             "TOKEN": {"source": "env", "locator": "MISHKAN_SESSION_TEST_TOKEN"}
         },
         "credential_references": [],
-        "profile": "standard",
+        "session_profile": "standard",
         "deadline": (utc_now() + timedelta(minutes=1)).isoformat(),
         "policy_fingerprint": "f" * 64,
     }
@@ -649,7 +649,7 @@ async def test_session_credentials_are_references_resolved_after_policy_and_neve
                 payload={"request": request},
             ).model_dump(mode="json"),
         )
-        session_id = started.json()["payload"]["session_id"]
+        session_id = started.json()["payload"]["execution_id"]
         for _ in range(50):
             observed = await client.get(f"/v1/sessions/{session_id}", headers=headers)
             if observed.json()["state"] in {"settled", "failed"}:
@@ -719,13 +719,13 @@ async def test_crash_after_effect_reservation_refuses_implicit_replay(
         "owner": "local-operator",
         "run_id": "run-crash",
         "task_id": "task-crash",
-        "workspace": ".",
+        "cwd": ".",
         "executable": "/bin/sh",
-        "arguments": ["-c", "sleep 10"],
+        "args": ["-c", "sleep 10"],
         "environment": {},
         "credential_environment": {},
         "credential_references": [],
-        "profile": "standard",
+        "session_profile": "standard",
         "deadline": (utc_now() + timedelta(minutes=1)).isoformat(),
         "policy_fingerprint": "b" * 64,
     }
@@ -752,7 +752,7 @@ async def test_crash_after_effect_reservation_refuses_implicit_replay(
             "/v1/commands", headers=headers, json=command.model_dump(mode="json")
         )
         sessions_after_replay = await client.get("/v1/sessions", headers=headers)
-        session_id = sessions_after_crash.json()[0]["session_id"]
+        session_id = sessions_after_crash.json()[0]["execution_id"]
         cancelled = await client.post(
             "/v1/commands",
             headers=headers,

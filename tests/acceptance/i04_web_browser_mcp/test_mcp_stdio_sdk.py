@@ -30,7 +30,7 @@ def _connection(server: Path, *, max_result_bytes: int = 16_384) -> McpConnectio
 async def test_official_stdio_sdk_discovers_and_invokes_typed_primitives(
     tmp_path: Path,
 ) -> None:
-    server = Path(__file__).parents[2] / "fixtures" / "i04_mcp_server.py"
+    server = Path(__file__).parents[2] / "fixtures" / "mcp_test_server.py"
     client = McpSdkClient({})
     configured = _connection(server)
 

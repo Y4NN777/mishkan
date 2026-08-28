@@ -7,6 +7,8 @@ from pathlib import Path
 import pytest
 
 from mishkan.artifacts import (
+    ArtifactAvailability,
+    ArtifactFactState,
     ArtifactLifecycle,
     ArtifactProvenance,
     ArtifactReconciliationAction,
@@ -61,7 +63,12 @@ def test_chunked_upload_is_invisible_until_verified_commit(tmp_path: Path) -> No
     reference = _upload(service, content)
 
     assert service.read_bytes(reference) == content
-    assert service.manifest(reference).lifecycle is ArtifactLifecycle.AVAILABLE
+    manifest = service.manifest(reference)
+    assert manifest.lifecycle is ArtifactLifecycle.AVAILABLE
+    assert manifest.detected_media_type is None
+    assert manifest.facts.integrity is ArtifactFactState.PASSED
+    assert manifest.facts.availability is ArtifactAvailability.AVAILABLE
+    assert manifest.facts.authorization == "contextual_policy_required"
 
 
 def test_upload_rejects_stale_offset_and_wrong_digest(tmp_path: Path) -> None:
@@ -81,6 +88,22 @@ def test_upload_rejects_stale_offset_and_wrong_digest(tmp_path: Path) -> None:
     with pytest.raises(MishkanError) as invalid:
         service.commit_upload(upload.upload_id)
     assert invalid.value.envelope.code is ErrorCode.ARTIFACT
+
+
+def test_interrupted_upload_is_resumable_or_explicitly_aborted(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    content = b"resume"
+    upload = service.open_upload(
+        expected_size=len(content),
+        expected_digest=f"sha256:{hashlib.sha256(content).hexdigest()}",
+        media_type="text/plain",
+        provenance=_provenance(),
+    )
+    service.append_chunk(upload.upload_id, offset=0, content=content[:4])
+    assert service.upload(upload.upload_id).offset == 4
+    assert service.abort_upload(upload.upload_id).lifecycle == "aborted"
+    with pytest.raises(MishkanError):
+        service.append_chunk(upload.upload_id, offset=4, content=content[4:])
 
 
 def test_working_reference_requires_compare_and_swap(tmp_path: Path) -> None:
@@ -119,7 +142,8 @@ def test_collections_validate_paths_and_holds_root_gc(tmp_path: Path) -> None:
     assert removed in plan.candidates
     applied = service.apply_gc(plan.plan_id)
     assert applied.applied
-    assert service.manifest(removed).lifecycle is ArtifactLifecycle.TOMBSTONED
+    assert service.manifest(removed).lifecycle is ArtifactLifecycle.DELETED
+    assert service.manifest(removed).facts.availability is ArtifactAvailability.UNAVAILABLE
     assert service.read_bytes(kept) == b"keep"
 
     assert service.release_hold(kept) == hold

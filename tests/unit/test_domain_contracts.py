@@ -110,6 +110,8 @@ def test_public_contract_catalogue_exports_deterministically(tmp_path: Path) -> 
         "event-retention-policy-v1.schema.json",
         "execution-request-v1.schema.json",
         "execution-result-v1.schema.json",
+        "execution-cursor-read-v1.schema.json",
+        "execution-session-v1.schema.json",
         "git-effect-request-v1.schema.json",
         "git-effect-result-v1.schema.json",
         "mcp-call-request-v1.schema.json",
@@ -132,9 +134,6 @@ def test_public_contract_catalogue_exports_deterministically(tmp_path: Path) -> 
         "web-map-result-v1.schema.json",
         "web-search-request-v1.schema.json",
         "web-search-response-v1.schema.json",
-        "session-cursor-read-v1.schema.json",
-        "session-record-v1.schema.json",
-        "session-request-v1.schema.json",
         "snapshot-envelope-v1.schema.json",
         "task-review-rejection-v1.schema.json",
     }

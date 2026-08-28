@@ -207,12 +207,14 @@ def test_inactive_policy_revision_cannot_grant_authority(
 
 def test_bundled_policy_is_loaded_through_a_public_package_uri(tmp_path: Path) -> None:
     policy = PolicyLoader().load(
-        ("package://mishkan.resources.policies/i02-local.yaml",),
+        ("package://mishkan.resources.policies/local-control-plane.yaml",),
         tmp_path,
     )
 
     assert policy.documents[0].source_id == "bundled.local"
-    assert policy.source_uris == ("package://mishkan.resources.policies/i02-local.yaml",)
+    assert policy.source_uris == (
+        "package://mishkan.resources.policies/local-control-plane.yaml",
+    )
 
 
 @pytest.mark.parametrize(
@@ -230,7 +232,7 @@ def test_bundled_init_policy_allows_portable_safe_git_read_and_gates_other_host_
     git_executable: str,
 ) -> None:
     policy = PolicyLoader().load(
-        ("package://mishkan.resources.policies/i02-local.yaml",),
+        ("package://mishkan.resources.policies/local-control-plane.yaml",),
         tmp_path,
     )
     base = {

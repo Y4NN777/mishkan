@@ -26,7 +26,7 @@ def load_initialization_definitions(
     organization_source: Path | None = None,
     outcome_source: Path | None = None,
 ) -> tuple[OrganizationDefinition, OutcomeDefinition]:
-    organization = _load(organization_source, "i01-organization.yaml", OrganizationDefinition)
+    organization = _load(organization_source, "canonical-organization.yaml", OrganizationDefinition)
     outcome = _load(outcome_source, "mishkan-init.yaml", OutcomeDefinition)
     SchemaRegistry.require_supported("mishkan.organization", organization.schema_version)
     SchemaRegistry.require_supported("mishkan.outcome", outcome.schema_version)

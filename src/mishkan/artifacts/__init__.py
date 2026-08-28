@@ -1,7 +1,10 @@
 """Immutable artifact manifests and local content-addressed storage."""
 
 from mishkan.artifacts.models import (
+    ArtifactAvailability,
     ArtifactCollection,
+    ArtifactFacts,
+    ArtifactFactState,
     ArtifactHold,
     ArtifactLifecycle,
     ArtifactManifest,
@@ -10,6 +13,7 @@ from mishkan.artifacts.models import (
     ArtifactReconciliationAction,
     ArtifactReconciliationIssue,
     ArtifactReconciliationPlan,
+    ArtifactTrust,
     ArtifactValidation,
     GarbageCollectionPlan,
     UploadSession,
@@ -18,7 +22,10 @@ from mishkan.artifacts.models import (
 from mishkan.artifacts.store import ArtifactStore, FilesystemArtifactStore
 
 __all__ = [
+    "ArtifactAvailability",
     "ArtifactCollection",
+    "ArtifactFactState",
+    "ArtifactFacts",
     "ArtifactHold",
     "ArtifactLifecycle",
     "ArtifactManifest",
@@ -28,6 +35,7 @@ __all__ = [
     "ArtifactReconciliationIssue",
     "ArtifactReconciliationPlan",
     "ArtifactStore",
+    "ArtifactTrust",
     "ArtifactValidation",
     "FilesystemArtifactStore",
     "GarbageCollectionPlan",

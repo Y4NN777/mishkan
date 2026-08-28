@@ -35,6 +35,37 @@ class ArtifactValidation(StrEnum):
     PARTIAL = "partial"
 
 
+class ArtifactFactState(StrEnum):
+    NOT_EVALUATED = "not_evaluated"
+    PASSED = "passed"
+    FAILED = "failed"
+
+
+class ArtifactTrust(StrEnum):
+    UNTRUSTED = "untrusted"
+    TRUSTED = "trusted"
+    QUARANTINED = "quarantined"
+
+
+class ArtifactAvailability(StrEnum):
+    AVAILABLE = "available"
+    UNAVAILABLE = "unavailable"
+
+
+class ArtifactFacts(ArtifactModel):
+    """Independent evidence dimensions; none grants use authority."""
+
+    integrity: ArtifactFactState = ArtifactFactState.NOT_EVALUATED
+    detected_media_type: str | None = None
+    security_scan: ArtifactFactState = ArtifactFactState.NOT_EVALUATED
+    schema_validity: ArtifactFactState = ArtifactFactState.NOT_EVALUATED
+    rendering: ArtifactFactState = ArtifactFactState.NOT_EVALUATED
+    trust: ArtifactTrust = ArtifactTrust.UNTRUSTED
+    sensitivity: str = Field(min_length=1)
+    availability: ArtifactAvailability = ArtifactAvailability.UNAVAILABLE
+    authorization: Literal["contextual_policy_required"] = "contextual_policy_required"
+
+
 class ArtifactProvenance(ArtifactModel):
     producer_identity: str = Field(min_length=1)
     run_id: str = Field(min_length=1)
@@ -78,6 +109,7 @@ class ArtifactManifest(DomainRecord):
     lifecycle: ArtifactLifecycle
     acceptance: Literal["unaccepted"] = "unaccepted"
     storage_ref: str = Field(pattern=r"^sha256/[a-f0-9]{2}/[a-f0-9]{62}$")
+    facts: ArtifactFacts = Field(default_factory=lambda: ArtifactFacts(sensitivity="internal"))
 
     @property
     def reference(self) -> str:

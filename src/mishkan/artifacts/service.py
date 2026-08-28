@@ -15,7 +15,10 @@ from sqlalchemy import create_engine, delete, event, select
 from sqlalchemy.orm import Session
 
 from mishkan.artifacts.models import (
+    ArtifactAvailability,
     ArtifactCollection,
+    ArtifactFacts,
+    ArtifactFactState,
     ArtifactHold,
     ArtifactLifecycle,
     ArtifactManifest,
@@ -24,6 +27,7 @@ from mishkan.artifacts.models import (
     ArtifactReconciliationAction,
     ArtifactReconciliationIssue,
     ArtifactReconciliationPlan,
+    ArtifactTrust,
     ArtifactValidation,
     GarbageCollectionPlan,
     UploadSession,
@@ -42,7 +46,11 @@ from mishkan.persistence.sqlite import (
     ArtifactReferenceRow,
     ArtifactRow,
     ArtifactUploadRow,
+    ChangeOperationRow,
+    ChangeSetRow,
+    ExecutionSessionRow,
     LocalRunRepository,
+    ResultRow,
 )
 
 
@@ -68,6 +76,10 @@ class DurableArtifactService:
             directory.mkdir(parents=True, exist_ok=True)
         self._engine = create_engine(f"sqlite:///{database.resolve()}")
         event.listen(self._engine, "connect", LocalRunRepository._configure_connection)
+
+    @property
+    def max_artifact_bytes(self) -> int:
+        return self._max_artifact_bytes
 
     def open_upload(
         self,
@@ -228,13 +240,18 @@ class DurableArtifactService:
                 digest=observed_digest,
                 size_bytes=size,
                 declared_media_type=row.media_type,
-                detected_media_type=row.media_type,
+                detected_media_type=None,
                 provenance=ArtifactProvenance.model_validate(metadata["provenance"]),
                 sensitivity=str(metadata["sensitivity"]),
                 retention=str(metadata["retention"]),
                 validation=ArtifactValidation.INTEGRITY_VERIFIED,
                 lifecycle=ArtifactLifecycle.AVAILABLE,
                 storage_ref=storage_ref,
+                facts=ArtifactFacts(
+                    integrity=ArtifactFactState.PASSED,
+                    sensitivity=str(metadata["sensitivity"]),
+                    availability=ArtifactAvailability.AVAILABLE,
+                ),
             )
             session.add(
                 ArtifactRow(
@@ -283,6 +300,22 @@ class DurableArtifactService:
 
     def read_bytes(self, reference: str) -> bytes:
         return self.body_path(reference).read_bytes()
+
+    def upload(self, upload_id: UUID) -> UploadSession:
+        with Session(self._engine) as session:
+            return self._upload_model(self._require_upload(session, upload_id))
+
+    def abort_upload(self, upload_id: UUID) -> UploadSession:
+        with Session(self._engine) as session, session.begin():
+            row = self._require_upload(session, upload_id)
+            if row.state == "committed":
+                raise MishkanError(
+                    ErrorCode.ARTIFACT, "committed artifact upload cannot be aborted"
+                )
+            row.state = "aborted"
+            row.updated_at = utc_now().isoformat()
+            self._staging_path(row).unlink(missing_ok=True)
+            return self._upload_model(row)
 
     def body_path(self, reference: str) -> Path:
         manifest = self.manifest(reference)
@@ -562,12 +595,8 @@ class DurableArtifactService:
                     )
                 row = session.get(ArtifactRow, artifact_id)
                 if row is not None and row.lifecycle == ArtifactLifecycle.AVAILABLE.value:
-                    row.lifecycle = ArtifactLifecycle.TOMBSTONED.value
                     row.tombstoned_at = utc_now().isoformat()
-                    manifest = ArtifactManifest.model_validate_json(row.manifest_payload)
-                    row.manifest_payload = manifest.model_copy(
-                        update={"lifecycle": ArtifactLifecycle.TOMBSTONED}
-                    ).model_dump_json()
+                    self._set_row_lifecycle(row, ArtifactLifecycle.TOMBSTONED)
                     blobs.add(row.storage_ref)
             plan_row.applied_at = utc_now().isoformat()
         for storage_ref in blobs:
@@ -575,11 +604,27 @@ class DurableArtifactService:
                 live = session.scalar(
                     select(ArtifactRow.id).where(
                         ArtifactRow.storage_ref == storage_ref,
-                        ArtifactRow.lifecycle == ArtifactLifecycle.AVAILABLE.value,
+                        ArtifactRow.lifecycle.not_in(
+                            (
+                                ArtifactLifecycle.TOMBSTONED.value,
+                                ArtifactLifecycle.DELETED.value,
+                                ArtifactLifecycle.MISSING.value,
+                                ArtifactLifecycle.CORRUPT.value,
+                            )
+                        ),
                     )
                 )
             if live is None:
                 self._safe_blob(storage_ref).unlink(missing_ok=True)
+                with Session(self._engine) as session, session.begin():
+                    rows = session.scalars(
+                        select(ArtifactRow).where(
+                            ArtifactRow.storage_ref == storage_ref,
+                            ArtifactRow.lifecycle == ArtifactLifecycle.TOMBSTONED.value,
+                        )
+                    ).all()
+                    for row in rows:
+                        self._set_row_lifecycle(row, ArtifactLifecycle.DELETED)
         return GarbageCollectionPlan(
             plan_id=plan_id,
             candidates=candidates,
@@ -894,8 +939,33 @@ class DurableArtifactService:
     def _set_row_lifecycle(row: ArtifactRow, lifecycle: ArtifactLifecycle) -> None:
         row.lifecycle = lifecycle.value
         manifest = ArtifactManifest.model_validate_json(row.manifest_payload)
+        facts = manifest.facts.model_copy(
+            update={
+                "availability": (
+                    ArtifactAvailability.AVAILABLE
+                    if lifecycle
+                    in {
+                        ArtifactLifecycle.AVAILABLE,
+                        ArtifactLifecycle.QUARANTINED,
+                        ArtifactLifecycle.REJECTED,
+                        ArtifactLifecycle.EXPIRED,
+                    }
+                    else ArtifactAvailability.UNAVAILABLE
+                ),
+                "integrity": (
+                    ArtifactFactState.FAILED
+                    if lifecycle in {ArtifactLifecycle.MISSING, ArtifactLifecycle.CORRUPT}
+                    else manifest.facts.integrity
+                ),
+                "trust": (
+                    ArtifactTrust.QUARANTINED
+                    if lifecycle is ArtifactLifecycle.QUARANTINED
+                    else manifest.facts.trust
+                ),
+            }
+        )
         row.manifest_payload = manifest.model_copy(
-            update={"lifecycle": lifecycle}
+            update={"lifecycle": lifecycle, "facts": facts}
         ).model_dump_json()
 
     def _staging_path(self, row: ArtifactUploadRow) -> Path:
@@ -1027,13 +1097,29 @@ class DurableArtifactService:
                 str(DurableArtifactService._reference_id(ref))
                 for ref in json.loads(payload).values()
             )
+        for payload in session.scalars(select(ResultRow.payload)).all():
+            rooted.update(DurableArtifactService._artifact_ids_in_payload(payload))
+        for execution_row in session.scalars(select(ExecutionSessionRow)).all():
+            for reference in (
+                execution_row.stdout_artifact_reference,
+                execution_row.stderr_artifact_reference,
+                *json.loads(execution_row.produced_artifacts_payload or "[]"),
+            ):
+                if reference:
+                    rooted.add(str(DurableArtifactService._reference_id(reference)))
+        for reference in session.scalars(select(ChangeSetRow.diff_reference)).all():
+            if reference:
+                rooted.add(str(DurableArtifactService._reference_id(reference)))
+        for reference in session.scalars(select(ChangeOperationRow.preimage_reference)).all():
+            if reference:
+                rooted.add(str(DurableArtifactService._reference_id(reference)))
         provenance_edges: dict[str, tuple[str, ...]] = {}
-        for row in session.scalars(select(ArtifactRow)).all():
+        for artifact_row in session.scalars(select(ArtifactRow)).all():
             try:
-                manifest = ArtifactManifest.model_validate_json(row.manifest_payload)
+                manifest = ArtifactManifest.model_validate_json(artifact_row.manifest_payload)
             except ValidationError:
                 continue
-            provenance_edges[row.id] = tuple(
+            provenance_edges[artifact_row.id] = tuple(
                 str(DurableArtifactService._reference_id(reference))
                 for reference in manifest.provenance.source_artifacts
             )
@@ -1045,3 +1131,27 @@ class DurableArtifactService:
                     rooted.add(source_id)
                     pending.append(source_id)
         return rooted
+
+    @staticmethod
+    def _artifact_ids_in_payload(payload: str) -> set[str]:
+        try:
+            value = json.loads(payload)
+        except (TypeError, json.JSONDecodeError):
+            return set()
+        found: set[str] = set()
+
+        def visit(item: object) -> None:
+            if isinstance(item, str) and item.startswith("artifact:"):
+                try:
+                    found.add(str(DurableArtifactService._reference_id(item)))
+                except MishkanError:
+                    return
+            elif isinstance(item, dict):
+                for nested in item.values():
+                    visit(nested)
+            elif isinstance(item, list):
+                for nested in item:
+                    visit(nested)
+
+        visit(value)
+        return found

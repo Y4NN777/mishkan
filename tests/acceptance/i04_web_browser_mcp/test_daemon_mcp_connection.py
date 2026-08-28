@@ -64,7 +64,7 @@ def _config(tmp_path: Path) -> MishkanConfig:
     loaded = ConfigLoader().load([source]).value
     base = loaded.model_copy(update={"project": ProjectConfig(workspace=tmp_path)})
     assert base.mcp is not None
-    server = Path(__file__).parents[2] / "fixtures" / "i04_mcp_server.py"
+    server = Path(__file__).parents[2] / "fixtures" / "mcp_test_server.py"
     exposure = McpExposureProfileConfig(operations=("repository.read",))
     connection = McpConnectionConfig(
         transport=McpTransport.STDIO,
@@ -297,7 +297,7 @@ async def test_daemon_commands_reconcile_and_cancel_remote_tasks_after_transport
     config = _config(tmp_path)
     assert config.mcp is not None
     assert config.inspection_profile is not None
-    server = Path(__file__).parents[2] / "fixtures" / "i04_mcp_server.py"
+    server = Path(__file__).parents[2] / "fixtures" / "mcp_test_server.py"
     state_file = tmp_path / "daemon-remote-tasks.json"
     configured = config.mcp.connections["fixture"].model_copy(
         update={

@@ -119,6 +119,7 @@ result_schema:
     - stderr_digest
     - stdout_artifact_ref
     - stderr_artifact_ref
+    - produced_artifact_refs
     - truncated
     - termination_cause
     - expected_exit_codes
@@ -150,6 +151,7 @@ result_schema:
     stderr_digest: {type: string, pattern: "^sha256:[a-f0-9]{64}$"}
     stdout_artifact_ref: {type: [string, "null"]}
     stderr_artifact_ref: {type: [string, "null"]}
+    produced_artifact_refs: {type: array, uniqueItems: true, items: {type: string}}
     truncated: {type: boolean}
     termination_cause:
       type: [string, "null"]

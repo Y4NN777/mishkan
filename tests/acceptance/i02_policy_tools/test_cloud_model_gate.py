@@ -89,12 +89,14 @@ def _config(workspace: Path, key_env: str) -> MishkanConfig:
                 "execution": {"candidates": _models("MISHKAN_CLOUD_EXECUTION_MODEL")},
             },
             "policy_sources": [
-                "package://mishkan.resources.policies/i02-local.yaml",
+                "package://mishkan.resources.policies/local-control-plane.yaml",
             ],
             "tool_sources": [
                 "package://mishkan.resources.tools/core-catalog.yaml",
             ],
-            "inspection_profile": "package://mishkan.resources.inspection/i02-default.yaml",
+            "inspection_profile": (
+                "package://mishkan.resources.inspection/default-security.yaml"
+            ),
             "isolation_profiles": [
                 "package://mishkan.resources.isolation/local-no-network.yaml",
             ],

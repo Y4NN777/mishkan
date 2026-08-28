@@ -906,6 +906,8 @@ class DirectProcessAdapter:
     def invoke(self, call: AdapterCall) -> AdapterResult:
         request = self._request(call)
         self._validate_constraints(request, call)
+        assert request.timeout_seconds is not None
+        assert request.output_policy is not None
         stdin = request.stdin.encode("utf-8") if request.stdin is not None else b""
         executable = self._executable(request, call)
         cwd = self._cwd(call)
@@ -1015,6 +1017,8 @@ class DirectProcessAdapter:
         self._validate_common_constraints(request, call)
 
     def _validate_common_constraints(self, request: ExecutionRequest, call: AdapterCall) -> None:
+        assert request.timeout_seconds is not None
+        assert request.output_policy is not None
         if not call.resources.network:
             raise MishkanError(
                 ErrorCode.TOOL_UNAVAILABLE,
@@ -1135,6 +1139,11 @@ class DirectProcessAdapter:
     def _environment(self, request: ExecutionRequest, call: AdapterCall) -> dict[str, str]:
         environment = dict(request.environment)
         for name, reference in request.credential_environment.items():
+            if not isinstance(reference, str):
+                raise MishkanError(
+                    ErrorCode.EXECUTION,
+                    "direct process credential binding has an invalid type",
+                )
             value = call.credentials.get(reference)
             if value is None:
                 raise MishkanError(
@@ -1262,7 +1271,9 @@ class DirectProcessAdapter:
         stderr: bytes,
         termination_cause: str | None,
     ) -> tuple[ArtifactCandidate, ...]:
-        if not request.output_policy.preserve_full_output_as_artifact:
+        output_policy = request.output_policy
+        assert output_policy is not None
+        if not output_policy.preserve_full_output_as_artifact:
             return ()
         return tuple(
             ArtifactCandidate(
@@ -1272,7 +1283,7 @@ class DirectProcessAdapter:
                 complete=termination_cause != "output_limit",
             )
             for channel, content in (("stdout", stdout), ("stderr", stderr))
-            if len(content) > request.output_policy.preview_bytes
+            if len(content) > output_policy.preview_bytes
         )
 
     @staticmethod
@@ -1351,6 +1362,8 @@ class BashShellAdapter(DirectProcessAdapter):
     def invoke(self, call: AdapterCall) -> AdapterResult:
         request = self._request(call)
         self._validate_constraints(request, call)
+        assert request.timeout_seconds is not None
+        assert request.output_policy is not None
         assert request.shell_profile is not None
         assert request.script is not None
         profile = request.shell_profile

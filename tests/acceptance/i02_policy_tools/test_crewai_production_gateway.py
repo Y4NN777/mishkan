@@ -255,7 +255,7 @@ def test_production_path_accepts_different_exact_native_commands_for_different_r
                 "mode": "shell",
                 "shell_profile": {
                     "schema_version": "1.0",
-                    "profile_id": "i02.fixture-bash",
+                    "profile_id": "acceptance.fixture-bash",
                     "revision": "1",
                     "dialect": "bash",
                     "interpreter": bash_executable,
@@ -356,7 +356,7 @@ def test_production_path_accepts_different_exact_native_commands_for_different_r
         lambda flow: flow.execute_plan(flow.establish_plan()),
     )
     config = ConfigLoader().load([Path("tests/fixtures/config/local-valid.yaml")]).value
-    shell_policy = Path("tests/fixtures/policies/i02-safe-shell-probe.yaml").resolve()
+    shell_policy = Path("tests/fixtures/policies/safe-shell-probe.yaml").resolve()
     config = config.model_copy(
         update={"policy_sources": (*config.policy_sources, str(shell_policy))}
     )

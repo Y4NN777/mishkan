@@ -595,6 +595,39 @@ def show_artifact(ctx: typer.Context, reference: Annotated[str, typer.Argument()
     _emit(manifest.model_dump(mode="json"), as_json=_state(ctx).json_output)
 
 
+@artifact_app.command("upload-status")
+def show_artifact_upload(ctx: typer.Context, upload_id: str) -> None:
+    """Inspect the durable cursor of an interrupted artifact upload."""
+
+    with _daemon_client(ctx) as client:
+        upload = client.artifact_upload(upload_id)
+    _emit(upload.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@artifact_app.command("upload-abort")
+def abort_artifact_upload(
+    ctx: typer.Context,
+    upload_id: str,
+    expected_revision: Annotated[int | None, typer.Option(min=0)] = None,
+) -> None:
+    """Abort one incomplete upload without publishing partial content."""
+
+    from mishkan.application import ApplicationCommand
+
+    with _daemon_client(ctx) as client:
+        result = client.command(
+            ApplicationCommand(
+                command_type="artifact.upload.abort",
+                actor_id=client.principal_id,
+                target_type="artifact_upload",
+                target_id=upload_id,
+                expected_revision=expected_revision,
+                payload={},
+            )
+        )
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
 def _artifact_root_effect(
     ctx: typer.Context,
     artifact_id: str,
@@ -948,10 +981,10 @@ def git_force_push(
 
 def _start_session(ctx: typer.Context, source: Path, mode: str) -> None:
     from mishkan.application import ApplicationCommand
-    from mishkan.execution import SessionMode, SessionRequest
+    from mishkan.execution import ExecutionMode, ExecutionRequest
 
-    request = SessionRequest.model_validate(yaml.safe_load(source.read_text(encoding="utf-8")))
-    expected_mode = SessionMode(mode)
+    request = ExecutionRequest.model_validate(yaml.safe_load(source.read_text(encoding="utf-8")))
+    expected_mode = ExecutionMode(mode)
     if request.mode is not expected_mode:
         raise typer.BadParameter(f"request mode must be {mode}")
     with _daemon_client(ctx) as client:

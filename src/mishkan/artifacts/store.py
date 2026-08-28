@@ -12,9 +12,13 @@ from uuid import UUID, uuid4
 from pydantic import ValidationError
 
 from mishkan.artifacts.models import (
+    ArtifactAvailability,
+    ArtifactFacts,
+    ArtifactFactState,
     ArtifactLifecycle,
     ArtifactManifest,
     ArtifactProvenance,
+    ArtifactTrust,
     ArtifactValidation,
 )
 from mishkan.domain.errors import ErrorCode, MishkanError
@@ -108,6 +112,14 @@ class FilesystemArtifactStore:
             ),
             lifecycle=(ArtifactLifecycle.AVAILABLE if complete else ArtifactLifecycle.QUARANTINED),
             storage_ref=storage_ref,
+            facts=ArtifactFacts(
+                integrity=(
+                    ArtifactFactState.PASSED if complete else ArtifactFactState.NOT_EVALUATED
+                ),
+                sensitivity=sensitivity,
+                availability=ArtifactAvailability.AVAILABLE,
+                trust=(ArtifactTrust.UNTRUSTED if complete else ArtifactTrust.QUARANTINED),
+            ),
         )
         self._commit_manifest(manifest)
         return manifest

@@ -31,6 +31,7 @@ from mishkan.artifacts import (
     ArtifactManifest,
     ArtifactPin,
     ArtifactProvenance,
+    UploadSession,
     WorkingReference,
 )
 from mishkan.artifacts import (
@@ -53,7 +54,7 @@ from mishkan.events import (
     EventRetentionPlan,
     EventRetentionPolicy,
 )
-from mishkan.execution import CursorRead, SessionRecord, SessionRequest, SessionSupervisor
+from mishkan.execution import CursorRead, ExecutionRequest, ExecutionSession, SessionSupervisor
 from mishkan.mcp import (
     McpContractFactory,
     McpFacadeRouter,
@@ -562,6 +563,13 @@ def create_app(config: MishkanConfig) -> FastAPI:
             headers={"Content-Length": str(manifest.size_bytes)},
         )
 
+    @app.get("/v1/artifact-uploads/{upload_id}")
+    async def artifact_upload(
+        upload_id: UUID,
+        _principal: TokenRecord = authenticated,
+    ) -> UploadSession:
+        return artifacts.upload(upload_id)
+
     @app.get("/v1/artifact-collections")
     async def artifact_collection_list(
         _principal: TokenRecord = authenticated,
@@ -614,14 +622,14 @@ def create_app(config: MishkanConfig) -> FastAPI:
         _principal: TokenRecord = authenticated,
         offset: Annotated[int, Query(ge=0)] = 0,
         limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
-    ) -> tuple[SessionRecord, ...]:
+    ) -> tuple[ExecutionSession, ...]:
         return supervisor.list(offset=offset, limit=limit)
 
     @app.get("/v1/sessions/{session_id}")
     async def session_get(
         session_id: UUID,
         _principal: TokenRecord = authenticated,
-    ) -> SessionRecord:
+    ) -> ExecutionSession:
         return supervisor.status(session_id)
 
     @app.get("/v1/sessions/{session_id}/output")
@@ -804,6 +812,9 @@ def _dispatch(
     if command.command_type == "artifact.upload.commit" and command.target_id is not None:
         manifest = artifacts.commit_upload(UUID(command.target_id))
         return "artifact.available", manifest.model_dump(mode="json")
+    if command.command_type == "artifact.upload.abort" and command.target_id is not None:
+        upload = artifacts.abort_upload(UUID(command.target_id))
+        return "artifact.upload_aborted", upload.model_dump(mode="json")
     if command.command_type == "artifact.reference.update":
         reference = artifacts.update_reference(
             str(payload["scope"]),
@@ -972,8 +983,15 @@ def _dispatch(
     )
 
 
-def _session_credential_references(request: SessionRequest) -> tuple[CredentialReference, ...]:
-    references = (*request.credential_environment.values(), *request.credential_references)
+def _session_credential_references(request: ExecutionRequest) -> tuple[CredentialReference, ...]:
+    references = (
+        tuple(
+            value
+            for value in request.credential_environment.values()
+            if isinstance(value, CredentialReference)
+        )
+        + request.credential_references
+    )
     by_locator: dict[str, CredentialReference] = {}
     for reference in references:
         current = by_locator.get(reference.locator)

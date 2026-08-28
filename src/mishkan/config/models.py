@@ -149,6 +149,8 @@ class SessionProfileConfig(StrictConfigModel):
     preview_bytes: int = Field(default=4_096, ge=1)
     read_chunk_bytes: int = Field(ge=1, le=16_777_216)
     readiness_poll_seconds: float = Field(ge=0.01, le=60)
+    max_memory_mb: int | None = Field(default=None, ge=1)
+    max_cpu_seconds: float | None = Field(default=None, gt=0, le=604_800)
 
 
 class SessionConfig(StrictConfigModel):
