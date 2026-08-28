@@ -51,6 +51,10 @@ class WebCredentialResolver(Protocol):
     def resolve(self, references: tuple[CredentialReference, ...]) -> tuple[str | None, ...]: ...
 
 
+class WebContentInspector(Protocol):
+    def inspect(self, content: str, resolved_secrets: tuple[str, ...] = ()) -> str: ...
+
+
 class WebService:
     def __init__(
         self,
@@ -62,6 +66,7 @@ class WebService:
         transport: HttpxWebTransport | None = None,
         credential_resolver: CredentialPoolResolver | None = None,
         cache: SQLiteWebCache | None = None,
+        content_inspector: WebContentInspector | None = None,
     ) -> None:
         self._config = config
         self._artifacts = artifacts
@@ -70,6 +75,7 @@ class WebService:
         self._transport = transport or HttpxWebTransport()
         self._credentials = credential_resolver or CredentialPoolResolver()
         self._cache = cache
+        self._inspector = content_inspector
 
     def search(
         self,
@@ -77,6 +83,7 @@ class WebService:
         *,
         credential_resolver: WebCredentialResolver | None = None,
     ) -> SearchResponse:
+        self._require_safe_payload(request.model_dump_json())
         strategy = request.strategy or self._config.default_search_strategy
         effective_request = request.model_copy(update={"strategy": strategy})
         source_ids = self._search_sources(effective_request, strategy)
@@ -114,6 +121,7 @@ class WebService:
         hits: list[SearchHit] = []
         routes: list[SearchRoute] = []
         lost: list[str] = []
+        resolved_secrets: list[str] = []
         for source_id in source_ids:
             source = self._config.sources[source_id]
             route_started = time.monotonic()
@@ -148,12 +156,14 @@ class WebService:
                 continue
             try:
                 resolver = credential_resolver or self._credentials
+                credentials = resolver.resolve(source.credential_refs)
+                resolved_secrets.extend(value for value in credentials if value is not None)
                 result = adapter.search(
                     effective_request,
                     source_id=source_id,
                     source=source,
                     profile=self._config.network_profiles[source.network_profile],
-                    credentials=resolver.resolve(source.credential_refs),
+                    credentials=credentials,
                 )
             except MishkanError as error:
                 routes.append(
@@ -238,6 +248,7 @@ class WebService:
                 else CacheDisposition.BYPASS
             ),
         )
+        self._require_safe_payload(response.model_dump_json(), tuple(resolved_secrets))
         self._cache_put(
             cache_key,
             kind="search",
@@ -289,6 +300,7 @@ class WebService:
         result_type: type[HttpResult],
         credential_resolver: WebCredentialResolver | None,
     ) -> HttpResult:
+        self._require_safe_payload(request.model_dump_json())
         try:
             profile = self._config.network_profiles[request.network_profile]
         except KeyError as exc:
@@ -419,6 +431,10 @@ class WebService:
             break
         if final_exchange is None:
             raise MishkanError(ErrorCode.WEB, "web fetch did not settle")
+        self._require_safe_payload(
+            final_exchange.content.decode("utf-8", errors="replace"),
+            tuple(value for value in credentials if value is not None),
+        )
         media_type = final_exchange.headers.get("content-type", "").split(";", 1)[0] or None
         if media_type is not None and not any(
             fnmatchcase(media_type, pattern) for pattern in request.accepted_media
@@ -649,11 +665,18 @@ class WebService:
     ) -> CacheHit | None:
         if not enabled or self._cache is None:
             return None
-        return self._cache.get(
+        cached = self._cache.get(
             key,
             kind=kind,
             allow_stale_seconds=allow_stale_seconds,
         )
+        if cached is not None:
+            try:
+                self._require_safe_payload(cached.payload)
+            except MishkanError:
+                self._cache.delete(key)
+                raise
+        return cached
 
     def _cache_put(
         self,
@@ -666,11 +689,26 @@ class WebService:
     ) -> None:
         if not enabled or self._cache is None:
             return
+        serialized = value.model_dump_json()
+        self._require_safe_payload(serialized)
         self._cache.put(
             key,
             kind=kind,
-            payload=value.model_dump_json(),
+            payload=serialized,
             ttl_seconds=(
                 self._config.cache_ttl_seconds if max_age_seconds is None else max_age_seconds
             ),
         )
+
+    def _require_safe_payload(
+        self,
+        payload: str,
+        resolved_secrets: tuple[str, ...] = (),
+    ) -> None:
+        if self._inspector is None:
+            return
+        if self._inspector.inspect(payload, resolved_secrets) != payload:
+            raise MishkanError(
+                ErrorCode.SECRET_CONTENT,
+                "Web payload requires redaction and cannot cross this boundary faithfully",
+            )

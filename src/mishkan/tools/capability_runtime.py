@@ -94,6 +94,7 @@ def build_capability_runtime(
         extraction_adapters=extraction_adapters,
         transport=transport,
         cache=SQLiteWebCache(database, busy_timeout_ms=persistence.busy_timeout_ms),
+        content_inspector=inspector,
     )
     adapters = build_web_tool_adapters(web_config, web_service)
     git_available = shutil.which("git") is not None

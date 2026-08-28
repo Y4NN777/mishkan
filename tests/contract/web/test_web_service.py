@@ -136,6 +136,32 @@ class RecordingSearch:
         )
 
 
+class SecretSearch:
+    adapter_id = "test.secret"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def search(self, *args: object, **kwargs: object) -> ProviderSearchResult:
+        del args
+        self.calls += 1
+        source_id = str(kwargs["source_id"])
+        return ProviderSearchResult(
+            hits=(
+                SearchHit(
+                    source_id=source_id,
+                    upstream="fixture",
+                    rank=1,
+                    title="Unsafe evidence",
+                    url=AnyHttpUrl("https://example.com/unsafe"),
+                    snippet="api_key=must-not-cache",
+                    score_scale="fixture.rank",
+                ),
+            ),
+            upstreams=("fixture",),
+        )
+
+
 def _two_source_config(strategy: SearchStrategy) -> WebConfig:
     base = _web_config()
     template = base.sources["searxng-local"]
@@ -178,6 +204,37 @@ def test_configured_default_search_strategy_is_executed_when_request_omits_it(
 
     assert result.strategy is SearchStrategy.AUTOMATIC
     assert adapter.calls == ["first"]
+
+
+@pytest.mark.secrets
+def test_secret_like_search_result_is_blocked_before_cache_persistence(tmp_path: Path) -> None:
+    base = _web_config()
+    source_id = base.default_search_sources[0]
+    source = base.sources[source_id].model_copy(update={"adapter": SecretSearch.adapter_id})
+    config = base.model_copy(
+        update={
+            "sources": {**base.sources, source_id: source},
+            "default_search_sources": (source_id,),
+            "default_search_strategy": SearchStrategy.DIRECT,
+        }
+    )
+    artifacts = _artifacts(tmp_path)
+    adapter = SecretSearch()
+    service = WebService(
+        config,
+        artifacts,
+        search_adapters={adapter.adapter_id: adapter},
+        extraction_adapters={},
+        cache=SQLiteWebCache(tmp_path / "mishkan.db"),
+        content_inspector=inspector(tmp_path),
+    )
+
+    for _ in range(2):
+        with pytest.raises(MishkanError) as caught:
+            service.search(SearchRequest(query="unsafe result", cache=True))
+        assert caught.value.envelope.code is ErrorCode.SECRET_CONTENT
+
+    assert adapter.calls == 2
 
 
 def test_aggregate_queries_every_selected_independent_route(tmp_path: Path) -> None:
