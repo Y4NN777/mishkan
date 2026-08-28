@@ -9,7 +9,7 @@ import pytest
 
 from mishkan.artifacts import ArtifactProvenance
 from mishkan.artifacts.service import DurableArtifactService
-from mishkan.domain.errors import MishkanError
+from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.edits import (
     ChangeOperation,
     ChangeOperationKind,
@@ -21,6 +21,7 @@ from mishkan.edits import (
     PreconditionKind,
 )
 from mishkan.persistence import SchemaManager
+from mishkan.tools.inspection import ContentInspector, InspectionProfileLoader
 
 
 def _services(
@@ -83,6 +84,45 @@ def test_create_and_exact_replace_are_verified_and_journaled(tmp_path: Path) -> 
     assert result.diff_reference is not None
     assert b"MISHKAN" in artifacts.read_bytes(result.diff_reference)
     assert (workspace / "app.txt").read_text() == "hello MISHKAN"
+
+
+@pytest.mark.secrets
+def test_secret_like_inline_change_is_blocked_before_journal_persistence(
+    tmp_path: Path,
+) -> None:
+    _service, artifacts, workspace = _services(tmp_path)
+    inspector = ContentInspector(
+        InspectionProfileLoader().load(
+            "package://mishkan.resources.inspection/default-security.yaml",
+            tmp_path,
+        )
+    )
+    service = ChangeSetService(
+        tmp_path / "mishkan.db",
+        workspace,
+        artifacts,
+        content_inspector=inspector,
+    )
+    change = ChangeSet(
+        scope="workspace",
+        declared_effects=("filesystem.write",),
+        operations=(
+            ChangeOperation(
+                kind=ChangeOperationKind.CREATE,
+                path="secret.txt",
+                precondition=PreconditionKind.ABSENT,
+                inline_content="api_key=must-not-persist",
+                result_mode=0o600,
+                expected_digest=_digest(b"api_key=must-not-persist"),
+            ),
+        ),
+    )
+
+    with pytest.raises(MishkanError) as caught:
+        service.plan(change)
+
+    assert caught.value.envelope.code is ErrorCode.SECRET_CONTENT
+    assert service.list() == ()
 
 
 def test_unified_patch_with_stale_context_is_a_conflict_without_mutation(tmp_path: Path) -> None:

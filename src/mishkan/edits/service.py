@@ -14,6 +14,7 @@ import subprocess
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
+from typing import Protocol
 from uuid import UUID
 
 from sqlalchemy import select
@@ -38,6 +39,10 @@ from mishkan.persistence.migration import SchemaManager
 from mishkan.persistence.sqlite import ChangeOperationRow, ChangeSetRow, create_local_engine
 
 
+class ChangeSetContentInspector(Protocol):
+    def inspect(self, content: str, resolved_secrets: tuple[str, ...] = ()) -> str: ...
+
+
 class ChangeSetService:
     def __init__(
         self,
@@ -47,14 +52,17 @@ class ChangeSetService:
         *,
         after_effect_hook: Callable[[int], None] | None = None,
         busy_timeout_ms: int = 5_000,
+        content_inspector: ChangeSetContentInspector | None = None,
     ) -> None:
         SchemaManager(database).require_current()
         self._workspace = workspace.resolve(strict=True)
         self._artifacts = artifacts
         self._after_effect_hook = after_effect_hook or (lambda _position: None)
+        self._content_inspector = content_inspector
         self._engine = create_local_engine(database, busy_timeout_ms=busy_timeout_ms)
 
     def plan(self, change_set: ChangeSet) -> ChangeSetResult:
+        self._require_safe_definition(change_set)
         self._validate_scope(change_set)
         now = utc_now()
         with Session(self._engine) as session, session.begin():
@@ -100,6 +108,7 @@ class ChangeSetService:
 
     def apply(self, change_set_id: UUID) -> ChangeSetResult:
         change_set = self._load(change_set_id)
+        self._require_safe_definition(change_set)
         self._validate_scope(change_set)
         self._set_state(change_set_id, ChangeSetState.APPLYING)
         diffs: list[str] = []
@@ -546,6 +555,16 @@ class ChangeSetService:
             }
         )
         self._check_precondition(shadow, destination)
+
+    def _require_safe_definition(self, change_set: ChangeSet) -> None:
+        if self._content_inspector is None:
+            return
+        serialized = change_set.model_dump_json()
+        if self._content_inspector.inspect(serialized) != serialized:
+            raise MishkanError(
+                ErrorCode.SECRET_CONTENT,
+                "change set requires redaction and cannot be planned faithfully",
+            )
 
     def _validate_scope(self, change_set: ChangeSet) -> None:
         requested = {

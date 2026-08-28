@@ -129,6 +129,7 @@ def create_app(config: MishkanConfig) -> FastAPI:
         paths.workspace,
         artifacts,
         busy_timeout_ms=persistence.busy_timeout_ms,
+        content_inspector=content_inspector,
     )
     git_effects = GovernedGitService(artifacts)
     session_config = config.sessions
