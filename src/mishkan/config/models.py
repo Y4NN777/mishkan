@@ -145,6 +145,8 @@ class SessionProfileConfig(StrictConfigModel):
     grace_seconds: float = Field(ge=0.05, le=300)
     settle_timeout_seconds: float = Field(ge=0.1, le=3600)
     max_output_bytes: int = Field(ge=1)
+    max_input_bytes: int = Field(default=1_048_576, ge=1)
+    preview_bytes: int = Field(default=4_096, ge=1)
     read_chunk_bytes: int = Field(ge=1, le=16_777_216)
     readiness_poll_seconds: float = Field(ge=0.01, le=60)
 

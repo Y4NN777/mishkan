@@ -938,6 +938,8 @@ def write_terminal(
     ctx: typer.Context,
     session_id: str,
     data: str,
+    declared_effect: Annotated[list[str] | None, typer.Option("--effect")] = None,
+    network_destination: Annotated[list[str] | None, typer.Option("--network-destination")] = None,
     expected_revision: Annotated[int | None, typer.Option(min=0)] = None,
 ) -> None:
     """Write UTF-8 input to an owned PTY."""
@@ -947,7 +949,11 @@ def write_terminal(
         ctx,
         session_id,
         "session.write",
-        {"content_base64": base64.b64encode(data.encode()).decode()},
+        {
+            "content_base64": base64.b64encode(data.encode()).decode(),
+            "declared_effects": declared_effect or [],
+            "network_destinations": network_destination or [],
+        },
         expected_revision,
     )
 

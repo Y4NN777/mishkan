@@ -30,6 +30,7 @@ from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.time import utc_now
 from mishkan.execution.sessions import (
     CursorRead,
+    SessionEffectSettlement,
     SessionMode,
     SessionRecord,
     SessionRequest,
@@ -190,11 +191,41 @@ class SessionSupervisor:
             self._await_readiness(session_id, request, profile)
         return self.status(session_id)
 
-    def write(self, session_id: UUID, content: bytes) -> int:
+    def write(
+        self,
+        session_id: UUID,
+        content: bytes,
+        *,
+        declared_effects: tuple[str, ...] = (),
+        network_destinations: tuple[str, ...] = (),
+    ) -> int:
         descriptor = self._pty_masters.get(session_id)
         if descriptor is None:
             raise MishkanError(ErrorCode.EXECUTION, "PTY master is unavailable")
-        self._require_live_identity(session_id)
+        row = self._require_live_identity(session_id)
+        profile = self._profile(row.profile)
+        if not content or len(content) > profile.max_input_bytes:
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT,
+                "PTY input is outside the configured bound",
+                details={"bytes": len(content), "maximum": profile.max_input_bytes},
+            )
+        with Session(self._engine) as session, session.begin():
+            current = session.get(ExecutionSessionRow, str(session_id))
+            assert current is not None
+            request = SessionRequest.model_validate_json(current.request_payload)
+            current.request_payload = SessionRequest.model_validate(
+                {
+                    **request.model_dump(mode="python"),
+                    "declared_effects": tuple(
+                        sorted({*request.declared_effects, *declared_effects})
+                    ),
+                    "network_destinations": tuple(
+                        sorted({*request.network_destinations, *network_destinations})
+                    ),
+                }
+            ).model_dump_json()
+            current.updated_at = utc_now().isoformat()
         return os.write(descriptor, content)
 
     def resize(self, session_id: UUID, *, rows: int, columns: int) -> None:
@@ -545,6 +576,30 @@ class SessionSupervisor:
             return row
 
     def _record(self, row: ExecutionSessionRow) -> SessionRecord:
+        request = SessionRequest.model_validate_json(row.request_payload)
+        profile = self._profile(row.profile)
+        stdout_preview = self._tail_preview(self._spool_path(row, "stdout"), profile.preview_bytes)
+        stderr_preview = self._tail_preview(self._spool_path(row, "stderr"), profile.preview_bytes)
+        terminal = row.state in {
+            SessionState.SETTLED.value,
+            SessionState.FAILED.value,
+            SessionState.LOST.value,
+            SessionState.UNCERTAIN.value,
+        }
+        settlement: SessionEffectSettlement | None = None
+        if terminal:
+            settlement = (
+                SessionEffectSettlement.UNCERTAIN
+                if request.declared_effects
+                else SessionEffectSettlement.ABSENT
+            )
+        error = None
+        if row.state == SessionState.FAILED.value:
+            error = "execution exited unsuccessfully"
+        elif row.state == SessionState.LOST.value:
+            error = "PTY live handle was lost"
+        elif row.state == SessionState.UNCERTAIN.value:
+            error = "process identity or external effects could not be reconciled"
         return SessionRecord(
             session_id=UUID(row.id),
             mode=SessionMode(row.mode),
@@ -552,6 +607,8 @@ class SessionSupervisor:
             owner=row.owner,
             run_id=row.run_id,
             task_id=row.task_id,
+            workspace=row.workspace,
+            profile=row.profile,
             pid=row.pid,
             process_group_id=row.process_group_id,
             process_create_time=row.process_create_time,
@@ -561,10 +618,31 @@ class SessionSupervisor:
             signal=row.signal,
             stdout_artifact_reference=row.stdout_artifact_reference,
             stderr_artifact_reference=row.stderr_artifact_reference,
+            stdout_preview=stdout_preview,
+            stderr_preview=stderr_preview,
+            declared_effects=request.declared_effects,
+            network_destinations=request.network_destinations,
+            observed_effects=(),
+            effect_settlement=settlement,
+            retryable=bool(
+                terminal
+                and settlement is SessionEffectSettlement.ABSENT
+                and row.state == SessionState.FAILED.value
+                and not row.cancellation_requested
+            ),
+            error=error,
             cancellation_requested=row.cancellation_requested,
+            deadline=datetime.fromisoformat(row.deadline),
             created_at=datetime.fromisoformat(row.created_at),
             updated_at=datetime.fromisoformat(row.updated_at),
         )
+
+    @staticmethod
+    def _tail_preview(path: Path, limit: int) -> str:
+        size = path.stat().st_size
+        with path.open("rb") as stream:
+            stream.seek(max(0, size - limit))
+            return stream.read(limit).decode(errors="replace")
 
     def _spool_path(self, row: ExecutionSessionRow, channel: str) -> Path:
         relative = row.stdout_spool if channel == "stdout" else row.stderr_spool

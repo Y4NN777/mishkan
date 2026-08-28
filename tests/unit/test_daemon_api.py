@@ -271,6 +271,79 @@ async def test_invalid_effect_command_is_rejected_before_reservation(tmp_path: P
 
 
 @pytest.mark.anyio
+async def test_session_declared_effects_are_part_of_authoritative_policy_scope(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    policy = tmp_path / "session-policy.yaml"
+    policy.write_text(
+        """\
+schema_version: "1.0"
+source_id: test.session
+revision: "1"
+adoption_authority: test
+priority: 100
+rules:
+  - rule_id: test.allow-effectless-session
+    priority: 100
+    decision: allow
+    scope:
+      identities: [local-operator]
+      objective_classes: [application-command]
+      repositories: ["*"]
+      outcomes: [session.start]
+      roles: [application-client]
+      capabilities: [application.session.start]
+      effect_classes: [process]
+      effects: [process.start]
+      paths: ["*"]
+      executables: ["*"]
+      arguments: ["*"]
+      environments: ["*"]
+      credentials: ["*"]
+      max_timeout_seconds: 3600
+      allow_network: false
+""",
+        encoding="utf-8",
+    )
+    config = config.model_copy(update={"policy_sources": (str(policy),)})
+    paths = DaemonBootstrap().setup(config)
+    token = TokenFile(paths.token_file).read().token
+    request = {
+        "mode": "job",
+        "owner": "local-operator",
+        "run_id": "run-effect",
+        "task_id": "task-effect",
+        "workspace": ".",
+        "executable": "/bin/sh",
+        "arguments": ["-c", "touch must-not-exist"],
+        "profile": "standard",
+        "deadline": (utc_now() + timedelta(minutes=1)).isoformat(),
+        "declared_effects": ["filesystem.write"],
+        "network_destinations": [],
+        "policy_fingerprint": "a" * 64,
+    }
+    command = ApplicationCommand(
+        command_type="session.start",
+        actor_id="local-operator",
+        target_type="session_service",
+        payload={"request": request},
+    )
+
+    transport = httpx.ASGITransport(app=create_app(config))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/commands",
+            headers={"Authorization": f"Bearer {token}"},
+            json=command.model_dump(mode="json"),
+        )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "refused"
+    assert not (tmp_path / "must-not-exist").exists()
+
+
+@pytest.mark.anyio
 async def test_artifact_upload_commands_publish_only_verified_content(tmp_path: Path) -> None:
     config = _config(tmp_path)
     paths = DaemonBootstrap().setup(config)

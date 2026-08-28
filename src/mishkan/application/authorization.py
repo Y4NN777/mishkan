@@ -6,6 +6,7 @@ not: they remain in the configured public policy documents.
 
 from __future__ import annotations
 
+import base64
 import math
 from dataclasses import dataclass
 from datetime import datetime
@@ -236,7 +237,10 @@ _COMMAND_PAYLOAD_FIELDS = MappingProxyType(
         "change.apply": (frozenset(), frozenset()),
         "change.reconcile": (frozenset(), frozenset()),
         "session.start": (frozenset({"request"}), frozenset()),
-        "session.write": (frozenset({"content_base64"}), frozenset()),
+        "session.write": (
+            frozenset({"content_base64", "declared_effects", "network_destinations"}),
+            frozenset(),
+        ),
         "session.resize": (frozenset({"rows", "columns"}), frozenset()),
         "session.signal": (frozenset({"signal"}), frozenset()),
         "session.cancel": (frozenset(), frozenset()),
@@ -297,6 +301,7 @@ class ApplicationCommandAuthority:
         credentials: tuple[str, ...] = ()
         external_resources: tuple[str, ...] = ()
         network_destinations: tuple[str, ...] = ()
+        uses_network = semantics.network
         effects = semantics.effects
         timeout = 120
         session_request: SessionRequest | None = None
@@ -338,6 +343,12 @@ class ApplicationCommandAuthority:
                         }
                     )
                 )
+                effects = tuple(sorted({*effects, *session_request.declared_effects}))
+                network_destinations = tuple(
+                    self._network_destination(value)
+                    for value in session_request.network_destinations
+                )
+                uses_network = bool(network_destinations)
                 timeout = self._remaining_seconds(session_request.deadline)
             elif normalized.command_type.startswith("session."):
                 record = self._sessions.status(self._target_uuid(normalized))
@@ -347,6 +358,24 @@ class ApplicationCommandAuthority:
                         "session command actor does not own the target session",
                     )
                 external_resources = (f"session:{record.session_id}",)
+                if normalized.command_type == "session.write":
+                    encoded = normalized.payload["content_base64"]
+                    if not isinstance(encoded, str):
+                        raise ValueError("session input must be base64 text")
+                    content = base64.b64decode(encoded, validate=True)
+                    sessions = self._config.sessions
+                    assert sessions is not None
+                    limit = sessions.profiles[record.profile].max_input_bytes
+                    if len(content) > limit:
+                        raise ValueError("session input exceeds its configured bound")
+                    arguments = (content.decode("utf-8", errors="surrogateescape"),)
+                    declared = self._string_tuple(normalized.payload["declared_effects"])
+                    destinations = self._string_tuple(normalized.payload["network_destinations"])
+                    effects = tuple(sorted({*effects, *declared}))
+                    network_destinations = tuple(
+                        self._network_destination(value) for value in destinations
+                    )
+                    uses_network = bool(network_destinations)
             elif normalized.command_type == "mcp.connection.connect":
                 connection = self._mcp_connection(normalized)
                 credentials = tuple(sorted(item.locator for item in connection.credential_refs))
@@ -406,7 +435,7 @@ class ApplicationCommandAuthority:
             external_resources=external_resources,
             resources=ResourceRequest(
                 timeout_seconds=max(1, min(timeout, 86_400)),
-                network=semantics.network,
+                network=uses_network,
             ),
         )
         decision = PolicyAuthority().evaluate(request, self._policy)
@@ -472,6 +501,14 @@ class ApplicationCommandAuthority:
     def _remaining_seconds(deadline: datetime) -> int:
         return max(1, math.ceil((deadline - utc_now()).total_seconds()))
 
+    @staticmethod
+    def _string_tuple(value: object) -> tuple[str, ...]:
+        if not isinstance(value, list) or not all(isinstance(item, str) and item for item in value):
+            raise ValueError("application command value must be a list of non-empty strings")
+        if len(value) != len(set(value)):
+            raise ValueError("application command string values must be unique")
+        return tuple(value)
+
     def _mcp_connection(self, command: ApplicationCommand) -> McpConnectionConfig:
         if command.payload or command.target_id is None:
             raise MishkanError(
@@ -498,6 +535,14 @@ class ApplicationCommandAuthority:
     @staticmethod
     def _network_destination(endpoint: str) -> str:
         parsed = urlsplit(endpoint)
-        assert parsed.hostname is not None
-        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        if not parsed.scheme or parsed.hostname is None:
+            raise ValueError("network destination must be an absolute URL")
+        port = parsed.port
+        if port is None:
+            if parsed.scheme == "https":
+                port = 443
+            elif parsed.scheme == "http":
+                port = 80
+            else:
+                raise ValueError("non-HTTP network destination requires an explicit port")
         return f"{parsed.scheme}://{parsed.hostname}:{port}"

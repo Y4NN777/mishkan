@@ -113,6 +113,29 @@ def test_job_readiness_cursors_artifacts_and_cross_chunk_secret_filter(tmp_path:
     assert b"CANARY" not in artifacts.read_bytes(reference)
 
 
+def test_stateful_pty_input_is_bounded_and_settles_as_uncertain(tmp_path: Path) -> None:
+    supervisor, _artifacts, _database = _supervisor(tmp_path)
+    started = supervisor.start(_request(SessionMode.PTY, ()))
+
+    with pytest.raises(MishkanError) as oversized:
+        supervisor.write(started.session_id, b"x" * 1_048_577)
+    assert oversized.value.envelope.code is ErrorCode.OUTPUT_CONTRACT
+
+    supervisor.write(
+        started.session_id,
+        b"touch governed-effect; printf done; exit\n",
+        declared_effects=("filesystem.write",),
+    )
+    settled = _await_settlement(supervisor, started.session_id)
+
+    assert (tmp_path / "governed-effect").is_file()
+    assert settled.declared_effects == ("filesystem.write",)  # type: ignore[attr-defined]
+    assert settled.effect_settlement == "uncertain"  # type: ignore[attr-defined]
+    assert settled.retryable is False  # type: ignore[attr-defined]
+    assert "done" in settled.stdout_preview  # type: ignore[attr-defined]
+    assert settled.execution_location == "local"  # type: ignore[attr-defined]
+
+
 def test_pty_input_resize_cursor_and_lost_on_new_supervisor(tmp_path: Path) -> None:
     supervisor, artifacts, database = _supervisor(tmp_path)
     request = _request(SessionMode.PTY, ())

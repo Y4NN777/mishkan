@@ -877,7 +877,12 @@ def _dispatch(
         return "session.started", record.model_dump(mode="json")
     if command.command_type == "session.write" and command.target_id is not None:
         content = base64.b64decode(str(payload["content_base64"]), validate=True)
-        written = supervisor.write(UUID(command.target_id), content)
+        written = supervisor.write(
+            UUID(command.target_id),
+            content,
+            declared_effects=tuple(str(value) for value in payload["declared_effects"]),
+            network_destinations=tuple(str(value) for value in payload["network_destinations"]),
+        )
         return "session.input_written", {"written": written}
     if command.command_type == "session.resize" and command.target_id is not None:
         supervisor.resize(
