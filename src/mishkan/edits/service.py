@@ -8,11 +8,11 @@ import hashlib
 import json
 import os
 import re
-import shutil
+import secrets
 import stat
 import subprocess
-import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import Protocol
 from uuid import UUID
@@ -51,6 +51,7 @@ class ChangeSetService:
         workspace: Path,
         artifacts: DurableArtifactService,
         *,
+        before_effect_hook: Callable[[int], None] | None = None,
         after_effect_hook: Callable[[int], None] | None = None,
         busy_timeout_ms: int = 5_000,
         content_inspector: ChangeSetContentInspector | None = None,
@@ -58,6 +59,7 @@ class ChangeSetService:
         SchemaManager(database).require_current()
         self._workspace = workspace.resolve(strict=True)
         self._artifacts = artifacts
+        self._before_effect_hook = before_effect_hook or (lambda _position: None)
         self._after_effect_hook = after_effect_hook or (lambda _position: None)
         self._content_inspector = content_inspector
         self._engine = create_local_engine(database, busy_timeout_ms=busy_timeout_ms)
@@ -144,14 +146,16 @@ class ChangeSetService:
                         ErrorCode.REVISION_MISMATCH,
                         "declared expected result differs from computed exact result",
                     )
+                before_token = self._operation_token(operation, path)
                 self._prepare(
                     change_set_id,
                     position,
-                    before_token=self._state_token(path),
+                    before_token=before_token,
                     preimage_reference=preimage,
                     expected_after_token=expected_after,
                 )
-                self._apply_operation(operation, path, after)
+                self._before_effect_hook(position)
+                self._apply_operation(operation, path, after, before_token)
                 self._after_effect_hook(position)
                 actual = self._operation_token(operation, path)
                 if actual != expected_after:
@@ -238,7 +242,7 @@ class ChangeSetService:
         if actual == journal.expected_after_token:
             self._mark_applied(UUID(journal.change_set_id), journal.position, actual)
             return "applied"
-        if self._state_token(path) == journal.before_token:
+        if self._operation_token(operation, path) == journal.before_token:
             return "retry"
         return "conflict"
 
@@ -265,12 +269,11 @@ class ChangeSetService:
         operation: ChangeOperation,
         path: Path,
         content: bytes | None,
+        before_token: str,
     ) -> None:
         kind = operation.kind
         if kind is ChangeOperationKind.MKDIR:
-            path.mkdir()
-            if operation.result_mode is not None:
-                path.chmod(operation.result_mode)
+            self._mkdir_at(path, before_token, operation.result_mode)
         elif kind in {
             ChangeOperationKind.CREATE,
             ChangeOperationKind.WRITE,
@@ -279,27 +282,17 @@ class ChangeSetService:
             ChangeOperationKind.REWRITE,
         }:
             assert content is not None
-            self._atomic_write(path, content, mode=self._result_mode(operation, path))
+            self._atomic_write(
+                path,
+                content,
+                mode=self._result_mode(operation, path),
+                expected_before=before_token,
+            )
         elif kind in {ChangeOperationKind.MOVE, ChangeOperationKind.COPY}:
             assert operation.destination is not None
-            destination = self._safe_path(operation.destination)
-            if not path.is_file():
-                raise MishkanError(
-                    ErrorCode.OUTPUT_CONTRACT,
-                    "move and copy currently require a regular-file source",
-                )
-            if destination.exists() or destination.is_symlink():
-                raise MishkanError(ErrorCode.REVISION_MISMATCH, "change destination is not absent")
-            if kind is ChangeOperationKind.MOVE:
-                os.replace(path, destination)
-            else:
-                self._atomic_write(
-                    destination,
-                    path.read_bytes(),
-                    mode=operation.result_mode or stat.S_IMODE(path.stat().st_mode),
-                )
+            self._move_or_copy_at(operation, path, before_token)
         elif kind is ChangeOperationKind.DELETE:
-            path.rmdir() if path.is_dir() else path.unlink()
+            self._delete_at(path, before_token)
 
     def _expected_content(
         self,
@@ -370,10 +363,9 @@ class ChangeSetService:
                 observed = self._token(path)
                 passed = observed == validation.expected_value
             else:
-                try:
-                    observed = stat.S_IMODE(path.lstat().st_mode)
-                except FileNotFoundError:
-                    observed = "absent"
+                state = self._decode_state(self._state_token(path))
+                mode = state.get("mode", "absent")
+                observed = mode if isinstance(mode, (str, int)) else "invalid"
                 passed = observed == validation.expected_value
             results.append(
                 ChangeValidationResult(
@@ -408,14 +400,7 @@ class ChangeSetService:
     ) -> None:
         before = self._decode_state(journal.before_token)
         if operation.kind in {ChangeOperationKind.MOVE, ChangeOperationKind.COPY}:
-            assert operation.destination is not None
-            destination = self._safe_path(operation.destination)
-            if operation.kind is ChangeOperationKind.MOVE:
-                os.replace(destination, path)
-            elif destination.is_dir():
-                shutil.rmtree(destination)
-            else:
-                destination.unlink()
+            self._restore_move_or_copy_at(operation, path, journal)
             return
         if journal.preimage_reference is not None:
             mode = before.get("mode")
@@ -423,18 +408,69 @@ class ChangeSetService:
                 path,
                 self._artifacts.read_bytes(journal.preimage_reference),
                 mode=int(mode) if isinstance(mode, int) else None,
+                expected_before=journal.expected_after_token,
             )
             return
         if before.get("kind") == "directory":
-            path.mkdir()
             mode = before.get("mode")
-            if isinstance(mode, int):
-                path.chmod(mode)
+            self._mkdir_at(
+                path,
+                journal.expected_after_token or "absent",
+                int(mode) if isinstance(mode, int) else None,
+            )
             return
-        if path.is_dir():
-            path.rmdir()
-        elif path.exists():
-            path.unlink()
+        if journal.expected_after_token is not None:
+            self._delete_at(path, journal.expected_after_token)
+
+    def _restore_move_or_copy_at(
+        self,
+        operation: ChangeOperation,
+        source: Path,
+        journal: ChangeOperationRow,
+    ) -> None:
+        assert operation.destination is not None
+        destination = self._safe_path(operation.destination)
+        try:
+            expected = json.loads(journal.expected_after_token or "")
+        except json.JSONDecodeError as exc:
+            raise MishkanError(ErrorCode.EDIT, "move/copy recovery evidence is invalid") from exc
+        if not isinstance(expected, dict) or not isinstance(expected.get("destination"), str):
+            raise MishkanError(ErrorCode.EDIT, "move/copy recovery evidence is invalid")
+        destination_token = expected["destination"]
+        if operation.kind is ChangeOperationKind.COPY:
+            self._delete_at(destination, destination_token)
+            return
+        source_relative = source.relative_to(self._workspace)
+        destination_relative = destination.relative_to(self._workspace)
+        with (
+            self._parent_descriptor(source_relative) as (source_directory, source_name),
+            self._parent_descriptor(destination_relative) as (
+                destination_directory,
+                destination_name,
+            ),
+        ):
+            actual = self._move_copy_token_at(
+                source_directory,
+                source_name,
+                destination_directory,
+                destination_name,
+                destination,
+            )
+            if actual != journal.expected_after_token:
+                raise MishkanError(
+                    ErrorCode.REVISION_MISMATCH,
+                    "move paths changed immediately before rollback",
+                )
+            os.link(
+                destination_name,
+                source_name,
+                src_dir_fd=destination_directory,
+                dst_dir_fd=source_directory,
+                follow_symlinks=False,
+            )
+            os.fsync(source_directory)
+            os.unlink(destination_name, dir_fd=destination_directory)
+            os.fsync(destination_directory)
 
     @staticmethod
     def _decode_state(token: str | None) -> dict[str, object]:
@@ -616,65 +652,311 @@ class ChangeSetService:
                 continue
         return lexical
 
-    @staticmethod
-    def _atomic_write(path: Path, content: bytes, *, mode: int | None = None) -> None:
-        path.parent.mkdir(parents=False, exist_ok=True)
-        descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
-        staged = Path(temporary)
-        try:
-            with os.fdopen(descriptor, "wb") as stream:
-                if mode is not None:
-                    os.fchmod(stream.fileno(), mode)
-                stream.write(content)
-                stream.flush()
-                os.fsync(stream.fileno())
-            os.replace(staged, path)
-            directory = os.open(path.parent, os.O_RDONLY)
+    def _atomic_write(
+        self,
+        path: Path,
+        content: bytes,
+        *,
+        mode: int | None = None,
+        expected_before: str | None = None,
+    ) -> None:
+        relative = path.relative_to(self._workspace)
+        with self._parent_descriptor(relative) as (directory, name):
+            if (
+                expected_before is not None
+                and self._state_token_at(directory, name) != expected_before
+            ):
+                raise MishkanError(
+                    ErrorCode.REVISION_MISMATCH,
+                    "change target changed immediately before its filesystem effect",
+                )
+            temporary = f".{name}.{secrets.token_hex(16)}.mishkan"
+            flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC
+            flags |= getattr(os, "O_NOFOLLOW", 0)
+            descriptor = os.open(temporary, flags, mode or 0o600, dir_fd=directory)
             try:
+                if mode is not None:
+                    os.fchmod(descriptor, mode)
+                self._write_all(descriptor, content)
+                os.fsync(descriptor)
+                os.replace(
+                    temporary,
+                    name,
+                    src_dir_fd=directory,
+                    dst_dir_fd=directory,
+                )
                 os.fsync(directory)
             finally:
-                os.close(directory)
-        finally:
-            staged.unlink(missing_ok=True)
+                os.close(descriptor)
+                with suppress(FileNotFoundError):
+                    os.unlink(temporary, dir_fd=directory)
+
+    def _mkdir_at(self, path: Path, expected_before: str, mode: int | None) -> None:
+        relative = path.relative_to(self._workspace)
+        with self._parent_descriptor(relative) as (directory, name):
+            if self._state_token_at(directory, name) != expected_before:
+                raise MishkanError(
+                    ErrorCode.REVISION_MISMATCH,
+                    "directory target changed immediately before creation",
+                )
+            os.mkdir(name, mode or 0o700, dir_fd=directory)
+            if mode is not None:
+                flags = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC
+                flags |= getattr(os, "O_NOFOLLOW", 0)
+                created = os.open(name, flags, dir_fd=directory)
+                try:
+                    os.fchmod(created, mode)
+                    os.fsync(created)
+                finally:
+                    os.close(created)
+            os.fsync(directory)
+
+    def _delete_at(self, path: Path, expected_before: str) -> None:
+        relative = path.relative_to(self._workspace)
+        with self._parent_descriptor(relative) as (directory, name):
+            actual = self._state_token_at(directory, name)
+            if actual != expected_before:
+                raise MishkanError(
+                    ErrorCode.REVISION_MISMATCH,
+                    "delete target changed immediately before removal",
+                )
+            decoded = self._decode_state(actual)
+            if decoded.get("kind") == "directory":
+                os.rmdir(name, dir_fd=directory)
+            else:
+                os.unlink(name, dir_fd=directory)
+            os.fsync(directory)
+
+    def _move_or_copy_at(
+        self,
+        operation: ChangeOperation,
+        source: Path,
+        expected_before: str,
+    ) -> None:
+        assert operation.destination is not None
+        destination = self._safe_path(operation.destination)
+        source_relative = source.relative_to(self._workspace)
+        destination_relative = destination.relative_to(self._workspace)
+        with (
+            self._parent_descriptor(source_relative) as (source_directory, source_name),
+            self._parent_descriptor(destination_relative) as (
+                destination_directory,
+                destination_name,
+            ),
+        ):
+            actual_before = self._move_copy_token_at(
+                source_directory,
+                source_name,
+                destination_directory,
+                destination_name,
+                destination,
+            )
+            if actual_before != expected_before:
+                raise MishkanError(
+                    ErrorCode.REVISION_MISMATCH,
+                    "move/copy paths changed immediately before their filesystem effect",
+                )
+            if self._state_token_at(destination_directory, destination_name) != "absent":
+                raise MishkanError(
+                    ErrorCode.REVISION_MISMATCH,
+                    "change destination is not absent",
+                )
+            source_content, source_mode, _, _ = self._read_regular_at(
+                source_directory,
+                source_name,
+            )
+            if operation.kind is ChangeOperationKind.MOVE:
+                os.link(
+                    source_name,
+                    destination_name,
+                    src_dir_fd=source_directory,
+                    dst_dir_fd=destination_directory,
+                    follow_symlinks=False,
+                )
+                os.fsync(destination_directory)
+                os.unlink(source_name, dir_fd=source_directory)
+                os.fsync(source_directory)
+                return
+            self._create_file_at(
+                destination_directory,
+                destination_name,
+                source_content,
+                operation.result_mode or source_mode,
+            )
 
     @staticmethod
-    def _read_file(path: Path) -> bytes | None:
-        if not path.exists() or path.is_dir():
-            return None
-        return path.read_bytes()
-
-    @staticmethod
-    def _token(path: Path) -> str:
+    def _create_file_at(directory: int, name: str, content: bytes, mode: int) -> None:
+        temporary = f".{name}.{secrets.token_hex(16)}.mishkan"
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(temporary, flags, mode, dir_fd=directory)
         try:
-            metadata = path.lstat()
+            os.fchmod(descriptor, mode)
+            ChangeSetService._write_all(descriptor, content)
+            os.fsync(descriptor)
+            os.link(
+                temporary,
+                name,
+                src_dir_fd=directory,
+                dst_dir_fd=directory,
+                follow_symlinks=False,
+            )
+            os.fsync(directory)
+        finally:
+            os.close(descriptor)
+            with suppress(FileNotFoundError):
+                os.unlink(temporary, dir_fd=directory)
+
+    @contextmanager
+    def _parent_descriptor(self, relative: Path) -> Iterator[tuple[int, str]]:
+        if not relative.parts or relative.name in {"", ".", ".."}:
+            raise MishkanError(ErrorCode.AUTHORITY_NOT_GRANTED, "change path is invalid")
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(self._workspace, flags)
+        try:
+            for part in relative.parts[:-1]:
+                next_descriptor = os.open(part, flags, dir_fd=descriptor)
+                os.close(descriptor)
+                descriptor = next_descriptor
+            yield descriptor, relative.name
+        except OSError as exc:
+            raise MishkanError(
+                ErrorCode.AUTHORITY_NOT_GRANTED,
+                "change parent could not be opened without following links",
+            ) from exc
+        finally:
+            os.close(descriptor)
+
+    @classmethod
+    def _state_token_at(cls, directory: int, name: str) -> str:
+        try:
+            metadata = os.stat(name, dir_fd=directory, follow_symlinks=False)
         except FileNotFoundError:
             return "absent"
         if stat.S_ISLNK(metadata.st_mode):
             return "symlink"
         if stat.S_ISDIR(metadata.st_mode):
-            return "directory"
-        digest = hashlib.sha256(path.read_bytes()).hexdigest()
-        return f"sha256:{digest}"
+            flags = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC
+            flags |= getattr(os, "O_NOFOLLOW", 0)
+            child = os.open(name, flags, dir_fd=directory)
+            try:
+                entries = sorted(os.listdir(child))
+            finally:
+                os.close(child)
+            return json.dumps(
+                {
+                    "kind": "directory",
+                    "mode": stat.S_IMODE(metadata.st_mode),
+                    "entries": json.dumps(entries[:1_001], separators=(",", ":")),
+                },
+                sort_keys=True,
+            )
+        if not stat.S_ISREG(metadata.st_mode):
+            return "special"
+        content, _, device, inode = cls._read_regular_at(directory, name)
+        if (device, inode) != (metadata.st_dev, metadata.st_ino):
+            raise MishkanError(
+                ErrorCode.REVISION_MISMATCH,
+                "change target identity changed while being observed",
+            )
+        return json.dumps(
+            {
+                "kind": "file",
+                "mode": stat.S_IMODE(metadata.st_mode),
+                "digest": f"sha256:{hashlib.sha256(content).hexdigest()}",
+            },
+            sort_keys=True,
+        )
+
+    @staticmethod
+    def _read_regular_at(directory: int, name: str) -> tuple[bytes, int, int, int]:
+        flags = os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(name, flags, dir_fd=directory)
+        try:
+            metadata = os.fstat(descriptor)
+            if not stat.S_ISREG(metadata.st_mode):
+                raise MishkanError(
+                    ErrorCode.OUTPUT_CONTRACT,
+                    "move and copy require a regular-file source",
+                )
+            with os.fdopen(os.dup(descriptor), "rb") as stream:
+                content = stream.read()
+            observed = os.fstat(descriptor)
+            if (
+                observed.st_dev,
+                observed.st_ino,
+                observed.st_size,
+                observed.st_mtime_ns,
+            ) != (
+                metadata.st_dev,
+                metadata.st_ino,
+                metadata.st_size,
+                metadata.st_mtime_ns,
+            ):
+                raise MishkanError(
+                    ErrorCode.REVISION_MISMATCH,
+                    "change source changed while being read",
+                )
+            return (
+                content,
+                stat.S_IMODE(metadata.st_mode),
+                metadata.st_dev,
+                metadata.st_ino,
+            )
+        finally:
+            os.close(descriptor)
 
     @classmethod
-    def _state_token(cls, path: Path) -> str:
-        try:
-            metadata = path.lstat()
-        except FileNotFoundError:
-            return "absent"
-        if stat.S_ISLNK(metadata.st_mode):
-            return "symlink"
-        kind = "directory" if stat.S_ISDIR(metadata.st_mode) else "file"
-        payload: dict[str, str | int] = {
-            "kind": kind,
-            "mode": stat.S_IMODE(metadata.st_mode),
-        }
-        if kind == "file":
-            payload["digest"] = cls._token(path)
-        else:
-            entries = sorted(item.name for item in path.iterdir())
-            payload["entries"] = json.dumps(entries[:1_001], separators=(",", ":"))
-        return json.dumps(payload, sort_keys=True)
+    def _move_copy_token_at(
+        cls,
+        source_directory: int,
+        source_name: str,
+        destination_directory: int,
+        destination_name: str,
+        destination: Path,
+    ) -> str:
+        return json.dumps(
+            {
+                "source": cls._state_token_at(source_directory, source_name),
+                "destination": cls._state_token_at(destination_directory, destination_name),
+                "destination_path": str(destination),
+            },
+            sort_keys=True,
+        )
+
+    @staticmethod
+    def _write_all(descriptor: int, content: bytes) -> None:
+        view = memoryview(content)
+        while view:
+            written = os.write(descriptor, view)
+            if written < 1:
+                raise OSError("change-set staged write made no progress")
+            view = view[written:]
+
+    def _read_file(self, path: Path) -> bytes | None:
+        relative = path.relative_to(self._workspace)
+        with self._parent_descriptor(relative) as (directory, name):
+            token = self._state_token_at(directory, name)
+            if token == "absent" or self._decode_state(token).get("kind") == "directory":
+                return None
+            content, _, _, _ = self._read_regular_at(directory, name)
+            return content
+
+    def _token(self, path: Path) -> str:
+        state = self._state_token(path)
+        if state in {"absent", "symlink", "special"}:
+            return state
+        decoded = self._decode_state(state)
+        if decoded.get("kind") == "directory":
+            return "directory"
+        digest = decoded.get("digest")
+        return str(digest) if isinstance(digest, str) else "special"
+
+    def _state_token(self, path: Path) -> str:
+        relative = path.relative_to(self._workspace)
+        with self._parent_descriptor(relative) as (directory, name):
+            return self._state_token_at(directory, name)
 
     def _revision_token(self, path: Path) -> str:
         if not path.is_file() or path.is_symlink():
@@ -715,7 +997,10 @@ class ChangeSetService:
             raise MishkanError(ErrorCode.REVISION_MISMATCH, "change workspace identity changed")
         repository_id = hashlib.sha256((remote or str(root)).encode()).hexdigest()
         relative = path.relative_to(root).as_posix()
-        content_digest = f"sha256:{hashlib.sha256(path.read_bytes()).hexdigest()}"
+        content = self._read_file(path)
+        if content is None:
+            raise MishkanError(ErrorCode.REVISION_MISMATCH, "change path is no longer a file")
+        content_digest = f"sha256:{hashlib.sha256(content).hexdigest()}"
         return content_base_revision_token(
             repository_id=repository_id,
             repository_revision=revision,
@@ -723,20 +1008,21 @@ class ChangeSetService:
             content_digest=content_digest,
         )
 
-    @staticmethod
-    def _git_blob(path: Path) -> str:
-        if not path.is_file():
+    def _git_blob(self, path: Path) -> str:
+        content = self._read_file(path)
+        if content is None:
             return "absent"
         completed = subprocess.run(
-            ["git", "hash-object", "--", str(path)],
+            ["git", "hash-object", "--stdin"],
+            cwd=self._workspace,
+            input=content,
             capture_output=True,
-            text=True,
             check=False,
             timeout=10,
         )
         if completed.returncode != 0:
             raise MishkanError(ErrorCode.EDIT, "Git blob precondition could not be observed")
-        return completed.stdout.strip()
+        return completed.stdout.decode().strip()
 
     def _expected_state_token(
         self, operation: ChangeOperation, path: Path, content: bytes | None
@@ -795,17 +1081,17 @@ class ChangeSetService:
             )
         return self._state_token(path)
 
-    @staticmethod
-    def _result_mode(operation: ChangeOperation, path: Path) -> int:
+    def _result_mode(self, operation: ChangeOperation, path: Path) -> int:
         if operation.result_mode is not None:
             return operation.result_mode
-        try:
-            return stat.S_IMODE(path.lstat().st_mode)
-        except FileNotFoundError:
+        decoded = self._decode_state(self._state_token(path))
+        mode = decoded.get("mode")
+        if not isinstance(mode, int):
             raise MishkanError(
                 ErrorCode.OUTPUT_CONTRACT,
                 "a newly created path has no declared result mode",
-            ) from None
+            )
+        return mode
 
     def _preimage(
         self,

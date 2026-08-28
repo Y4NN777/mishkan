@@ -39,6 +39,7 @@ from mishkan.tools.inspection import ContentInspector, InspectionProfileLoader
 def _services(
     tmp_path: Path,
     *,
+    before_hook: Callable[[int], None] | None = None,
     hook: Callable[[int], None] | None = None,
 ) -> tuple[ChangeSetService, DurableArtifactService, Path]:
     workspace = tmp_path / "workspace"
@@ -52,7 +53,13 @@ def _services(
         max_chunk_bytes=1024,
     )
     return (
-        ChangeSetService(database, workspace, artifacts, after_effect_hook=hook),
+        ChangeSetService(
+            database,
+            workspace,
+            artifacts,
+            before_effect_hook=before_hook,
+            after_effect_hook=hook,
+        ),
         artifacts,
         workspace,
     )
@@ -352,6 +359,44 @@ def test_symlink_and_concurrent_after_state_are_never_overwritten(tmp_path: Path
     with pytest.raises(MishkanError):
         service.plan(symlink_change)
     assert outside.read_text() == "outside"
+
+
+def test_parent_symlink_swap_immediately_before_effect_cannot_escape(tmp_path: Path) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    outside_target = outside / "target.txt"
+    outside_target.write_text("outside")
+
+    def swap_parent(_position: int) -> None:
+        scope = tmp_path / "workspace" / "scope"
+        scope.rename(tmp_path / "workspace" / "scope-original")
+        scope.symlink_to(outside, target_is_directory=True)
+
+    service, _artifacts, workspace = _services(tmp_path, before_hook=swap_parent)
+    scope = workspace / "scope"
+    scope.mkdir()
+    (scope / "target.txt").write_text("before")
+    change = ChangeSet(
+        scope="workspace",
+        path_scopes=("scope",),
+        declared_effects=("filesystem.write",),
+        operations=(
+            ChangeOperation(
+                kind=ChangeOperationKind.WRITE,
+                path="scope/target.txt",
+                precondition=PreconditionKind.DIGEST,
+                precondition_value=_digest(b"before"),
+                inline_content="after",
+            ),
+        ),
+    )
+
+    service.plan(change)
+    result = service.apply(change.id)
+
+    assert result.state is ChangeSetState.CONFLICT
+    assert outside_target.read_text() == "outside"
+    assert (workspace / "scope-original" / "target.txt").read_text() == "before"
 
 
 def test_all_structural_operations_and_artifact_content_are_exact(tmp_path: Path) -> None:
