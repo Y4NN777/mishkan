@@ -109,6 +109,53 @@ async def test_authenticated_command_and_event_query_share_durable_contract(
 
 
 @pytest.mark.anyio
+async def test_slow_command_keeps_health_responsive_and_deduplicates_in_flight(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from mishkan.daemon import api as daemon_api
+
+    config = _config(tmp_path)
+    paths = DaemonBootstrap().setup(config)
+    token = TokenFile(paths.token_file).read().token
+    headers = {"Authorization": f"Bearer {token}"}
+    command = ApplicationCommand(
+        command_type="system.checkpoint",
+        actor_id="local-operator",
+        target_type="system",
+        target_id="slow-checkpoint",
+        payload={"checkpoint": "slow"},
+    )
+    original = daemon_api._dispatch
+    invocations = 0
+
+    def delayed_dispatch(*args: object, **kwargs: object) -> tuple[str, dict[str, object]]:
+        nonlocal invocations
+        invocations += 1
+        time.sleep(0.3)
+        return original(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(daemon_api, "_dispatch", delayed_dispatch)
+    transport = httpx.ASGITransport(app=create_app(config))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        first = asyncio.create_task(
+            client.post("/v1/commands", headers=headers, json=command.model_dump(mode="json"))
+        )
+        await asyncio.sleep(0.05)
+        started = time.perf_counter()
+        health = await asyncio.wait_for(client.get("/v1/health"), timeout=0.15)
+        health_latency = time.perf_counter() - started
+        duplicate = asyncio.create_task(
+            client.post("/v1/commands", headers=headers, json=command.model_dump(mode="json"))
+        )
+        first_response, duplicate_response = await asyncio.gather(first, duplicate)
+
+    assert health.status_code == 200
+    assert health_latency < 0.15
+    assert first_response.json() == duplicate_response.json()
+    assert invocations == 1
+
+
+@pytest.mark.anyio
 async def test_registry_lifecycle_command_is_atomic_idempotent_and_revisioned(
     tmp_path: Path,
 ) -> None:

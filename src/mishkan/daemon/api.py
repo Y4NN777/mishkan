@@ -153,6 +153,8 @@ def create_app(config: MishkanConfig) -> FastAPI:
     command_lock = asyncio.Lock()
     run_execution_lock = asyncio.Lock()
     active_run_commands: dict[UUID, tuple[str, asyncio.Task[CommandResult]]] = {}
+    active_commands: dict[UUID, tuple[str, asyncio.Task[CommandResult]]] = {}
+    target_effect_locks: dict[tuple[str, str], asyncio.Lock] = {}
     mcp_repository: McpRepository | None = None
     mcp_runner: McpServiceRunner | None = None
     mcp_config = config.mcp
@@ -188,6 +190,22 @@ def create_app(config: MishkanConfig) -> FastAPI:
                 "command actor does not match the authenticated client identity",
                 details={"actor_id": command.actor_id},
             )
+        async with command_lock:
+            active = active_run_commands.get(command.command_id) or active_commands.get(
+                command.command_id
+            )
+            if active is not None:
+                fingerprint, active_task = active
+                if fingerprint != command.fingerprint:
+                    raise MishkanError(
+                        ErrorCode.DUPLICATE_RESULT,
+                        "command identity was already used for different content",
+                        details={"command_id": str(command.command_id)},
+                    )
+            else:
+                active_task = None
+        if active_task is not None:
+            return await asyncio.shield(active_task)
         replayed = repository.replay(command)
         if replayed is not None:
             return replayed
@@ -352,68 +370,102 @@ def create_app(config: MishkanConfig) -> FastAPI:
                     task.add_done_callback(forget)
             return await asyncio.shield(task)
 
+        target_id = command.target_id or "local-instance"
         async with command_lock:
-            target_id = command.target_id or "local-instance"
-            replayed = repository.reserve(command, target_id=target_id)
-            if replayed is not None:
-                return replayed
-            try:
-                event_type, result_payload = _dispatch(
-                    command,
-                    authorized,
-                    repository,
-                    EventRetentionPolicy(
-                        max_age_days=persistence.event_retention_days,
-                        batch_size=daemon.event_page_limit,
-                    ),
-                    artifacts,
-                    changes,
-                    git_effects,
-                    command_authority.policy,
-                    supervisor,
-                    run_repository,
-                    mcp_runner,
-                    mcp_config,
-                    resolved_credentials,
+            active = active_commands.get(command.command_id)
+            if active is not None:
+                fingerprint, task = active
+                if fingerprint != command.fingerprint:
+                    raise MishkanError(
+                        ErrorCode.DUPLICATE_RESULT,
+                        "command identity was already used for different content",
+                        details={"command_id": str(command.command_id)},
+                    )
+            else:
+                replayed = repository.reserve(command, target_id=target_id)
+                if replayed is not None:
+                    return replayed
+                target_lock = target_effect_locks.setdefault(
+                    (command.target_type, target_id), asyncio.Lock()
                 )
-            except MishkanError as error:
-                return repository.fail_reserved(
-                    command,
-                    target_id=target_id,
-                    error=error,
-                    event_payload=_authorization_projection(authorized),
-                    sensitivity=(
-                        "security"
-                        if error.envelope.code
-                        in {
-                            ErrorCode.AUTHORITY_NOT_GRANTED,
-                            ErrorCode.AUTHORIZATION_MISSING,
-                            ErrorCode.POLICY_CONFLICT,
-                            ErrorCode.SECRET_CONTENT,
-                        }
-                        else "internal"
-                    ),
+
+                async def execute_effect() -> CommandResult:
+                    async with target_lock:
+                        try:
+                            event_type, result_payload = await asyncio.to_thread(
+                                _dispatch,
+                                command,
+                                authorized,
+                                repository,
+                                EventRetentionPolicy(
+                                    max_age_days=persistence.event_retention_days,
+                                    batch_size=daemon.event_page_limit,
+                                ),
+                                artifacts,
+                                changes,
+                                git_effects,
+                                command_authority.policy,
+                                supervisor,
+                                run_repository,
+                                mcp_runner,
+                                mcp_config,
+                                resolved_credentials,
+                            )
+                        except MishkanError as error:
+                            return repository.fail_reserved(
+                                command,
+                                target_id=target_id,
+                                error=error,
+                                event_payload=_authorization_projection(authorized),
+                                sensitivity=(
+                                    "security"
+                                    if error.envelope.code
+                                    in {
+                                        ErrorCode.AUTHORITY_NOT_GRANTED,
+                                        ErrorCode.AUTHORIZATION_MISSING,
+                                        ErrorCode.POLICY_CONFLICT,
+                                        ErrorCode.SECRET_CONTENT,
+                                    }
+                                    else "internal"
+                                ),
+                            )
+                        except (KeyError, TypeError, ValueError):
+                            payload_error = MishkanError(
+                                ErrorCode.OUTPUT_CONTRACT,
+                                "application command payload does not match "
+                                "its registered contract",
+                                details={"command_type": command.command_type},
+                            )
+                            return repository.fail_reserved(
+                                command,
+                                target_id=target_id,
+                                error=payload_error,
+                                event_payload=_authorization_projection(authorized),
+                            )
+                        return repository.complete_reserved(
+                            command,
+                            target_id=target_id,
+                            event_type=event_type,
+                            result_payload=result_payload,
+                            event_payload=_event_projection(command, result_payload, authorized),
+                            source="mishkand",
+                        )
+
+                task = asyncio.create_task(
+                    execute_effect(),
+                    name=f"application-command:{command.command_id}",
                 )
-            except (KeyError, TypeError, ValueError):
-                payload_error = MishkanError(
-                    ErrorCode.OUTPUT_CONTRACT,
-                    "application command payload does not match its registered contract",
-                    details={"command_type": command.command_type},
-                )
-                return repository.fail_reserved(
-                    command,
-                    target_id=target_id,
-                    error=payload_error,
-                    event_payload=_authorization_projection(authorized),
-                )
-            return repository.complete_reserved(
-                command,
-                target_id=target_id,
-                event_type=event_type,
-                result_payload=result_payload,
-                event_payload=_event_projection(command, result_payload, authorized),
-                source="mishkand",
-            )
+                active_commands[command.command_id] = (command.fingerprint, task)
+
+                def forget_effect(completed: asyncio.Task[CommandResult]) -> None:
+                    current = active_commands.get(command.command_id)
+                    if current is not None and current[1] is completed:
+                        active_commands.pop(command.command_id, None)
+                    if not completed.cancelled():
+                        completed.exception()
+
+                task.add_done_callback(forget_effect)
+        return await asyncio.shield(task)
 
     mcp_http: McpHttpFacade | None = None
     if mcp_config is not None and mcp_config.facade.enabled:
