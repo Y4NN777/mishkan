@@ -1,13 +1,26 @@
 from __future__ import annotations
 
 from pathlib import Path
+from uuid import UUID
 
 import pytest
+from alembic import command
+from alembic.config import Config
 from sqlalchemy import create_engine, text
 
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.persistence import DatabaseState, SchemaManager
 from mishkan.persistence.sqlite import Base
+
+
+def _migration_config(database: Path) -> Config:
+    config = Config()
+    config.set_main_option(
+        "script_location",
+        str(Path(__file__).parents[2] / "src" / "mishkan" / "persistence" / "migrations"),
+    )
+    config.set_main_option("sqlalchemy.url", f"sqlite:///{database}")
+    return config
 
 
 def test_empty_database_is_initialized_only_explicitly(tmp_path: Path) -> None:
@@ -100,3 +113,30 @@ def test_unknown_database_is_refused_without_mutation(tmp_path: Path) -> None:
 
     assert caught.value.envelope.code is ErrorCode.VERSION
     assert manager.status().state is DatabaseState.UNKNOWN
+
+
+def test_registry_record_identity_migration_backfills_existing_entries(tmp_path: Path) -> None:
+    database = tmp_path / "registry.db"
+    config = _migration_config(database)
+    command.upgrade(config, "tool_registry_lifecycle_v1")
+    with create_engine(f"sqlite:///{database}").begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO tool_registry_entries "
+                "(entry_kind, identity, enabled, removed, precedence, revision, updated_at) "
+                "VALUES ('adapter', 'native.example', 1, 0, 0, 1, "
+                "'2026-08-28T00:00:00+00:00')"
+            )
+        )
+
+    command.upgrade(config, "head")
+
+    assert SchemaManager(database).status().state is DatabaseState.CURRENT
+    with create_engine(f"sqlite:///{database}").connect() as connection:
+        record_id = connection.execute(
+            text(
+                "SELECT record_id FROM tool_registry_entries "
+                "WHERE entry_kind = 'adapter' AND identity = 'native.example'"
+            )
+        ).scalar_one()
+    assert str(UUID(record_id)) == record_id

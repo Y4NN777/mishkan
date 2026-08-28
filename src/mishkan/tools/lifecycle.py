@@ -6,12 +6,14 @@ import hashlib
 import json
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from mishkan.domain.errors import ErrorCode, MishkanError
+from mishkan.domain.identity import new_id
 from mishkan.domain.time import utc_now
 from mishkan.persistence.migration import SchemaManager
 from mishkan.persistence.sqlite import ToolRegistryEntryRow, create_local_engine
@@ -62,6 +64,7 @@ class ToolRegistryLifecycle:
         now = utc_now().isoformat()
         if row is None:
             row = ToolRegistryEntryRow(
+                record_id=str(new_id()),
                 entry_kind=key[0],
                 identity=key[1],
                 enabled=True,
@@ -196,6 +199,7 @@ class ToolRegistryLifecycle:
     def _entry(row: ToolRegistryEntryRow) -> RegistryEntry:
         definition = json.loads(row.definition_payload) if row.definition_payload else None
         return RegistryEntry(
+            id=UUID(row.record_id),
             entry_kind=RegistryEntryKind(row.entry_kind),
             identity=row.identity,
             enabled=row.enabled,

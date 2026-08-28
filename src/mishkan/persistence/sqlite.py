@@ -138,6 +138,7 @@ class PlannedToolCallRow(Base):
 class ToolRegistryEntryRow(Base):
     __tablename__ = "tool_registry_entries"
 
+    record_id: Mapped[str] = mapped_column(String(36), unique=True, nullable=False)
     entry_kind: Mapped[str] = mapped_column(String(16), primary_key=True)
     identity: Mapped[str] = mapped_column(String(128), primary_key=True)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False)

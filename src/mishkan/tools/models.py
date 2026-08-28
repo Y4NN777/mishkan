@@ -6,6 +6,7 @@ import hashlib
 import json
 from enum import StrEnum
 from typing import Any, Self
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -231,6 +232,7 @@ class RegistryMutation(ToolModel):
 
 
 class RegistryEntry(ToolModel):
+    id: UUID
     entry_kind: RegistryEntryKind
     identity: str
     enabled: bool

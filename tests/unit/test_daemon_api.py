@@ -158,6 +158,7 @@ async def test_registry_lifecycle_command_is_atomic_idempotent_and_revisioned(
     assert refused.json()["error"]["code"] == ErrorCode.REVISION_MISMATCH
     assert registry.json()["entries"] == [
         {
+            "id": registry.json()["entries"][0]["id"],
             "entry_kind": "adapter",
             "identity": "native.repository.read_file",
             "enabled": False,
