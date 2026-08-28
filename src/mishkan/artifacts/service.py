@@ -236,7 +236,7 @@ class DurableArtifactService:
             return self._upload_model(row)
 
     def commit_upload(self, upload_id: UUID) -> ArtifactManifest:
-        with Session(self._engine) as session, session.begin():
+        with Session(self._engine) as session:
             row = self._require_upload(session, upload_id)
             if row.state == "committed" and row.artifact_id is not None:
                 artifact = session.get(ArtifactRow, row.artifact_id)
@@ -247,9 +247,14 @@ class DurableArtifactService:
             staged = self._staging_path(row)
             content_digest = row.expected_digest.removeprefix("sha256:")
             size = row.expected_size
-            storage_ref = f"sha256/{content_digest[:2]}/{content_digest[2:]}"
-            destination = self._safe_blob(storage_ref)
-            destination.parent.mkdir(parents=True, exist_ok=True)
+            media_type = row.media_type
+            metadata_payload = row.metadata_payload
+            staging_path = row.staging_path
+        expected_digest = f"sha256:{content_digest}"
+        storage_ref = f"sha256/{content_digest[:2]}/{content_digest[2:]}"
+        destination = self._safe_blob(storage_ref)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if os.path.lexists(staged):
             self._commit_staged_blob(
                 staged,
                 destination,
@@ -257,11 +262,32 @@ class DurableArtifactService:
                 size,
                 self._content_inspector,
             )
-            metadata = json.loads(row.metadata_payload)
+        else:
+            self._require_existing_committed_blob(destination, content_digest, size)
+
+        with Session(self._engine) as session, session.begin():
+            row = self._require_upload(session, upload_id)
+            if row.state == "committed" and row.artifact_id is not None:
+                artifact = session.get(ArtifactRow, row.artifact_id)
+                if artifact is not None:
+                    return ArtifactManifest.model_validate_json(artifact.manifest_payload)
+            if (
+                row.state != "staging"
+                or row.expected_digest != expected_digest
+                or row.expected_size != size
+                or row.media_type != media_type
+                or row.metadata_payload != metadata_payload
+                or row.staging_path != staging_path
+            ):
+                raise MishkanError(
+                    ErrorCode.REVISION_MISMATCH,
+                    "artifact upload changed while content was being verified",
+                )
+            metadata = json.loads(metadata_payload)
             manifest = ArtifactManifest(
-                digest=f"sha256:{content_digest}",
+                digest=expected_digest,
                 size_bytes=size,
-                declared_media_type=row.media_type,
+                declared_media_type=media_type,
                 detected_media_type=None,
                 provenance=ArtifactProvenance.model_validate(metadata["provenance"]),
                 sensitivity=str(metadata["sensitivity"]),
@@ -297,6 +323,27 @@ class DurableArtifactService:
             row.artifact_id = str(manifest.id)
             row.updated_at = utc_now().isoformat()
             return manifest
+
+    def _require_existing_committed_blob(
+        self,
+        destination: Path,
+        digest: str,
+        size: int,
+    ) -> None:
+        try:
+            observed_digest, observed_size = self._hash_file(destination)
+        except OSError as exc:
+            raise MishkanError(
+                ErrorCode.ARTIFACT,
+                "artifact staging body and committed CAS body are unavailable",
+            ) from exc
+        if observed_digest != digest or observed_size != size:
+            raise MishkanError(
+                ErrorCode.ARTIFACT,
+                "artifact CAS recovery body failed size or digest verification",
+            )
+        if self._content_inspector is not None:
+            self._content_inspector.require_safe_file(destination)
 
     def manifest(self, reference: str) -> ArtifactManifest:
         artifact_id = self._reference_id(reference)

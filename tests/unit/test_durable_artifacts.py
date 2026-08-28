@@ -137,6 +137,37 @@ def test_commit_refuses_an_in_root_staging_symlink(tmp_path: Path) -> None:
     assert substitute.read_bytes() == content
 
 
+def test_commit_recovers_after_cas_publication_preceded_database_finalize(
+    tmp_path: Path,
+) -> None:
+    service = _service(tmp_path)
+    content = b"recoverable"
+    digest = hashlib.sha256(content).hexdigest()
+    upload = service.open_upload(
+        expected_size=len(content),
+        expected_digest=f"sha256:{digest}",
+        media_type="text/plain",
+        provenance=_provenance(),
+    )
+    for offset in range(0, len(content), 4):
+        service.append_chunk(
+            upload.upload_id,
+            offset=offset,
+            content=content[offset : offset + 4],
+        )
+    staged = tmp_path / "artifacts" / "staging" / f"{upload.upload_id}.upload"
+    destination = tmp_path / "artifacts" / "blobs" / "sha256" / digest[:2] / digest[2:]
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(content)
+    staged.unlink()
+
+    manifest = service.commit_upload(upload.upload_id)
+
+    assert manifest.digest == f"sha256:{digest}"
+    assert service.read_bytes(manifest.reference) == content
+    assert service.commit_upload(upload.upload_id) == manifest
+
+
 def test_upload_rejects_stale_offset_and_wrong_digest(tmp_path: Path) -> None:
     service = _service(tmp_path)
     upload = service.open_upload(
