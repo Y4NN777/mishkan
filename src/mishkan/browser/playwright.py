@@ -28,6 +28,7 @@ from playwright.sync_api import (
     Request,
     Response,
     Route,
+    WebSocketRoute,
     sync_playwright,
 )
 from playwright.sync_api import (
@@ -429,6 +430,23 @@ class PlaywrightChromiumDriver:
         live.context.route("http://**/*", mediate)
         live.context.route("https://**/*", mediate)
 
+        def refuse_unmediated_websocket(route: WebSocketRoute) -> None:
+            self._record(
+                live,
+                "network",
+                "blocked",
+                {
+                    "url": self._safe_url(route.url),
+                    "reason": "unmediated_websocket_transport",
+                },
+            )
+            route.close(code=1008, reason="WebSocket transport is not mediated by this profile")
+
+        # A Chromium WebSocket would otherwise bypass the DNS-locked HTTP transport above.
+        # No WebSocket adapter is advertised in I04, so the truthful behavior is refusal.
+        live.context.route_web_socket("ws://**/*", refuse_unmediated_websocket)
+        live.context.route_web_socket("wss://**/*", refuse_unmediated_websocket)
+
     def _refresh_pages(self, live: _LiveSession) -> None:
         for page in live.context.pages:
             identity = id(page)
@@ -666,7 +684,7 @@ class PlaywrightChromiumDriver:
     def _safe_url(raw_url: str) -> str:
         try:
             url = httpx.URL(raw_url)
-            if url.scheme not in {"http", "https"} or url.host is None:
+            if url.scheme not in {"http", "https", "ws", "wss"} or url.host is None:
                 return "[INVALID_URL]"
             return str(url.copy_with(query=None, fragment=None, userinfo=b""))
         except (TypeError, ValueError):

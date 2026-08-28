@@ -32,6 +32,7 @@ from mishkan.browser.driver import (
     DriverObservation,
     DriverSession,
 )
+from mishkan.browser.playwright import _LiveSession
 from mishkan.config.models import BrowserConfig, BrowserProfileConfig, MishkanConfig
 from mishkan.config.presets import preset_text
 from mishkan.domain.errors import ErrorCode, MishkanError
@@ -609,6 +610,60 @@ def test_playwright_value_effect_and_origin_guards_are_explicit() -> None:
             ("https://example.com",),
             "https://other.example/x",
         )
+
+
+def test_playwright_refuses_websockets_that_cannot_use_the_verified_transport(
+    tmp_path: Path,
+) -> None:
+    configured = MishkanConfig.model_validate(yaml.safe_load(preset_text("local")))
+    assert configured.browser is not None
+    assert configured.web is not None
+
+    class Context:
+        def __init__(self) -> None:
+            self.websockets: dict[str, object] = {}
+
+        def route(self, pattern: str, handler: object) -> None:
+            del pattern, handler
+
+        def route_web_socket(self, pattern: str, handler: object) -> None:
+            self.websockets[pattern] = handler
+
+    class WebSocket:
+        url = "wss://example.com/socket?credential=secret"
+
+        def __init__(self) -> None:
+            self.closed: tuple[int | None, str | None] | None = None
+
+        def close(self, *, code: int | None = None, reason: str | None = None) -> None:
+            self.closed = (code, reason)
+
+    context = Context()
+    driver = object.__new__(PlaywrightChromiumDriver)
+    driver._network_profiles = configured.web.network_profiles  # type: ignore[attr-defined]
+    live = _LiveSession(
+        configured.browser.profiles[configured.browser.default_profile],
+        tmp_path,
+        None,
+        context,  # type: ignore[arg-type]
+    )
+
+    driver._install_network_mediation(live)
+    route = WebSocket()
+    handler = context.websockets["wss://**/*"]
+    assert callable(handler)
+    handler(route)
+
+    assert route.closed == (1008, "WebSocket transport is not mediated by this profile")
+    assert live.diagnostics == [
+        {
+            "cursor": 0,
+            "channel": "network",
+            "kind": "blocked",
+            "url": "wss://example.com/socket",
+            "reason": "unmediated_websocket_transport",
+        }
+    ]
 
 
 def test_browser_action_credentials_are_structurally_constrained() -> None:
