@@ -395,7 +395,12 @@ async def test_reconnect_schema_drift_preserves_bound_primitives_and_degrades(
     primitive = _primitive()
     client = FakeClient(_snapshot(primitive))
     service, repository = _service(tmp_path, client)
-    await service.connect("graph", principal="role:Engineer", credentials={})
+    await service.connect(
+        "graph",
+        principal="role:Engineer",
+        policy_fingerprint="policy:test",
+        credentials={},
+    )
     changed = primitive.model_copy(
         update={
             "description": "changed",
@@ -412,7 +417,12 @@ async def test_reconnect_schema_drift_preserves_bound_primitives_and_degrades(
     client.snapshot = _snapshot(changed)
 
     with pytest.raises(MishkanError) as drift:
-        await service.connect("graph", principal="role:Engineer", credentials={})
+        await service.connect(
+            "graph",
+            principal="role:Engineer",
+            policy_fingerprint="policy:test",
+            credentials={},
+        )
 
     assert drift.value.envelope.code is ErrorCode.TOOL_DRIFT
     assert repository.get_connection("graph").state is McpSessionState.DEGRADED
@@ -425,7 +435,12 @@ async def test_transport_loss_marks_non_idempotent_call_uncertain(tmp_path: Path
     client = FakeClient(_snapshot(primitive))
     client.failure = RuntimeError("connection lost")
     service, _repository = _service(tmp_path, client)
-    await service.connect("graph", principal="role:Engineer", credentials={})
+    await service.connect(
+        "graph",
+        principal="role:Engineer",
+        policy_fingerprint="policy:test",
+        credentials={},
+    )
 
     result = await service.invoke(_request(primitive), credentials={})
 
@@ -438,7 +453,12 @@ async def test_discovered_output_schema_rejects_malformed_structured_result(tmp_
     primitive = _primitive(require_content=True)
     client = FakeClient(_snapshot(primitive))
     service, _repository = _service(tmp_path, client)
-    await service.connect("graph", principal="role:Engineer", credentials={})
+    await service.connect(
+        "graph",
+        principal="role:Engineer",
+        policy_fingerprint="policy:test",
+        credentials={},
+    )
 
     result = await service.invoke(_request(primitive), credentials={})
 
@@ -458,7 +478,12 @@ def test_dynamic_contract_and_common_adapter_preserve_exact_policy_targets(
     contract = McpContractFactory(_config()).build("graph", primitive)
 
     with McpServiceRunner(service) as runner:
-        runner.connect("graph", principal="role:Engineer", credentials={})
+        runner.connect(
+            "graph",
+            principal="role:Engineer",
+            policy_fingerprint="policy:test",
+            credentials={},
+        )
         adapter = McpPrimitiveToolAdapter(_config(), runner, {})
         result = adapter.invoke(
             AdapterCall(
@@ -564,7 +589,12 @@ def test_runner_cancellation_settles_read_only_call_without_uncertainty(tmp_path
     request = _request(primitive)
 
     with McpServiceRunner(service) as runner:
-        runner.connect("graph", principal="role:Engineer", credentials={})
+        runner.connect(
+            "graph",
+            principal="role:Engineer",
+            policy_fingerprint="policy:test",
+            credentials={},
+        )
         result = runner.invoke(
             request,
             credentials={},
@@ -588,7 +618,12 @@ async def test_remote_task_identity_survives_restart_and_reconciles_without_repl
     client = RecoverableRemoteTaskClient(snapshot)
     config = _config(remote_tasks_enabled=True)
     service, repository = _service(tmp_path, client, config=config)
-    connected = await service.connect("graph", principal="role:Engineer", credentials={})
+    connected = await service.connect(
+        "graph",
+        principal="role:Engineer",
+        policy_fingerprint="policy:test",
+        credentials={},
+    )
     request = _request(primitive, remote_task_allowed=True)
 
     assert connected.remote_tasks_enabled is True
@@ -641,7 +676,12 @@ async def test_remote_task_cancellation_requires_negotiated_remote_confirmation(
     )
     config = _config(remote_tasks_enabled=True)
     service, _repository = _service(tmp_path, client, config=config)
-    await service.connect("graph", principal="role:Engineer", credentials={})
+    await service.connect(
+        "graph",
+        principal="role:Engineer",
+        policy_fingerprint="policy:test",
+        credentials={},
+    )
     request = _request(primitive, remote_task_allowed=True)
     with pytest.raises(MishkanError):
         await service.invoke(request, credentials={})

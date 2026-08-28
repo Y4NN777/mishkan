@@ -319,7 +319,12 @@ async def test_daemon_commands_reconcile_and_cancel_remote_tasks_after_transport
             InspectionProfileLoader().load(config.inspection_profile, paths.workspace)
         ),
     )
-    await service.connect("fixture", principal="local-operator", credentials={})
+    await service.connect(
+        "fixture",
+        principal="local-operator",
+        policy_fingerprint="policy:acceptance",
+        credentials={},
+    )
     primitive = next(
         item for item in repository.list_primitives("fixture") if item.name == "repository.read"
     )

@@ -40,6 +40,8 @@ def _connection() -> McpConnectionRecord:
         configured_protocol_versions=("2025-11-25",),
         trust="project-configured",
         exposure_profile="repository-read",
+        server_identity="stdio:test-server",
+        policy_fingerprint="policy:test",
         state=McpSessionState.READY,
         revision=0,
         health="healthy",

@@ -535,6 +535,14 @@ class McpRepository:
     @staticmethod
     def _connection(row: McpConnectionRow) -> McpConnectionRecord:
         try:
-            return McpConnectionRecord.model_validate_json(row.payload)
-        except ValidationError as exc:
+            payload = json.loads(row.payload)
+            if not isinstance(payload, dict):
+                raise ValueError("MCP connection payload is not an object")
+            payload.setdefault(
+                "server_identity",
+                f"legacy:{row.connection_id}:unrecorded",
+            )
+            payload.setdefault("policy_fingerprint", "legacy:unrecorded")
+            return McpConnectionRecord.model_validate(payload)
+        except (ValidationError, ValueError, json.JSONDecodeError) as exc:
             raise MishkanError(ErrorCode.MCP, "MCP connection record is corrupt") from exc

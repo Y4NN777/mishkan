@@ -58,6 +58,8 @@ def test_connection_protocol_and_discovery_hashes_are_structural() -> None:
         negotiated_protocol_version="2025-11-25",
         trust="project-configured",
         exposure_profile="graph-read",
+        server_identity="stdio:test-server",
+        policy_fingerprint="policy:test",
         state=McpSessionState.READY,
         revision=1,
         health="healthy",

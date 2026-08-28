@@ -83,10 +83,10 @@ class McpConnectionRecord(McpModel):
     trust: str = Field(min_length=1)
     exposure_profile: str = Field(min_length=1)
     remote_tasks_enabled: bool = False
-    server_identity: str = Field(default="legacy:unknown", min_length=1)
+    server_identity: str = Field(min_length=1)
     credential_references: tuple[str, ...] = ()
     credential_principal: str | None = None
-    policy_fingerprint: str = Field(default="legacy:unknown", min_length=1)
+    policy_fingerprint: str = Field(min_length=1)
     state: McpSessionState
     revision: int = Field(ge=0)
     schema_fingerprint: str | None = None

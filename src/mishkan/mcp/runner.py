@@ -27,7 +27,7 @@ class McpServiceRunner:
         connection_id: str,
         *,
         principal: str,
-        policy_fingerprint: str = "direct:unbound",
+        policy_fingerprint: str,
         credentials: Mapping[str, str],
     ) -> McpConnectionRecord:
         future = self._executor.submit(

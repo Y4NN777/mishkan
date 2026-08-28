@@ -101,7 +101,7 @@ class McpService:
         connection_id: str,
         *,
         principal: str,
-        policy_fingerprint: str = "direct:unbound",
+        policy_fingerprint: str,
         credentials: Mapping[str, str],
     ) -> McpConnectionRecord:
         configured = self._configured(connection_id)
