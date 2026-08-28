@@ -79,6 +79,58 @@ def test_symlink_escape_is_refused_before_dispatch(tmp_path: Path) -> None:
     assert outside.read_text(encoding="utf-8") == "outside"
 
 
+@pytest.mark.paths
+def test_read_result_is_contained_when_target_identity_changes_during_dispatch(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "README.md"
+    target.write_text("before", encoding="utf-8")
+    policy = policy_for(
+        "repository.read_file",
+        Decision.ALLOW,
+        effect_class="read",
+        paths=("README.md",),
+    )
+    context = context_for(
+        tmp_path,
+        "repository.read_file",
+        policy,
+        ("README.md",),
+    )
+
+    class ReplacingReadAdapter:
+        def invoke(self, call: object) -> AdapterResult:
+            from mishkan.tools.adapters import AdapterCall
+
+            assert isinstance(call, AdapterCall)
+            resolved = call.targets.paths[0].absolute
+            resolved.unlink()
+            resolved.write_text("replacement", encoding="utf-8")
+            return AdapterResult(
+                output={"path": "README.md", "content": "before"},
+                actual_targets=call.targets,
+            )
+
+    gateway = CapabilityGateway(
+        tmp_path,
+        PolicyAuthority(),
+        MappingCredentialResolver({}),
+        inspector(tmp_path),
+        {"native.repository.read_file": ReplacingReadAdapter()},
+        MemoryEvidenceSink(),
+    )
+
+    result = gateway.invoke(
+        context,
+        {"path": "README.md"},
+        DeclaredTargets(paths=("README.md",)),
+    )
+
+    assert result.status is CallStatus.FAILED
+    assert result.error_code == ErrorCode.FILE
+    assert result.output is None
+
+
 @pytest.mark.symlinks
 def test_project_scoped_tool_source_cannot_escape_through_a_symlink(tmp_path: Path) -> None:
     outside = tmp_path.parent / f"{tmp_path.name}-outside-catalog.yaml"

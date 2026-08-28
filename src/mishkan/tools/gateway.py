@@ -40,7 +40,7 @@ from mishkan.tools.gateway_models import (
     ToolResultEnvelope,
 )
 from mishkan.tools.inspection import ContentInspector
-from mishkan.tools.models import ToolContract, argument_fingerprint
+from mishkan.tools.models import EffectClass, ToolContract, argument_fingerprint
 
 _TARGET_FIELDS = {
     "path": "paths",
@@ -362,6 +362,11 @@ class CapabilityGateway:
             credential_references = credential_references_for(contract, arguments)
             policy_arguments = policy_argument_values_for(contract, arguments)
             resolved = self._resolve_targets(declared_targets)
+            resolved_path_state = (
+                self._resolved_path_state(resolved)
+                if contract.effect_class is EffectClass.READ
+                else None
+            )
             self._validate_declared_arguments(contract, arguments, resolved)
             self._validate_bound_targets(context.binding.allowed_targets, resolved)
             operation_evidence = self._operation_evidence(
@@ -546,6 +551,8 @@ class CapabilityGateway:
                 },
             )
             try:
+                if resolved_path_state is not None:
+                    self._require_resolved_path_state(resolved, resolved_path_state)
                 adapter_result = adapter.invoke(
                     AdapterCall(
                         arguments=arguments,
@@ -587,6 +594,8 @@ class CapabilityGateway:
                     ErrorCode.TOOL_EFFECT,
                     "adapter-reported actual targets differ from the authorized targets",
                 )
+            if resolved_path_state is not None:
+                self._require_resolved_path_state(resolved, resolved_path_state)
             secret_values = tuple(credentials.values())
             for content in adapter_result.inspection_content:
                 self._inspector.inspect(content, secret_values)
@@ -868,8 +877,8 @@ class CapabilityGateway:
             "base_revision_token": None,
         }
 
-    @staticmethod
     def _complete_operation_evidence(
+        self,
         evidence: dict[str, Any],
         output: dict[str, Any],
     ) -> dict[str, Any]:
@@ -900,11 +909,25 @@ class CapabilityGateway:
             "continuation_cursor",
             output.get("continuation_offset"),
         )
+        if self._repository_observer is not None:
+            revision, dirty, fingerprint = self._repository_observer.observe(
+                self._root,
+                str(completed["revision"]),
+            )
+            if (
+                revision != completed["revision"]
+                or dirty != completed["working_tree_dirty"]
+                or fingerprint != completed["working_tree_fingerprint"]
+            ):
+                completed["failures"].append("repository-state-changed-during-operation")
+                completed["truncated"] = True
         content_digest = output.get("content_digest")
         full_content = (
             content_digest is not None
             and output.get("byte_range") == [0, output.get("total_bytes")]
             and output.get("truncated") is False
+            and not completed["failures"]
+            and not completed["truncated"]
         )
         if content_digest is None and isinstance(output.get("content"), str):
             content_digest = f"sha256:{hashlib.sha256(output['content'].encode()).hexdigest()}"
@@ -918,6 +941,67 @@ class CapabilityGateway:
                 content_digest=content_digest,
             )
         return completed
+
+    def _resolved_path_state(self, targets: ResolvedTargets) -> tuple[str, ...]:
+        return tuple(self._resolved_path_fingerprint(path) for path in targets.paths)
+
+    def _require_resolved_path_state(
+        self,
+        targets: ResolvedTargets,
+        expected: tuple[str, ...],
+    ) -> None:
+        observed = self._resolved_path_state(targets)
+        if observed != expected:
+            raise MishkanError(
+                ErrorCode.FILE,
+                "filesystem target changed after authorization",
+                details={
+                    "category": "path_replacement_race",
+                    "expected": expected,
+                    "observed": observed,
+                },
+            )
+
+    def _resolved_path_fingerprint(self, target: ResolvedPath) -> str:
+        lexical = self._root / target.lexical_relative
+        entries: list[dict[str, Any]] = []
+        current = self._root
+        for part in lexical.relative_to(self._root).parts:
+            current = current / part
+            try:
+                observed = current.lstat()
+                link_target = os.readlink(current) if stat.S_ISLNK(observed.st_mode) else None
+                entries.append(
+                    {
+                        "path": current.relative_to(self._root).as_posix(),
+                        "device": observed.st_dev,
+                        "inode": observed.st_ino,
+                        "mode": observed.st_mode,
+                        "size": observed.st_size,
+                        "modified_ns": observed.st_mtime_ns,
+                        "link_target": link_target,
+                    }
+                )
+            except FileNotFoundError:
+                entries.append(
+                    {"path": current.relative_to(self._root).as_posix(), "missing": True}
+                )
+        try:
+            resolved = lexical.resolve(strict=False)
+        except (OSError, RuntimeError) as exc:
+            raise MishkanError(
+                ErrorCode.FILE,
+                "filesystem target changed into an invalid link chain",
+                details={"category": "path_replacement_race", "path": target.requested},
+            ) from exc
+        if resolved != target.absolute or not resolved.is_relative_to(self._root):
+            raise MishkanError(
+                ErrorCode.FILE,
+                "filesystem target changed its resolved identity",
+                details={"category": "path_replacement_race", "path": target.requested},
+            )
+        payload = json.dumps(entries, sort_keys=True, separators=(",", ":")).encode()
+        return hashlib.sha256(payload).hexdigest()
 
     def _apply_workspace_effect_observation(
         self,
