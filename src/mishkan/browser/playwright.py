@@ -42,6 +42,7 @@ from playwright.sync_api import (
 )
 
 from mishkan.browser.driver import (
+    BrowserOperationCancelled,
     BrowserUncertainEffect,
     DriverActionOutcome,
     DriverArtifact,
@@ -178,8 +179,17 @@ class PlaywrightChromiumDriver:
         handle: str,
         request: BrowserActionRequest,
         target: BrowserTarget | None,
+        *,
+        cancellation_requested: Callable[[], bool],
     ) -> DriverActionOutcome:
-        return self._worker.submit(lambda: self._act(handle, request, target))
+        return self._worker.submit(
+            lambda: self._act(
+                handle,
+                request,
+                target,
+                cancellation_requested=cancellation_requested,
+            )
+        )
 
     def diagnostics(
         self,
@@ -296,7 +306,11 @@ class PlaywrightChromiumDriver:
         handle: str,
         request: BrowserActionRequest,
         target: BrowserTarget | None,
+        *,
+        cancellation_requested: Callable[[], bool],
     ) -> DriverActionOutcome:
+        if cancellation_requested():
+            raise BrowserOperationCancelled("browser action cancelled before dispatch")
         live = self._session(handle)
         page = self._page(live, request.page_id)
         locator: Locator | None = None
@@ -309,6 +323,8 @@ class PlaywrightChromiumDriver:
         download: Download | None = None
         download_count = len(live.downloads)
         try:
+            if cancellation_requested():
+                raise BrowserOperationCancelled("browser action cancelled before dispatch")
             if request.resolved_effect == "file.download":
                 with page.expect_download(
                     timeout=live.profile.action_timeout_seconds * 1_000
@@ -318,7 +334,7 @@ class PlaywrightChromiumDriver:
             else:
                 self._dispatch_action(live, page, locator, request)
             self._refresh_pages(live)
-        except MishkanError:
+        except (BrowserOperationCancelled, MishkanError):
             raise
         except (PlaywrightError, PlaywrightTimeoutError) as exc:
             raise BrowserUncertainEffect(
@@ -816,8 +832,15 @@ class LazyPlaywrightChromiumDriver:
         handle: str,
         request: BrowserActionRequest,
         target: BrowserTarget | None,
+        *,
+        cancellation_requested: Callable[[], bool],
     ) -> DriverActionOutcome:
-        return self._instance().act(handle, request, target)
+        return self._instance().act(
+            handle,
+            request,
+            target,
+            cancellation_requested=cancellation_requested,
+        )
 
     def diagnostics(
         self,

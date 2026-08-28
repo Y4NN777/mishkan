@@ -178,6 +178,7 @@ class BrowserActToolAdapter(_BrowserToolAdapter):
             request,
             owner_identity=call.acting_identity,
             credential_values=call.credentials,
+            cancellation_requested=call.cancellation_requested,
         )
         return self._result(call, result, (resource, *result.artifact_references))
 

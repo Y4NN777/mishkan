@@ -116,6 +116,7 @@ def test_real_playwright_observation_action_and_cdp_diagnostics(tmp_path: Path) 
                     expected_session_revision=1,
                 ),
                 current_target,
+                cancellation_requested=lambda: False,
             )
 
         outcome = driver.act(
@@ -130,6 +131,7 @@ def test_real_playwright_observation_action_and_cdp_diagnostics(tmp_path: Path) 
                 expected_session_revision=1,
             ),
             target,
+            cancellation_requested=lambda: False,
         )
         act("Email", BrowserActionKind.FILL, "engineer@example.com", "form.field.update")
         act("Email", BrowserActionKind.PRESS, "End", "form.field.update")
@@ -157,6 +159,7 @@ def test_real_playwright_observation_action_and_cdp_diagnostics(tmp_path: Path) 
                 expected_session_revision=1,
             ),
             None,
+            cancellation_requested=lambda: False,
         )
         after = driver.observe(opened.handle, page_id, screenshot=False)
         diagnostics = driver.diagnostics(

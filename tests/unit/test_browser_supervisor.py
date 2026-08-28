@@ -26,6 +26,7 @@ from mishkan.browser import (
     build_browser_tool_adapters,
 )
 from mishkan.browser.driver import (
+    BrowserOperationCancelled,
     BrowserUncertainEffect,
     DriverActionOutcome,
     DriverArtifact,
@@ -107,8 +108,12 @@ class FakeDriver:
         handle: str,
         request: BrowserActionRequest,
         target: BrowserTarget | None,
+        *,
+        cancellation_requested,
     ) -> DriverActionOutcome:
         del handle, target
+        if cancellation_requested():
+            raise BrowserOperationCancelled("cancelled before fixture dispatch")
         self.last_value = request.value
         self.actions += 1
         if self.uncertain:
@@ -288,6 +293,42 @@ def test_download_result_is_committed_as_an_immutable_artifact(tmp_path: Path) -
     manifest = artifacts.manifest(reference)
     assert manifest.provenance.channel == "browser.download"
     assert artifacts.read_bytes(reference) == b"download proof"
+
+
+def test_action_cancellation_is_durable_only_when_observed_before_dispatch(
+    tmp_path: Path,
+) -> None:
+    driver = FakeDriver()
+    supervisor = _supervisor(tmp_path, driver)
+    browser = _open(supervisor)
+    observation = supervisor.observe(
+        BrowserObservationRequest(
+            session_id=browser.id,
+            page_id="page-1",
+            expected_session_revision=browser.revision,
+        ),
+        owner_identity="role:Engineer",
+    )
+    request = BrowserActionRequest(
+        session_id=browser.id,
+        page_id="page-1",
+        observation_id=observation.id,
+        target_reference="button:save",
+        kind=BrowserActionKind.CLICK,
+        resolved_effect="form.submit",
+        expected_session_revision=browser.revision,
+    )
+
+    result = supervisor.act(
+        request,
+        owner_identity="role:Engineer",
+        cancellation_requested=lambda: True,
+    )
+
+    assert result.state is BrowserActionState.CANCELLED
+    assert driver.actions == 0
+    assert supervisor.act(request, owner_identity="role:Engineer") == result
+    assert supervisor.get(browser.id, owner_identity="role:Engineer") == browser
 
 
 def test_uncertain_action_blocks_session_reuse_and_restart_marks_live_sessions_lost(

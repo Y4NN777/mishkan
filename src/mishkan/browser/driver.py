@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -69,6 +70,8 @@ class BrowserDriver(Protocol):
         handle: str,
         request: BrowserActionRequest,
         target: BrowserTarget | None,
+        *,
+        cancellation_requested: Callable[[], bool],
     ) -> DriverActionOutcome: ...
 
     def diagnostics(
@@ -85,3 +88,7 @@ class BrowserDriver(Protocol):
 
 class BrowserUncertainEffect(RuntimeError):
     """The driver lost certainty after a possibly non-idempotent interaction."""
+
+
+class BrowserOperationCancelled(RuntimeError):
+    """The driver proved that cancellation preceded interaction dispatch."""

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import timedelta
 from fnmatch import fnmatchcase
 from pathlib import Path
@@ -17,7 +17,12 @@ from sqlalchemy.orm import Session
 
 from mishkan.artifacts import ArtifactProvenance
 from mishkan.artifacts.service import DurableArtifactService
-from mishkan.browser.driver import BrowserDriver, BrowserUncertainEffect, DriverArtifact
+from mishkan.browser.driver import (
+    BrowserDriver,
+    BrowserOperationCancelled,
+    BrowserUncertainEffect,
+    DriverArtifact,
+)
 from mishkan.browser.models import (
     BrowserActionRequest,
     BrowserActionResult,
@@ -243,6 +248,7 @@ class BrowserSupervisor:
         *,
         owner_identity: str,
         credential_values: Mapping[str, str] | None = None,
+        cancellation_requested: Callable[[], bool] | None = None,
     ) -> BrowserActionResult:
         replayed = self._action_by_key(request)
         if replayed is not None:
@@ -319,8 +325,23 @@ class BrowserSupervisor:
                 return replayed
             raise
         driver, handle = self._handle(browser)
+        cancellation = cancellation_requested or (lambda: False)
         try:
-            outcome = driver.act(handle, dispatched, target)
+            outcome = driver.act(
+                handle,
+                dispatched,
+                target,
+                cancellation_requested=cancellation,
+            )
+        except BrowserOperationCancelled:
+            result = self._action_result(
+                request,
+                browser,
+                BrowserActionState.CANCELLED,
+                "browser action cancellation was observed before dispatch",
+            )
+            self._complete_action(request, result)
+            return result
         except BrowserUncertainEffect as exc:
             uncertain = browser.model_copy(
                 update={
