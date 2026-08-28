@@ -12,6 +12,7 @@ import signal
 import stat
 import struct
 import subprocess
+import sys
 import termios
 import threading
 import time
@@ -183,44 +184,22 @@ class SessionSupervisor:
             self._workspace,
             profile.effect_observation.model_dump(mode="python"),
         )
-        if request.mode is SessionMode.PTY:
-            process, threads = self._start_pty(
-                session_id,
-                request,
-                workspace,
-                environment,
-                stdout_spool,
-                profile,
-                secret_values,
-            )
-        else:
-            process, threads = self._start_job(
-                session_id,
-                request,
-                workspace,
-                environment,
-                stdout_spool,
-                stderr_spool,
-                profile,
-                secret_values,
-            )
-        identity = psutil.Process(process.pid)
         now = utc_now()
         with Session(self._engine) as session, session.begin():
             session.add(
                 ExecutionSessionRow(
                     id=str(session_id),
                     mode=request.mode.value,
-                    state=SessionState.RUNNING.value,
+                    state=SessionState.STARTING.value,
                     owner=request.owner,
                     run_id=request.run_id,
                     task_id=request.task_id,
                     workspace=request.cwd,
                     profile=request.session_profile,
                     request_payload=sanitized_request.model_dump_json(),
-                    pid=process.pid,
-                    process_group_id=os.getpgid(process.pid),
-                    process_create_time=identity.create_time(),
+                    pid=None,
+                    process_group_id=None,
+                    process_create_time=None,
                     stdout_spool=str(stdout_spool.relative_to(self._spool_root)),
                     stderr_spool=str(stderr_spool.relative_to(self._spool_root)),
                     stdout_cursor=0,
@@ -251,8 +230,55 @@ class SessionSupervisor:
                     updated_at=now.isoformat(),
                 )
             )
-        self._processes[session_id] = process
-        self._threads[session_id] = threads
+        process: subprocess.Popen[bytes] | None = None
+        release_descriptor: int | None = None
+        pty_master: int | None = None
+        try:
+            if request.mode is SessionMode.PTY:
+                process, threads, release_descriptor, pty_master = self._start_pty(
+                    session_id,
+                    request,
+                    workspace,
+                    environment,
+                    stdout_spool,
+                    profile,
+                    secret_values,
+                )
+            else:
+                process, threads, release_descriptor = self._start_job(
+                    session_id,
+                    request,
+                    workspace,
+                    environment,
+                    stdout_spool,
+                    stderr_spool,
+                    profile,
+                    secret_values,
+                )
+            self._processes[session_id] = process
+            self._threads[session_id] = threads
+            if pty_master is not None:
+                self._pty_masters[session_id] = pty_master
+            identity = psutil.Process(process.pid)
+            with Session(self._engine) as session, session.begin():
+                current = session.get(ExecutionSessionRow, str(session_id))
+                assert current is not None
+                current.pid = process.pid
+                current.process_group_id = os.getpgid(process.pid)
+                current.process_create_time = identity.create_time()
+                current.state = SessionState.RUNNING.value
+                current.updated_at = utc_now().isoformat()
+        except Exception as exc:
+            self._abort_start(session_id, process, release_descriptor)
+            raise MishkanError(
+                ErrorCode.EXECUTION,
+                "session target could not be launched after durable preparation",
+            ) from exc
+        assert process is not None and release_descriptor is not None
+        try:
+            os.write(release_descriptor, b"1")
+        finally:
+            os.close(release_descriptor)
         if request.mode is SessionMode.JOB and request.readiness is not None:
             self._await_readiness(session_id, request, profile)
         record = self.status(session_id)
@@ -419,10 +445,14 @@ class SessionSupervisor:
             }:
                 return self.settle(session_id)
         elif row.state in {
+            SessionState.STARTING.value,
             SessionState.RUNNING.value,
             SessionState.READY.value,
             SessionState.CANCELLING.value,
         }:
+            if row.state == SessionState.STARTING.value:
+                self._mark_start_interrupted(session_id)
+                return self.settle(session_id)
             if row.cancellation_requested:
                 return self.cancel(
                     session_id,
@@ -582,6 +612,7 @@ class SessionSupervisor:
                 select(ExecutionSessionRow.id).where(
                     ExecutionSessionRow.state.in_(
                         (
+                            SessionState.STARTING.value,
                             SessionState.RUNNING.value,
                             SessionState.READY.value,
                             SessionState.CANCELLING.value,
@@ -616,24 +647,26 @@ class SessionSupervisor:
         spool: Path,
         profile: SessionProfileConfig,
         secrets: tuple[str, ...],
-    ) -> tuple[subprocess.Popen[bytes], tuple[threading.Thread, ...]]:
+    ) -> tuple[subprocess.Popen[bytes], tuple[threading.Thread, ...], int, int]:
         assert request.executable is not None
         master, slave = pty.openpty()
         fcntl.ioctl(
             slave, termios.TIOCSWINSZ, struct.pack("HHHH", request.rows, request.columns, 0, 0)
         )
-        process = subprocess.Popen(
-            [request.executable, *request.args],
-            cwd=workspace,
-            env=environment,
-            stdin=slave,
-            stdout=slave,
-            stderr=slave,
-            start_new_session=True,
-            close_fds=True,
-        )
-        os.close(slave)
-        self._pty_masters[session_id] = master
+        try:
+            process, release_descriptor = self._spawn_paused(
+                request,
+                workspace,
+                environment,
+                stdin=slave,
+                stdout=slave,
+                stderr=slave,
+            )
+        except Exception:
+            os.close(master)
+            raise
+        finally:
+            os.close(slave)
         thread = self._reader_thread(
             session_id,
             "stdout",
@@ -643,7 +676,7 @@ class SessionSupervisor:
             profile,
             close_descriptor=False,
         )
-        return process, (thread,)
+        return process, (thread,), release_descriptor, master
 
     def _start_job(
         self,
@@ -655,17 +688,15 @@ class SessionSupervisor:
         stderr_spool: Path,
         profile: SessionProfileConfig,
         secrets: tuple[str, ...],
-    ) -> tuple[subprocess.Popen[bytes], tuple[threading.Thread, ...]]:
+    ) -> tuple[subprocess.Popen[bytes], tuple[threading.Thread, ...], int]:
         assert request.executable is not None
-        process = subprocess.Popen(
-            [request.executable, *request.args],
-            cwd=workspace,
-            env=environment,
+        process, release_descriptor = self._spawn_paused(
+            request,
+            workspace,
+            environment,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            start_new_session=True,
-            close_fds=True,
         )
         assert process.stdout is not None and process.stderr is not None
         stdout_descriptor = os.dup(process.stdout.fileno())
@@ -688,7 +719,72 @@ class SessionSupervisor:
             secrets,
             profile,
         )
-        return process, (stdout, stderr)
+        return process, (stdout, stderr), release_descriptor
+
+    @staticmethod
+    def _spawn_paused(
+        request: SessionRequest,
+        workspace: Path,
+        environment: dict[str, str],
+        *,
+        stdin: int,
+        stdout: int,
+        stderr: int,
+    ) -> tuple[subprocess.Popen[bytes], int]:
+        assert request.executable is not None
+        control_read, control_write = os.pipe()
+        try:
+            process = subprocess.Popen(
+                [
+                    sys.executable,
+                    str(Path(__file__).with_name("_launcher.py")),
+                    str(control_read),
+                    request.executable,
+                    *request.args,
+                ],
+                cwd=workspace,
+                env=environment,
+                stdin=stdin,
+                stdout=stdout,
+                stderr=stderr,
+                start_new_session=True,
+                close_fds=True,
+                pass_fds=(control_read,),
+            )
+        except Exception:
+            os.close(control_write)
+            raise
+        finally:
+            os.close(control_read)
+        return process, control_write
+
+    def _abort_start(
+        self,
+        session_id: UUID,
+        process: subprocess.Popen[bytes] | None,
+        release_descriptor: int | None,
+    ) -> None:
+        if release_descriptor is not None:
+            with suppress(OSError):
+                os.close(release_descriptor)
+        if process is not None:
+            with suppress(subprocess.TimeoutExpired):
+                process.wait(timeout=1)
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+        self._mark_start_interrupted(session_id)
+        self.settle(session_id)
+
+    def _mark_start_interrupted(self, session_id: UUID) -> None:
+        with Session(self._engine) as session, session.begin():
+            row = session.get(ExecutionSessionRow, str(session_id))
+            if row is None or row.finished_at is not None:
+                return
+            row.state = SessionState.FAILED.value
+            row.termination_cause = "launch_interrupted"
+            row.error = "session launch did not cross its durable release gate"
+            row.updated_at = utc_now().isoformat()
 
     def _reader_thread(
         self,

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import subprocess
 import time
 from datetime import timedelta
 from pathlib import Path
@@ -346,3 +348,106 @@ def test_incomplete_workspace_observation_cannot_be_accepted(tmp_path: Path) -> 
     assert settled.result.status == "uncertain"
     assert settled.result.effect_observation_complete is False
     assert "entry_limit_reached" in settled.result.effect_observation_omissions
+
+
+def test_session_identity_is_durable_before_target_release(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor, _artifacts, database = _supervisor(tmp_path)
+    original = supervisor._spawn_paused
+    original_write = os.write
+    observed: list[tuple[str, int | None]] = []
+    released: list[tuple[str, int | None]] = []
+
+    def inspect_before_spawn(
+        request: ExecutionRequest,
+        workspace: Path,
+        environment: dict[str, str],
+        *,
+        stdin: int,
+        stdout: int,
+        stderr: int,
+    ) -> tuple[subprocess.Popen[bytes], int]:
+        with create_engine(f"sqlite:///{database}").connect() as connection:
+            observed.append(
+                connection.execute(
+                    text("SELECT state, pid FROM execution_sessions WHERE id = :id"),
+                    {"id": str(request.execution_id)},
+                )
+                .one()
+                ._tuple()
+            )
+        return original(
+            request,
+            workspace,
+            environment,
+            stdin=stdin,
+            stdout=stdout,
+            stderr=stderr,
+        )
+
+    def inspect_release(descriptor: int, content: bytes) -> int:
+        with create_engine(f"sqlite:///{database}").connect() as connection:
+            row = connection.execute(
+                text("SELECT state, pid FROM execution_sessions"),
+            ).one()
+            released.append((row.state, row.pid))
+        return original_write(descriptor, content)
+
+    supervisor._spawn_paused = inspect_before_spawn  # type: ignore[method-assign]
+    monkeypatch.setattr("mishkan.execution.supervisor.os.write", inspect_release)
+    started = supervisor.start(_request(ExecutionMode.JOB, ("-c", "true")))
+    _await_settlement(supervisor, started.session_id)
+
+    assert observed == [(SessionState.STARTING.value, None)]
+    assert len(released) == 1
+    assert released[0][0] == SessionState.RUNNING.value
+    assert isinstance(released[0][1], int)
+
+
+def test_closed_release_gate_prevents_target_execution(tmp_path: Path) -> None:
+    supervisor, _artifacts, _database = _supervisor(tmp_path)
+    marker = tmp_path / "must-not-exist"
+    request = _request(
+        ExecutionMode.JOB,
+        ("-c", f"touch {marker.name}"),
+    )
+    process, release_descriptor = supervisor._spawn_paused(
+        request,
+        tmp_path,
+        {},
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+    os.close(release_descriptor)
+    assert process.wait(timeout=2) == 125
+    assert not marker.exists()
+
+
+def test_launch_failure_is_durably_retryable_without_effect(tmp_path: Path) -> None:
+    supervisor, _artifacts, _database = _supervisor(tmp_path)
+
+    def fail_launch(
+        request: ExecutionRequest,
+        workspace: Path,
+        environment: dict[str, str],
+        *,
+        stdin: int,
+        stdout: int,
+        stderr: int,
+    ) -> tuple[subprocess.Popen[bytes], int]:
+        raise OSError("injected launch failure")
+
+    supervisor._spawn_paused = fail_launch  # type: ignore[method-assign]
+    with pytest.raises(MishkanError) as caught:
+        supervisor.start(_request(ExecutionMode.JOB, ("-c", "touch forbidden")))
+
+    assert caught.value.envelope.code is ErrorCode.EXECUTION
+    failed = supervisor.list()[0]
+    assert failed.state is SessionState.FAILED
+    assert failed.result is not None
+    assert failed.result.effect_settlement == "absent"
+    assert failed.result.retryable is True
+    assert not (tmp_path / "forbidden").exists()
