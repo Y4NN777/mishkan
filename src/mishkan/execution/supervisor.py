@@ -16,8 +16,8 @@ import sys
 import termios
 import threading
 import time
-from collections.abc import Mapping
-from contextlib import suppress
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager, suppress
 from datetime import datetime
 from pathlib import Path
 from typing import Literal, Protocol
@@ -177,8 +177,12 @@ class SessionSupervisor:
         directory.mkdir(mode=0o700)
         stdout_spool = directory / "stdout.spool"
         stderr_spool = directory / "stderr.spool"
-        stdout_spool.touch(mode=0o600)
-        stderr_spool.touch(mode=0o600)
+        stdout_writer, stdout_identity = self._create_spool(stdout_spool)
+        try:
+            stderr_writer, stderr_identity = self._create_spool(stderr_spool)
+        except Exception:
+            os.close(stdout_writer)
+            raise
         before_state = self._declared_path_state(request)
         workspace_before = self._workspace_effects.snapshot(
             self._workspace,
@@ -212,6 +216,10 @@ class SessionSupervisor:
                         {
                             "declared_paths": before_state,
                             "workspace": self._snapshot_payload(workspace_before),
+                            "spools": {
+                                "stdout": stdout_identity,
+                                "stderr": stderr_identity,
+                            },
                         },
                         sort_keys=True,
                     ),
@@ -234,27 +242,31 @@ class SessionSupervisor:
         release_descriptor: int | None = None
         pty_master: int | None = None
         try:
-            if request.mode is SessionMode.PTY:
-                process, threads, release_descriptor, pty_master = self._start_pty(
-                    session_id,
-                    request,
-                    workspace,
-                    environment,
-                    stdout_spool,
-                    profile,
-                    secret_values,
-                )
-            else:
-                process, threads, release_descriptor = self._start_job(
-                    session_id,
-                    request,
-                    workspace,
-                    environment,
-                    stdout_spool,
-                    stderr_spool,
-                    profile,
-                    secret_values,
-                )
+            try:
+                if request.mode is SessionMode.PTY:
+                    process, threads, release_descriptor, pty_master = self._start_pty(
+                        session_id,
+                        request,
+                        workspace,
+                        environment,
+                        stdout_writer,
+                        profile,
+                        secret_values,
+                    )
+                else:
+                    process, threads, release_descriptor = self._start_job(
+                        session_id,
+                        request,
+                        workspace,
+                        environment,
+                        stdout_writer,
+                        stderr_writer,
+                        profile,
+                        secret_values,
+                    )
+            finally:
+                os.close(stdout_writer)
+                os.close(stderr_writer)
             self._processes[session_id] = process
             self._threads[session_id] = threads
             if pty_master is not None:
@@ -344,17 +356,14 @@ class SessionSupervisor:
         if channel not in {"stdout", "stderr"} or offset < 0 or limit < 1 or limit > 16_777_216:
             raise MishkanError(ErrorCode.OUTPUT_CONTRACT, "session cursor request is invalid")
         row = self._row(session_id)
-        path = self._spool_path(row, channel)
-        size = path.stat().st_size
+        size = self._spool_size(row, channel)
         if offset > size:
             raise MishkanError(
                 ErrorCode.REVISION_MISMATCH,
                 "session cursor is beyond the durable spool",
                 details={"cursor": offset, "size": size},
             )
-        with path.open("rb") as stream:
-            stream.seek(offset)
-            content = stream.read(limit)
+        content = self._spool_range(row, channel, offset, limit)
         encoding: Literal["utf-8", "base64"] = "base64" if binary else "utf-8"
         data = base64.b64encode(content).decode() if binary else content.decode(errors="replace")
         return CursorRead(
@@ -395,15 +404,23 @@ class SessionSupervisor:
             return self._cancel_locked(session_id, cause=cause)
 
     def _cancel_locked(self, session_id: UUID, *, cause: str) -> ExecutionSession:
+        terminal: ExecutionSessionRow | None = None
         with Session(self._engine) as session, session.begin():
             row = session.get(ExecutionSessionRow, str(session_id))
             if row is None:
                 raise MishkanError(ErrorCode.EXECUTION, "session does not exist")
-            row.cancellation_requested = True
-            row.state = SessionState.CANCELLING.value
-            row.termination_cause = cause
-            row.updated_at = utc_now().isoformat()
-            profile_name = row.profile
+            if row.finished_at is not None:
+                session.expunge(row)
+                terminal = row
+                profile_name = row.profile
+            else:
+                row.cancellation_requested = True
+                row.state = SessionState.CANCELLING.value
+                row.termination_cause = cause
+                row.updated_at = utc_now().isoformat()
+                profile_name = row.profile
+        if terminal is not None:
+            return self._record(terminal)
         profile = self._profile(profile_name)
         for signal_name in profile.cancellation_signals:
             try:
@@ -434,11 +451,13 @@ class SessionSupervisor:
             resource_cause = self._resource_violation(row, profile)
             if returncode is None and resource_cause is not None:
                 return self.cancel(session_id, cause=resource_cause)
-            if not row.cancellation_requested and (
-                self._spool_path(row, "stdout").stat().st_size >= profile.max_output_bytes
-                or self._spool_path(row, "stderr").stat().st_size >= profile.max_output_bytes
-            ):
-                return self.cancel(session_id, cause="output_limit")
+            if not row.cancellation_requested:
+                try:
+                    output_limit = self._output_limit_reached(row, profile)
+                except MishkanError:
+                    return self.cancel(session_id, cause="spool_integrity")
+                if output_limit:
+                    return self.cancel(session_id, cause="output_limit")
             if returncode is not None and row.state not in {
                 SessionState.SETTLED.value,
                 SessionState.FAILED.value,
@@ -464,10 +483,11 @@ class SessionSupervisor:
             resource_cause = self._resource_violation(row, profile)
             if resource_cause is not None:
                 return self.cancel(session_id, cause=resource_cause)
-            if (
-                self._spool_path(row, "stdout").stat().st_size >= profile.max_output_bytes
-                or self._spool_path(row, "stderr").stat().st_size >= profile.max_output_bytes
-            ):
+            try:
+                output_limit = self._output_limit_reached(row, profile)
+            except MishkanError:
+                return self.cancel(session_id, cause="spool_integrity")
+            if output_limit:
                 return self.cancel(session_id, cause="output_limit")
             if row.mode == SessionMode.PTY.value:
                 self._update_state(session_id, SessionState.LOST)
@@ -494,12 +514,18 @@ class SessionSupervisor:
         for thread in self._threads.get(session_id, ()):
             thread.join(timeout=self._profile(row.profile).settle_timeout_seconds)
         exit_code = process.returncode if process is not None else row.exit_code
-        stdout = self._spool_path(row, "stdout").read_bytes()
-        stderr = self._spool_path(row, "stderr").read_bytes()
+        spool_error: str | None = None
+        try:
+            stdout = self._spool_bytes(row, "stdout")
+            stderr = self._spool_bytes(row, "stderr")
+        except MishkanError:
+            stdout = b""
+            stderr = b""
+            spool_error = "spool_integrity_failed"
         stdout_reference = self._output_artifact(row, "stdout", stdout)
         stderr_reference = self._output_artifact(row, "stderr", stderr)
         request = SessionRequest.model_validate_json(row.request_payload)
-        evidence_error: str | None = None
+        evidence_error: str | None = spool_error
         workspace_evidence: WorkspaceEffectEvidence | None = None
         effect_diff_reference: str | None = None
         try:
@@ -644,7 +670,7 @@ class SessionSupervisor:
         request: SessionRequest,
         workspace: Path,
         environment: dict[str, str],
-        spool: Path,
+        spool_descriptor: int,
         profile: SessionProfileConfig,
         secrets: tuple[str, ...],
     ) -> tuple[subprocess.Popen[bytes], tuple[threading.Thread, ...], int, int]:
@@ -671,7 +697,7 @@ class SessionSupervisor:
             session_id,
             "stdout",
             master,
-            spool,
+            spool_descriptor,
             secrets,
             profile,
             close_descriptor=False,
@@ -684,8 +710,8 @@ class SessionSupervisor:
         request: SessionRequest,
         workspace: Path,
         environment: dict[str, str],
-        stdout_spool: Path,
-        stderr_spool: Path,
+        stdout_spool_descriptor: int,
+        stderr_spool_descriptor: int,
         profile: SessionProfileConfig,
         secrets: tuple[str, ...],
     ) -> tuple[subprocess.Popen[bytes], tuple[threading.Thread, ...], int]:
@@ -707,7 +733,7 @@ class SessionSupervisor:
             session_id,
             "stdout",
             stdout_descriptor,
-            stdout_spool,
+            stdout_spool_descriptor,
             secrets,
             profile,
         )
@@ -715,7 +741,7 @@ class SessionSupervisor:
             session_id,
             "stderr",
             stderr_descriptor,
-            stderr_spool,
+            stderr_spool_descriptor,
             secrets,
             profile,
         )
@@ -791,13 +817,14 @@ class SessionSupervisor:
         session_id: UUID,
         channel: str,
         descriptor: int,
-        spool: Path,
+        spool_descriptor: int,
         secrets: tuple[str, ...],
         profile: SessionProfileConfig,
         *,
         close_descriptor: bool = True,
     ) -> threading.Thread:
         lock = self._locks.setdefault((session_id, channel), threading.Lock())
+        durable_descriptor = os.dup(spool_descriptor)
 
         def reader() -> None:
             filtered = _SecretFilter(secrets)
@@ -816,15 +843,19 @@ class SessionSupervisor:
                     clean = filtered.feed(chunk)
                     remaining = profile.max_output_bytes - written
                     clean = clean[:remaining]
-                    with lock, spool.open("ab", buffering=0) as stream:
-                        stream.write(clean)
+                    with lock:
+                        self._write_descriptor(durable_descriptor, clean)
                     written += len(clean)
                 tail = filtered.feed(b"", final=True)
                 remaining = profile.max_output_bytes - written
                 if tail and remaining > 0:
-                    with lock, spool.open("ab", buffering=0) as stream:
-                        stream.write(tail[:remaining])
+                    with lock:
+                        self._write_descriptor(durable_descriptor, tail[:remaining])
             finally:
+                with suppress(OSError):
+                    os.fsync(durable_descriptor)
+                with suppress(OSError):
+                    os.close(durable_descriptor)
                 if close_descriptor:
                     with suppress(OSError):
                         os.close(descriptor)
@@ -880,7 +911,7 @@ class SessionSupervisor:
             if request.readiness.kind == "output_contains":
                 value = (request.readiness.value or "").encode()
                 row = self._row(session_id)
-                ready = value in self._spool_path(row, "stdout").read_bytes()
+                ready = value in self._spool_bytes(row, "stdout")
             if ready:
                 self._update_state(session_id, SessionState.READY)
                 return
@@ -930,6 +961,16 @@ class SessionSupervisor:
             return None
         return None
 
+    def _output_limit_reached(
+        self,
+        row: ExecutionSessionRow,
+        profile: SessionProfileConfig,
+    ) -> bool:
+        return (
+            self._spool_size(row, "stdout") >= profile.max_output_bytes
+            or self._spool_size(row, "stderr") >= profile.max_output_bytes
+        )
+
     def _row(self, session_id: UUID) -> ExecutionSessionRow:
         with Session(self._engine) as session:
             row = session.get(ExecutionSessionRow, str(session_id))
@@ -941,8 +982,10 @@ class SessionSupervisor:
     def _record(self, row: ExecutionSessionRow) -> ExecutionSession:
         request = SessionRequest.model_validate_json(row.request_payload)
         profile = self._profile(row.profile)
-        stdout_preview = self._tail_preview(self._spool_path(row, "stdout"), profile.preview_bytes)
-        stderr_preview = self._tail_preview(self._spool_path(row, "stderr"), profile.preview_bytes)
+        stdout_content = self._projection_spool_bytes(row, "stdout")
+        stderr_content = self._projection_spool_bytes(row, "stderr")
+        stdout_preview = stdout_content[-profile.preview_bytes :].decode(errors="replace")
+        stderr_preview = stderr_content[-profile.preview_bytes :].decode(errors="replace")
         terminal = row.state in {
             SessionState.SETTLED.value,
             SessionState.FAILED.value,
@@ -964,8 +1007,6 @@ class SessionSupervisor:
             effect_evidence = json.loads(row.effect_evidence_payload or "{}")
             if not isinstance(effect_evidence, dict):
                 raise MishkanError(ErrorCode.EXECUTION, "session effect evidence is invalid")
-            stdout = self._spool_path(row, "stdout")
-            stderr = self._spool_path(row, "stderr")
             status = self._execution_status(row)
             finished_at = datetime.fromisoformat(row.finished_at or row.updated_at)
             result = ExecutionResult(
@@ -981,10 +1022,10 @@ class SessionSupervisor:
                 finished_at=finished_at,
                 stdout_preview=stdout_preview,
                 stderr_preview=stderr_preview,
-                stdout_bytes=stdout.stat().st_size,
-                stderr_bytes=stderr.stat().st_size,
-                stdout_digest=self._file_digest(stdout),
-                stderr_digest=self._file_digest(stderr),
+                stdout_bytes=len(stdout_content),
+                stderr_bytes=len(stderr_content),
+                stdout_digest=self._content_digest(stdout_content),
+                stderr_digest=self._content_digest(stderr_content),
                 stdout_artifact_ref=row.stdout_artifact_reference,
                 stderr_artifact_ref=row.stderr_artifact_reference,
                 produced_artifact_refs=produced_artifacts,
@@ -1024,8 +1065,8 @@ class SessionSupervisor:
             pid=row.pid,
             process_group_id=row.process_group_id,
             process_create_time=row.process_create_time,
-            stdout_cursor=self._spool_path(row, "stdout").stat().st_size,
-            stderr_cursor=self._spool_path(row, "stderr").stat().st_size,
+            stdout_cursor=len(stdout_content),
+            stderr_cursor=len(stderr_content),
             result=result,
             cancellation_requested=row.cancellation_requested,
             deadline=datetime.fromisoformat(row.deadline),
@@ -1296,26 +1337,133 @@ class SessionSupervisor:
         return None
 
     @staticmethod
-    def _file_digest(path: Path) -> str:
-        digest = hashlib.sha256()
-        with path.open("rb") as stream:
-            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-                digest.update(chunk)
-        return f"sha256:{digest.hexdigest()}"
+    def _create_spool(path: Path) -> tuple[int, dict[str, int]]:
+        flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        try:
+            descriptor = os.open(path, flags, 0o600)
+        except OSError as exc:
+            raise MishkanError(
+                ErrorCode.EXECUTION, "session spool could not be created safely"
+            ) from exc
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
+            os.close(descriptor)
+            raise MishkanError(ErrorCode.EXECUTION, "session spool identity is unsafe")
+        return descriptor, {"device": metadata.st_dev, "inode": metadata.st_ino}
 
     @staticmethod
-    def _tail_preview(path: Path, limit: int) -> str:
-        size = path.stat().st_size
-        with path.open("rb") as stream:
-            stream.seek(max(0, size - limit))
-            return stream.read(limit).decode(errors="replace")
+    def _write_descriptor(descriptor: int, content: bytes) -> None:
+        view = memoryview(content)
+        while view:
+            written = os.write(descriptor, view)
+            if written < 1:
+                raise OSError("session spool write made no progress")
+            view = view[written:]
 
     def _spool_path(self, row: ExecutionSessionRow, channel: str) -> Path:
         relative = row.stdout_spool if channel == "stdout" else row.stderr_spool
-        path = (self._spool_root / relative).resolve()
-        if not path.is_relative_to(self._spool_root):
+        path = self._spool_root / relative
+        parent = path.parent.resolve(strict=True)
+        if not parent.is_relative_to(self._spool_root) or path.name not in {
+            "stdout.spool",
+            "stderr.spool",
+        }:
             raise MishkanError(ErrorCode.EXECUTION, "session spool path escaped its root")
         return path
+
+    def _spool_identity(self, row: ExecutionSessionRow, channel: str) -> tuple[int, int]:
+        try:
+            before = json.loads(row.before_state_payload)
+            spools = before["spools"]
+            identity = spools[channel]
+            device = identity["device"]
+            inode = identity["inode"]
+            if (
+                not isinstance(device, int)
+                or isinstance(device, bool)
+                or not isinstance(inode, int)
+                or isinstance(inode, bool)
+            ):
+                raise TypeError
+            return device, inode
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise MishkanError(
+                ErrorCode.EXECUTION,
+                "session spool identity is unavailable",
+            ) from exc
+
+    @contextmanager
+    def _verified_spool(
+        self, row: ExecutionSessionRow, channel: str
+    ) -> Iterator[tuple[int, os.stat_result]]:
+        expected = self._spool_identity(row, channel)
+        path = self._spool_path(row, channel)
+        try:
+            descriptor = os.open(
+                path,
+                os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0),
+            )
+        except OSError as exc:
+            raise MishkanError(
+                ErrorCode.EXECUTION,
+                "session spool could not be reopened without following links",
+            ) from exc
+        try:
+            metadata = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(metadata.st_mode)
+                or metadata.st_nlink != 1
+                or (metadata.st_dev, metadata.st_ino) != expected
+            ):
+                raise MishkanError(
+                    ErrorCode.EXECUTION,
+                    "session spool identity changed after creation",
+                )
+            yield descriptor, metadata
+        finally:
+            os.close(descriptor)
+
+    def _spool_size(self, row: ExecutionSessionRow, channel: str) -> int:
+        with self._verified_spool(row, channel) as (_, metadata):
+            return metadata.st_size
+
+    def _spool_bytes(self, row: ExecutionSessionRow, channel: str) -> bytes:
+        with self._verified_spool(row, channel) as (descriptor, metadata):
+            content = os.pread(descriptor, metadata.st_size, 0)
+            after = os.fstat(descriptor)
+        if len(content) != metadata.st_size:
+            raise MishkanError(ErrorCode.EXECUTION, "session spool changed while being read")
+        if after.st_size < metadata.st_size:
+            raise MishkanError(ErrorCode.EXECUTION, "session spool was truncated while being read")
+        return content
+
+    def _spool_range(
+        self,
+        row: ExecutionSessionRow,
+        channel: str,
+        offset: int,
+        limit: int,
+    ) -> bytes:
+        with self._verified_spool(row, channel) as (descriptor, _):
+            return os.pread(descriptor, limit, offset)
+
+    def _projection_spool_bytes(self, row: ExecutionSessionRow, channel: str) -> bytes:
+        try:
+            return self._spool_bytes(row, channel)
+        except MishkanError:
+            reference = (
+                row.stdout_artifact_reference
+                if channel == "stdout"
+                else row.stderr_artifact_reference
+            )
+            if reference is not None:
+                return self._artifacts.read_bytes(reference)
+            return b""
+
+    @staticmethod
+    def _content_digest(content: bytes) -> str:
+        return f"sha256:{hashlib.sha256(content).hexdigest()}"
 
     def _session_workspace(self, relative: str) -> Path:
         path = (self._workspace / relative).resolve(strict=True)

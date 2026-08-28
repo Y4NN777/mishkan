@@ -451,3 +451,31 @@ def test_launch_failure_is_durably_retryable_without_effect(tmp_path: Path) -> N
     assert failed.result.effect_settlement == "absent"
     assert failed.result.retryable is True
     assert not (tmp_path / "forbidden").exists()
+
+
+def test_replaced_spool_is_never_read_or_accepted(tmp_path: Path) -> None:
+    supervisor, artifacts, _database = _supervisor(tmp_path)
+    started = supervisor.start(_request(ExecutionMode.JOB, ("-c", "sleep 10")))
+    directory = tmp_path / ".mishkan" / "sessions" / str(started.session_id)
+    stdout = directory / "stdout.spool"
+    original = directory / "stdout.original"
+    forged = tmp_path / "forged-output"
+    forged.write_bytes(b"FORGED_SECRET")
+    stdout.rename(original)
+    stdout.symlink_to(forged)
+
+    with pytest.raises(MishkanError) as caught:
+        supervisor.read(
+            started.session_id,
+            channel="stdout",
+            offset=0,
+            limit=1024,
+        )
+    assert caught.value.envelope.code is ErrorCode.EXECUTION
+
+    settled = _await_settlement(supervisor, started.session_id)
+    assert settled.state is SessionState.UNCERTAIN
+    assert settled.result is not None
+    assert settled.result.error == "spool_integrity_failed"
+    assert settled.result.stdout_artifact_ref is not None
+    assert artifacts.read_bytes(settled.result.stdout_artifact_ref) == b""
