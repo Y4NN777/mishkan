@@ -20,6 +20,7 @@ def _profile(kind: BrowserProfileKind) -> BrowserProfileConfig:
         retention="session",
         headless=True,
         max_pages=4,
+        max_download_bytes=1_000_000,
         action_timeout_seconds=10,
         navigation_timeout_seconds=20,
         cdp_endpoint=(

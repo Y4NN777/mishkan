@@ -157,6 +157,7 @@ browser:
       retention: run
       headless: true
       max_pages: 8
+      max_download_bytes: 16777216
       action_timeout_seconds: 30.0
       navigation_timeout_seconds: 60.0
   observation_ttl_seconds: 30.0

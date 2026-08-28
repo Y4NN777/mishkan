@@ -28,6 +28,7 @@ from mishkan.browser import (
 from mishkan.browser.driver import (
     BrowserUncertainEffect,
     DriverActionOutcome,
+    DriverArtifact,
     DriverDiagnostics,
     DriverObservation,
     DriverSession,
@@ -86,11 +87,18 @@ class FakeDriver:
             element_revision="sha256:" + hashlib.sha256(b"password").hexdigest(),
             candidate_effects=("form.field.update",),
         )
+        download = BrowserTarget(
+            reference="link:download",
+            role="link",
+            name="Download",
+            element_revision="sha256:" + hashlib.sha256(b"download").hexdigest(),
+            candidate_effects=("file.download",),
+        )
         return DriverObservation(
             url="https://example.com/form",
             title="Form",
             tree=b"- button Save [ref=button:save]",
-            targets=(target, field),
+            targets=(target, field, download),
             screenshot=b"png" if screenshot else None,
         )
 
@@ -105,6 +113,17 @@ class FakeDriver:
         self.actions += 1
         if self.uncertain:
             raise BrowserUncertainEffect("connection lost after submit")
+        if request.resolved_effect == "file.download":
+            return DriverActionOutcome(
+                ("page-1",),
+                (
+                    DriverArtifact(
+                        channel="browser.download",
+                        media_type="application/octet-stream",
+                        content=b"download proof",
+                    ),
+                ),
+            )
         return DriverActionOutcome(("page-1",))
 
     def diagnostics(
@@ -229,6 +248,46 @@ def test_observation_bound_action_is_durable_idempotent_and_invalidates_revision
             owner_identity="role:Engineer",
         )
     assert stale.value.envelope.code is ErrorCode.REVISION_MISMATCH
+
+
+def test_download_result_is_committed_as_an_immutable_artifact(tmp_path: Path) -> None:
+    supervisor = _supervisor(tmp_path, FakeDriver())
+    browser = _open(supervisor)
+    observation = supervisor.observe(
+        BrowserObservationRequest(
+            session_id=browser.id,
+            page_id="page-1",
+            expected_session_revision=browser.revision,
+        ),
+        owner_identity="role:Engineer",
+    )
+
+    result = supervisor.act(
+        BrowserActionRequest(
+            session_id=browser.id,
+            page_id="page-1",
+            observation_id=observation.id,
+            target_reference="link:download",
+            kind=BrowserActionKind.CLICK,
+            resolved_effect="file.download",
+            expected_session_revision=browser.revision,
+        ),
+        owner_identity="role:Engineer",
+    )
+
+    assert result.state is BrowserActionState.COMPLETED
+    assert len(result.artifact_references) == 1
+    reference = result.artifact_references[0]
+    database = tmp_path / ".mishkan" / "mishkan.db"
+    artifacts = DurableArtifactService(
+        database,
+        tmp_path / ".mishkan" / "artifacts",
+        max_artifact_bytes=2_000_000,
+        max_chunk_bytes=64_000,
+    )
+    manifest = artifacts.manifest(reference)
+    assert manifest.provenance.channel == "browser.download"
+    assert artifacts.read_bytes(reference) == b"download proof"
 
 
 def test_uncertain_action_blocks_session_reuse_and_restart_marks_live_sessions_lost(
@@ -588,6 +647,7 @@ def test_close_is_journaled_and_preserves_uncertainty_after_adapter_loss(tmp_pat
 def test_playwright_value_effect_and_origin_guards_are_explicit() -> None:
     candidate = PlaywrightChromiumDriver._candidate_effects
     assert candidate("link", {"href": "/next"}) == ("navigation",)
+    assert candidate("link", {"href": "/proof", "download": True}) == ("file.download",)
     assert candidate("textbox", {"tag": "input", "type": "file"}) == ("file.upload",)
     assert candidate("button", {"tag": "button", "type": "submit"}) == ("form.submit",)
     assert candidate("textbox", {"tag": "input", "type": "text"}) == ("form.field.update",)

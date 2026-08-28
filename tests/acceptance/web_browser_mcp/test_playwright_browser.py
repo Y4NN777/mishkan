@@ -13,6 +13,15 @@ from mishkan.config.models import BrowserProfileConfig, BrowserProfileKind, Netw
 
 class _PageHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
+        if self.path == "/download":
+            payload = b"bounded browser download evidence"
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Disposition", 'attachment; filename="proof.bin"')
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
         body = b"""<!doctype html><html><head><title>MISHKAN Browser Gate</title></head>
         <body>
         <button type=\"button\" onclick=\"this.textContent='Saved'\">Save</button>
@@ -21,6 +30,7 @@ class _PageHandler(BaseHTTPRequestHandler):
           <option value=\"admin\">Admin</option></select>
         <input type=\"checkbox\" aria-label=\"Accept\">
         <input type=\"file\" aria-label=\"Attachment\">
+        <a href=\"/download\" download>Download proof</a>
         </body>
         </html>"""
         self.send_response(200)
@@ -70,6 +80,7 @@ def test_real_playwright_observation_action_and_cdp_diagnostics(tmp_path: Path) 
         retention="run",
         headless=True,
         max_pages=2,
+        max_download_bytes=1_000_000,
         action_timeout_seconds=10,
         navigation_timeout_seconds=10,
     )
@@ -127,6 +138,7 @@ def test_real_playwright_observation_action_and_cdp_diagnostics(tmp_path: Path) 
         upload = tmp_path / "proof.txt"
         upload.write_text("artifact proof")
         act("Attachment", BrowserActionKind.UPLOAD, ["proof.txt"], "file.upload")
+        download = act("Download proof", BrowserActionKind.CLICK, None, "file.download")
         act(
             "Saved",
             BrowserActionKind.JAVASCRIPT,
@@ -156,6 +168,9 @@ def test_real_playwright_observation_action_and_cdp_diagnostics(tmp_path: Path) 
         )
 
         assert outcome.page_ids == (page_id,)
+        assert len(download.artifacts) == 1
+        assert download.artifacts[0].channel == "browser.download"
+        assert download.artifacts[0].content == b"bounded browser download evidence"
         assert b"Save" in after.tree
         assert observed.screenshot is not None
         assert diagnostics.next_cursor > 0

@@ -131,6 +131,11 @@
         "kind": {
           "$ref": "#/$defs/BrowserProfileKind"
         },
+        "max_download_bytes": {
+          "minimum": 1,
+          "title": "Max Download Bytes",
+          "type": "integer"
+        },
         "max_pages": {
           "maximum": 1000,
           "minimum": 1,
@@ -182,6 +187,7 @@
         "retention",
         "headless",
         "max_pages",
+        "max_download_bytes",
         "action_timeout_seconds",
         "navigation_timeout_seconds"
       ],

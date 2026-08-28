@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import queue
 import re
+import stat
 import threading
 from collections.abc import Callable, Mapping
 from concurrent.futures import Future
@@ -22,6 +24,7 @@ from playwright.sync_api import (
     BrowserContext,
     CDPSession,
     ConsoleMessage,
+    Download,
     Locator,
     Page,
     Playwright,
@@ -41,6 +44,7 @@ from playwright.sync_api import (
 from mishkan.browser.driver import (
     BrowserUncertainEffect,
     DriverActionOutcome,
+    DriverArtifact,
     DriverDiagnostics,
     DriverObservation,
     DriverSession,
@@ -132,6 +136,7 @@ class _LiveSession:
     page_keys: dict[int, str] = field(default_factory=dict)
     cdp: dict[str, CDPSession] = field(default_factory=dict)
     diagnostics: list[dict[str, Any]] = field(default_factory=list)
+    downloads: list[Download] = field(default_factory=list)
 
 
 class PlaywrightChromiumDriver:
@@ -301,8 +306,17 @@ class PlaywrightChromiumDriver:
                 raise MishkanError(ErrorCode.BROWSER, "browser target is no longer unique")
             if self._fingerprint(self._element_evidence(locator)) != target.element_revision:
                 raise MishkanError(ErrorCode.BROWSER, "browser target changed after observation")
+        download: Download | None = None
+        download_count = len(live.downloads)
         try:
-            self._dispatch_action(live, page, locator, request)
+            if request.resolved_effect == "file.download":
+                with page.expect_download(
+                    timeout=live.profile.action_timeout_seconds * 1_000
+                ) as download_info:
+                    self._dispatch_action(live, page, locator, request)
+                download = download_info.value
+            else:
+                self._dispatch_action(live, page, locator, request)
             self._refresh_pages(live)
         except MishkanError:
             raise
@@ -310,7 +324,25 @@ class PlaywrightChromiumDriver:
             raise BrowserUncertainEffect(
                 "Playwright lost certainty after interaction dispatch"
             ) from exc
-        return DriverActionOutcome(tuple(live.pages))
+        observed_downloads = live.downloads[download_count:]
+        if request.resolved_effect != "file.download" and observed_downloads:
+            for item in observed_downloads:
+                with suppress(PlaywrightError):
+                    item.cancel()
+            raise BrowserUncertainEffect(
+                "browser action produced an undeclared download effect"
+            )
+        if download is None:
+            return DriverActionOutcome(tuple(live.pages))
+        if len(observed_downloads) > 1:
+            for item in observed_downloads:
+                with suppress(PlaywrightError):
+                    item.cancel()
+            raise BrowserUncertainEffect("browser action produced multiple download effects")
+        artifact = self._download_artifact(live, download)
+        with suppress(PlaywrightError):
+            download.delete()
+        return DriverActionOutcome(tuple(live.pages), (artifact,))
 
     def _dispatch_action(
         self,
@@ -460,6 +492,7 @@ class PlaywrightChromiumDriver:
             self._attach_diagnostics(live, page_id, page)
 
     def _attach_diagnostics(self, live: _LiveSession, page_id: str, page: Page) -> None:
+        page.on("download", lambda download: self._download_event(live, page_id, download))
         page.on(
             "console",
             lambda message: self._console_event(live, page_id, message),
@@ -571,6 +604,54 @@ class PlaywrightChromiumDriver:
             },
         )
 
+    def _download_event(self, live: _LiveSession, page_id: str, download: Download) -> None:
+        live.downloads.append(download)
+        self._record(
+            live,
+            "network",
+            "download",
+            {
+                "page_id": page_id,
+                "suggested_filename": Path(download.suggested_filename).name,
+            },
+        )
+
+    @staticmethod
+    def _download_artifact(live: _LiveSession, download: Download) -> DriverArtifact:
+        failure = download.failure()
+        if failure is not None:
+            raise BrowserUncertainEffect("browser download did not settle successfully")
+        path = download.path()
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        try:
+            descriptor = os.open(path, flags)
+        except OSError as exc:
+            raise BrowserUncertainEffect("browser download file is unavailable") from exc
+        try:
+            observed = os.fstat(descriptor)
+            if not stat.S_ISREG(observed.st_mode) or observed.st_nlink != 1:
+                raise BrowserUncertainEffect("browser download file identity is unsafe")
+            if observed.st_size > live.profile.max_download_bytes:
+                raise BrowserUncertainEffect("browser download exceeds its configured bound")
+            chunks: list[bytes] = []
+            received = 0
+            while True:
+                remaining = live.profile.max_download_bytes + 1 - received
+                chunk = os.read(descriptor, min(65_536, remaining))
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                received += len(chunk)
+                if received > live.profile.max_download_bytes:
+                    raise BrowserUncertainEffect("browser download exceeds its configured bound")
+        finally:
+            os.close(descriptor)
+        return DriverArtifact(
+            channel="browser.download",
+            media_type="application/octet-stream",
+            content=b"".join(chunks),
+        )
+
     @staticmethod
     def _record(
         live: _LiveSession,
@@ -590,6 +671,7 @@ class PlaywrightChromiumDriver:
           role: element.getAttribute('role') || '',
           name: element.getAttribute('name') || '',
           href: element.getAttribute('href') || '',
+          download: element.hasAttribute('download'),
           formAction: element.getAttribute('formaction') || '',
           contentEditable: element.isContentEditable,
           text: (element.innerText || '').slice(0, 512)
@@ -609,6 +691,8 @@ class PlaywrightChromiumDriver:
         tag = str(evidence.get("tag", ""))
         input_type = str(evidence.get("type", "")).casefold()
         if evidence.get("href"):
+            if evidence.get("download"):
+                return ("file.download",)
             return ("navigation",)
         if input_type == "file":
             return ("file.upload",)

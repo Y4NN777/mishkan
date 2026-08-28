@@ -349,6 +349,7 @@ class BrowserProfileConfig(StrictConfigModel):
     retention: str = Field(min_length=1)
     headless: bool
     max_pages: int = Field(ge=1, le=1_000)
+    max_download_bytes: int = Field(ge=1)
     action_timeout_seconds: float = Field(gt=0, le=3_600)
     navigation_timeout_seconds: float = Field(gt=0, le=3_600)
     user_data_dir: Path | None = None
