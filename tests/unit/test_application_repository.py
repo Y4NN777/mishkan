@@ -340,7 +340,7 @@ def test_reserved_failure_is_idempotent_and_durably_observable(tmp_path: Path) -
     }
 
 
-def test_event_ingestion_exceeds_gate(tmp_path: Path) -> None:
+def test_event_ingestion_burst_exceeds_minimum_rate(tmp_path: Path) -> None:
     repository = _repository(tmp_path)
     total = 150
     started = perf_counter()

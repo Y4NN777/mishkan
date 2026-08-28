@@ -67,6 +67,7 @@ markers = [
   "commands: command-boundary security test",
   "ollama: requires a local Ollama service and configured model",
   "paths: filesystem path-scope security test",
+  "performance: requires explicit opt-in for a sustained performance gate",
   "secrets: credential containment security test",
   "symlinks: symbolic-link escape security test",
   "unicode: Unicode normalization security test",
