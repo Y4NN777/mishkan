@@ -13,6 +13,8 @@ from uuid import UUID
 import httpx
 from jsonschema import Draft202012Validator  # type: ignore[import-untyped]
 from jsonschema.exceptions import SchemaError, ValidationError  # type: ignore[import-untyped]
+from mcp import types
+from mcp.client.session import ElicitationFnT
 from mcp.shared.session import ProgressFnT
 
 from mishkan.config.models import McpConfig, McpConnectionConfig
@@ -27,9 +29,12 @@ from mishkan.mcp.models import (
     McpDirection,
     McpDiscoverySnapshot,
     McpEffectDisposition,
+    McpElicitationAction,
+    McpElicitationAnswer,
     McpPrimitiveDescriptor,
     McpPrimitiveKind,
     McpProgressEvent,
+    McpProgressKind,
     McpRemoteTaskTerminal,
     McpSessionState,
 )
@@ -60,6 +65,7 @@ class McpClientPort(Protocol):
         credentials: Mapping[str, str],
         workspace: Path,
         progress: ProgressFnT,
+        elicitation: ElicitationFnT,
         remote_task_allowed: bool,
         remote_task_id: str | None,
         remote_task_started: Callable[[str], None],
@@ -257,6 +263,9 @@ class McpService:
             self._active[request.id] = task
         existing_progress = self._repository.progress_after(request.id, 0)
         cursor = existing_progress[-1].cursor + 1 if existing_progress else 0
+        elicitation_sequence = sum(
+            item.kind is McpProgressKind.ELICITATION for item in existing_progress
+        )
 
         async def progress(value: float, total: float | None, message: str | None) -> None:
             nonlocal cursor
@@ -270,6 +279,59 @@ class McpService:
                 )
             )
             cursor += 1
+
+        async def elicitation(
+            _context: object,
+            params: types.ElicitRequestParams,
+        ) -> types.ElicitResult | types.ErrorData:
+            nonlocal cursor, elicitation_sequence
+            payload = params.model_dump(mode="json", by_alias=True, exclude_none=True)
+            request_hash = McpElicitationAnswer.request_hash(payload)
+            answer = next(
+                (
+                    item
+                    for item in request.elicitation_answers
+                    if item.sequence == elicitation_sequence
+                    and item.expected_request_hash == request_hash
+                ),
+                None,
+            )
+            action = answer.action if answer is not None else None
+            content = answer.content if answer is not None else None
+            if answer is not None and isinstance(params, types.ElicitRequestFormParams):
+                self._validate_elicitation_content(params.requestedSchema, answer)
+            content_hash = (
+                "sha256:"
+                + hashlib.sha256(
+                    json.dumps(content, sort_keys=True, separators=(",", ":")).encode()
+                ).hexdigest()
+                if content is not None
+                else None
+            )
+            recorded_action = action or McpElicitationAction.DECLINE
+            self._repository.append_progress(
+                McpProgressEvent(
+                    request_id=request.id,
+                    cursor=cursor,
+                    kind=McpProgressKind.ELICITATION,
+                    message=self._inspector.inspect(
+                        params.message,
+                        tuple(credentials.values()),
+                    ),
+                    elicitation_request_hash=request_hash,
+                    elicitation_mode=params.mode,
+                    elicitation_action=recorded_action,
+                    elicitation_content_hash=content_hash,
+                )
+            )
+            cursor += 1
+            elicitation_sequence += 1
+            if answer is None:
+                return types.ErrorData(
+                    code=types.INVALID_REQUEST,
+                    message="MCP elicitation has no exact pre-authorized answer",
+                )
+            return types.ElicitResult(action=answer.action.value, content=answer.content)
 
         try:
             if not reconciling:
@@ -286,6 +348,7 @@ class McpService:
                 credentials=credentials,
                 workspace=self._workspace,
                 progress=cast(ProgressFnT, progress),
+                elicitation=cast(ElicitationFnT, elicitation),
                 remote_task_allowed=request.remote_task_allowed,
                 remote_task_id=remote_task_id,
                 remote_task_started=lambda value: self._repository.attach_remote_task(
@@ -474,6 +537,22 @@ class McpService:
             raise MishkanError(
                 ErrorCode.TOOL_SCHEMA,
                 "MCP structured result differs from the discovered output schema",
+            ) from exc
+
+    @staticmethod
+    def _validate_elicitation_content(
+        schema: dict[str, Any],
+        answer: McpElicitationAnswer,
+    ) -> None:
+        if answer.content is None:
+            return
+        try:
+            Draft202012Validator.check_schema(schema)
+            Draft202012Validator(schema).validate(answer.content)
+        except (SchemaError, ValidationError) as exc:
+            raise MishkanError(
+                ErrorCode.TOOL_SCHEMA,
+                "MCP elicitation answer differs from the server request schema",
             ) from exc
 
     def _remote_task_id(self, request_id: UUID) -> str | None:

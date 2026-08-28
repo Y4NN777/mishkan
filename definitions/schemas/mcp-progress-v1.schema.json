@@ -1,4 +1,23 @@
 {
+  "$defs": {
+    "McpElicitationAction": {
+      "enum": [
+        "accept",
+        "decline",
+        "cancel"
+      ],
+      "title": "McpElicitationAction",
+      "type": "string"
+    },
+    "McpProgressKind": {
+      "enum": [
+        "progress",
+        "elicitation"
+      ],
+      "title": "McpProgressKind",
+      "type": "string"
+    }
+  },
   "additionalProperties": false,
   "properties": {
     "created_at": {
@@ -11,10 +30,63 @@
       "title": "Cursor",
       "type": "integer"
     },
+    "elicitation_action": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/McpElicitationAction"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "elicitation_content_hash": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Elicitation Content Hash"
+    },
+    "elicitation_mode": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Elicitation Mode"
+    },
+    "elicitation_request_hash": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Elicitation Request Hash"
+    },
     "id": {
       "format": "uuid",
       "title": "Id",
       "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/McpProgressKind",
+      "default": "progress"
     },
     "message": {
       "anyOf": [

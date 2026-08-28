@@ -15,6 +15,7 @@ from typing import Any
 import anyio
 import httpx
 from mcp import ClientSession, types
+from mcp.client.session import ElicitationFnT
 from mcp.client.stdio import StdioServerParameters, get_default_environment, stdio_client
 from mcp.client.streamable_http import streamable_http_client
 from mcp.shared.session import ProgressFnT
@@ -81,13 +82,19 @@ class McpSdkClient:
         credentials: Mapping[str, str],
         workspace: Path,
         progress: ProgressFnT,
+        elicitation: ElicitationFnT | None = None,
         remote_task_allowed: bool = False,
         remote_task_id: str | None = None,
         remote_task_started: Callable[[str], None] | None = None,
         task_poll_min_seconds: float | None = None,
         task_poll_max_seconds: float | None = None,
     ) -> McpClientCallOutcome:
-        async with self._session(configured, credentials=credentials, workspace=workspace) as (
+        async with self._session(
+            configured,
+            credentials=credentials,
+            workspace=workspace,
+            elicitation=elicitation,
+        ) as (
             session,
             _protocol_version,
             capabilities,
@@ -340,6 +347,7 @@ class McpSdkClient:
         *,
         credentials: Mapping[str, str],
         workspace: Path,
+        elicitation: ElicitationFnT | None = None,
     ) -> AsyncIterator[tuple[ClientSession, str, types.ServerCapabilities]]:
         resolved = self._require_credentials(configured, credentials)
         client_info = types.Implementation(name="mishkan", version=version("mishkan"))
@@ -373,6 +381,7 @@ class McpSdkClient:
                     read_stream,
                     write_stream,
                     read_timeout_seconds=timeout,
+                    elicitation_callback=elicitation,
                     client_info=client_info,
                 ) as session,
             ):
@@ -415,6 +424,7 @@ class McpSdkClient:
                 read_stream,
                 write_stream,
                 read_timeout_seconds=timeout,
+                elicitation_callback=elicitation,
                 client_info=client_info,
             ) as session,
         ):

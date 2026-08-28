@@ -3,10 +3,11 @@ from __future__ import annotations
 import asyncio
 from datetime import timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 from mcp import types
+from mcp.client.session import ElicitationFnT
 from mcp.shared.session import ProgressFnT
 
 from mishkan.config.models import (
@@ -27,8 +28,11 @@ from mishkan.mcp import (
     McpContractFactory,
     McpDiscoverySnapshot,
     McpEffectDisposition,
+    McpElicitationAction,
+    McpElicitationAnswer,
     McpPrimitiveDescriptor,
     McpPrimitiveKind,
+    McpProgressKind,
     McpRemoteTaskTerminal,
     McpRepository,
     McpService,
@@ -166,6 +170,7 @@ class FakeClient:
         credentials: Any,
         workspace: Path,
         progress: ProgressFnT,
+        elicitation: ElicitationFnT,
         remote_task_allowed: bool,
         remote_task_id: str | None,
         remote_task_started: Any,
@@ -181,6 +186,7 @@ class FakeClient:
             timeout_seconds,
             credentials,
             workspace,
+            elicitation,
             remote_task_allowed,
             remote_task_id,
             remote_task_started,
@@ -218,7 +224,19 @@ class FakeClient:
         )
 
 
-class BlockingClient(FakeClient):
+class ElicitingClient(FakeClient):
+    message = "Choose the bounded repository view"
+    schema: ClassVar[dict[str, Any]] = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["view"],
+        "properties": {"view": {"enum": ["summary", "full"]}},
+    }
+
+    def __init__(self, snapshot: McpDiscoverySnapshot) -> None:
+        super().__init__(snapshot)
+        self.response: types.ElicitResult | types.ErrorData | None = None
+
     async def call_tool(
         self,
         configured: McpConnectionConfig,
@@ -232,6 +250,7 @@ class BlockingClient(FakeClient):
         credentials: Any,
         workspace: Path,
         progress: ProgressFnT,
+        elicitation: ElicitationFnT,
         remote_task_allowed: bool,
         remote_task_id: str | None,
         remote_task_started: Any,
@@ -249,6 +268,62 @@ class BlockingClient(FakeClient):
             credentials,
             workspace,
             progress,
+            remote_task_allowed,
+            remote_task_id,
+            remote_task_started,
+            task_poll_min_seconds,
+            task_poll_max_seconds,
+        )
+        self.response = await elicitation(  # type: ignore[arg-type]
+            None,
+            types.ElicitRequestFormParams(
+                message=self.message,
+                requestedSchema=self.schema,
+            ),
+        )
+        return McpClientCallOutcome(
+            terminal=(
+                McpRemoteTaskTerminal.IMMEDIATE
+                if isinstance(self.response, types.ElicitResult)
+                else McpRemoteTaskTerminal.FAILED
+            ),
+            reason="fixture elicitation settled",
+        )
+
+
+class BlockingClient(FakeClient):
+    async def call_tool(
+        self,
+        configured: McpConnectionConfig,
+        *,
+        name: str,
+        arguments: dict[str, Any],
+        caller_identity: str,
+        run_id: str,
+        task_attempt_id: str,
+        timeout_seconds: float,
+        credentials: Any,
+        workspace: Path,
+        progress: ProgressFnT,
+        elicitation: ElicitationFnT,
+        remote_task_allowed: bool,
+        remote_task_id: str | None,
+        remote_task_started: Any,
+        task_poll_min_seconds: float,
+        task_poll_max_seconds: float,
+    ) -> McpClientCallOutcome:
+        del (
+            configured,
+            name,
+            arguments,
+            caller_identity,
+            run_id,
+            task_attempt_id,
+            timeout_seconds,
+            credentials,
+            workspace,
+            progress,
+            elicitation,
             remote_task_allowed,
             remote_task_id,
             remote_task_started,
@@ -278,6 +353,7 @@ class RecoverableRemoteTaskClient(FakeClient):
         credentials: Any,
         workspace: Path,
         progress: ProgressFnT,
+        elicitation: ElicitationFnT,
         remote_task_allowed: bool,
         remote_task_id: str | None,
         remote_task_started: Any,
@@ -293,6 +369,7 @@ class RecoverableRemoteTaskClient(FakeClient):
             timeout_seconds,
             credentials,
             workspace,
+            elicitation,
             task_poll_min_seconds,
             task_poll_max_seconds,
         )
@@ -386,6 +463,70 @@ async def test_connect_invoke_progress_and_exact_replay_are_durable(tmp_path: Pa
     assert journal[0]["state"] == McpCallState.COMPLETED.value
     assert journal[0]["result"] == result.model_dump(mode="json")
     assert journal[0]["remote_task_id"] is None
+
+
+@pytest.mark.anyio
+async def test_exact_pre_authorized_elicitation_is_journaled_before_response(
+    tmp_path: Path,
+) -> None:
+    primitive = _primitive()
+    client = ElicitingClient(_snapshot(primitive))
+    service, repository = _service(tmp_path, client)
+    await service.connect(
+        "graph",
+        principal="role:Engineer",
+        policy_fingerprint="policy:test",
+        credentials={},
+    )
+    params = types.ElicitRequestFormParams(
+        message=client.message,
+        requestedSchema=client.schema,
+    ).model_dump(mode="json", by_alias=True, exclude_none=True)
+    answer = McpElicitationAnswer(
+        sequence=0,
+        expected_request_hash=McpElicitationAnswer.request_hash(params),
+        action=McpElicitationAction.ACCEPT,
+        content={"view": "summary"},
+    )
+    request = _request(primitive).model_copy(update={"elicitation_answers": (answer,)})
+
+    result = await service.invoke(request, credentials={})
+
+    assert result.state is McpCallState.COMPLETED
+    assert client.response == types.ElicitResult(action="accept", content={"view": "summary"})
+    evidence = repository.progress_after(request.id, 0)
+    assert len(evidence) == 1
+    assert evidence[0].kind is McpProgressKind.ELICITATION
+    assert evidence[0].elicitation_request_hash == answer.expected_request_hash
+    assert evidence[0].elicitation_action is McpElicitationAction.ACCEPT
+    assert evidence[0].elicitation_content_hash is not None
+    assert repository.list_calls()[0]["request"]["elicitation_answers"] == [
+        answer.model_dump(mode="json")
+    ]
+
+
+@pytest.mark.anyio
+async def test_unplanned_elicitation_is_declined_and_remains_visible(tmp_path: Path) -> None:
+    primitive = _primitive()
+    client = ElicitingClient(_snapshot(primitive))
+    service, repository = _service(tmp_path, client)
+    await service.connect(
+        "graph",
+        principal="role:Engineer",
+        policy_fingerprint="policy:test",
+        credentials={},
+    )
+    request = _request(primitive)
+
+    result = await service.invoke(request, credentials={})
+
+    assert result.state is McpCallState.FAILED
+    assert isinstance(client.response, types.ErrorData)
+    evidence = repository.progress_after(request.id, 0)
+    assert len(evidence) == 1
+    assert evidence[0].kind is McpProgressKind.ELICITATION
+    assert evidence[0].elicitation_action is McpElicitationAction.DECLINE
+    assert evidence[0].elicitation_content_hash is None
 
 
 @pytest.mark.anyio

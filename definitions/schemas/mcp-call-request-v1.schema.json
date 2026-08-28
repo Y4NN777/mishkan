@@ -9,6 +9,54 @@
       ],
       "title": "McpEffectDisposition",
       "type": "string"
+    },
+    "McpElicitationAction": {
+      "enum": [
+        "accept",
+        "decline",
+        "cancel"
+      ],
+      "title": "McpElicitationAction",
+      "type": "string"
+    },
+    "McpElicitationAnswer": {
+      "additionalProperties": false,
+      "description": "One pre-authorized answer bound to an exact normalized server request.",
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/McpElicitationAction"
+        },
+        "content": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Content"
+        },
+        "expected_request_hash": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Expected Request Hash",
+          "type": "string"
+        },
+        "sequence": {
+          "minimum": 0,
+          "title": "Sequence",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "sequence",
+        "expected_request_hash",
+        "action"
+      ],
+      "title": "McpElicitationAnswer",
+      "type": "object"
     }
   },
   "additionalProperties": false,
@@ -42,6 +90,14 @@
     },
     "effect_disposition": {
       "$ref": "#/$defs/McpEffectDisposition"
+    },
+    "elicitation_answers": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/McpElicitationAnswer"
+      },
+      "title": "Elicitation Answers",
+      "type": "array"
     },
     "expected_schema_hash": {
       "minLength": 1,

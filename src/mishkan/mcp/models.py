@@ -71,6 +71,44 @@ class McpRemoteTaskTerminal(StrEnum):
     CANCELLED = "cancelled"
 
 
+class McpElicitationAction(StrEnum):
+    ACCEPT = "accept"
+    DECLINE = "decline"
+    CANCEL = "cancel"
+
+
+class McpProgressKind(StrEnum):
+    PROGRESS = "progress"
+    ELICITATION = "elicitation"
+
+
+class McpElicitationAnswer(McpModel):
+    """One pre-authorized answer bound to an exact normalized server request."""
+
+    sequence: int = Field(ge=0)
+    expected_request_hash: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    action: McpElicitationAction
+    content: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def content_matches_action(self) -> Self:
+        if self.action is McpElicitationAction.ACCEPT and self.content is None:
+            raise ValueError("accepted MCP elicitation requires explicit content")
+        if self.action is not McpElicitationAction.ACCEPT and self.content is not None:
+            raise ValueError("declined or cancelled MCP elicitation cannot carry content")
+        return self
+
+    @staticmethod
+    def request_hash(params: dict[str, Any]) -> str:
+        stable = {
+            key: params[key]
+            for key in ("mode", "message", "requestedSchema", "url", "elicitationId")
+            if key in params
+        }
+        encoded = json.dumps(stable, sort_keys=True, separators=(",", ":")).encode()
+        return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
 class McpConnectionRecord(McpModel):
     schema_version: str = "1.0"
     id: UUID = Field(default_factory=new_id)
@@ -243,12 +281,24 @@ class McpCallRequest(McpModel):
     expected_schema_hash: str = Field(min_length=1)
     idempotency_key: UUID = Field(default_factory=new_id)
     remote_task_allowed: bool = False
+    elicitation_answers: tuple[McpElicitationAnswer, ...] = ()
     deadline: datetime
 
     @field_validator("deadline")
     @classmethod
     def deadline_is_aware(cls, value: datetime) -> datetime:
         return require_aware(value)
+
+    @field_validator("elicitation_answers")
+    @classmethod
+    def elicitation_sequences_are_unique(
+        cls,
+        value: tuple[McpElicitationAnswer, ...],
+    ) -> tuple[McpElicitationAnswer, ...]:
+        sequences = tuple(item.sequence for item in value)
+        if sequences != tuple(range(len(value))):
+            raise ValueError("MCP elicitation answers must use contiguous ordered sequences")
+        return value
 
 
 class McpCallResult(McpModel):
@@ -276,12 +326,39 @@ class McpProgressEvent(McpModel):
     id: UUID = Field(default_factory=new_id)
     request_id: UUID
     cursor: int = Field(ge=0)
+    kind: McpProgressKind = McpProgressKind.PROGRESS
     progress: float | None = Field(default=None, ge=0)
     total: float | None = Field(default=None, gt=0)
     message: str | None = None
+    elicitation_request_hash: str | None = Field(
+        default=None,
+        pattern=r"^sha256:[a-f0-9]{64}$",
+    )
+    elicitation_mode: str | None = None
+    elicitation_action: McpElicitationAction | None = None
+    elicitation_content_hash: str | None = Field(
+        default=None,
+        pattern=r"^sha256:[a-f0-9]{64}$",
+    )
     created_at: datetime = Field(default_factory=utc_now)
 
     @field_validator("created_at")
     @classmethod
     def progress_time_is_aware(cls, value: datetime) -> datetime:
         return require_aware(value)
+
+    @model_validator(mode="after")
+    def payload_matches_kind(self) -> Self:
+        elicitation_fields = (
+            self.elicitation_request_hash,
+            self.elicitation_mode,
+            self.elicitation_action,
+        )
+        if self.kind is McpProgressKind.ELICITATION:
+            if any(item is None for item in elicitation_fields):
+                raise ValueError("MCP elicitation evidence requires request, mode, and action")
+            if self.progress is not None or self.total is not None:
+                raise ValueError("MCP elicitation evidence cannot claim numeric progress")
+        elif any(item is not None for item in (*elicitation_fields, self.elicitation_content_hash)):
+            raise ValueError("ordinary MCP progress cannot carry elicitation evidence")
+        return self
