@@ -315,7 +315,7 @@ class PlaywrightChromiumDriver:
                     destination_origin=self._destination_origin(evidence, page.url),
                 )
             )
-        image = page.screenshot(type="png") if screenshot else None
+        image = self._capture_screenshot(page) if screenshot else None
         return DriverObservation(
             url=page.url,
             title=page.title(),
@@ -792,6 +792,16 @@ class PlaywrightChromiumDriver:
         if not isinstance(value, str):
             raise MishkanError(ErrorCode.BROWSER, f"browser {operation} requires a string")
         return value
+
+    @staticmethod
+    def _capture_screenshot(page: Page) -> bytes:
+        for attempt in range(2):
+            try:
+                return page.screenshot(type="png")
+            except PlaywrightError as exc:
+                if attempt or "Unable to capture screenshot" not in str(exc):
+                    raise
+        raise AssertionError("bounded browser screenshot retry exhausted")
 
     @staticmethod
     def _string_sequence(value: object, operation: str) -> str | list[str]:
