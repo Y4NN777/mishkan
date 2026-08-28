@@ -25,7 +25,7 @@ This index is the entry point for durable MISHKAN documentation.
 | [`SYSTEM/ARCHITECTURE.md`](SYSTEM/ARCHITECTURE.md) | Accepted 1.3 — D-037 | Transactional modular-monolith structure, environment-module ports, format/engine boundaries, and architecture decisions |
 | [`VALIDATION/foundation.md`](VALIDATION/foundation.md) | Passed | Observed local and remote acceptance evidence for the foundation |
 | [`VALIDATION/local-crewai.md`](VALIDATION/local-crewai.md) | Passed | Observed local and remote acceptance evidence for real CrewAI execution |
-| [`VALIDATION/policy-tools.md`](VALIDATION/policy-tools.md) | Reopened | Narrow mechanism evidence and remaining corrected policy/tool acceptance conditions |
+| [`VALIDATION/policy-tools.md`](VALIDATION/policy-tools.md) | Passed and integrated | Local, live-model, cloud, and remote evidence for the governed capability registry, public policy, Process, Bash, File, Search, and CrewAI gateway |
 | [`VALIDATION/durability.md`](VALIDATION/durability.md) | Passed — D-038 | Local, live CrewAI/Ollama, and remote Linux/macOS evidence for the durable daemon, mutations, artifacts, sessions, recovery, security, and performance |
 | [`VALIDATION/web-browser-mcp.md`](VALIDATION/web-browser-mcp.md) | Passed and integrated — D-040 | Original evidence, corrected local/remote conformance gate, and green `develop`/`main` integration matrices for Web, Browser, MCP, and governed harness clients |
 

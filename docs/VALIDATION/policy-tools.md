@@ -1,8 +1,9 @@
-# I02 Governed Capabilities — Reopened Local Validation Evidence
+# I02 Governed Capabilities — Validation Evidence
 
-**Status:** Local deterministic, live Ollama, and tracked cloud gates passed; remote confirmation pending
+**Status:** Passed and integrated
 **Branch:** `feat/i02-policy-tools`  
 **Validated:** 2026-08-26
+**Integrated:** 2026-08-26
 **Identity:** `Y4NN777 <axel.studiesmail@gmail.com>`
 
 ## Observed mechanism result
@@ -121,7 +122,7 @@ lifecycle and drift, CrewAI gateway representation, durable invocation evidence,
 paths and project sources, Unicode targets, secret containment, configured container arguments,
 cancellation, timeout uncertainty, and the same stateful adapter under allow, approval, and deny.
 
-## Reopened acceptance conditions
+## Historical correction conditions
 
 - retain only truthful runnable tools in the bundled-native set;
 - provide a general terminal/process tool whose concrete commands, arguments, paths, environment,
@@ -142,9 +143,9 @@ The Process slice adds contract and acceptance coverage for literal argv handlin
 environment and stdin, late credential resolution, pre-resolution policy refusal, full-output
 secret inspection, timeout, in-flight cancellation, process-group termination, output limits,
 network-enforcement refusal, pre-dispatch argument-policy refusal, uncertain declared effects,
-and invocation through the current
-CrewAI gateway binding. The aggregate command results below are progress evidence and do not
-approve the reopened I02 gate.
+and invocation through the current CrewAI gateway binding. At that historical checkpoint, the
+aggregate command results below were progress evidence and did not by themselves close I02. The
+integrated production-path, live-model, and remote evidence above later satisfied the gate.
 
 | Process slice check | Result |
 |---|---|
@@ -215,8 +216,14 @@ credential value is stored or logged. The tracked test completed the full initia
 second-run resume lifecycle in 70.28 seconds. Its warnings were upstream CrewAI and OpenTelemetry
 deprecation notices rather than execution or policy failures.
 
-## Pending external gates
+## Integration closure
 
-- The current implementation checkpoint requires a normal branch push and green remote CI result.
-- Topic-to-`develop` and `develop`-to-`main` promotion remain blocked until the reopened local
-  acceptance is confirmed by remote CI.
+No I02 external gate remains pending. Git merge checkpoint
+`2d5cd567996e8484ea0067007a0d35b2bbdee667` integrated the topic into `develop`; GitHub Actions run
+[`33013897427`](https://github.com/Y4NN777/mishkan/actions/runs/33013897427) passed there. Checkpoint
+`626f921b4ceb75c0d8f20d1d3fc77727d14e2afe` then promoted the same I02 tree into `main`; GitHub
+Actions run [`33014146308`](https://github.com/Y4NN777/mishkan/actions/runs/33014146308) passed.
+
+I03 and I04 subsequently built on that baseline and passed their own accepted gates. The earlier
+gate reopening therefore describes only the historical correction phase recorded above, not the
+current I02 status.
