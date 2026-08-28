@@ -464,6 +464,57 @@ def test_unverified_declared_effect_remains_uncertain_after_zero_exit(tmp_path: 
 
 
 @pytest.mark.commands
+def test_process_filesystem_mutation_captures_diff_and_verified_effect(tmp_path: Path) -> None:
+    store = FilesystemArtifactStore(tmp_path / ".mishkan" / "artifacts", max_artifact_bytes=4096)
+    value = arguments(
+        "-c",
+        "from pathlib import Path;Path('generated.txt').write_text('verified')",
+        declared_effects=["filesystem.write"],
+    )
+
+    result = gateway(tmp_path, artifact_store=store).invoke(
+        process_context(tmp_path, value),
+        value,
+        targets(value),
+    )
+
+    assert result.status is CallStatus.COMPLETED
+    assert result.output is not None
+    assert result.output["observed_effects"] == ["filesystem.write"]
+    assert result.output["effect_settlement"] == "completed"
+    assert result.output["changed_paths"] == ["generated.txt"]
+    assert result.output["scope_deviations"] == []
+    assert result.output["effect_observation_complete"] is True
+    reference = result.output["effect_diff_artifact_ref"]
+    assert reference in result.external_references
+    assert b'"path": "generated.txt"' in store.read_bytes(reference)
+
+
+@pytest.mark.commands
+def test_process_scope_deviation_remains_uncertain_and_visible(tmp_path: Path) -> None:
+    (tmp_path / "allowed").mkdir()
+    store = FilesystemArtifactStore(tmp_path / ".mishkan" / "artifacts", max_artifact_bytes=4096)
+    value = arguments(
+        "-c",
+        "from pathlib import Path;Path('../outside.txt').write_text('escaped-scope')",
+        cwd="allowed",
+        declared_effects=["filesystem.write"],
+    )
+
+    result = gateway(tmp_path, artifact_store=store).invoke(
+        process_context(tmp_path, value),
+        value,
+        targets(value),
+    )
+
+    assert result.status is CallStatus.UNCERTAIN
+    assert result.output is not None
+    assert result.output["changed_paths"] == ["outside.txt"]
+    assert result.output["scope_deviations"] == ["outside.txt"]
+    assert result.output["effect_settlement"] == "uncertain"
+
+
+@pytest.mark.commands
 def test_process_is_a_current_crewai_tool_binding(tmp_path: Path) -> None:
     value = arguments("-c", "print('through-crewai')")
     context = process_context(tmp_path, value)

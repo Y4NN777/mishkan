@@ -84,6 +84,14 @@ result_schema:
     - declared_effects
     - observed_effects
     - effect_settlement
+    - base_snapshot_fingerprint
+    - after_snapshot_fingerprint
+    - changed_paths
+    - scope_deviations
+    - effect_diff_artifact_ref
+    - effect_observation_complete
+    - effect_observation_omissions
+    - effect_validation
     - retryable
     - execution_location
     - error
@@ -118,6 +126,14 @@ result_schema:
     declared_effects: {type: array, uniqueItems: true, items: {type: string}}
     observed_effects: {type: array, uniqueItems: true, items: {type: string}}
     effect_settlement: {type: string, enum: [absent, completed, uncertain]}
+    base_snapshot_fingerprint: {type: [string, "null"]}
+    after_snapshot_fingerprint: {type: [string, "null"]}
+    changed_paths: {type: array, uniqueItems: true, items: {type: string}}
+    scope_deviations: {type: array, uniqueItems: true, items: {type: string}}
+    effect_diff_artifact_ref: {type: [string, "null"]}
+    effect_observation_complete: {type: boolean}
+    effect_observation_omissions: {type: array, uniqueItems: true, items: {type: string}}
+    effect_validation: {type: string}
     retryable: {type: boolean}
     execution_location: {type: string}
     error: {type: [string, "null"]}
@@ -137,3 +153,9 @@ adapter_config:
   max_output_bytes: 2097152
   max_stdin_bytes: 65536
   max_environment_entries: 128
+  effect_observation:
+    max_entries: 100000
+    max_file_bytes: 16777216
+    max_total_bytes: 268435456
+    exclude: [.git/**, .mishkan/**]
+    observable_effects: [filesystem.write]

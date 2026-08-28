@@ -26,8 +26,10 @@ from mishkan.policy.models import security_identifier
 from mishkan.repository.profile import load_discovery_profile
 from mishkan.repository.tokens import content_base_revision_token
 from mishkan.tools.adapters import AdapterCall, CapabilityAdapter
+from mishkan.tools.effects import WorkspaceEffectObserver, WorkspaceSnapshot
 from mishkan.tools.execution import EffectSettlement
 from mishkan.tools.gateway_models import (
+    AdapterResult,
     AuditEvent,
     CallStatus,
     DeclaredTargets,
@@ -317,6 +319,7 @@ class CapabilityGateway:
         planned_calls: PlannedCallJournal | None = None,
         repository_observer: RepositoryStateObserver | None = None,
         concurrency: ConcurrencyController | None = None,
+        workspace_effects: WorkspaceEffectObserver | None = None,
     ) -> None:
         self._root = Path(repository_root).resolve()
         self._policy = policy_authority
@@ -329,6 +332,7 @@ class CapabilityGateway:
         self._planned_calls = planned_calls
         self._repository_observer = repository_observer
         self._concurrency = concurrency or ConcurrencyController()
+        self._workspace_effects = workspace_effects or WorkspaceEffectObserver()
 
     def invoke(
         self,
@@ -517,13 +521,19 @@ class CapabilityGateway:
                         "concurrency": context.resources.concurrency,
                     },
                 )
+            effect_configuration = contract.adapter_config.get("effect_observation")
+            effect_before = (
+                self._workspace_effects.snapshot(self._root, effect_configuration)
+                if request.effects and isinstance(effect_configuration, dict)
+                else None
+            )
             if journal_reserved:
                 assert request_fingerprint is not None
                 self._planned_calls_or_raise().mark_planned_call_dispatching(
                     call_id,
                     request_fingerprint,
                 )
-                dispatch_started = True
+            dispatch_started = True
             self._audit(
                 context,
                 call_id,
@@ -558,9 +568,20 @@ class CapabilityGateway:
                         role=context.role,
                     )
                 )
+                dispatched_status = adapter_result.call_status
+                if effect_before is not None:
+                    adapter_result = self._apply_workspace_effect_observation(
+                        context,
+                        contract,
+                        resolved,
+                        request.effects,
+                        call_id,
+                        effect_before,
+                        adapter_result,
+                    )
+                    dispatched_status = adapter_result.call_status
             finally:
                 self._concurrency.release(concurrency_key)
-            dispatched_status = adapter_result.call_status
             if adapter_result.actual_targets != resolved:
                 raise MishkanError(
                     ErrorCode.TOOL_EFFECT,
@@ -897,6 +918,95 @@ class CapabilityGateway:
                 content_digest=content_digest,
             )
         return completed
+
+    def _apply_workspace_effect_observation(
+        self,
+        context: InvocationContext,
+        contract: ToolContract,
+        resolved: ResolvedTargets,
+        declared_effects: tuple[str, ...],
+        call_id: str,
+        before: WorkspaceSnapshot,
+        result: AdapterResult,
+    ) -> AdapterResult:
+        configuration = contract.adapter_config["effect_observation"]
+        assert isinstance(configuration, dict)
+        after = self._workspace_effects.snapshot(self._root, configuration)
+        observation = self._workspace_effects.compare(
+            before,
+            after,
+            allowed_scopes=tuple(path.relative for path in resolved.paths),
+        )
+        output = dict(result.output)
+        reference: str | None = None
+        if observation.changed_paths and self._artifact_store is not None:
+            self._inspector.inspect(observation.diff.decode("utf-8", errors="replace"))
+            reference = self._artifact_store.put_bytes(
+                observation.diff,
+                media_type="application/vnd.mishkan.workspace-diff+json",
+                provenance=ArtifactProvenance(
+                    producer_identity=context.identity,
+                    run_id=context.run_id,
+                    task_attempt_id=context.task_attempt_id,
+                    call_id=call_id,
+                    capability=contract.tool_id,
+                    channel="workspace-diff",
+                ),
+                complete=observation.complete,
+            ).reference
+        observable = frozenset(str(item) for item in configuration.get("observable_effects", ()))
+        proven = (
+            set(declared_effects).issubset(observable)
+            and observation.complete
+            and not observation.scope_deviations
+            and (not observation.changed_paths or reference is not None)
+        )
+        execution_status = output.get("status")
+        settlement = EffectSettlement.UNCERTAIN
+        observed_effects: tuple[str, ...] = ()
+        call_status = result.call_status
+        validation = "incomplete-or-out-of-scope"
+        if proven:
+            settlement = (
+                EffectSettlement.COMPLETED if observation.changed_paths else EffectSettlement.ABSENT
+            )
+            observed_effects = declared_effects if observation.changed_paths else ()
+            validation = "bounded-before-after-snapshot"
+            if execution_status == "completed":
+                call_status = CallStatus.COMPLETED
+            elif settlement is EffectSettlement.ABSENT:
+                call_status = CallStatus.FAILED
+        output.update(
+            {
+                "observed_effects": list(observed_effects),
+                "effect_settlement": settlement.value,
+                "base_snapshot_fingerprint": observation.base_fingerprint,
+                "after_snapshot_fingerprint": observation.after_fingerprint,
+                "changed_paths": list(observation.changed_paths),
+                "scope_deviations": list(observation.scope_deviations),
+                "effect_diff_artifact_ref": reference,
+                "effect_observation_complete": observation.complete,
+                "effect_observation_omissions": list(observation.omissions),
+                "effect_validation": validation,
+            }
+        )
+        references = result.external_references
+        if reference is not None:
+            references = (*references, reference)
+        return result.model_copy(
+            update={
+                "output": output,
+                "external_references": references,
+                "call_status": call_status,
+                "retryable": False,
+                "error_code": (None if call_status is CallStatus.COMPLETED else result.error_code),
+                "reason": (
+                    "command effects were verified by bounded workspace snapshots"
+                    if call_status is CallStatus.COMPLETED
+                    else result.reason
+                ),
+            }
+        )
 
     def _complete_journaled_call(
         self,

@@ -212,6 +212,29 @@ printf '%s' "$FROM_PROFILE"
 
 
 @pytest.mark.commands
+def test_bash_filesystem_mutation_is_verified_with_a_diff_artifact(tmp_path: Path) -> None:
+    store = FilesystemArtifactStore(tmp_path / ".mishkan" / "artifacts", max_artifact_bytes=4096)
+    value = arguments(
+        "printf 'verified' > generated.txt",
+        declared_paths=["generated.txt"],
+        declared_effects=["filesystem.write"],
+    )
+
+    result = gateway(tmp_path, artifact_store=store).invoke(
+        shell_context(tmp_path, value), value, targets(value)
+    )
+
+    assert result.status is CallStatus.COMPLETED
+    assert result.output is not None
+    assert result.output["changed_paths"] == ["generated.txt"]
+    assert result.output["scope_deviations"] == []
+    assert result.output["effect_settlement"] == "completed"
+    reference = result.output["effect_diff_artifact_ref"]
+    assert reference in result.external_references
+    assert b'"path": "generated.txt"' in store.read_bytes(reference)
+
+
+@pytest.mark.commands
 def test_bash_does_not_inherit_personal_environment(tmp_path: Path) -> None:
     value = arguments('printf \'%s|%s\' "${HOME-unset}" "${BASH_ENV-unset}"')
     result = gateway(tmp_path).invoke(shell_context(tmp_path, value), value, targets(value))

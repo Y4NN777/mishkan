@@ -281,6 +281,14 @@ class ExecutionResult(ExecutionModel):
     declared_effects: tuple[str, ...]
     observed_effects: tuple[str, ...] = ()
     effect_settlement: EffectSettlement
+    base_snapshot_fingerprint: str | None = Field(default=None, min_length=64, max_length=64)
+    after_snapshot_fingerprint: str | None = Field(default=None, min_length=64, max_length=64)
+    changed_paths: tuple[str, ...] = ()
+    scope_deviations: tuple[str, ...] = ()
+    effect_diff_artifact_ref: str | None = Field(default=None, pattern=r"^artifact:[0-9a-f-]{36}$")
+    effect_observation_complete: bool = False
+    effect_observation_omissions: tuple[str, ...] = ()
+    effect_validation: str = "not-applicable"
     retryable: bool = False
     execution_location: str
     error: str | None = None
@@ -297,6 +305,9 @@ class ExecutionResult(ExecutionModel):
         "credential_environment_names",
         "declared_effects",
         "observed_effects",
+        "changed_paths",
+        "scope_deviations",
+        "effect_observation_omissions",
     )
     @classmethod
     def result_tuple_values_are_unique(cls, value: tuple[object, ...]) -> tuple[object, ...]:
