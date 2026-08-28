@@ -615,6 +615,7 @@ async def test_artifact_secret_is_refused_with_non_secret_durable_evidence(
             json=commit_command.model_dump(mode="json"),
         )
         artifacts = await client.get("/v1/artifacts", headers=headers)
+        upload = await client.get(f"/v1/artifact-uploads/{upload_id}", headers=headers)
         events = await client.get("/v1/events", headers=headers)
 
     assert refused.status_code == 200
@@ -622,6 +623,8 @@ async def test_artifact_secret_is_refused_with_non_secret_durable_evidence(
     assert refused.json()["error"]["code"] == ErrorCode.SECRET_CONTENT
     assert replayed.json() == refused.json()
     assert artifacts.json() == []
+    assert upload.json()["lifecycle"] == "aborted"
+    assert not (paths.artifacts / "staging" / f"{upload_id}.upload").exists()
     final_event = events.json()["events"][-1]
     assert final_event["event_type"] == "application.command_effect_unaccepted"
     assert final_event["payload"]["error_code"] == ErrorCode.SECRET_CONTENT

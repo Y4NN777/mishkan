@@ -254,16 +254,21 @@ class DurableArtifactService:
         storage_ref = f"sha256/{content_digest[:2]}/{content_digest[2:]}"
         destination = self._safe_blob(storage_ref)
         destination.parent.mkdir(parents=True, exist_ok=True)
-        if os.path.lexists(staged):
-            self._commit_staged_blob(
-                staged,
-                destination,
-                content_digest,
-                size,
-                self._content_inspector,
-            )
-        else:
-            self._require_existing_committed_blob(destination, content_digest, size)
+        try:
+            if os.path.lexists(staged):
+                self._commit_staged_blob(
+                    staged,
+                    destination,
+                    content_digest,
+                    size,
+                    self._content_inspector,
+                )
+            else:
+                self._require_existing_committed_blob(destination, content_digest, size)
+        except MishkanError as exc:
+            if exc.envelope.code is ErrorCode.SECRET_CONTENT:
+                self._reject_secret_upload(upload_id, staged)
+            raise
 
         with Session(self._engine) as session, session.begin():
             row = self._require_upload(session, upload_id)
@@ -344,6 +349,14 @@ class DurableArtifactService:
             )
         if self._content_inspector is not None:
             self._content_inspector.require_safe_file(destination)
+
+    def _reject_secret_upload(self, upload_id: UUID, staged: Path) -> None:
+        with Session(self._engine) as session, session.begin():
+            row = self._require_upload(session, upload_id)
+            if row.state == "staging":
+                row.state = "aborted"
+                row.updated_at = utc_now().isoformat()
+        staged.unlink(missing_ok=True)
 
     def manifest(self, reference: str) -> ArtifactManifest:
         artifact_id = self._reference_id(reference)

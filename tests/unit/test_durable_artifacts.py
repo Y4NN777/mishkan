@@ -109,7 +109,9 @@ def test_security_scan_blocks_secret_split_across_upload_chunks(tmp_path: Path) 
 
     assert caught.value.envelope.code is ErrorCode.SECRET_CONTENT
     assert service.list_manifests() == ()
-    assert service.upload(upload.upload_id).lifecycle == "staging"
+    assert service.upload(upload.upload_id).lifecycle == "aborted"
+    staged = tmp_path / "artifacts" / "staging" / f"{upload.upload_id}.upload"
+    assert not staged.exists()
 
 
 @pytest.mark.symlinks
