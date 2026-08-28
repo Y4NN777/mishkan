@@ -2,9 +2,12 @@
 
 [![CI](https://github.com/Y4NN777/mishkan/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Y4NN777/mishkan/actions/workflows/ci.yml)
 
-MISHKAN is a local-first, persistent, and inspectable AI software-engineering organization. It
-accepts engineering objectives, organizes the work, preserves context, and returns reviewable
-results while the engineer retains control over consequential actions.
+**Delegate engineering missions, not isolated coding sessions.**
+
+MISHKAN is a local-first software-engineering organization operated by persistent AI agents. Give
+it an engineering objective; it forms a mission team for the project, coordinates planning and
+execution, preserves decisions and evidence, and returns independently reviewed results—while you
+retain authority over consequential actions.
 
 > **Pre-release:** MISHKAN is under active development and currently installs from source. The
 > implemented product is a local, single-daemon system for Linux and macOS. The full persistent
