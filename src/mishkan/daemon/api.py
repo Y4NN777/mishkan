@@ -312,14 +312,36 @@ def create_app(config: MishkanConfig) -> FastAPI:
                     mcp_config,
                     resolved_credentials,
                 )
-            except MishkanError:
-                raise
-            except (KeyError, TypeError, ValueError) as exc:
-                raise MishkanError(
+            except MishkanError as error:
+                return repository.fail_reserved(
+                    command,
+                    target_id=target_id,
+                    error=error,
+                    event_payload=_authorization_projection(authorized),
+                    sensitivity=(
+                        "security"
+                        if error.envelope.code
+                        in {
+                            ErrorCode.AUTHORITY_NOT_GRANTED,
+                            ErrorCode.AUTHORIZATION_MISSING,
+                            ErrorCode.POLICY_CONFLICT,
+                            ErrorCode.SECRET_CONTENT,
+                        }
+                        else "internal"
+                    ),
+                )
+            except (KeyError, TypeError, ValueError):
+                payload_error = MishkanError(
                     ErrorCode.OUTPUT_CONTRACT,
                     "application command payload does not match its registered contract",
                     details={"command_type": command.command_type},
-                ) from exc
+                )
+                return repository.fail_reserved(
+                    command,
+                    target_id=target_id,
+                    error=payload_error,
+                    event_payload=_authorization_projection(authorized),
+                )
             return repository.complete_reserved(
                 command,
                 target_id=target_id,

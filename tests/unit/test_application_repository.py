@@ -310,6 +310,36 @@ def test_reserved_completion_is_atomic(tmp_path: Path) -> None:
     assert tuple(event.cursor for event in repository.events().events) == (1,)
 
 
+def test_reserved_failure_is_idempotent_and_durably_observable(tmp_path: Path) -> None:
+    repository = _repository(tmp_path)
+    command = ApplicationCommand(
+        command_type="artifact.upload.chunk",
+        actor_id="local-operator",
+        target_type="artifact_upload",
+        target_id="00000000-0000-0000-0000-000000000001",
+        payload={"offset": 0, "content_base64": "invalid"},
+    )
+    assert repository.reserve(command, target_id=command.target_id or "") is None
+    failure = MishkanError(ErrorCode.OUTPUT_CONTRACT, "invalid artifact chunk")
+
+    result = repository.fail_reserved(
+        command,
+        target_id=command.target_id or "",
+        error=failure,
+    )
+    replay = repository.replay(command)
+
+    assert result.status is CommandStatus.REFUSED
+    assert replay == result
+    assert result.event_cursor == 1
+    event = repository.events().events[0]
+    assert event.event_type == "application.command_effect_unaccepted"
+    assert event.payload == {
+        "command_type": "artifact.upload.chunk",
+        "error_code": ErrorCode.OUTPUT_CONTRACT,
+    }
+
+
 def test_event_ingestion_exceeds_gate(tmp_path: Path) -> None:
     repository = _repository(tmp_path)
     total = 150

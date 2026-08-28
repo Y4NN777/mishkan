@@ -335,6 +335,74 @@ class SQLiteApplicationRepository:
             row.completed_at = result.completed_at.isoformat()
             return result
 
+    def fail_reserved(
+        self,
+        command: ApplicationCommand,
+        *,
+        target_id: str,
+        error: MishkanError,
+        event_payload: Mapping[str, Any] | None = None,
+        sensitivity: str = "internal",
+    ) -> CommandResult:
+        """Atomically settle an authorized reserved command without accepting its effect."""
+        with Session(self._engine) as session, session.begin():
+            row = session.get(CommandRow, str(command.command_id))
+            if row is None:
+                raise MishkanError(ErrorCode.RUN_INTERRUPTED, "command was not reserved")
+            if row.fingerprint != command.fingerprint:
+                raise MishkanError(
+                    ErrorCode.DUPLICATE_RESULT,
+                    "command identity was already used for different content",
+                )
+            current = CommandResult.model_validate_json(row.result_payload)
+            if (
+                current.status is not CommandStatus.REFUSED
+                or current.error is None
+                or not current.error.details.get("reconciliation_required")
+            ):
+                return current
+            now = utc_now()
+            event_row = OutboxRow(
+                id=str(new_id()),
+                schema_version="1.0",
+                aggregate_id=target_id,
+                entity_type=command.target_type,
+                **self._event_dimensions(command, target_id, sensitivity),
+                event_type="application.command_effect_unaccepted",
+                source="mishkand",
+                payload=json.dumps(
+                    {
+                        "command_type": command.command_type,
+                        "error_code": error.envelope.code,
+                        **dict(event_payload or {}),
+                    },
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+                occurred_at=now.isoformat(),
+                command_id=str(command.command_id),
+                correlation_id=str(command.command_id),
+                causation_id=None,
+                sensitivity=sensitivity,
+                published_at=None,
+            )
+            session.add(event_row)
+            session.flush()
+            result = CommandResult(
+                command_id=command.command_id,
+                status=CommandStatus.REFUSED,
+                target_type=command.target_type,
+                target_id=target_id,
+                event_cursor=event_row.cursor,
+                error=error.envelope,
+                completed_at=now,
+            )
+            row.status = result.status.value
+            row.result_payload = result.model_dump_json()
+            row.event_cursor = result.event_cursor
+            row.completed_at = result.completed_at.isoformat()
+            return result
+
     def command_result(self, command_id: str) -> CommandResult | None:
         with Session(self._engine) as session:
             row = session.get(CommandRow, command_id)

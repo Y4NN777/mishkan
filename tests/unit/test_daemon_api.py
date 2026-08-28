@@ -333,6 +333,36 @@ async def test_invalid_effect_command_is_rejected_before_reservation(tmp_path: P
 
 
 @pytest.mark.anyio
+async def test_authorized_dispatch_failure_is_a_replayable_typed_refusal(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    paths = DaemonBootstrap().setup(config)
+    token = TokenFile(paths.token_file).read().token
+    headers = {"Authorization": f"Bearer {token}"}
+    command = ApplicationCommand(
+        command_type="artifact.upload.chunk",
+        actor_id="local-operator",
+        target_type="artifact_upload",
+        target_id="00000000-0000-0000-0000-000000000001",
+        payload={"offset": 0, "content_base64": "not-base64"},
+    )
+    transport = httpx.ASGITransport(app=create_app(config))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        first = await client.post(
+            "/v1/commands", headers=headers, json=command.model_dump(mode="json")
+        )
+        replay = await client.post(
+            "/v1/commands", headers=headers, json=command.model_dump(mode="json")
+        )
+        events = await client.get("/v1/events", headers=headers)
+
+    assert first.status_code == 200
+    assert replay.json() == first.json()
+    assert first.json()["status"] == "refused"
+    assert first.json()["error"]["code"] == ErrorCode.OUTPUT_CONTRACT
+    assert events.json()["events"][-1]["event_type"] == ("application.command_effect_unaccepted")
+
+
+@pytest.mark.anyio
 async def test_session_declared_effects_are_part_of_authoritative_policy_scope(
     tmp_path: Path,
 ) -> None:
