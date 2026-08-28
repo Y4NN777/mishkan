@@ -1,12 +1,14 @@
 # I04 Web, Browser, MCP, and External Harnesses — Validation Evidence
 
-**Status:** Local conformance revalidation passed — current remote matrix pending
+**Status:** Passed — D-039 current baseline revalidated
 
 **Branch:** `feat/i04-web-browser-mcp-harnesses`
 
 **Original D-039 gate:** 2026-08-27
 
 **Cross-baseline audit checkpoint:** `6a73e98`, validated locally 2026-08-28
+
+**Current remote gate:** `c69e192`, validated 2026-08-28
 
 **Identity:** `Y4NN777 <axel.studiesmail@gmail.com>`
 
@@ -179,12 +181,20 @@ jobs.
 
 These live-model and remote runs validate commit `55b01c3`; they are retained as historical evidence
 and do not validate checkpoint `6a73e98`. The external-model gates were not rerun during the
-cross-baseline gap closure. A new six-job Linux/macOS Python 3.11–3.13 matrix must pass on the current
-topic branch before current-baseline promotion.
+cross-baseline gap closure.
+
+## Current remote evidence
+
+GitHub Actions run
+[`33186236919`](https://github.com/Y4NN777/mishkan/actions/runs/33186236919) passed at commit
+`c69e192867413afc07f30992f8ad7f6fa2eaaae2`. All six Linux/macOS jobs on Python 3.11, 3.12, and
+3.13 passed the deterministic suite with branch coverage, Ruff, formatting, strict typing,
+deterministic schema export, and distribution build. This run contains code checkpoint `6a73e98`
+and the corrected validation baseline; it is the remote evidence for the current I04 gate.
 
 ## Acceptance boundary
 
-D-039 records the original I04 acceptance on 2026-08-27. The requested conformance audit is now
-implemented and its local technical gate passes at `6a73e98`. This is not yet a current-baseline
-promotion gate: promotion into `develop` and the beginning of I05 remain paused until the new remote
-matrix is green and recorded here.
+D-039 records the original I04 acceptance on 2026-08-27 and the corrected current-baseline
+revalidation on 2026-08-28. The requested conformance audit is implemented at `6a73e98`; its local
+gate and the six-job remote matrix at `c69e192` are green. I04 may now follow topic-to-`develop`.
+I05 still waits for that promotion.

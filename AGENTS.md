@@ -14,9 +14,10 @@ local gate, a passing tracked live CrewAI/Ollama regression, and a green remote 
 `feat/i04-web-browser-mcp-harnesses`. D-039 accepted its original gate on 2026-08-27. The requested
 cross-baseline conformance audit then found gaps in durable concurrency, browser authority and
 sensitive state, MCP containment and bounds, Web concurrency, and public input limits. Those gaps
-are closed at checkpoint `6a73e98`, whose current local gate is recorded in
-`docs/VALIDATION/web-browser-mcp.md`. Do not promote I04 into `develop` or begin I05 until the
-current six-job remote matrix is green and that evidence is recorded. The rejected
+are closed at checkpoint `6a73e98`. Its 398-test local gate and six-job Linux/macOS Python
+3.11–3.13 matrix are recorded in `docs/VALIDATION/web-browser-mcp.md`; the current I04 baseline is
+green. Promotion must still follow topic → `develop`, and I05 must not begin before that promotion.
+The rejected
 universal workflow, mandatory outcome catalogue, capability-family matrix, static role/tool matrix,
 competing runtime, and private operational deny-list must not return.
 
