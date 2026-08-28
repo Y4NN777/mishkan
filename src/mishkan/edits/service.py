@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 import difflib
 import hashlib
 import json
@@ -28,6 +29,9 @@ from mishkan.edits.models import (
     ChangeSet,
     ChangeSetResult,
     ChangeSetState,
+    ChangeValidation,
+    ChangeValidationKind,
+    ChangeValidationResult,
     PreconditionKind,
 )
 from mishkan.persistence.migration import SchemaManager
@@ -51,6 +55,7 @@ class ChangeSetService:
         event.listen(self._engine, "connect", LocalRunRepository._configure_connection)
 
     def plan(self, change_set: ChangeSet) -> ChangeSetResult:
+        self._validate_scope(change_set)
         now = utc_now()
         with Session(self._engine) as session, session.begin():
             if session.get(ChangeSetRow, str(change_set.id)) is not None:
@@ -65,6 +70,7 @@ class ChangeSetService:
                     operation_index=0,
                     payload=change_set.model_dump_json(),
                     diff_reference=None,
+                    validation_payload=None,
                     reason=None,
                     created_at=now.isoformat(),
                     updated_at=now.isoformat(),
@@ -94,6 +100,7 @@ class ChangeSetService:
 
     def apply(self, change_set_id: UUID) -> ChangeSetResult:
         change_set = self._load(change_set_id)
+        self._validate_scope(change_set)
         self._set_state(change_set_id, ChangeSetState.APPLYING)
         diffs: list[str] = []
         try:
@@ -114,12 +121,14 @@ class ChangeSetService:
                         )
                 before = self._read_file(path)
                 self._check_precondition(operation, path)
+                self._check_destination_precondition(operation)
                 after = self._expected_content(operation, path, before)
                 preimage = self._preimage(change_set_id, position, path, before)
-                expected_after = self._expected_token(operation, path, after)
+                expected_after = self._expected_state_token(operation, path, after)
                 if (
                     operation.expected_digest is not None
-                    and expected_after != operation.expected_digest
+                    and after is not None
+                    and f"sha256:{hashlib.sha256(after).hexdigest()}" != operation.expected_digest
                 ):
                     raise MishkanError(
                         ErrorCode.REVISION_MISMATCH,
@@ -128,7 +137,7 @@ class ChangeSetService:
                 self._prepare(
                     change_set_id,
                     position,
-                    before_token=self._token(path),
+                    before_token=self._state_token(path),
                     preimage_reference=preimage,
                     expected_after_token=expected_after,
                 )
@@ -144,22 +153,25 @@ class ChangeSetService:
                         reason="operation after-state failed exact verification",
                     )
                 self._mark_applied(change_set_id, position, actual)
-                if before is not None and after is not None:
-                    diffs.extend(
-                        difflib.unified_diff(
-                            before.decode(errors="replace").splitlines(keepends=True),
-                            after.decode(errors="replace").splitlines(keepends=True),
-                            fromfile=f"a/{operation.path}",
-                            tofile=f"b/{operation.path}",
-                        )
-                    )
+                diffs.extend(self._operation_diff(operation, before, after))
             self._set_state(change_set_id, ChangeSetState.APPLIED)
             diff_reference = self._diff_artifact(change_set_id, "".join(diffs).encode())
+            validations = self._run_validations(change_set.validations)
+            if not all(item.passed for item in validations):
+                rollback = self._rollback_applied(change_set_id, change_set)
+                return self._finish(
+                    change_set_id,
+                    rollback,
+                    "one or more selected validations failed",
+                    diff_reference=diff_reference,
+                    validation_results=validations,
+                )
             return self._finish(
                 change_set_id,
                 ChangeSetState.VERIFIED,
                 None,
                 diff_reference=diff_reference,
+                validation_results=validations,
             )
         except MishkanError as error:
             return self._finish(
@@ -216,7 +228,7 @@ class ChangeSetService:
         if actual == journal.expected_after_token:
             self._mark_applied(UUID(journal.change_set_id), journal.position, actual)
             return "applied"
-        if self._token(path) == journal.before_token:
+        if self._state_token(path) == journal.before_token:
             return "retry"
         return "conflict"
 
@@ -235,13 +247,7 @@ class ChangeSetService:
             return self._finish(change_set_id, ChangeSetState.CONFLICT, reason)
         if operation.rollback.value == "retain":
             return self._finish(change_set_id, ChangeSetState.UNCERTAIN, reason)
-        if journal.preimage_reference is None:
-            if path.exists() and not path.is_dir():
-                path.unlink()
-            elif path.is_dir():
-                path.rmdir()
-        else:
-            self._atomic_write(path, self._artifacts.read_bytes(journal.preimage_reference))
+        self._restore_operation(operation, path, journal)
         return self._finish(change_set_id, ChangeSetState.ROLLED_BACK, reason)
 
     def _apply_operation(
@@ -253,6 +259,8 @@ class ChangeSetService:
         kind = operation.kind
         if kind is ChangeOperationKind.MKDIR:
             path.mkdir()
+            if operation.result_mode is not None:
+                path.chmod(operation.result_mode)
         elif kind in {
             ChangeOperationKind.CREATE,
             ChangeOperationKind.WRITE,
@@ -261,19 +269,25 @@ class ChangeSetService:
             ChangeOperationKind.REWRITE,
         }:
             assert content is not None
-            self._atomic_write(path, content)
+            self._atomic_write(path, content, mode=self._result_mode(operation, path))
         elif kind in {ChangeOperationKind.MOVE, ChangeOperationKind.COPY}:
             assert operation.destination is not None
             destination = self._safe_path(operation.destination)
+            if not path.is_file():
+                raise MishkanError(
+                    ErrorCode.OUTPUT_CONTRACT,
+                    "move and copy currently require a regular-file source",
+                )
             if destination.exists() or destination.is_symlink():
                 raise MishkanError(ErrorCode.REVISION_MISMATCH, "change destination is not absent")
             if kind is ChangeOperationKind.MOVE:
                 os.replace(path, destination)
             else:
-                if path.is_dir():
-                    shutil.copytree(path, destination, symlinks=False)
-                else:
-                    self._atomic_write(destination, path.read_bytes())
+                self._atomic_write(
+                    destination,
+                    path.read_bytes(),
+                    mode=operation.result_mode or stat.S_IMODE(path.stat().st_mode),
+                )
         elif kind is ChangeOperationKind.DELETE:
             path.rmdir() if path.is_dir() else path.unlink()
 
@@ -307,6 +321,121 @@ class ChangeSetService:
                 )
             return before.replace(match, replacement)
         return None
+
+    @staticmethod
+    def _operation_diff(
+        operation: ChangeOperation, before: bytes | None, after: bytes | None
+    ) -> builtins.list[str]:
+        if operation.kind in {ChangeOperationKind.MOVE, ChangeOperationKind.COPY}:
+            assert operation.destination is not None
+            return [f"# {operation.kind.value}: {operation.path} -> {operation.destination}\n"]
+        if operation.kind is ChangeOperationKind.MKDIR:
+            return [f"# mkdir: {operation.path}\n"]
+        old = (before or b"").decode(errors="replace").splitlines(keepends=True)
+        new = (after or b"").decode(errors="replace").splitlines(keepends=True)
+        if operation.kind is ChangeOperationKind.DELETE:
+            new = []
+        return list(
+            difflib.unified_diff(
+                old,
+                new,
+                fromfile=f"a/{operation.path}",
+                tofile=f"b/{operation.path}",
+            )
+        )
+
+    def _run_validations(
+        self, validations: tuple[ChangeValidation, ...]
+    ) -> tuple[ChangeValidationResult, ...]:
+        results: list[ChangeValidationResult] = []
+        for validation in validations:
+            path = self._safe_path(validation.path)
+            if validation.kind is ChangeValidationKind.EXISTS:
+                observed: str | int = self._token(path)
+                passed = observed != "absent"
+            elif validation.kind is ChangeValidationKind.ABSENT:
+                observed = self._token(path)
+                passed = observed == "absent"
+            elif validation.kind is ChangeValidationKind.DIGEST:
+                observed = self._token(path)
+                passed = observed == validation.expected_value
+            else:
+                try:
+                    observed = stat.S_IMODE(path.lstat().st_mode)
+                except FileNotFoundError:
+                    observed = "absent"
+                passed = observed == validation.expected_value
+            results.append(
+                ChangeValidationResult(
+                    validation_id=str(validation.id),
+                    kind=validation.kind,
+                    path=validation.path,
+                    passed=passed,
+                    expected=validation.expected_value,
+                    observed=observed,
+                )
+            )
+        return tuple(results)
+
+    def _rollback_applied(self, change_set_id: UUID, change_set: ChangeSet) -> ChangeSetState:
+        self._set_state(change_set_id, ChangeSetState.ROLLBACK_PENDING)
+        for position in range(len(change_set.operations) - 1, -1, -1):
+            operation = change_set.operations[position]
+            journal = self._journal(change_set_id, position)
+            if journal.state != "applied":
+                continue
+            if operation.rollback.value == "retain":
+                return ChangeSetState.UNCERTAIN
+            path = self._safe_path(operation.path)
+            if self._operation_token(operation, path) != journal.expected_after_token:
+                return ChangeSetState.CONFLICT
+            self._restore_operation(operation, path, journal)
+            self._mark_rolled_back(change_set_id, position)
+        return ChangeSetState.ROLLED_BACK
+
+    def _restore_operation(
+        self, operation: ChangeOperation, path: Path, journal: ChangeOperationRow
+    ) -> None:
+        before = self._decode_state(journal.before_token)
+        if operation.kind in {ChangeOperationKind.MOVE, ChangeOperationKind.COPY}:
+            assert operation.destination is not None
+            destination = self._safe_path(operation.destination)
+            if operation.kind is ChangeOperationKind.MOVE:
+                os.replace(destination, path)
+            elif destination.is_dir():
+                shutil.rmtree(destination)
+            else:
+                destination.unlink()
+            return
+        if journal.preimage_reference is not None:
+            mode = before.get("mode")
+            self._atomic_write(
+                path,
+                self._artifacts.read_bytes(journal.preimage_reference),
+                mode=int(mode) if isinstance(mode, int) else None,
+            )
+            return
+        if before.get("kind") == "directory":
+            path.mkdir()
+            mode = before.get("mode")
+            if isinstance(mode, int):
+                path.chmod(mode)
+            return
+        if path.is_dir():
+            path.rmdir()
+        elif path.exists():
+            path.unlink()
+
+    @staticmethod
+    def _decode_state(token: str | None) -> dict[str, object]:
+        if token in {None, "absent", "symlink"}:
+            return {"kind": token or "unknown"}
+        assert token is not None
+        try:
+            value = json.loads(token)
+        except json.JSONDecodeError:
+            return {"kind": "unknown"}
+        return value if isinstance(value, dict) else {"kind": "unknown"}
 
     @staticmethod
     def _apply_unified_patch(before: bytes, patch: str, logical_path: str) -> bytes:
@@ -402,6 +531,50 @@ class ChangeSetService:
                 details={"path": operation.path, "observed": token},
             )
 
+    def _check_destination_precondition(self, operation: ChangeOperation) -> None:
+        if operation.destination is None or operation.destination_precondition is None:
+            return
+        destination = self._safe_path(operation.destination)
+        shadow = operation.model_copy(
+            update={
+                "path": operation.destination,
+                "destination": None,
+                "precondition": operation.destination_precondition,
+                "precondition_value": operation.destination_precondition_value,
+                "destination_precondition": None,
+                "destination_precondition_value": None,
+            }
+        )
+        self._check_precondition(shadow, destination)
+
+    def _validate_scope(self, change_set: ChangeSet) -> None:
+        requested = {
+            value
+            for operation in change_set.operations
+            for value in (operation.path, operation.destination)
+            if value is not None
+        }
+        requested.update(validation.path for validation in change_set.validations)
+        for path in requested:
+            self._safe_path(path)
+        normalized_scopes = tuple(Path(item) for item in change_set.path_scopes)
+        deviations = tuple(
+            sorted(
+                path
+                for path in requested
+                if not any(
+                    scope == Path(".") or Path(path) == scope or Path(path).is_relative_to(scope)
+                    for scope in normalized_scopes
+                )
+            )
+        )
+        if deviations:
+            raise MishkanError(
+                ErrorCode.AUTHORITY_NOT_GRANTED,
+                "change paths exceed the declared change-set scopes",
+                details={"scope_deviations": list(deviations)},
+            )
+
     def _safe_path(self, relative: str) -> Path:
         requested = Path(relative)
         if requested.is_absolute() or not requested.parts or ".." in requested.parts:
@@ -424,12 +597,14 @@ class ChangeSetService:
         return lexical
 
     @staticmethod
-    def _atomic_write(path: Path, content: bytes) -> None:
+    def _atomic_write(path: Path, content: bytes, *, mode: int | None = None) -> None:
         path.parent.mkdir(parents=False, exist_ok=True)
         descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
         staged = Path(temporary)
         try:
             with os.fdopen(descriptor, "wb") as stream:
+                if mode is not None:
+                    os.fchmod(stream.fileno(), mode)
                 stream.write(content)
                 stream.flush()
                 os.fsync(stream.fileno())
@@ -461,6 +636,26 @@ class ChangeSetService:
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
         return f"sha256:{digest}"
 
+    @classmethod
+    def _state_token(cls, path: Path) -> str:
+        try:
+            metadata = path.lstat()
+        except FileNotFoundError:
+            return "absent"
+        if stat.S_ISLNK(metadata.st_mode):
+            return "symlink"
+        kind = "directory" if stat.S_ISDIR(metadata.st_mode) else "file"
+        payload: dict[str, str | int] = {
+            "kind": kind,
+            "mode": stat.S_IMODE(metadata.st_mode),
+        }
+        if kind == "file":
+            payload["digest"] = cls._token(path)
+        else:
+            entries = sorted(item.name for item in path.iterdir())
+            payload["entries"] = json.dumps(entries[:1_001], separators=(",", ":"))
+        return json.dumps(payload, sort_keys=True)
+
     @staticmethod
     def _revision_token(path: Path) -> str:
         try:
@@ -486,27 +681,48 @@ class ChangeSetService:
             raise MishkanError(ErrorCode.EDIT, "Git blob precondition could not be observed")
         return completed.stdout.strip()
 
-    def _expected_token(self, operation: ChangeOperation, path: Path, content: bytes | None) -> str:
+    def _expected_state_token(
+        self, operation: ChangeOperation, path: Path, content: bytes | None
+    ) -> str:
         if operation.kind is ChangeOperationKind.MKDIR:
-            return "directory"
+            return json.dumps(
+                {
+                    "entries": "[]",
+                    "kind": "directory",
+                    "mode": self._result_mode(operation, path),
+                },
+                sort_keys=True,
+            )
         if operation.kind is ChangeOperationKind.DELETE:
             return "absent"
         if operation.kind in {ChangeOperationKind.MOVE, ChangeOperationKind.COPY}:
             assert operation.destination is not None
             destination = self._safe_path(operation.destination)
-            source_token = self._token(path)
+            source_token = self._state_token(path)
+            destination_token = source_token
+            if operation.kind is ChangeOperationKind.COPY and operation.result_mode is not None:
+                decoded = self._decode_state(source_token)
+                decoded["mode"] = operation.result_mode
+                destination_token = json.dumps(decoded, sort_keys=True)
             return json.dumps(
                 {
                     "source": "absent"
                     if operation.kind is ChangeOperationKind.MOVE
                     else source_token,
-                    "destination": source_token,
+                    "destination": destination_token,
                     "destination_path": str(destination),
                 },
                 sort_keys=True,
             )
         assert content is not None
-        return f"sha256:{hashlib.sha256(content).hexdigest()}"
+        return json.dumps(
+            {
+                "digest": f"sha256:{hashlib.sha256(content).hexdigest()}",
+                "kind": "file",
+                "mode": self._result_mode(operation, path),
+            },
+            sort_keys=True,
+        )
 
     def _operation_token(self, operation: ChangeOperation, path: Path) -> str:
         if operation.kind in {ChangeOperationKind.MOVE, ChangeOperationKind.COPY}:
@@ -514,13 +730,25 @@ class ChangeSetService:
             destination = self._safe_path(operation.destination)
             return json.dumps(
                 {
-                    "source": self._token(path),
-                    "destination": self._token(destination),
+                    "source": self._state_token(path),
+                    "destination": self._state_token(destination),
                     "destination_path": str(destination),
                 },
                 sort_keys=True,
             )
-        return self._token(path)
+        return self._state_token(path)
+
+    @staticmethod
+    def _result_mode(operation: ChangeOperation, path: Path) -> int:
+        if operation.result_mode is not None:
+            return operation.result_mode
+        try:
+            return stat.S_IMODE(path.lstat().st_mode)
+        except FileNotFoundError:
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT,
+                "a newly created path has no declared result mode",
+            ) from None
 
     def _preimage(
         self,
@@ -616,6 +844,16 @@ class ChangeSetService:
             change.revision += 1
             change.updated_at = utc_now().isoformat()
 
+    def _mark_rolled_back(self, change_set_id: UUID, position: int) -> None:
+        with Session(self._engine) as session, session.begin():
+            operation = session.get(ChangeOperationRow, (str(change_set_id), position))
+            change = session.get(ChangeSetRow, str(change_set_id))
+            assert operation is not None and change is not None
+            operation.state = "rolled_back"
+            operation.updated_at = utc_now().isoformat()
+            change.revision += 1
+            change.updated_at = utc_now().isoformat()
+
     def _set_state(self, change_set_id: UUID, state: ChangeSetState) -> None:
         with Session(self._engine) as session, session.begin():
             row = session.get(ChangeSetRow, str(change_set_id))
@@ -631,6 +869,7 @@ class ChangeSetService:
         reason: str | None,
         *,
         diff_reference: str | None = None,
+        validation_results: tuple[ChangeValidationResult, ...] | None = None,
     ) -> ChangeSetResult:
         with Session(self._engine) as session, session.begin():
             row = session.get(ChangeSetRow, str(change_set_id))
@@ -638,6 +877,11 @@ class ChangeSetService:
             row.state = state.value
             row.reason = reason
             row.diff_reference = diff_reference or row.diff_reference
+            if validation_results is not None:
+                row.validation_payload = json.dumps(
+                    [item.model_dump(mode="json") for item in validation_results],
+                    sort_keys=True,
+                )
             row.revision += 1
             row.updated_at = utc_now().isoformat()
             session.flush()
@@ -653,6 +897,27 @@ class ChangeSetService:
             .where(ChangeOperationRow.change_set_id == change_set_id)
             .order_by(ChangeOperationRow.position)
         ).all()
+        journals = session.scalars(
+            select(ChangeOperationRow)
+            .where(ChangeOperationRow.change_set_id == change_set_id)
+            .order_by(ChangeOperationRow.position)
+        ).all()
+        definition = ChangeSet.model_validate_json(row.payload)
+        changed_paths: set[str] = set()
+        for journal, operation in zip(journals, definition.operations, strict=True):
+            if journal.state not in {"applied", "rolled_back"}:
+                continue
+            changed_paths.add(operation.path)
+            if operation.destination is not None:
+                changed_paths.add(operation.destination)
+        validations = (
+            tuple(
+                ChangeValidationResult.model_validate(item)
+                for item in json.loads(row.validation_payload)
+            )
+            if row.validation_payload is not None
+            else ()
+        )
         return ChangeSetResult(
             change_set_id=change_set_id,
             state=ChangeSetState(row.state),
@@ -660,5 +925,8 @@ class ChangeSetService:
             revision=row.revision,
             preimage_references=tuple(item for item in preimages if item is not None),
             diff_reference=row.diff_reference,
+            changed_paths=tuple(sorted(changed_paths)),
+            scope_deviations=(),
+            validation_results=validations,
             reason=row.reason,
         )

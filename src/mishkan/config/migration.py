@@ -35,7 +35,7 @@ def migrate_to_1_2(source: Path) -> Path:
     if mode not in {"local", "cloud", "hybrid"}:
         raise MishkanError(
             ErrorCode.CONFIGURATION,
-            "configuration mode has no I03 migration preset",
+            "configuration mode has no daemon migration preset",
             details={"mode": mode},
         )
     defaults = yaml.safe_load(preset_text(str(mode)))
@@ -83,7 +83,7 @@ def migrate_to_latest(source: Path) -> Path:
     if mode not in {"local", "cloud", "hybrid"}:
         raise MishkanError(
             ErrorCode.CONFIGURATION,
-            "configuration mode has no I04 migration preset",
+            "configuration mode has no capability migration preset",
             details={"mode": mode},
         )
     defaults = yaml.safe_load(preset_text(str(mode)))

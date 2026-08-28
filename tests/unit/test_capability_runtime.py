@@ -14,8 +14,10 @@ from mishkan.config.models import MishkanConfig, ProjectConfig
 from mishkan.config.presets import preset_text
 from mishkan.daemon import DaemonBootstrap
 from mishkan.planning.models import InitializationReport
+from mishkan.policy import PolicyLoader
+from mishkan.policy.models import EffectivePolicy
+from mishkan.tools.capability_runtime import CapabilityRuntime, build_capability_runtime
 from mishkan.tools.catalog import ToolCatalog
-from mishkan.tools.i04_runtime import I04CapabilityRuntime, build_i04_capability_runtime
 from mishkan.tools.inspection import ContentInspector, InspectionProfileLoader
 
 
@@ -26,7 +28,7 @@ def _config(tmp_path: Path) -> MishkanConfig:
     return loaded.model_copy(update={"project": ProjectConfig(workspace=tmp_path)})
 
 
-def test_i04_runtime_makes_only_constructed_adapters_bindable_without_starting_browser(
+def test_capability_runtime_binds_only_concrete_adapters_without_starting_browser(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -51,12 +53,13 @@ def test_i04_runtime_makes_only_constructed_adapters_bindable_without_starting_b
         return original_reconcile(supervisor)
 
     monkeypatch.setattr(BrowserSupervisor, "reconcile_all", reconcile)
-    runtime = build_i04_capability_runtime(
+    runtime = build_capability_runtime(
         config,
         paths.database,
         tmp_path,
         artifacts,
         inspector,
+        PolicyLoader().load(config.policy_sources, tmp_path),
     )
     try:
         catalog = ToolCatalog(
@@ -66,6 +69,7 @@ def test_i04_runtime_makes_only_constructed_adapters_bindable_without_starting_b
             available_dependencies=runtime.dependencies,
         )
         snapshot = catalog.snapshot(("web.complete", "browser.complete"))
+        git_snapshot = catalog.snapshot(("git.complete",))
 
         assert {item.tool_id for item in snapshot.tools} == {
             "web.search",
@@ -81,6 +85,13 @@ def test_i04_runtime_makes_only_constructed_adapters_bindable_without_starting_b
             "browser.close",
         }
         assert runtime.browser_started is False
+        assert {item.tool_id for item in git_snapshot.tools} == {
+            "git.stage",
+            "git.commit",
+            "git.push",
+            "git.force_with_lease",
+            "git.force_push",
+        }
         assert len(reconciliations) == 1
     finally:
         runtime.close()
@@ -93,7 +104,7 @@ def test_schema_13_initializer_assembles_i04_adapters_without_eager_browser_effe
 ) -> None:
     repository = tmp_path / "repository"
     repository.mkdir()
-    (repository / "README.md").write_text("# I04 runtime\n", encoding="utf-8")
+    (repository / "README.md").write_text("# Capability runtime\n", encoding="utf-8")
     for arguments in (
         ("init", "-b", "main"),
         ("config", "user.name", "Fixture"),
@@ -104,7 +115,7 @@ def test_schema_13_initializer_assembles_i04_adapters_without_eager_browser_effe
         subprocess.run(["git", *arguments], cwd=repository, check=True, capture_output=True)
     config = _config(repository)
     observed: list[frozenset[str]] = []
-    original = initialize_module.build_i04_capability_runtime  # type: ignore[attr-defined]
+    original = initialize_module.build_capability_runtime  # type: ignore[attr-defined]
 
     def capture(
         selected: MishkanConfig,
@@ -112,8 +123,9 @@ def test_schema_13_initializer_assembles_i04_adapters_without_eager_browser_effe
         workspace: Path,
         artifacts: DurableArtifactService,
         inspector: ContentInspector,
-    ) -> I04CapabilityRuntime:
-        runtime = original(selected, database, workspace, artifacts, inspector)
+        policy: EffectivePolicy,
+    ) -> CapabilityRuntime:
+        runtime = original(selected, database, workspace, artifacts, inspector, policy)
         observed.append(runtime.adapter_ids)
         assert runtime.browser_started is False
         return runtime
@@ -129,14 +141,15 @@ def test_schema_13_initializer_assembles_i04_adapters_without_eager_browser_effe
         results=(),
         reviews=(),
     )
-    monkeypatch.setattr(initialize_module, "build_i04_capability_runtime", capture)
+    monkeypatch.setattr(initialize_module, "build_capability_runtime", capture)
     monkeypatch.setattr(
         "mishkan.crewai.flow.CrewAIInitializationFlow.kickoff",
         lambda _flow: report,
     )
 
-    result = MishkanInitializer().run(config, repository, "Inspect I04 runtime")
+    result = MishkanInitializer().run(config, repository, "Inspect capability runtime")
 
     assert result == report
     assert observed and "native.web.search" in observed[0]
     assert "native.browser.open" in observed[0]
+    assert "native.git.force_push" in observed[0]

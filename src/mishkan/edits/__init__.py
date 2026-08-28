@@ -6,6 +6,9 @@ from mishkan.edits.models import (
     ChangeSet,
     ChangeSetResult,
     ChangeSetState,
+    ChangeValidation,
+    ChangeValidationKind,
+    ChangeValidationResult,
     PreconditionKind,
     RollbackPolicy,
 )
@@ -18,6 +21,9 @@ __all__ = [
     "ChangeSetResult",
     "ChangeSetService",
     "ChangeSetState",
+    "ChangeValidation",
+    "ChangeValidationKind",
+    "ChangeValidationResult",
     "PreconditionKind",
     "RollbackPolicy",
 ]

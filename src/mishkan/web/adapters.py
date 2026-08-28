@@ -1,4 +1,4 @@
-"""Concrete search and extraction adapters behind typed I04 ports."""
+"""Concrete search and extraction adapters behind typed Web ports."""
 
 from __future__ import annotations
 

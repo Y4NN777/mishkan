@@ -1,4 +1,4 @@
-"""Atomic local content-addressed artifact store for the I02 execution boundary."""
+"""Atomic local content-addressed artifact store for the execution boundary."""
 
 from __future__ import annotations
 

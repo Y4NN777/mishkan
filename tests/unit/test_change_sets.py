@@ -16,6 +16,8 @@ from mishkan.edits import (
     ChangeSet,
     ChangeSetService,
     ChangeSetState,
+    ChangeValidation,
+    ChangeValidationKind,
     PreconditionKind,
 )
 from mishkan.persistence import SchemaManager
@@ -58,6 +60,7 @@ def test_create_and_exact_replace_are_verified_and_journaled(tmp_path: Path) -> 
                 path="app.txt",
                 precondition=PreconditionKind.ABSENT,
                 inline_content="hello world",
+                result_mode=0o640,
                 expected_digest=_digest(b"hello world"),
             ),
             ChangeOperation(
@@ -166,6 +169,7 @@ def test_crash_after_effect_is_reconciled_without_reapplying(tmp_path: Path) -> 
                 path="once.txt",
                 precondition=PreconditionKind.ABSENT,
                 inline_content="once",
+                result_mode=0o600,
             ),
         ),
     )
@@ -220,8 +224,8 @@ def test_symlink_and_concurrent_after_state_are_never_overwritten(tmp_path: Path
             ),
         ),
     )
-    service.plan(symlink_change)
-    assert service.apply(symlink_change.id).state is ChangeSetState.CONFLICT
+    with pytest.raises(MishkanError):
+        service.plan(symlink_change)
     assert outside.read_text() == "outside"
 
 
@@ -248,12 +252,14 @@ def test_all_structural_operations_and_artifact_content_are_exact(tmp_path: Path
                 kind=ChangeOperationKind.MKDIR,
                 path="tree",
                 precondition=PreconditionKind.ABSENT,
+                result_mode=0o750,
             ),
             ChangeOperation(
                 kind=ChangeOperationKind.CREATE,
                 path="tree/a.txt",
                 precondition=PreconditionKind.ABSENT,
                 inline_content="A",
+                result_mode=0o640,
             ),
             ChangeOperation(
                 kind=ChangeOperationKind.COPY,
@@ -261,6 +267,7 @@ def test_all_structural_operations_and_artifact_content_are_exact(tmp_path: Path
                 destination="tree/b.txt",
                 precondition=PreconditionKind.DIGEST,
                 precondition_value=_digest(b"A"),
+                destination_precondition=PreconditionKind.ABSENT,
             ),
             ChangeOperation(
                 kind=ChangeOperationKind.MOVE,
@@ -268,6 +275,7 @@ def test_all_structural_operations_and_artifact_content_are_exact(tmp_path: Path
                 destination="tree/c.txt",
                 precondition=PreconditionKind.DIGEST,
                 precondition_value=_digest(b"A"),
+                destination_precondition=PreconditionKind.ABSENT,
             ),
             ChangeOperation(
                 kind=ChangeOperationKind.WRITE,
@@ -285,6 +293,11 @@ def test_all_structural_operations_and_artifact_content_are_exact(tmp_path: Path
                 rewrite_engine="fixture",
                 rewrite_version="1.0",
                 rewrite_rule="replace-exact-content",
+                rewrite_language="text",
+                rewrite_scope="single-file",
+                rewrite_matches=1,
+                rewrite_formatting="exact-replacement",
+                rewrite_limits={"files": 1, "bytes": 1024},
             ),
             ChangeOperation(
                 kind=ChangeOperationKind.DELETE,
@@ -320,3 +333,98 @@ def test_change_set_queries_and_missing_state_fail_closed(tmp_path: Path) -> Non
         service.get(uuid4())
     with pytest.raises(MishkanError):
         service.apply(uuid4())
+
+
+def test_scopes_modes_and_selected_validation_are_enforced_and_durable(tmp_path: Path) -> None:
+    service, _artifacts, workspace = _services(tmp_path)
+    target = workspace / "src" / "app.txt"
+    target.parent.mkdir()
+    target.write_text("before")
+    target.chmod(0o640)
+
+    outside_scope = ChangeSet(
+        scope="source-only",
+        path_scopes=("src",),
+        declared_effects=("filesystem.write",),
+        operations=(
+            ChangeOperation(
+                kind=ChangeOperationKind.CREATE,
+                path="other.txt",
+                precondition=PreconditionKind.ABSENT,
+                inline_content="forbidden",
+                result_mode=0o600,
+            ),
+        ),
+    )
+    with pytest.raises(MishkanError):
+        service.plan(outside_scope)
+    assert not (workspace / "other.txt").exists()
+
+    change = ChangeSet(
+        scope="source-only",
+        path_scopes=("src",),
+        declared_effects=("filesystem.write",),
+        operations=(
+            ChangeOperation(
+                kind=ChangeOperationKind.WRITE,
+                path="src/app.txt",
+                precondition=PreconditionKind.DIGEST,
+                precondition_value=_digest(b"before"),
+                inline_content="after",
+            ),
+        ),
+        validations=(
+            ChangeValidation(
+                kind=ChangeValidationKind.DIGEST,
+                path="src/app.txt",
+                expected_value=_digest(b"wrong"),
+            ),
+        ),
+    )
+    service.plan(change)
+    result = service.apply(change.id)
+
+    assert result.state is ChangeSetState.ROLLED_BACK
+    assert result.validation_results[0].passed is False
+    assert result.changed_paths == ("src/app.txt",)
+    assert target.read_text() == "before"
+    assert target.stat().st_mode & 0o777 == 0o640
+    assert service.get(change.id).validation_results == result.validation_results
+
+
+def test_move_crash_recovery_uses_both_path_identities_without_replay(tmp_path: Path) -> None:
+    crashed = False
+
+    def hook(position: int) -> None:
+        nonlocal crashed
+        if position == 0 and not crashed:
+            crashed = True
+            raise RuntimeError("fault injection")
+
+    service, artifacts, workspace = _services(tmp_path, hook=hook)
+    source = workspace / "source.txt"
+    source.write_text("content")
+    source.chmod(0o640)
+    change = ChangeSet(
+        scope="workspace",
+        declared_effects=("filesystem.move",),
+        operations=(
+            ChangeOperation(
+                kind=ChangeOperationKind.MOVE,
+                path="source.txt",
+                destination="destination.txt",
+                precondition=PreconditionKind.DIGEST,
+                precondition_value=_digest(b"content"),
+                destination_precondition=PreconditionKind.ABSENT,
+            ),
+        ),
+    )
+    service.plan(change)
+    with pytest.raises(RuntimeError):
+        service.apply(change.id)
+
+    recovered = ChangeSetService(tmp_path / "mishkan.db", workspace, artifacts).reconcile(change.id)
+    assert recovered.state is ChangeSetState.VERIFIED
+    assert not source.exists()
+    assert (workspace / "destination.txt").read_text() == "content"
+    assert (workspace / "destination.txt").stat().st_mode & 0o777 == 0o640

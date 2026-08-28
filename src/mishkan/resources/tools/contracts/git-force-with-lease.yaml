@@ -1,20 +1,21 @@
 schema_version: "1.0"
-tool_id: git.push
+tool_id: git.force_with_lease
 version: 1.0.0
-crewai_name: git_push
-summary: Push the exact checked-out branch and HEAD to a verified remote URL.
+crewai_name: git_force_with_lease
+summary: Force an exact branch only while the remote remains at the declared object id.
 effect_class: repository_remote_write
 source_id: bundled.core
 source_kind: native
-adapter: native.git.push
+adapter: native.git.force_with_lease
 input_schema:
   type: object
   additionalProperties: false
-  required: [remote, branch, expected_remote_url]
+  required: [remote, branch, expected_remote_url, expected_remote_oid]
   properties:
     remote: {type: string}
     branch: {type: string}
     expected_remote_url: {type: string}
+    expected_remote_oid: {type: string}
     expected_head: {type: [string, "null"]}
     timeout_seconds: {type: integer, minimum: 1, maximum: 3600, default: 120}
 result_schema: {type: object}

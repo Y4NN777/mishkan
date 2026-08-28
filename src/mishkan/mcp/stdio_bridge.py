@@ -23,7 +23,7 @@ async def serve(config: MishkanConfig) -> None:
     daemon = config.daemon
     mcp = config.mcp
     if daemon is None or mcp is None:
-        raise MishkanError(ErrorCode.CONFIGURATION, "I04 daemon and MCP configuration is required")
+        raise MishkanError(ErrorCode.CONFIGURATION, "daemon and MCP configuration is required")
     if not mcp.facade.enabled or not mcp.facade.stdio_bridge_enabled:
         raise MishkanError(ErrorCode.AUTHORITY_NOT_GRANTED, "MCP STDIO bridge is disabled")
     paths = DaemonPaths.from_config(config)

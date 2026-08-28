@@ -1,4 +1,4 @@
-"""CrewAI agents, tasks, crews, and processes for the I01 outcome."""
+"""CrewAI agents, tasks, crews, and processes for repository initialization."""
 
 from __future__ import annotations
 

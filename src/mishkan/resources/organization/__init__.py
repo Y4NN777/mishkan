@@ -1,1 +1,1 @@
-"""Bundled I01 organization and outcome definitions."""
+"""Bundled initial organization and outcome definitions."""

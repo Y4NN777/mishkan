@@ -8,7 +8,7 @@ from uuid import UUID
 import pytest
 import yaml
 from pydantic import AnyHttpUrl, ValidationError
-from support.i02 import context_for, inspector, policy_for
+from support.capabilities import context_for, inspector, policy_for
 
 from mishkan.artifacts.service import DurableArtifactService
 from mishkan.browser import (

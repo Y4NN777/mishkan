@@ -15,9 +15,9 @@ from mishkan.planning import PlanValidator
 from mishkan.planning.models import InitializationReport
 from mishkan.policy import PolicyAuthority, PolicyLoader
 from mishkan.repository import RepositoryInspector
+from mishkan.tools.capability_runtime import CapabilityRuntime, build_capability_runtime
 from mishkan.tools.catalog import ToolCatalog
 from mishkan.tools.gateway import CapabilityGateway, MappingCredentialResolver
-from mishkan.tools.i04_runtime import I04CapabilityRuntime, build_i04_capability_runtime
 from mishkan.tools.inspection import ContentInspector, InspectionProfileLoader
 from mishkan.tools.isolation import IsolationProfileLoader
 from mishkan.tools.native import (
@@ -65,7 +65,7 @@ class MishkanInitializer:
         inspector = ContentInspector(
             InspectionProfileLoader().load(inspection_source, discovery.binding.root)
         )
-        runtime: I04CapabilityRuntime | None = None
+        runtime: CapabilityRuntime | None = None
         artifact_store: ArtifactStore
         available_environment = native_environment
         if config.schema_version == "1.3":
@@ -77,12 +77,13 @@ class MishkanInitializer:
                 max_artifact_bytes=artifact_config.max_artifact_bytes,
                 max_chunk_bytes=artifact_config.chunk_bytes,
             )
-            runtime = build_i04_capability_runtime(
+            runtime = build_capability_runtime(
                 config,
                 database,
                 discovery.binding.root,
                 durable_artifacts,
                 inspector,
+                policy,
             )
             artifact_store = durable_artifacts
             available_environment = replace(

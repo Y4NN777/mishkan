@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from support.i02 import context_for, inspector, policy_for
+from support.capabilities import context_for, inspector, policy_for
 
 from mishkan.artifacts import FilesystemArtifactStore
 from mishkan.domain.errors import ErrorCode, MishkanError

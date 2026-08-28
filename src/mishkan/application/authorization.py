@@ -28,6 +28,7 @@ from mishkan.config.models import (
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.time import utc_now
 from mishkan.edits import ChangeSet
+from mishkan.edits.git import GitEffectMode, GitEffectRequest
 from mishkan.execution import SessionRecord, SessionRequest
 from mishkan.policy import (
     AuthorizationDecision,
@@ -132,6 +133,15 @@ COMMAND_SEMANTICS = MappingProxyType(
         "change.reconcile": CommandSemantics(
             "application.change.reconcile", "filesystem", ("change.reconcile",)
         ),
+        **{
+            f"git.{mode.value}": CommandSemantics(
+                f"git.{mode.value}",
+                mode.effect_class,
+                (f"git.{mode.value}",),
+                mode.value in {"push", "force_with_lease", "force_push"},
+            )
+            for mode in GitEffectMode
+        },
         "session.start": CommandSemantics(
             "application.session.start", "process", ("process.start",)
         ),
@@ -186,6 +196,7 @@ _COMMAND_TARGETS = MappingProxyType(
         "change.plan": ("change_set", "uuid"),
         "change.apply": ("change_set", "uuid"),
         "change.reconcile": ("change_set", "uuid"),
+        **{f"git.{mode.value}": ("git_repository", "required") for mode in GitEffectMode},
         "session.start": ("session_service", "absent"),
         "session.write": ("session", "uuid"),
         "session.resize": ("session", "uuid"),
@@ -236,6 +247,7 @@ _COMMAND_PAYLOAD_FIELDS = MappingProxyType(
         "change.plan": (frozenset({"change_set"}), frozenset()),
         "change.apply": (frozenset(), frozenset()),
         "change.reconcile": (frozenset(), frozenset()),
+        **{f"git.{mode.value}": (frozenset({"request"}), frozenset()) for mode in GitEffectMode},
         "session.start": (frozenset({"request"}), frozenset()),
         "session.write": (
             frozenset({"content_base64", "declared_effects", "network_destinations"}),
@@ -258,6 +270,7 @@ class AuthorizedApplicationCommand:
     request: AuthorizationRequest
     decision: AuthorizationDecision
     session_request: SessionRequest | None = None
+    git_request: GitEffectRequest | None = None
 
 
 class ApplicationCommandAuthority:
@@ -301,10 +314,13 @@ class ApplicationCommandAuthority:
         credentials: tuple[str, ...] = ()
         external_resources: tuple[str, ...] = ()
         network_destinations: tuple[str, ...] = ()
+        remotes: tuple[str, ...] = ()
+        branches: tuple[str, ...] = ()
         uses_network = semantics.network
         effects = semantics.effects
         timeout = 120
         session_request: SessionRequest | None = None
+        git_request: GitEffectRequest | None = None
 
         try:
             if normalized.command_type == "run.initialize":
@@ -321,6 +337,40 @@ class ApplicationCommandAuthority:
             elif normalized.command_type in {"change.apply", "change.reconcile"}:
                 change_set = self._changes.definition(self._target_uuid(normalized))
                 paths, effects = self._change_scope(change_set, semantics.effects)
+            elif normalized.command_type.startswith("git."):
+                git_request = GitEffectRequest.model_validate(normalized.payload["request"])
+                if normalized.command_type != f"git.{git_request.mode.value}":
+                    raise MishkanError(
+                        ErrorCode.OUTPUT_CONTRACT,
+                        "Git command type differs from its typed effect request",
+                    )
+                if git_request.workspace.resolve(strict=True) != self._workspace:
+                    raise MishkanError(
+                        ErrorCode.AUTHORITY_NOT_GRANTED,
+                        "Git effect must target the daemon's exact configured repository",
+                    )
+                if normalized.target_id != str(self._workspace):
+                    raise MishkanError(
+                        ErrorCode.OUTPUT_CONTRACT,
+                        "Git command target differs from the configured repository identity",
+                    )
+                if (
+                    git_request.credential_reference is not None
+                    and git_request.credential_reference not in self._config.credential_bindings
+                ):
+                    raise MishkanError(
+                        ErrorCode.AUTHORIZATION_MISSING,
+                        "Git credential reference is not configured",
+                    )
+                paths = git_request.paths
+                remotes = (git_request.remote,) if git_request.remote else ()
+                branches = (git_request.branch,) if git_request.branch else ()
+                credentials = (
+                    (git_request.credential_reference,)
+                    if git_request.credential_reference is not None
+                    else ()
+                )
+                timeout = git_request.timeout_seconds
             elif normalized.command_type == "session.start":
                 session_request = SessionRequest.model_validate(normalized.payload["request"])
                 if session_request.owner != normalized.actor_id:
@@ -430,6 +480,8 @@ class ApplicationCommandAuthority:
             executables=executables,
             arguments=arguments,
             network_destinations=network_destinations,
+            remotes=remotes,
+            branches=branches,
             environments=environments,
             credentials=credentials,
             external_resources=external_resources,
@@ -439,7 +491,13 @@ class ApplicationCommandAuthority:
             ),
         )
         decision = PolicyAuthority().evaluate(request, self._policy)
-        return AuthorizedApplicationCommand(normalized, request, decision, session_request)
+        return AuthorizedApplicationCommand(
+            normalized,
+            request,
+            decision,
+            session_request=session_request,
+            git_request=git_request,
+        )
 
     @staticmethod
     def is_allowed(authorized: AuthorizedApplicationCommand) -> bool:

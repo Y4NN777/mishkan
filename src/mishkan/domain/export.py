@@ -36,6 +36,7 @@ from mishkan.browser.models import (
 from mishkan.config.models import MishkanConfig
 from mishkan.domain.errors import ErrorEnvelope
 from mishkan.domain.identity import DomainRecord
+from mishkan.edits.git import GitEffectRequest, GitEffectResult
 from mishkan.edits.models import ChangeSet, ChangeSetResult
 from mishkan.events.models import (
     EventEnvelope,
@@ -56,6 +57,7 @@ from mishkan.mcp.models import (
     McpProgressEvent,
 )
 from mishkan.runtime import TaskReviewRejection
+from mishkan.tools.execution import ExecutionRequest, ExecutionResult
 from mishkan.web.models import (
     CitationEvidence,
     CrawlRequest,
@@ -101,6 +103,10 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "event-page-v1.schema.json": EventPage,
     "event-retention-plan-v1.schema.json": EventRetentionPlan,
     "event-retention-policy-v1.schema.json": EventRetentionPolicy,
+    "execution-request-v1.schema.json": ExecutionRequest,
+    "execution-result-v1.schema.json": ExecutionResult,
+    "git-effect-request-v1.schema.json": GitEffectRequest,
+    "git-effect-result-v1.schema.json": GitEffectResult,
     "mcp-call-request-v1.schema.json": McpCallRequest,
     "mcp-call-result-v1.schema.json": McpCallResult,
     "mcp-connection-v1.schema.json": McpConnectionRecord,

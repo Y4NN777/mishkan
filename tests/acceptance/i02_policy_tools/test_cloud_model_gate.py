@@ -92,7 +92,7 @@ def _config(workspace: Path, key_env: str) -> MishkanConfig:
                 "package://mishkan.resources.policies/i02-local.yaml",
             ],
             "tool_sources": [
-                "package://mishkan.resources.tools/i02-catalog.yaml",
+                "package://mishkan.resources.tools/core-catalog.yaml",
             ],
             "inspection_profile": "package://mishkan.resources.inspection/i02-default.yaml",
             "isolation_profiles": [

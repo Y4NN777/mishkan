@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 import yaml
 from pydantic import AnyHttpUrl
-from support.i02 import context_for, inspector, policy_for
+from support.capabilities import context_for, inspector, policy_for
 
 from mishkan.artifacts import ArtifactProvenance
 from mishkan.artifacts.service import DurableArtifactService
@@ -347,7 +347,7 @@ def _exchange(
 def test_cross_origin_redirect_never_forwards_late_resolved_credential(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("I04_WEB_TOKEN", "secret-canary")
+    monkeypatch.setenv("WEB_TEST_TOKEN", "secret-canary")
     transport = RecordingTransport(
         [
             _exchange(
@@ -370,7 +370,7 @@ def test_cross_origin_redirect_never_forwards_late_resolved_credential(
         url=AnyHttpUrl("https://first.example/start"),
         network_profile="public-read",
         credential_refs=(
-            CredentialReference(source=CredentialSource.ENV, locator="I04_WEB_TOKEN"),
+            CredentialReference(source=CredentialSource.ENV, locator="WEB_TEST_TOKEN"),
         ),
         credential_origin="https://first.example",
         credential_header="Authorization",

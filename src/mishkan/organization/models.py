@@ -1,4 +1,4 @@
-"""Minimal I01 organization and outcome definitions."""
+"""Initial organization and repository-outcome definitions."""
 
 from pydantic import BaseModel, ConfigDict, Field
 

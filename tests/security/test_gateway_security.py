@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from support.i02 import RecordingAdapter, context_for, inspector, policy_for
+from support.capabilities import RecordingAdapter, context_for, inspector, policy_for
 
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.policy import Decision, PolicyAuthority
@@ -98,7 +98,6 @@ def test_resolved_credential_never_enters_result_or_audit_evidence(tmp_path: Pat
         "git.push",
         Decision.ALLOW,
         effect_class="repository_remote_write",
-        network_destinations=("github.example",),
         remotes=("origin",),
         branches=("develop",),
         credentials=("git.remote",),
@@ -108,7 +107,7 @@ def test_resolved_credential_never_enters_result_or_audit_evidence(tmp_path: Pat
         tmp_path,
         "git.push",
         policy,
-        ("test-repository", "origin", "develop", "github.example"),
+        ("origin", "develop"),
         network=True,
     )
     adapter = RecordingAdapter(
@@ -120,10 +119,8 @@ def test_resolved_credential_never_enters_result_or_audit_evidence(tmp_path: Pat
                 "external_reference": f"https://github.example/result?token={secret}",
             },
             actual_targets=ResolvedTargets(
-                repositories=("test-repository",),
                 remotes=("origin",),
                 branches=("develop",),
-                network_destinations=("github.example",),
             ),
         )
     )
@@ -140,18 +137,14 @@ def test_resolved_credential_never_enters_result_or_audit_evidence(tmp_path: Pat
     result = gateway.invoke(
         context,
         {
-            "repository": "test-repository",
             "remote": "origin",
-            "local_branch": "develop",
-            "remote_branch": "develop",
-            "expected_revision": "abc1234",
-            "destination": "github.example",
+            "branch": "develop",
+            "expected_remote_url": "https://github.example/repository.git",
+            "expected_head": "abc1234",
         },
         DeclaredTargets(
-            repositories=("test-repository",),
             remotes=("origin",),
             branches=("develop",),
-            network_destinations=("github.example",),
         ),
     )
 

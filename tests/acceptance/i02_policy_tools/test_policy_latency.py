@@ -1,6 +1,6 @@
 from time import perf_counter
 
-from support.i02 import policy_for
+from support.capabilities import policy_for
 
 from mishkan.policy import AuthorizationRequest, Decision, PolicyAuthority
 from mishkan.policy.models import ResourceRequest

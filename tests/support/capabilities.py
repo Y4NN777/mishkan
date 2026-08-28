@@ -18,9 +18,9 @@ from mishkan.tools.catalog import ToolCatalog
 from mishkan.tools.gateway_models import AdapterResult, InvocationContext
 from mishkan.tools.inspection import ContentInspector, InspectionProfileLoader
 
-CATALOG_URI = "package://mishkan.resources.tools/i02-catalog.yaml"
+CATALOG_URI = "package://mishkan.resources.tools/core-catalog.yaml"
 MECHANISM_CATALOG_URI = str(
-    Path(__file__).parents[1] / "fixtures" / "tools" / "i02-mechanism-catalog.yaml"
+    Path(__file__).parents[1] / "fixtures" / "tools" / "mechanism-catalog.yaml"
 )
 POLICY_URI = "package://mishkan.resources.policies/i02-local.yaml"
 INSPECTION_URI = "package://mishkan.resources.inspection/i02-default.yaml"

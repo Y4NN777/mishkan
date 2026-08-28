@@ -4,7 +4,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from support.i02 import plan_validator
+from support.capabilities import plan_validator
 
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.organization import load_initialization_definitions

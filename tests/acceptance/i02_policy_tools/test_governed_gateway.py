@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from support.i02 import RecordingAdapter, context_for, inspector, policy_for
+from support.capabilities import RecordingAdapter, context_for, inspector, policy_for
 
 from mishkan.policy import Decision, PolicyAuthority
 from mishkan.tools.adapters import WriteFileAdapter

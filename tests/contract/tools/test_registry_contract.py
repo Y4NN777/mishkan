@@ -8,9 +8,9 @@ from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.tools.catalog import ToolCatalog
 from mishkan.tools.models import AvailabilityState
 
-CATALOG_URI = "package://mishkan.resources.tools/i02-catalog.yaml"
+CATALOG_URI = "package://mishkan.resources.tools/core-catalog.yaml"
 MECHANISM_CATALOG_URI = str(
-    Path(__file__).parents[2] / "fixtures" / "tools" / "i02-mechanism-catalog.yaml"
+    Path(__file__).parents[2] / "fixtures" / "tools" / "mechanism-catalog.yaml"
 )
 READ_ADAPTER = "native.repository.read_file"
 
@@ -139,6 +139,11 @@ def test_bundled_catalogue_lists_metadata_but_binds_only_available_adapters(
         "repository.read_file",
         "core.process.exec",
         "core.shell.run",
+        "git.stage",
+        "git.commit",
+        "git.push",
+        "git.force_with_lease",
+        "git.force_push",
         "web.search",
         "web.fetch",
         "web.request",
@@ -176,6 +181,9 @@ def test_bundled_catalogue_lists_metadata_but_binds_only_available_adapters(
     with pytest.raises(MishkanError) as browser_caught:
         catalog.snapshot(("browser.complete",))
     assert browser_caught.value.envelope.code is ErrorCode.TOOL_UNAVAILABLE
+    with pytest.raises(MishkanError) as git_caught:
+        catalog.snapshot(("git.complete",))
+    assert git_caught.value.envelope.code is ErrorCode.TOOL_UNAVAILABLE
 
 
 def test_contract_without_an_installed_adapter_cannot_enter_snapshot(tmp_path: Path) -> None:

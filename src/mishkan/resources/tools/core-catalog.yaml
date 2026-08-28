@@ -1,7 +1,7 @@
 schema_version: "1.0"
 source_id: bundled.core
 source_kind: native
-revision: "9"
+revision: "10"
 adoption_authority: MISHKAN release
 tools:
   - tool_id: file.resolve
@@ -70,6 +70,46 @@ tools:
     source_kind: native
     contract_uri: package://mishkan.resources.tools/contracts/shell-run.yaml
     availability: {platforms: [linux, darwin], runtimes: [python], dependencies: [bash]}
+  - tool_id: git.stage
+    version: 1.0.0
+    summary: Stage exact repository-relative paths under policy.
+    effect_class: repository_write
+    source_id: bundled.core
+    source_kind: native
+    contract_uri: package://mishkan.resources.tools/contracts/git-stage.yaml
+    availability: {platforms: [linux, darwin], dependencies: [git]}
+  - tool_id: git.commit
+    version: 1.0.0
+    summary: Commit exact staged paths with explicit identity and base evidence.
+    effect_class: repository_write
+    source_id: bundled.core
+    source_kind: native
+    contract_uri: package://mishkan.resources.tools/contracts/git-commit.yaml
+    availability: {platforms: [linux, darwin], dependencies: [git]}
+  - tool_id: git.push
+    version: 1.0.0
+    summary: Push one exact branch and HEAD to a verified remote.
+    effect_class: repository_remote_write
+    source_id: bundled.core
+    source_kind: native
+    contract_uri: package://mishkan.resources.tools/contracts/git-push.yaml
+    availability: {platforms: [linux, darwin], dependencies: [git]}
+  - tool_id: git.force_with_lease
+    version: 1.0.0
+    summary: Force an exact branch only while the remote lease still matches.
+    effect_class: repository_remote_write
+    source_id: bundled.core
+    source_kind: native
+    contract_uri: package://mishkan.resources.tools/contracts/git-force-with-lease.yaml
+    availability: {platforms: [linux, darwin], dependencies: [git]}
+  - tool_id: git.force_push
+    version: 1.0.0
+    summary: Force an exact branch and HEAD only under explicit public policy.
+    effect_class: repository_remote_write
+    source_id: bundled.core
+    source_kind: native
+    contract_uri: package://mishkan.resources.tools/contracts/git-force-push.yaml
+    availability: {platforms: [linux, darwin], dependencies: [git]}
   - tool_id: web.search
     version: 1.0.0
     summary: Search through explicit configured sources with attributable routes and fallbacks.
@@ -173,6 +213,18 @@ toolsets:
     version: 1.0.0
     summary: Direct process and Bash execution selected by required semantics.
     tools: [core.process.exec, core.shell.run]
+  - toolset_id: git.local
+    version: 1.0.0
+    summary: Separately governed local Git staging and commit effects.
+    tools: [git.stage, git.commit]
+  - toolset_id: git.remote
+    version: 1.0.0
+    summary: Separately governed push modes with verified remote settlement.
+    tools: [git.push, git.force_with_lease, git.force_push]
+  - toolset_id: git.complete
+    version: 1.0.0
+    summary: Complete typed Git effect surface.
+    toolsets: [git.local, git.remote]
   - toolset_id: web.discovery
     version: 1.0.0
     summary: Search and bounded link mapping without hidden provider selection.

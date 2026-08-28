@@ -1,4 +1,4 @@
-"""Minimum immutable artifact contracts required by I02 execution output."""
+"""Immutable artifact contracts for governed execution output."""
 
 from __future__ import annotations
 

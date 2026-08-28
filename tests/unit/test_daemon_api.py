@@ -4,6 +4,7 @@ import asyncio
 import base64
 import hashlib
 import stat
+import subprocess
 import time
 from datetime import timedelta
 from pathlib import Path
@@ -239,6 +240,67 @@ rules:
     assert len(security_events.json()["events"]) == 1
     assert security_events.json()["events"][0]["security_relevant"] is True
     assert security_events.json()["events"][0]["identity_id"] == "local-operator"
+
+
+@pytest.mark.anyio
+async def test_git_stage_is_a_typed_daemon_command_with_durable_evidence(tmp_path: Path) -> None:
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    (tmp_path / "app.txt").write_text("content")
+    config = _config(tmp_path)
+    policy = tmp_path / "git-policy.yaml"
+    policy.write_text(
+        """\
+schema_version: "1.0"
+source_id: test.git
+revision: "1"
+adoption_authority: test
+rules:
+  - rule_id: test.git-stage
+    decision: allow
+    scope:
+      identities: [local-operator]
+      objective_classes: [application-command]
+      repositories: ["*"]
+      outcomes: [git.stage]
+      roles: [application-client]
+      capabilities: [git.stage]
+      effect_classes: [repository_write]
+      effects: [git.stage]
+      paths: [app.txt]
+""",
+        encoding="utf-8",
+    )
+    config = config.model_copy(update={"policy_sources": (str(policy),)})
+    paths = DaemonBootstrap().setup(config)
+    token = TokenFile(paths.token_file).read().token
+    headers = {"Authorization": f"Bearer {token}"}
+    command = ApplicationCommand(
+        command_type="git.stage",
+        actor_id="local-operator",
+        target_type="git_repository",
+        target_id=str(tmp_path.resolve()),
+        payload={
+            "request": {
+                "mode": "stage",
+                "workspace": str(tmp_path),
+                "paths": ["app.txt"],
+            }
+        },
+    )
+
+    transport = httpx.ASGITransport(app=create_app(config))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/commands", headers=headers, json=command.model_dump(mode="json")
+        )
+        events = await client.get("/v1/events", headers=headers)
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "accepted"
+    assert response.json()["payload"]["mode"] == "stage"
+    assert response.json()["payload"]["changed_paths"] == ["app.txt"]
+    assert response.json()["payload"]["settlement"] == "completed"
+    assert events.json()["events"][-1]["event_type"] == "git.stage_settled"
 
 
 @pytest.mark.anyio

@@ -43,6 +43,7 @@ from mishkan.daemon.auth import TokenFile, TokenRecord
 from mishkan.daemon.bootstrap import DaemonPaths
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.edits import ChangeSet, ChangeSetResult, ChangeSetService
+from mishkan.edits.git import GovernedGitService
 from mishkan.events import (
     EventHold as EventEvidenceHold,
 )
@@ -65,6 +66,7 @@ from mishkan.mcp import (
 )
 from mishkan.persistence import LocalRunRepository, SchemaManager, SQLiteApplicationRepository
 from mishkan.policy import Decision
+from mishkan.policy.models import EffectivePolicy
 from mishkan.runtime import TaskReviewRejection
 from mishkan.tools.inspection import ContentInspector, InspectionProfileLoader
 
@@ -104,6 +106,7 @@ def create_app(config: MishkanConfig) -> FastAPI:
         max_chunk_bytes=artifact_config.chunk_bytes,
     )
     changes = ChangeSetService(paths.database, paths.workspace, artifacts)
+    git_effects = GovernedGitService(artifacts)
     session_config = config.sessions
     assert session_config is not None
     supervisor = SessionSupervisor(
@@ -187,6 +190,7 @@ def create_app(config: MishkanConfig) -> FastAPI:
             credential_resolver,
             mcp_runner,
             mcp_config,
+            config,
         )
         if command.command_type == "run.initialize":
             if command.target_type != "run" or command.target_id is not None:
@@ -282,6 +286,8 @@ def create_app(config: MishkanConfig) -> FastAPI:
                     ),
                     artifacts,
                     changes,
+                    git_effects,
+                    command_authority.policy,
                     supervisor,
                     run_repository,
                     mcp_runner,
@@ -763,6 +769,8 @@ def _dispatch(
     event_retention_policy: EventRetentionPolicy,
     artifacts: DurableArtifactService,
     changes: ChangeSetService,
+    git_effects: GovernedGitService,
+    effective_policy: EffectivePolicy,
     supervisor: SessionSupervisor,
     runs: LocalRunRepository,
     mcp_runner: McpServiceRunner | None,
@@ -858,19 +866,34 @@ def _dispatch(
         applied_event_plan = repository.apply_event_retention(UUID(command.target_id))
         return "event.retention_applied", applied_event_plan.model_dump(mode="json")
     if command.command_type == "change.plan":
-        result = changes.plan(ChangeSet.model_validate(payload["change_set"]))
-        return "change_set.planned", result.model_dump(mode="json")
+        change_result = changes.plan(ChangeSet.model_validate(payload["change_set"]))
+        return "change_set.planned", change_result.model_dump(mode="json")
     if command.command_type == "change.apply" and command.target_id is not None:
-        result = changes.apply(UUID(command.target_id))
-        return "change_set.settled", result.model_dump(mode="json")
+        change_result = changes.apply(UUID(command.target_id))
+        return "change_set.settled", change_result.model_dump(mode="json")
     if command.command_type == "change.reconcile" and command.target_id is not None:
-        result = changes.reconcile(UUID(command.target_id))
-        return "change_set.reconciled", result.model_dump(mode="json")
+        change_result = changes.reconcile(UUID(command.target_id))
+        return "change_set.reconciled", change_result.model_dump(mode="json")
+    if command.command_type.startswith("git."):
+        git_request = authorized.git_request
+        if git_request is None:
+            raise MishkanError(ErrorCode.OUTPUT_CONTRACT, "authorized Git request is absent")
+        git_result = git_effects.execute(
+            git_request,
+            authorization=authorized.request,
+            policy=effective_policy,
+            credential_value=(
+                resolved_credentials.get(git_request.credential_reference)
+                if git_request.credential_reference is not None
+                else None
+            ),
+        )
+        return f"git.{git_request.mode.value}_settled", git_result.model_dump(mode="json")
     if command.command_type == "session.start":
-        request = authorized.session_request
-        if request is None:
+        session_request = authorized.session_request
+        if session_request is None:
             raise MishkanError(ErrorCode.OUTPUT_CONTRACT, "authorized session request is absent")
-        effective_request = request.model_copy(
+        effective_request = session_request.model_copy(
             update={"policy_fingerprint": authorized.decision.policy_fingerprint}
         )
         record = supervisor.start(effective_request, credential_values=resolved_credentials)
@@ -944,7 +967,7 @@ def _dispatch(
         return "mcp.call_reconciled", mcp_result.model_dump(mode="json")
     raise MishkanError(
         ErrorCode.OUTPUT_CONTRACT,
-        "application command type has no registered I03 handler",
+        "application command type has no registered handler",
         details={"command_type": command.command_type},
     )
 
@@ -968,11 +991,21 @@ def _resolve_command_credentials(
     resolver: CredentialPoolResolver,
     mcp_runner: McpServiceRunner | None,
     mcp_config: McpConfig | None,
+    config: MishkanConfig,
 ) -> dict[str, str]:
     command = authorized.command
     references: tuple[CredentialReference, ...] = ()
     if authorized.session_request is not None:
         references = _session_credential_references(authorized.session_request)
+    elif authorized.git_request is not None:
+        binding_id = authorized.git_request.credential_reference
+        if binding_id is None:
+            return {}
+        reference = config.credential_bindings.get(binding_id)
+        if reference is None:
+            raise MishkanError(ErrorCode.AUTHORIZATION_MISSING, "Git credential is not configured")
+        resolved = resolver.resolve_exact((reference,))
+        return {binding_id: resolved[reference.locator]}
     elif command.command_type == "mcp.connection.connect" and command.target_id is not None:
         if mcp_config is None:
             raise MishkanError(ErrorCode.MCP, "MCP mediation is not configured")

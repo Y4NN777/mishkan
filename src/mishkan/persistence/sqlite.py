@@ -289,6 +289,7 @@ class ChangeSetRow(Base):
     operation_index: Mapped[int] = mapped_column(Integer, nullable=False)
     payload: Mapped[str] = mapped_column(Text, nullable=False)
     diff_reference: Mapped[str | None] = mapped_column(String(64))
+    validation_payload: Mapped[str | None] = mapped_column(Text)
     reason: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[str] = mapped_column(String(40), nullable=False)
     updated_at: Mapped[str] = mapped_column(String(40), nullable=False)

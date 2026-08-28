@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 from crewai.tools import BaseTool
-from support.i02 import context_for, inspector, policy_for
+from support.capabilities import context_for, inspector, policy_for
 
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.policy import ApprovalEvidence, AuthorizationRequest, Decision, PolicyAuthority

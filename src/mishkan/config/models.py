@@ -100,9 +100,9 @@ class DaemonConfig(StrictConfigModel):
         try:
             address = ipaddress.ip_address(value)
         except ValueError as exc:
-            raise ValueError("I03 daemon host must be a literal loopback address") from exc
+            raise ValueError("daemon host must be a literal loopback address") from exc
         if not address.is_loopback:
-            raise ValueError("I03 daemon host must be loopback-only")
+            raise ValueError("daemon host must be loopback-only")
         return value
 
     @field_validator("token_file")
@@ -491,6 +491,7 @@ class MishkanConfig(StrictConfigModel):
     model_routes: dict[str, ModelRoute] = Field(min_length=1)
     agent_routes: dict[str, str] = Field(default_factory=dict)
     services: dict[str, ServiceConfig] = Field(default_factory=dict)
+    credential_bindings: dict[str, CredentialReference] = Field(default_factory=dict)
     policy_sources: tuple[str, ...] = Field(min_length=1)
     tool_sources: tuple[str, ...] = ()
     inspection_profile: str | None = None
@@ -526,7 +527,7 @@ class MishkanConfig(StrictConfigModel):
                     f"configuration 1.1 requires governed capability fields: {missing}"
                 )
         if self.schema_version in {"1.2", "1.3"}:
-            missing_i03 = [
+            missing_daemon = [
                 field
                 for field, value in (
                     ("daemon", self.daemon),
@@ -536,10 +537,10 @@ class MishkanConfig(StrictConfigModel):
                 )
                 if value is None
             ]
-            if missing_i03:
-                raise ValueError(f"configuration 1.2 requires I03 fields: {missing_i03}")
+            if missing_daemon:
+                raise ValueError(f"configuration 1.2 requires daemon fields: {missing_daemon}")
         if self.schema_version == "1.3":
-            missing_i04 = [
+            missing_capabilities = [
                 field
                 for field, value in (
                     ("web", self.web),
@@ -548,8 +549,10 @@ class MishkanConfig(StrictConfigModel):
                 )
                 if value is None
             ]
-            if missing_i04:
-                raise ValueError(f"configuration 1.3 requires I04 fields: {missing_i04}")
+            if missing_capabilities:
+                raise ValueError(
+                    f"configuration 1.3 requires capability fields: {missing_capabilities}"
+                )
             assert self.web is not None
             assert self.browser is not None
             assert self.mcp is not None

@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-from support.i02 import context_for, inspector, policy_for
+from support.capabilities import context_for, inspector, policy_for
 
 from mishkan.policy import Decision, PolicyAuthority
 from mishkan.tools.adapters import (

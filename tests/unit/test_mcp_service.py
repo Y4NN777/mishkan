@@ -486,7 +486,7 @@ def test_dynamic_contract_and_common_adapter_preserve_exact_policy_targets(
 def test_discovered_mcp_contract_enters_registry_with_runtime_provenance(tmp_path: Path) -> None:
     contract = McpContractFactory(_config()).build("graph", _primitive())
     catalog = ToolCatalog(
-        ("package://mishkan.resources.tools/i02-catalog.yaml",),
+        ("package://mishkan.resources.tools/core-catalog.yaml",),
         tmp_path,
         available_adapters=frozenset({"mcp.outbound.tool"}),
         runtime_contracts=(contract,),

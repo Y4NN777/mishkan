@@ -1,4 +1,4 @@
-"""Thin CLI over I00 configuration application functions."""
+"""Thin CLI over local configuration and daemon application functions."""
 
 from __future__ import annotations
 
@@ -28,6 +28,7 @@ database_app = typer.Typer(help="Inspect and explicitly migrate authoritative me
 events_app = typer.Typer(help="Query and export the durable event stream.")
 artifact_app = typer.Typer(help="Inspect and reconcile immutable artifacts.")
 change_app = typer.Typer(help="Plan, apply, and inspect recoverable change sets.")
+git_app = typer.Typer(help="Execute separately governed Git effects through mishkand.")
 terminal_app = typer.Typer(help="Open and control daemon-owned PTY sessions.")
 job_app = typer.Typer(help="Start and control daemon-owned managed jobs.")
 run_app = typer.Typer(help="Inspect, cancel, and recover durable runs.")
@@ -40,6 +41,7 @@ app.add_typer(database_app, name="db")
 app.add_typer(events_app, name="events")
 app.add_typer(artifact_app, name="artifact")
 app.add_typer(change_app, name="change")
+app.add_typer(git_app, name="git")
 app.add_typer(terminal_app, name="terminal")
 app.add_typer(job_app, name="job")
 app.add_typer(run_app, name="run")
@@ -872,6 +874,78 @@ def apply_change_set(
     _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
 
 
+def _execute_git_effect(ctx: typer.Context, source: Path, expected_mode: str) -> None:
+    from mishkan.application import ApplicationCommand
+    from mishkan.edits.git import GitEffectMode, GitEffectRequest
+
+    request = GitEffectRequest.model_validate(yaml.safe_load(source.read_text(encoding="utf-8")))
+    mode = GitEffectMode(expected_mode)
+    if request.mode is not mode:
+        raise typer.BadParameter(f"request mode must be {mode.value}")
+    repository = str(request.workspace.resolve(strict=True))
+    with _daemon_client(ctx) as client:
+        result = client.command(
+            ApplicationCommand(
+                command_type=f"git.{mode.value}",
+                actor_id=client.principal_id,
+                target_type="git_repository",
+                target_id=repository,
+                payload={"request": request.model_dump(mode="json")},
+            )
+        )
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@git_app.command("stage")
+def git_stage(
+    ctx: typer.Context,
+    source: Annotated[Path, typer.Option("--file", help="Typed Git stage request.")],
+) -> None:
+    """Stage exact paths under public policy."""
+
+    _execute_git_effect(ctx, source, "stage")
+
+
+@git_app.command("commit")
+def git_commit(
+    ctx: typer.Context,
+    source: Annotated[Path, typer.Option("--file", help="Typed Git commit request.")],
+) -> None:
+    """Commit with an explicit identity, message, and base."""
+
+    _execute_git_effect(ctx, source, "commit")
+
+
+@git_app.command("push")
+def git_push(
+    ctx: typer.Context,
+    source: Annotated[Path, typer.Option("--file", help="Typed Git push request.")],
+) -> None:
+    """Push an exact branch to a verified remote."""
+
+    _execute_git_effect(ctx, source, "push")
+
+
+@git_app.command("force-with-lease")
+def git_force_with_lease(
+    ctx: typer.Context,
+    source: Annotated[Path, typer.Option("--file", help="Typed force-with-lease request.")],
+) -> None:
+    """Force with an exact observed remote lease."""
+
+    _execute_git_effect(ctx, source, "force_with_lease")
+
+
+@git_app.command("force-push")
+def git_force_push(
+    ctx: typer.Context,
+    source: Annotated[Path, typer.Option("--file", help="Typed explicit force-push request.")],
+) -> None:
+    """Force push only when public policy authorizes that exact effect."""
+
+    _execute_git_effect(ctx, source, "force_push")
+
+
 def _start_session(ctx: typer.Context, source: Path, mode: str) -> None:
     from mishkan.application import ApplicationCommand
     from mishkan.execution import SessionMode, SessionRequest
@@ -1276,7 +1350,7 @@ def export_contract_schemas(
         "definitions/schemas"
     ),
 ) -> None:
-    """Export deterministic JSON Schemas for public I00 contracts."""
+    """Export deterministic JSON Schemas for public contracts."""
 
     paths = export_schemas(output)
     _emit({"exported": [str(path) for path in paths]}, as_json=_state(ctx).json_output)

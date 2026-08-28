@@ -331,6 +331,11 @@ class CapabilityGateway:
                     task_attempt_id=context.task_attempt_id,
                     acting_identity=context.identity,
                     capability=contract.tool_id,
+                    plan_fingerprint=context.plan_fingerprint,
+                    objective_class=context.objective_class,
+                    repository=context.repository,
+                    outcome=context.outcome,
+                    role=context.role,
                 )
             )
             dispatched_status = adapter_result.call_status

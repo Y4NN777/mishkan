@@ -57,6 +57,11 @@ class AdapterCall:
     task_attempt_id: str
     acting_identity: str
     capability: str
+    plan_fingerprint: str = ""
+    objective_class: str = "capability-invocation"
+    repository: str = ""
+    outcome: str = "capability-invocation"
+    role: str = "agent"
 
 
 class CapabilityAdapter(Protocol):
