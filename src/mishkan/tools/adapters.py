@@ -16,7 +16,7 @@ import stat
 import subprocess
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass, replace
 from fnmatch import fnmatchcase
@@ -43,7 +43,7 @@ from mishkan.tools.gateway_models import (
     CallStatus,
     ResolvedTargets,
 )
-from mishkan.tools.isolation import ContainerCommand
+from mishkan.tools.isolation import ContainerCommand, ContainerOutputLimit
 
 
 @dataclass(frozen=True, slots=True)
@@ -1989,20 +1989,60 @@ class WriteFileAdapter:
 class ContainerCommandAdapter:
     adapter_id = "isolation.command"
 
-    def __init__(self, command: ContainerCommand) -> None:
-        self._command = command
+    def __init__(self, command: ContainerCommand | Mapping[str, ContainerCommand]) -> None:
+        commands = (
+            {command.profile.profile_id: command}
+            if isinstance(command, ContainerCommand)
+            else dict(command)
+        )
+        if not commands or any(key != value.profile.profile_id for key, value in commands.items()):
+            raise ValueError("isolated commands must be keyed by their exact profile identity")
+        self._commands = commands
 
     def invoke(self, call: AdapterCall) -> AdapterResult:
         workspace = call.targets.paths[0].absolute
+        profile_id = call.isolation_profile
+        if profile_id is None:
+            raise MishkanError(
+                ErrorCode.TOOL_UNAVAILABLE,
+                "isolated command requires an accepted isolation profile",
+            )
+        command = self._commands.get(profile_id)
+        if command is None:
+            raise MishkanError(
+                ErrorCode.TOOL_UNAVAILABLE,
+                "accepted isolation profile is unavailable at this execution location",
+                details={"isolation_profile": profile_id},
+            )
         argv_value = call.arguments["argv"]
         if not isinstance(argv_value, list) or not all(
             isinstance(item, str) for item in argv_value
         ):
             raise ValueError("command argv must contain only strings")
         try:
-            completed = self._command.run(workspace, tuple(argv_value))
+            completed = command.run(workspace, tuple(argv_value))
         except subprocess.TimeoutExpired as exc:
             raise TimeoutError("isolated command exceeded its configured timeout") from exc
+        except ContainerOutputLimit as exc:
+            return AdapterResult(
+                output={
+                    "exit_code": -1,
+                    "stdout": exc.stdout.decode("utf-8", errors="replace"),
+                    "stderr": exc.stderr.decode("utf-8", errors="replace"),
+                },
+                actual_targets=call.targets,
+                evidence={
+                    "runtime": command.profile.runtime.value,
+                    "isolation_profile": command.profile.profile_id,
+                    "profile_revision": command.profile.revision,
+                    "termination_cause": "output_limit",
+                },
+                call_status=CallStatus.UNCERTAIN,
+                retryable=False,
+                error_code=ErrorCode.EXECUTION.value,
+                reason="isolated command exceeded its configured output limit",
+            )
+        completed_successfully = completed.returncode == 0
         return AdapterResult(
             output={
                 "exit_code": completed.returncode,
@@ -2010,7 +2050,26 @@ class ContainerCommandAdapter:
                 "stderr": completed.stderr,
             },
             actual_targets=call.targets,
-            evidence={"runtime": self._command.profile.runtime.value},
+            evidence={
+                "runtime": command.profile.runtime.value,
+                "isolation_profile": command.profile.profile_id,
+                "profile_revision": command.profile.revision,
+                "image": command.profile.image,
+                "image_identity": command.image_identity,
+                "network_mode": command.profile.network_mode,
+                "memory_mb": command.profile.memory_mb,
+                "pids_limit": command.profile.pids_limit,
+                "read_only_root": command.profile.read_only_root,
+                "workspace_mount": command.profile.workspace_mount.value,
+            },
+            call_status=(CallStatus.COMPLETED if completed_successfully else CallStatus.FAILED),
+            retryable=False,
+            error_code=(None if completed_successfully else ErrorCode.EXECUTION.value),
+            reason=(
+                "isolated command completed"
+                if completed_successfully
+                else "isolated command returned a non-zero exit code"
+            ),
         )
 
 

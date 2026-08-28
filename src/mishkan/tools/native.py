@@ -192,6 +192,8 @@ def build_native_adapters(
                 max_script_bytes=int(config["max_script_bytes"]),
                 max_startup_file_bytes=int(config["max_startup_file_bytes"]),
             )
+        elif adapter_id == "isolation.command":
+            continue
         else:
             raise MishkanError(
                 ErrorCode.TOOL_UNAVAILABLE,

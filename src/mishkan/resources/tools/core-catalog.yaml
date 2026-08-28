@@ -92,6 +92,14 @@ tools:
     source_kind: native
     contract_uri: package://mishkan.resources.tools/contracts/shell-run.yaml
     availability: {platforms: [linux, darwin], runtimes: [python], dependencies: [bash]}
+  - tool_id: command.run
+    version: 1.0.0
+    summary: Run an argument-vector command through an observed configured isolation profile.
+    effect_class: command
+    source_id: bundled.core
+    source_kind: native
+    contract_uri: package://mishkan.resources.tools/contracts/command-run.yaml
+    availability: {platforms: [linux, darwin], runtimes: [python]}
   - tool_id: git.stage
     version: 1.0.0
     summary: Stage exact repository-relative paths under policy.

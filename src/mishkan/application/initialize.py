@@ -15,6 +15,7 @@ from mishkan.planning import PlanValidator
 from mishkan.planning.models import InitializationReport
 from mishkan.policy import PolicyAuthority, PolicyLoader
 from mishkan.repository import RepositoryInspector
+from mishkan.tools.adapters import ContainerCommandAdapter
 from mishkan.tools.capability_runtime import CapabilityRuntime, build_capability_runtime
 from mishkan.tools.catalog import ToolCatalog
 from mishkan.tools.gateway import (
@@ -23,7 +24,7 @@ from mishkan.tools.gateway import (
     MappingCredentialResolver,
 )
 from mishkan.tools.inspection import ContentInspector, InspectionProfileLoader
-from mishkan.tools.isolation import IsolationProfileLoader
+from mishkan.tools.isolation import IsolationProfileLoader, observe_container_commands
 from mishkan.tools.lifecycle import ToolRegistryLifecycle
 from mishkan.tools.native import (
     available_contracts,
@@ -81,6 +82,26 @@ class MishkanInitializer:
         runtime: CapabilityRuntime | None = None
         artifact_store: ArtifactStore
         available_environment = native_environment
+        isolation_loader = IsolationProfileLoader()
+        isolation_profiles = tuple(
+            isolation_loader.load(source, discovery.binding.root)
+            for source in config.isolation_profiles
+        )
+        profile_ids = [profile.profile_id for profile in isolation_profiles]
+        if len(profile_ids) != len(set(profile_ids)):
+            raise MishkanError(
+                ErrorCode.CONFIGURATION,
+                "configured isolation profile identities must be unique",
+            )
+        isolated_commands = observe_container_commands(isolation_profiles)
+        if isolated_commands:
+            available_environment = replace(
+                available_environment,
+                adapter_ids=(
+                    available_environment.adapter_ids
+                    | frozenset({ContainerCommandAdapter.adapter_id})
+                ),
+            )
         if config.schema_version == "1.3":
             artifact_config = config.artifacts
             assert artifact_config is not None
@@ -114,20 +135,13 @@ class MishkanInitializer:
             available_adapters=available_environment.adapter_ids,
             lifecycle=ToolRegistryLifecycle(database, busy_timeout_ms=busy_timeout_ms).projection(),
         )
-        isolation_loader = IsolationProfileLoader()
-        isolation_profiles = tuple(
-            isolation_loader.load(source, discovery.binding.root)
-            for source in config.isolation_profiles
-        )
-        profile_ids = [profile.profile_id for profile in isolation_profiles]
-        if len(profile_ids) != len(set(profile_ids)):
-            raise MishkanError(
-                ErrorCode.CONFIGURATION,
-                "configured isolation profile identities must be unique",
-            )
         authority = PolicyAuthority()
         contracts = available_contracts(catalog, outcome.allowed_tools)
         adapters = dict(build_native_adapters(catalog, outcome.allowed_tools, native_environment))
+        if any(contract.adapter == ContainerCommandAdapter.adapter_id for contract in contracts):
+            adapters[ContainerCommandAdapter.adapter_id] = ContainerCommandAdapter(
+                isolated_commands
+            )
         if runtime is not None:
             adapters.update(runtime.adapters)
         artifact_limit = max(

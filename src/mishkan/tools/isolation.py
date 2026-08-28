@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import os
+import selectors
+import shutil
+import signal
 import subprocess
+import time
 from enum import StrEnum
 from importlib.resources import files
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, BinaryIO, Protocol, cast
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
@@ -54,26 +59,115 @@ class ProcessRunner(Protocol):
     ) -> subprocess.CompletedProcess[str]: ...
 
 
+class ContainerOutputLimit(subprocess.SubprocessError):
+    def __init__(self, stdout: bytes, stderr: bytes) -> None:
+        super().__init__("isolated command exceeded its configured output limit")
+        self.stdout = stdout
+        self.stderr = stderr
+
+
 class SubprocessRunner:
+    def __init__(self, *, max_output_bytes: int = 2_097_152) -> None:
+        if max_output_bytes < 1:
+            raise ValueError("isolated command output bound must be positive")
+        self._max_output_bytes = max_output_bytes
+
     def run(self, argv: tuple[str, ...], timeout_seconds: int) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
+        process = subprocess.Popen(
             argv,
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=timeout_seconds,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            start_new_session=True,
         )
+        assert process.stdout is not None
+        assert process.stderr is not None
+        selector = selectors.DefaultSelector()
+        streams = {process.stdout: "stdout", process.stderr: "stderr"}
+        for stream in streams:
+            os.set_blocking(stream.fileno(), False)
+            selector.register(stream, selectors.EVENT_READ)
+        buffers = {"stdout": bytearray(), "stderr": bytearray()}
+        deadline = time.monotonic() + timeout_seconds
+        try:
+            while selector.get_map():
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    self._terminate(process)
+                    raise subprocess.TimeoutExpired(
+                        argv,
+                        timeout_seconds,
+                        output=bytes(buffers["stdout"]),
+                        stderr=bytes(buffers["stderr"]),
+                    )
+                for key, _ in selector.select(min(remaining, 0.1)):
+                    selected = cast(BinaryIO, key.fileobj)
+                    chunk = os.read(selected.fileno(), 65_536)
+                    if not chunk:
+                        selector.unregister(selected)
+                        selected.close()
+                        continue
+                    buffers[streams[selected]].extend(chunk)
+                    if sum(len(value) for value in buffers.values()) > self._max_output_bytes:
+                        self._terminate(process)
+                        raise ContainerOutputLimit(
+                            bytes(buffers["stdout"]), bytes(buffers["stderr"])
+                        )
+            return_code = process.wait(timeout=max(0.1, deadline - time.monotonic()))
+            return subprocess.CompletedProcess(
+                argv,
+                return_code,
+                bytes(buffers["stdout"]).decode("utf-8", errors="replace"),
+                bytes(buffers["stderr"]).decode("utf-8", errors="replace"),
+            )
+        finally:
+            selector.close()
+            if process.poll() is None:
+                self._terminate(process)
+
+    @staticmethod
+    def _terminate(process: subprocess.Popen[bytes]) -> None:
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+            process.wait(timeout=0.5)
+        except ProcessLookupError:
+            return
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                return
+            process.wait(timeout=1)
 
 
 class ContainerCommand:
-    def __init__(self, profile: IsolationProfile, runner: ProcessRunner) -> None:
+    def __init__(
+        self,
+        profile: IsolationProfile,
+        runner: ProcessRunner,
+        *,
+        image_identity: str | None = None,
+    ) -> None:
         self.profile = profile
         self._runner = runner
+        self.image_identity = image_identity or profile.image
 
     def build(self, workspace: Path, command: tuple[str, ...]) -> tuple[str, ...]:
         if not command:
             raise MishkanError(ErrorCode.TOOL_SCHEMA, "container command argv is empty")
-        mount = f"type=bind,src={workspace.resolve()},dst={self.profile.workspace_target}"
+        try:
+            resolved_workspace = workspace.resolve(strict=True)
+        except OSError as exc:
+            raise MishkanError(
+                ErrorCode.FILE,
+                "isolated command workspace is unavailable",
+            ) from exc
+        if not resolved_workspace.is_dir():
+            raise MishkanError(
+                ErrorCode.FILE,
+                "isolated command workspace must be a directory",
+            )
+        mount = f"type=bind,src={resolved_workspace},dst={self.profile.workspace_target}"
         if self.profile.workspace_mount is WorkspaceMount.READ_ONLY:
             mount = f"{mount},readonly"
         argv = [
@@ -86,6 +180,12 @@ class ContainerCommand:
             f"{self.profile.memory_mb}m",
             "--pids-limit",
             str(self.profile.pids_limit),
+            "--cap-drop",
+            "ALL",
+            "--security-opt",
+            "no-new-privileges",
+            "--user",
+            f"{os.getuid()}:{os.getgid()}",
             "--mount",
             mount,
             "--workdir",
@@ -93,11 +193,47 @@ class ContainerCommand:
         ]
         if self.profile.read_only_root:
             argv.append("--read-only")
-        argv.extend((self.profile.image, *command))
+        argv.extend((self.image_identity, *command))
         return tuple(argv)
 
     def run(self, workspace: Path, command: tuple[str, ...]) -> subprocess.CompletedProcess[str]:
         return self._runner.run(self.build(workspace, command), self.profile.timeout_seconds)
+
+
+def observe_container_commands(
+    profiles: tuple[IsolationProfile, ...],
+    *,
+    runner: ProcessRunner | None = None,
+) -> dict[str, ContainerCommand]:
+    """Return only profiles whose runtime and configured image are ready without pulling."""
+
+    execution_runner = runner or SubprocessRunner()
+    commands: dict[str, ContainerCommand] = {}
+    for profile in profiles:
+        executable = shutil.which(profile.runtime.value)
+        if executable is None:
+            continue
+        inspect_argv = (
+            executable,
+            "image",
+            "inspect",
+            "--format",
+            "{{.Id}}",
+            profile.image,
+        )
+        try:
+            completed = execution_runner.run(inspect_argv, 5)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        image_identity = completed.stdout.strip()
+        if completed.returncode != 0 or not image_identity:
+            continue
+        commands[profile.profile_id] = ContainerCommand(
+            profile,
+            execution_runner,
+            image_identity=image_identity,
+        )
+    return commands
 
 
 class IsolationProfileLoader:

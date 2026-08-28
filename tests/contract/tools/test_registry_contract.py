@@ -146,6 +146,7 @@ def test_bundled_catalogue_lists_metadata_but_binds_only_available_adapters(
         "repository.read_file",
         "core.process.exec",
         "core.shell.run",
+        "command.run",
         "git.stage",
         "git.commit",
         "git.push",

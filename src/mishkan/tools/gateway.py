@@ -376,6 +376,24 @@ class CapabilityGateway:
                 arguments,
                 started,
             )
+            argument_isolation_profile = arguments.get("isolation_profile")
+            if argument_isolation_profile is not None and not isinstance(
+                argument_isolation_profile, str
+            ):
+                raise MishkanError(
+                    ErrorCode.TOOL_SCHEMA,
+                    "tool isolation profile must be a string identity",
+                )
+            if (
+                context.isolation_profile is not None
+                and argument_isolation_profile is not None
+                and context.isolation_profile != argument_isolation_profile
+            ):
+                raise MishkanError(
+                    ErrorCode.TOOL_DRIFT,
+                    "planned isolation profile differs from the bound execution profile",
+                )
+            effective_isolation_profile = context.isolation_profile or argument_isolation_profile
             request = AuthorizationRequest(
                 plan_fingerprint=context.plan_fingerprint,
                 identity=context.identity,
@@ -395,7 +413,7 @@ class CapabilityGateway:
                 environments=resolved.environments,
                 credentials=credential_references,
                 external_resources=resolved.external_resources,
-                isolation_profile=context.isolation_profile,
+                isolation_profile=effective_isolation_profile,
                 resources=context.resources,
             )
             approval_candidates = approval if isinstance(approval, tuple) else (approval,)
@@ -560,7 +578,7 @@ class CapabilityGateway:
                         credentials=credentials,
                         execution_id=call_id,
                         resources=context.resources,
-                        isolation_profile=context.isolation_profile,
+                        isolation_profile=effective_isolation_profile,
                         cancellation_requested=lambda: self._cancellation.requested(
                             context.run_id, context.task_attempt_id
                         ),

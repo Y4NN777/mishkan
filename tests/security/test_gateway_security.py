@@ -7,13 +7,18 @@ from pathlib import Path
 import pytest
 from support.capabilities import RecordingAdapter, context_for, inspector, policy_for
 
+from mishkan.artifacts import FilesystemArtifactStore
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.policy import Decision, PolicyAuthority
 from mishkan.tools.adapters import ContainerCommandAdapter
 from mishkan.tools.catalog import ToolCatalog
 from mishkan.tools.gateway import CapabilityGateway, MappingCredentialResolver, MemoryEvidenceSink
 from mishkan.tools.gateway_models import AdapterResult, CallStatus, DeclaredTargets, ResolvedTargets
-from mishkan.tools.isolation import ContainerCommand, IsolationProfileLoader
+from mishkan.tools.isolation import (
+    ContainerCommand,
+    IsolationProfileLoader,
+    observe_container_commands,
+)
 
 
 @pytest.mark.paths
@@ -223,6 +228,30 @@ class RecordingRunner:
         return subprocess.CompletedProcess(argv, 0, "command output", "")
 
 
+def test_isolation_profile_is_available_only_after_runtime_image_observation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    profile = IsolationProfileLoader().load(
+        "package://mishkan.resources.isolation/local-no-network.yaml",
+        tmp_path,
+    )
+    runner = RecordingRunner()
+    monkeypatch.setattr("mishkan.tools.isolation.shutil.which", lambda _: "/usr/bin/docker")
+
+    commands = observe_container_commands((profile,), runner=runner)
+
+    assert commands["local.no-network"].image_identity == "command output"
+    assert runner.argv == (
+        "/usr/bin/docker",
+        "image",
+        "inspect",
+        "--format",
+        "{{.Id}}",
+        "python:3.13-alpine",
+    )
+
+
 @pytest.mark.commands
 def test_command_is_governed_by_public_isolation_values_not_a_private_action_list(
     tmp_path: Path,
@@ -259,7 +288,12 @@ def test_command_is_governed_by_public_isolation_values_not_a_private_action_lis
 
     result = gateway.invoke(
         context,
-        {"argv": ["git", "push", "origin", "develop"], "workspace": "."},
+        {
+            "argv": ["git", "push", "origin", "develop"],
+            "workspace": ".",
+            "isolation_profile": "local.no-network",
+            "declared_effects": [],
+        },
         DeclaredTargets(paths=(".",), executables=("git",)),
     )
 
@@ -270,6 +304,82 @@ def test_command_is_governed_by_public_isolation_values_not_a_private_action_lis
     assert "512m" in runner.argv
     assert runner.argv[-4:] == ("git", "push", "origin", "develop")
     assert runner.timeout == 30
+
+
+@pytest.mark.commands
+def test_isolated_command_mutation_is_contained_and_verified(tmp_path: Path) -> None:
+    class MutatingContainerRunner(RecordingRunner):
+        def run(
+            self,
+            argv: tuple[str, ...],
+            timeout_seconds: int,
+        ) -> subprocess.CompletedProcess[str]:
+            completed = super().run(argv, timeout_seconds)
+            mount = argv[argv.index("--mount") + 1]
+            source = next(
+                item.removeprefix("src=") for item in mount.split(",") if item.startswith("src=")
+            )
+            Path(source, "generated.txt").write_text("contained", encoding="utf-8")
+            return completed
+
+    profile = IsolationProfileLoader().load(
+        "package://mishkan.resources.isolation/local-no-network.yaml",
+        tmp_path,
+    )
+    runner = MutatingContainerRunner()
+    policy = policy_for(
+        "command.run",
+        Decision.ALLOW,
+        effect_class="command",
+        paths=(".",),
+        executables=("python",),
+        external_resources=("filesystem.write",),
+    )
+    context = context_for(
+        tmp_path,
+        "command.run",
+        policy,
+        (".", "python", "filesystem.write"),
+        runtime="container",
+        isolation_profile="local.no-network",
+    )
+    gateway = CapabilityGateway(
+        tmp_path,
+        PolicyAuthority(),
+        MappingCredentialResolver({}),
+        inspector(tmp_path),
+        {"isolation.command": ContainerCommandAdapter(ContainerCommand(profile, runner))},
+        MemoryEvidenceSink(),
+        artifact_store=FilesystemArtifactStore(
+            tmp_path / ".mishkan" / "artifacts",
+            max_artifact_bytes=4096,
+        ),
+    )
+
+    result = gateway.invoke(
+        context,
+        {
+            "argv": ["python", "-c", "open('generated.txt','w').write('contained')"],
+            "workspace": ".",
+            "isolation_profile": "local.no-network",
+            "declared_effects": ["filesystem.write"],
+        },
+        DeclaredTargets(
+            paths=(".",),
+            executables=("python",),
+            external_resources=("filesystem.write",),
+        ),
+    )
+
+    assert result.status is CallStatus.COMPLETED
+    assert result.output is not None
+    assert result.output["changed_paths"] == ["generated.txt"]
+    assert result.output["scope_deviations"] == []
+    assert result.output["effect_settlement"] == "completed"
+    assert (tmp_path / "generated.txt").read_text(encoding="utf-8") == "contained"
+    assert runner.argv is not None
+    assert runner.argv[runner.argv.index("--cap-drop") + 1] == "ALL"
+    assert runner.argv[runner.argv.index("--security-opt") + 1] == "no-new-privileges"
 
 
 @pytest.mark.commands
@@ -316,13 +426,64 @@ def test_isolated_command_timeout_is_uncertain_and_not_retried(tmp_path: Path) -
 
     result = gateway.invoke(
         context,
-        {"argv": ["python", "-V"], "workspace": "."},
+        {
+            "argv": ["python", "-V"],
+            "workspace": ".",
+            "isolation_profile": "local.no-network",
+            "declared_effects": [],
+        },
         DeclaredTargets(paths=(".",), executables=("python",)),
     )
 
     assert result.status is CallStatus.UNCERTAIN
     assert result.retryable is False
     assert runner.calls == 1
+
+
+@pytest.mark.commands
+def test_isolated_command_refuses_profile_drift_before_runtime_dispatch(tmp_path: Path) -> None:
+    profile = IsolationProfileLoader().load(
+        "package://mishkan.resources.isolation/local-no-network.yaml",
+        tmp_path,
+    )
+    runner = RecordingRunner()
+    context = context_for(
+        tmp_path,
+        "command.run",
+        policy_for(
+            "command.run",
+            Decision.ALLOW,
+            effect_class="command",
+            paths=(".",),
+            executables=("python",),
+        ),
+        (".", "python"),
+        runtime="container",
+        isolation_profile="local.no-network",
+    )
+    gateway = CapabilityGateway(
+        tmp_path,
+        PolicyAuthority(),
+        MappingCredentialResolver({}),
+        inspector(tmp_path),
+        {"isolation.command": ContainerCommandAdapter(ContainerCommand(profile, runner))},
+        MemoryEvidenceSink(),
+    )
+
+    result = gateway.invoke(
+        context,
+        {
+            "argv": ["python", "-V"],
+            "workspace": ".",
+            "isolation_profile": "another.profile",
+            "declared_effects": [],
+        },
+        DeclaredTargets(paths=(".",), executables=("python",)),
+    )
+
+    assert result.status is CallStatus.REFUSED
+    assert result.error_code == "ERR-TOL-005"
+    assert runner.argv is None
 
 
 @pytest.mark.unicode

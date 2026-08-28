@@ -10,10 +10,15 @@ adapter: isolation.command
 input_schema:
   type: object
   additionalProperties: false
-  required: [argv, workspace]
+  required: [argv, workspace, isolation_profile, declared_effects]
   properties:
     argv: {type: array, minItems: 1, items: {type: string}}
     workspace: {type: string, minLength: 1}
+    isolation_profile: {type: string, minLength: 1}
+    declared_effects:
+      type: array
+      uniqueItems: true
+      items: {type: string, minLength: 1}
 result_schema:
   type: object
   additionalProperties: false
@@ -22,8 +27,30 @@ result_schema:
     exit_code: {type: integer}
     stdout: {type: string}
     stderr: {type: string}
+    observed_effects: {type: array, uniqueItems: true, items: {type: string}}
+    effect_settlement: {type: string, enum: [absent, completed, uncertain]}
+    base_snapshot_fingerprint: {type: [string, "null"]}
+    after_snapshot_fingerprint: {type: [string, "null"]}
+    changed_paths: {type: array, uniqueItems: true, items: {type: string}}
+    scope_deviations: {type: array, uniqueItems: true, items: {type: string}}
+    effect_diff_artifact_ref: {type: [string, "null"]}
+    effect_observation_complete: {type: boolean}
+    effect_observation_omissions: {type: array, uniqueItems: true, items: {type: string}}
+    effect_validation: {type: string}
 timeout_behavior: effect_may_be_uncertain
 idempotency: none
-target_scopes: [path, executable]
-target_arguments: {path: [workspace], executable: [argv.0]}
+target_scopes: [path, executable, external_resource]
+target_arguments:
+  path: [workspace]
+  executable: [argv.0]
+  external_resource: [declared_effects]
+policy_arguments: [isolation_profile, argv.*]
 resources: {timeout_seconds: 30, memory_mb: 512, network: false, concurrency: 1}
+adapter_config:
+  max_output_bytes: 2097152
+  effect_observation:
+    max_entries: 100000
+    max_file_bytes: 16777216
+    max_total_bytes: 268435456
+    exclude: [.git/**, .mishkan/**]
+    observable_effects: [filesystem.write]
