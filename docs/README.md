@@ -27,7 +27,7 @@ This index is the entry point for durable MISHKAN documentation.
 | [`VALIDATION/local-crewai.md`](VALIDATION/local-crewai.md) | Passed | Observed local and remote acceptance evidence for real CrewAI execution |
 | [`VALIDATION/policy-tools.md`](VALIDATION/policy-tools.md) | Reopened | Narrow mechanism evidence and remaining corrected policy/tool acceptance conditions |
 | [`VALIDATION/durability.md`](VALIDATION/durability.md) | Passed — D-038 | Local, live CrewAI/Ollama, and remote Linux/macOS evidence for the durable daemon, mutations, artifacts, sessions, recovery, security, and performance |
-| [`VALIDATION/web-browser-mcp.md`](VALIDATION/web-browser-mcp.md) | Passed — D-039 | Local, real-browser/MCP, live CrewAI/Ollama, and remote Linux/macOS evidence for Web, Browser, MCP, and governed harness clients |
+| [`VALIDATION/web-browser-mcp.md`](VALIDATION/web-browser-mcp.md) | Local revalidation passed; remote pending | D-039 historical evidence plus the current cross-baseline conformance audit and gate for Web, Browser, MCP, and governed harness clients |
 
 ## Authority rules
 

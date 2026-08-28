@@ -1,10 +1,12 @@
 # I04 Web, Browser, MCP, and External Harnesses — Validation Evidence
 
-**Status:** Passed — accepted by D-039
+**Status:** Local conformance revalidation passed — current remote matrix pending
 
 **Branch:** `feat/i04-web-browser-mcp-harnesses`
 
-**Validated locally and remotely:** 2026-08-27
+**Original D-039 gate:** 2026-08-27
+
+**Cross-baseline audit checkpoint:** `6a73e98`, validated locally 2026-08-28
 
 **Identity:** `Y4NN777 <axel.studiesmail@gmail.com>`
 
@@ -36,6 +38,14 @@ is lost after dispatch. The real acceptance fixture proved observation, form act
 JavaScript, navigation, diagnostics, screenshots, and restoration of authenticated cookie state
 from a project-persistent profile.
 
+The conformance checkpoint additionally authorizes the exact destination of link, form, and
+coordinate-triggered effects; treats JavaScript as `script.execute`; governs persistent-profile and
+attached-CDP filesystem/network effects; and proves browser-engine readiness before publishing the
+capability. Persistent Chromium state is archived as a sensitive immutable Artifact, restored
+through descriptor-safe extraction, referenced through CAS, and removed from its raw directory
+after settlement. Unresolved raw state after a crash blocks reuse pending reconciliation.
+Diagnostics and downloads are bounded and expose cursor gaps rather than silently losing evidence.
+
 Outbound MCP connections persist configured identity, protocol strategy, negotiated version,
 server identity, capability fingerprint, discovery revision, primitive schemas, and call journal.
 The official MCP SDK executes real STDIO and Streamable HTTP sessions. Discovery drift is explicit;
@@ -45,6 +55,13 @@ their remote task identity before polling, support reconnect from a new transpor
 schema-validate the terminal result, and require explicit reconciliation after transport loss.
 Negotiated cancellation is durable and can be requested through the daemon without silently
 claiming that an unconfirmed remote effect stopped.
+
+STDIO MCP execution now requires a configured isolation builder, suppresses untrusted child stderr,
+and receives only explicitly mapped credential environment variables. Streamable HTTP rejects
+routing and framing header overrides. Discovery, progress, retention, pagination, primitive counts,
+messages, and total bytes are bounded by public configuration. Server annotations cannot grant
+retry authority. Discovered resources and prompts are reported as unsupported for invocation
+instead of being advertised as executable; an inbound profile cannot expose unsupported prompts.
 
 The inbound MCP facade exposes only configured operations. It authenticates the harness identity,
 requires the command actor to match it, validates the application-command envelope, and delegates
@@ -63,19 +80,46 @@ discovery alone.
 
 | Check | Observed result |
 |---|---|
-| Full deterministic suite excluding external-model markers | 275 passed, 2 deselected |
-| Global branch coverage | 80.21%, threshold 80% |
+| Full deterministic suite excluding external-model markers | 398 passed, 1 skipped, 2 deselected |
+| Global branch coverage | 80.23%, threshold 80% |
 | Real Playwright Chromium acceptance fixture | Passed |
 | Real MCP STDIO transport fixture | Passed |
 | Real MCP Streamable HTTP transport fixture | Passed |
 | Remote MCP Task reconnect and cancellation fixtures | Passed |
 | Event ingestion | At least 100 accepted events/s under the direct ingestion contract |
 | Ruff check and format check | Passed |
-| `mypy --strict src` | Passed, 127 source files |
+| `mypy --strict src` | Passed, 146 source files |
 | `uv lock --check` | Passed, 169 packages |
 | Source and wheel distributions | Passed |
 | Deterministic public schema export | Passed |
 | `git diff --check` | Passed |
+
+The declarative Alembic revision scripts are excluded from line/branch instrumentation because
+Alembic loads them through its migration runtime. Their observable behavior is not excluded from
+acceptance: black-box tests cover empty-database setup, exact I02 recognition and preservation,
+unknown/lookalike-schema refusal, and monotone event cursors across retention and upgrade. Runtime
+persistence, migration management, events, artifacts, edits, sessions, Browser, Web, and MCP remain
+inside the global 80% coverage gate.
+
+## Cross-baseline conformance audit closure
+
+The audit did not rely on the old green gate. It rechecked requirements against execution
+boundaries and closed verified gaps in:
+
+- command revision serialization, schema-version validation, SQLite cursor high-water preservation,
+  exact legacy recognition, and Web-cache races;
+- browser destination/effect authority, attached/persistent profile effects, secret-safe durable
+  state, path/symlink handling, bounded evidence, crash uncertainty, and real-engine availability;
+- MCP process containment, credential and header boundaries, retry authority, bounded discovery and
+  progress, retention, primitive support truthfulness, and secret-safe progress;
+- public Web concurrency, Git remote identity, descriptor-safe file/AST reads, Artifact publication
+  serialization, immediate secret inspection, bounded change/command bodies, and asynchronous daemon
+  query dispatch.
+
+The tracked tests include adversarial destinations, JavaScript authority, persistent-profile
+settlement/recovery, missing MCP isolation, stderr canaries, malicious HTTP headers, infinite/cyclic
+discovery, progress pruning/pagination, Web concurrency, stale application revisions, event
+retention, schema lookalikes, symlink races, CAS publication races, and oversized public inputs.
 
 The performance gate now measures one authoritative command/event acceptance transaction per
 ingested event. Effect reservation and later acceptance remain a separate atomicity test because
@@ -109,10 +153,10 @@ No test treats a search snippet as page proof, a configured adapter as installed
 screenshot as backend proof, MCP discovery as authority, or an indeterminate remote effect as a
 successful completion.
 
-## Live model and remote evidence
+## Historical live-model and remote evidence
 
-The tracked CrewAI/Ollama initialization-and-resume regression passed on the current implementation
-against the local Ollama service with `qwen2.5-coder-7b-16k:latest` for planning and
+The tracked CrewAI/Ollama initialization-and-resume regression passed on the original D-039
+implementation against the local Ollama service with `qwen2.5-coder-7b-16k:latest` for planning and
 `deepseek-coder-v2:16b` for execution: 1 passed in 213.62 seconds. It used no paid provider and
 proved an accepted result followed by deterministic resume with the same plan fingerprint and
 results.
@@ -133,8 +177,14 @@ run of the new harness objective contract exposed one stale expected-schema cata
 catalogue was corrected, the full local gate was rerun, and run 33079214948 then passed all six
 jobs.
 
+These live-model and remote runs validate commit `55b01c3`; they are retained as historical evidence
+and do not validate checkpoint `6a73e98`. The external-model gates were not rerun during the
+cross-baseline gap closure. A new six-job Linux/macOS Python 3.11–3.13 matrix must pass on the current
+topic branch before current-baseline promotion.
+
 ## Acceptance boundary
 
-The implementation and evidence satisfy the declared I04 technical gate and were accepted by
-D-039 on 2026-08-27. Promotion into `develop` and the beginning of I05 remain paused until the
-engineer-requested cross-baseline conformance audit is complete.
+D-039 records the original I04 acceptance on 2026-08-27. The requested conformance audit is now
+implemented and its local technical gate passes at `6a73e98`. This is not yet a current-baseline
+promotion gate: promotion into `develop` and the beginning of I05 remain paused until the new remote
+matrix is green and recorded here.

@@ -11,10 +11,12 @@ Implementation Plan 1.5 were accepted in order by D-032 through D-037 on 2026-08
 integrated before `feat/i03-mutations-sessions-durability` began. I03 now has a green deterministic
 local gate, a passing tracked live CrewAI/Ollama regression, and a green remote Linux/macOS Python
 3.11–3.13 matrix recorded in `docs/VALIDATION/durability.md`. D-038 accepts I03. I04 is implemented on
-`feat/i04-web-browser-mcp-harnesses`; its complete local, real-browser/MCP, live-model, and remote
-evidence is recorded in `docs/VALIDATION/web-browser-mcp.md`. D-039 accepted I04 on 2026-08-27. Do not promote
-I04 into `develop` or begin I05 until the engineer-requested cross-baseline conformance audit is
-complete. The rejected
+`feat/i04-web-browser-mcp-harnesses`. D-039 accepted its original gate on 2026-08-27. The requested
+cross-baseline conformance audit then found gaps in durable concurrency, browser authority and
+sensitive state, MCP containment and bounds, Web concurrency, and public input limits. Those gaps
+are closed at checkpoint `6a73e98`, whose current local gate is recorded in
+`docs/VALIDATION/web-browser-mcp.md`. Do not promote I04 into `develop` or begin I05 until the
+current six-job remote matrix is green and that evidence is recorded. The rejected
 universal workflow, mandatory outcome catalogue, capability-family matrix, static role/tool matrix,
 competing runtime, and private operational deny-list must not return.
 
