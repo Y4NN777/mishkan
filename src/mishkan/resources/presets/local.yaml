@@ -56,6 +56,11 @@ sessions:
       preview_bytes: 4096
       read_chunk_bytes: 65536
       readiness_poll_seconds: 0.1
+      effect_observation:
+        max_entries: 100000
+        max_file_bytes: 16777216
+        max_total_bytes: 268435456
+        exclude: [.git/**, .mishkan/**]
 web:
   network_profiles:
     public-read:

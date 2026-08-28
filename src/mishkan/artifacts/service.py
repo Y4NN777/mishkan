@@ -1390,6 +1390,11 @@ class DurableArtifactService:
         for payload in session.scalars(select(McpProgressRow.payload)).all():
             rooted.update(DurableArtifactService._artifact_ids_in_payload(payload))
         for execution_row in session.scalars(select(ExecutionSessionRow)).all():
+            rooted.update(
+                DurableArtifactService._artifact_ids_in_payload(
+                    execution_row.effect_evidence_payload
+                )
+            )
             for reference in (
                 execution_row.stdout_artifact_reference,
                 execution_row.stderr_artifact_reference,

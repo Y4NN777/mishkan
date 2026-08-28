@@ -505,6 +505,7 @@ class ExecutionSessionRow(Base):
     stdout_artifact_reference: Mapped[str | None] = mapped_column(String(64))
     stderr_artifact_reference: Mapped[str | None] = mapped_column(String(64))
     before_state_payload: Mapped[str] = mapped_column(Text, nullable=False)
+    effect_evidence_payload: Mapped[str] = mapped_column(Text, nullable=False)
     observed_effects_payload: Mapped[str] = mapped_column(Text, nullable=False)
     produced_artifacts_payload: Mapped[str] = mapped_column(Text, nullable=False)
     effect_settlement: Mapped[str | None] = mapped_column(String(32))

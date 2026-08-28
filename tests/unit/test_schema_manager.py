@@ -183,3 +183,44 @@ def test_artifact_auxiliary_record_identity_migration_backfills_existing_rows(
         ]
     assert len(set(identities)) == 3
     assert all(str(UUID(identity)) == identity for identity in identities)
+
+
+def test_session_effect_evidence_migration_backfills_existing_sessions(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "sessions.db"
+    config = _migration_config(database)
+    command.upgrade(config, "artifact_record_identity_v1")
+    timestamp = "2026-08-28T00:00:00+00:00"
+    with create_engine(f"sqlite:///{database}").begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO execution_sessions "
+                "(id, mode, state, owner, run_id, task_id, workspace, profile, "
+                "request_payload, stdout_spool, stderr_spool, stdout_cursor, stderr_cursor, "
+                "before_state_payload, observed_effects_payload, produced_artifacts_payload, "
+                "retryable, cancellation_requested, deadline, started_at, created_at, updated_at) "
+                "VALUES (:id, 'job', 'settled', 'engineer', :run_id, 'task-1', '.', "
+                "'standard', '{}', 'stdout', 'stderr', 0, 0, '{}', '[]', '[]', 0, 0, "
+                ":timestamp, :timestamp, :timestamp, :timestamp)"
+            ),
+            {
+                "id": "11111111-1111-4111-8111-111111111111",
+                "run_id": "22222222-2222-4222-8222-222222222222",
+                "timestamp": timestamp,
+            },
+        )
+
+    command.upgrade(config, "head")
+
+    with create_engine(f"sqlite:///{database}").connect() as connection:
+        evidence = connection.execute(
+            text("SELECT effect_evidence_payload FROM execution_sessions")
+        ).scalar_one()
+        column = next(
+            row
+            for row in connection.execute(text("PRAGMA table_info(execution_sessions)"))
+            if row.name == "effect_evidence_payload"
+        )
+    assert evidence == "{}"
+    assert column.notnull == 1

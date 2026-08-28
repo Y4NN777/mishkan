@@ -183,6 +183,6 @@ class WorkspaceEffectObserver:
             changed_paths=changed,
             scope_deviations=deviations,
             complete=before.complete and after.complete,
-            omissions=(*before.omissions, *after.omissions),
+            omissions=tuple(dict.fromkeys((*before.omissions, *after.omissions))),
             diff=diff,
         )

@@ -41,6 +41,11 @@ from mishkan.execution.sessions import (
 )
 from mishkan.persistence.migration import SchemaManager
 from mishkan.persistence.sqlite import ExecutionSessionRow, create_local_engine
+from mishkan.tools.effects import (
+    WorkspaceEffectEvidence,
+    WorkspaceEffectObserver,
+    WorkspaceSnapshot,
+)
 from mishkan.tools.execution import ExecutionResult, ExecutionStatus
 
 
@@ -102,6 +107,7 @@ class SessionSupervisor:
         self._monitors: dict[UUID, threading.Thread] = {}
         self._locks: dict[tuple[UUID, str], threading.Lock] = {}
         self._session_locks: dict[UUID, threading.RLock] = {}
+        self._workspace_effects = WorkspaceEffectObserver()
 
     def start(
         self,
@@ -173,6 +179,10 @@ class SessionSupervisor:
         stdout_spool.touch(mode=0o600)
         stderr_spool.touch(mode=0o600)
         before_state = self._declared_path_state(request)
+        workspace_before = self._workspace_effects.snapshot(
+            self._workspace,
+            profile.effect_observation.model_dump(mode="python"),
+        )
         if request.mode is SessionMode.PTY:
             process, threads = self._start_pty(
                 session_id,
@@ -219,7 +229,14 @@ class SessionSupervisor:
                     signal=None,
                     stdout_artifact_reference=None,
                     stderr_artifact_reference=None,
-                    before_state_payload=json.dumps(before_state, sort_keys=True),
+                    before_state_payload=json.dumps(
+                        {
+                            "declared_paths": before_state,
+                            "workspace": self._snapshot_payload(workspace_before),
+                        },
+                        sort_keys=True,
+                    ),
+                    effect_evidence_payload="{}",
                     observed_effects_payload="[]",
                     produced_artifacts_payload="[]",
                     effect_settlement=None,
@@ -453,8 +470,18 @@ class SessionSupervisor:
         stderr_reference = self._output_artifact(row, "stderr", stderr)
         request = SessionRequest.model_validate_json(row.request_payload)
         evidence_error: str | None = None
+        workspace_evidence: WorkspaceEffectEvidence | None = None
+        effect_diff_reference: str | None = None
         try:
-            observed_effects = self._observed_effects(row, request)
+            workspace_evidence = self._workspace_effect_evidence(row, request)
+            observed_effects = tuple(
+                f"filesystem.change:{path}" for path in workspace_evidence.changed_paths
+            )
+            if workspace_evidence.changed_paths:
+                effect_diff_reference = self._effect_diff_artifact(
+                    row,
+                    workspace_evidence,
+                )
         except MishkanError:
             observed_effects = ()
             evidence_error = "effect_observation_failed"
@@ -465,9 +492,14 @@ class SessionSupervisor:
             evidence_error = evidence_error or "produced_artifact_capture_failed"
         settlement = (
             SessionEffectSettlement.UNCERTAIN
-            if evidence_error is not None
-            else self._effect_settlement(request, observed_effects)
+            if evidence_error is not None or workspace_evidence is None
+            else self._effect_settlement(
+                request,
+                workspace_evidence,
+                effect_diff_reference,
+            )
         )
+        effect_uncertain = settlement is SessionEffectSettlement.UNCERTAIN
         termination_cause = row.termination_cause
         if termination_cause is None and exit_code is not None and exit_code < 0:
             termination_cause = "signal_termination"
@@ -487,7 +519,7 @@ class SessionSupervisor:
             result_status = ExecutionStatus.UNCERTAIN
             termination_cause = termination_cause or "process_identity_lost"
             settlement = SessionEffectSettlement.UNCERTAIN
-        elif evidence_error is not None:
+        elif evidence_error is not None or effect_uncertain:
             result_status = ExecutionStatus.UNCERTAIN
         elif row.cancellation_requested:
             result_status = (
@@ -517,7 +549,7 @@ class SessionSupervisor:
                 terminal_override.value
                 if terminal_override is not None
                 else SessionState.UNCERTAIN.value
-                if evidence_error is not None
+                if evidence_error is not None or effect_uncertain
                 else SessionState.SETTLED.value
                 if row.cancellation_requested
                 else SessionState.FAILED.value
@@ -531,6 +563,10 @@ class SessionSupervisor:
             current.stdout_artifact_reference = stdout_reference
             current.stderr_artifact_reference = stderr_reference
             current.observed_effects_payload = json.dumps(observed_effects)
+            current.effect_evidence_payload = json.dumps(
+                self._effect_evidence_payload(workspace_evidence, effect_diff_reference),
+                sort_keys=True,
+            )
             current.produced_artifacts_payload = json.dumps(produced_artifacts)
             current.effect_settlement = settlement.value
             current.termination_cause = termination_cause
@@ -829,6 +865,9 @@ class SessionSupervisor:
             )
             observed_effects = tuple(json.loads(row.observed_effects_payload or "[]"))
             produced_artifacts = tuple(json.loads(row.produced_artifacts_payload or "[]"))
+            effect_evidence = json.loads(row.effect_evidence_payload or "{}")
+            if not isinstance(effect_evidence, dict):
+                raise MishkanError(ErrorCode.EXECUTION, "session effect evidence is invalid")
             stdout = self._spool_path(row, "stdout")
             stderr = self._spool_path(row, "stderr")
             status = self._execution_status(row)
@@ -861,6 +900,18 @@ class SessionSupervisor:
                 declared_effects=request.declared_effects,
                 observed_effects=observed_effects,
                 effect_settlement=settlement,
+                base_snapshot_fingerprint=effect_evidence.get("base_snapshot_fingerprint"),
+                after_snapshot_fingerprint=effect_evidence.get("after_snapshot_fingerprint"),
+                changed_paths=tuple(effect_evidence.get("changed_paths", ())),
+                scope_deviations=tuple(effect_evidence.get("scope_deviations", ())),
+                effect_diff_artifact_ref=effect_evidence.get("effect_diff_artifact_ref"),
+                effect_observation_complete=bool(
+                    effect_evidence.get("effect_observation_complete", False)
+                ),
+                effect_observation_omissions=tuple(
+                    effect_evidence.get("effect_observation_omissions", ())
+                ),
+                effect_validation=str(effect_evidence.get("effect_validation", "not-observed")),
                 retryable=row.retryable,
                 execution_location="local",
                 error=row.error or self._terminal_error(row),
@@ -889,19 +940,68 @@ class SessionSupervisor:
     def _declared_path_state(self, request: SessionRequest) -> dict[str, object]:
         return {path: self._path_state(path) for path in request.declared_paths}
 
-    def _observed_effects(
-        self, row: ExecutionSessionRow, request: SessionRequest
-    ) -> tuple[str, ...]:
-        before = json.loads(row.before_state_payload or "{}")
-        changed = [
-            path for path in request.declared_paths if before.get(path) != self._path_state(path)
-        ]
-        return tuple(f"filesystem.change:{path}" for path in changed)
+    def _workspace_effect_evidence(
+        self,
+        row: ExecutionSessionRow,
+        request: SessionRequest,
+    ) -> WorkspaceEffectEvidence:
+        before_payload = json.loads(row.before_state_payload or "{}")
+        workspace_payload = (
+            before_payload.get("workspace") if isinstance(before_payload, dict) else None
+        )
+        if not isinstance(workspace_payload, dict):
+            raise MishkanError(
+                ErrorCode.EXECUTION,
+                "session predates durable workspace effect evidence",
+            )
+        try:
+            fingerprint = workspace_payload["fingerprint"]
+            entries = workspace_payload["entries"]
+            complete = workspace_payload["complete"]
+            omissions = workspace_payload["omissions"]
+            if not isinstance(fingerprint, str) or len(fingerprint) != 64:
+                raise TypeError
+            if not isinstance(entries, dict) or not all(
+                isinstance(path, str) and isinstance(value, dict) for path, value in entries.items()
+            ):
+                raise TypeError
+            if not isinstance(complete, bool) or not isinstance(omissions, list):
+                raise TypeError
+            if not all(isinstance(item, str) for item in omissions):
+                raise TypeError
+            before = WorkspaceSnapshot(
+                fingerprint=fingerprint,
+                entries=entries,
+                complete=complete,
+                omissions=tuple(omissions),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise MishkanError(
+                ErrorCode.EXECUTION,
+                "session workspace effect evidence is invalid",
+            ) from exc
+        profile = self._profile(row.profile)
+        after = self._workspace_effects.snapshot(
+            self._workspace,
+            profile.effect_observation.model_dump(mode="python"),
+        )
+        return self._workspace_effects.compare(
+            before,
+            after,
+            allowed_scopes=request.declared_paths,
+        )
 
     def _produced_artifacts(
         self, row: ExecutionSessionRow, request: SessionRequest
     ) -> tuple[str, ...]:
-        before = json.loads(row.before_state_payload or "{}")
+        before_payload = json.loads(row.before_state_payload or "{}")
+        before = (
+            before_payload.get("declared_paths", {})
+            if isinstance(before_payload, dict) and "declared_paths" in before_payload
+            else before_payload
+        )
+        if not isinstance(before, dict):
+            raise MishkanError(ErrorCode.EXECUTION, "session path evidence is invalid")
         references: list[str] = []
         for relative in request.declared_paths:
             state = self._path_state(relative)
@@ -930,24 +1030,83 @@ class SessionSupervisor:
 
     @staticmethod
     def _effect_settlement(
-        request: SessionRequest, observed_effects: tuple[str, ...]
+        request: SessionRequest,
+        evidence: WorkspaceEffectEvidence,
+        diff_reference: str | None,
     ) -> SessionEffectSettlement:
+        if (
+            not evidence.complete
+            or evidence.scope_deviations
+            or (evidence.changed_paths and diff_reference is None)
+        ):
+            return SessionEffectSettlement.UNCERTAIN
         filesystem_only = bool(request.declared_effects) and all(
             effect.startswith("filesystem.") for effect in request.declared_effects
         )
         if not request.declared_effects:
             return (
                 SessionEffectSettlement.UNCERTAIN
-                if observed_effects
+                if evidence.changed_paths
                 else SessionEffectSettlement.ABSENT
             )
         if filesystem_only and request.declared_paths:
             return (
                 SessionEffectSettlement.COMPLETED
-                if observed_effects
+                if evidence.changed_paths
                 else SessionEffectSettlement.ABSENT
             )
         return SessionEffectSettlement.UNCERTAIN
+
+    @staticmethod
+    def _snapshot_payload(snapshot: WorkspaceSnapshot) -> dict[str, object]:
+        return {
+            "fingerprint": snapshot.fingerprint,
+            "entries": snapshot.entries,
+            "complete": snapshot.complete,
+            "omissions": list(snapshot.omissions),
+        }
+
+    @staticmethod
+    def _effect_evidence_payload(
+        evidence: WorkspaceEffectEvidence | None,
+        diff_reference: str | None,
+    ) -> dict[str, object]:
+        if evidence is None:
+            return {}
+        return {
+            "base_snapshot_fingerprint": evidence.base_fingerprint,
+            "after_snapshot_fingerprint": evidence.after_fingerprint,
+            "changed_paths": list(evidence.changed_paths),
+            "scope_deviations": list(evidence.scope_deviations),
+            "effect_diff_artifact_ref": diff_reference,
+            "effect_observation_complete": evidence.complete,
+            "effect_observation_omissions": list(evidence.omissions),
+            "effect_validation": (
+                "bounded-before-after-snapshot"
+                if evidence.complete and not evidence.scope_deviations
+                else "incomplete-or-out-of-scope"
+            ),
+        }
+
+    def _effect_diff_artifact(
+        self,
+        row: ExecutionSessionRow,
+        evidence: WorkspaceEffectEvidence,
+    ) -> str:
+        return self._artifacts.put_bytes(
+            evidence.diff,
+            media_type="application/vnd.mishkan.workspace-diff+json",
+            provenance=ArtifactProvenance(
+                producer_identity=row.owner,
+                run_id=row.run_id,
+                task_attempt_id=row.task_id,
+                call_id=row.id,
+                capability=f"session.{row.mode}",
+                channel="effect-diff",
+            ),
+            complete=True,
+            retention="session",
+        ).reference
 
     def _path_state(self, relative: str) -> dict[str, object]:
         target = self._safe_declared_path(relative)

@@ -140,6 +140,13 @@ class ArtifactConfig(StrictConfigModel):
         return value
 
 
+class SessionEffectObservationConfig(StrictConfigModel):
+    max_entries: int = Field(ge=1)
+    max_file_bytes: int = Field(ge=1)
+    max_total_bytes: int = Field(ge=1)
+    exclude: tuple[str, ...] = ()
+
+
 class SessionProfileConfig(StrictConfigModel):
     cancellation_signals: tuple[str, ...] = Field(min_length=1)
     grace_seconds: float = Field(ge=0.05, le=300)
@@ -151,6 +158,7 @@ class SessionProfileConfig(StrictConfigModel):
     readiness_poll_seconds: float = Field(ge=0.01, le=60)
     max_memory_mb: int | None = Field(default=None, ge=1)
     max_cpu_seconds: float | None = Field(default=None, gt=0, le=604_800)
+    effect_observation: SessionEffectObservationConfig
 
 
 class SessionConfig(StrictConfigModel):

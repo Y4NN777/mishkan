@@ -3,19 +3,26 @@ from __future__ import annotations
 import time
 from datetime import timedelta
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 from sqlalchemy import create_engine, text
 
 from mishkan.artifacts.service import DurableArtifactService
 from mishkan.config.loader import ConfigLoader
-from mishkan.config.models import CredentialReference, CredentialSource, ProjectConfig
+from mishkan.config.models import (
+    CredentialReference,
+    CredentialSource,
+    ProjectConfig,
+    SessionEffectObservationConfig,
+)
 from mishkan.config.presets import preset_text
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.time import utc_now
 from mishkan.execution import (
     ExecutionMode,
     ExecutionRequest,
+    ExecutionSession,
     ReadinessProbe,
     SessionState,
     SessionSupervisor,
@@ -77,11 +84,16 @@ def _request(mode: ExecutionMode, arguments: tuple[str, ...]) -> ExecutionReques
     )
 
 
-def _await_settlement(supervisor: SessionSupervisor, session_id) -> object:  # type: ignore[no-untyped-def]
+def _await_settlement(supervisor: SessionSupervisor, session_id: UUID) -> ExecutionSession:
     deadline = time.monotonic() + 5
     while time.monotonic() < deadline:
         record = supervisor.status(session_id)
-        if record.state in {SessionState.SETTLED, SessionState.FAILED}:
+        if record.state in {
+            SessionState.SETTLED,
+            SessionState.FAILED,
+            SessionState.LOST,
+            SessionState.UNCERTAIN,
+        }:
             return record
         time.sleep(0.02)
     raise AssertionError("session did not settle")
@@ -93,8 +105,7 @@ def test_job_readiness_cursors_artifacts_and_cross_chunk_secret_filter(tmp_path:
         ExecutionMode.JOB,
         (
             "-c",
-            "printf CAN; sleep 0.05; printf 'ARY READY\\n'; "
-            "while [ ! -f continue-job ]; do sleep 0.02; done",
+            "printf CAN; sleep 0.05; printf 'ARY READY\\n'; sleep 0.5",
         ),
     ).model_copy(
         update={
@@ -107,13 +118,12 @@ def test_job_readiness_cursors_artifacts_and_cross_chunk_secret_filter(tmp_path:
     )
     started = supervisor.start(request, credential_values={"TEST_TOKEN": "CANARY"})
     assert started.state is SessionState.READY
-    (tmp_path / "continue-job").touch()
     settled = _await_settlement(supervisor, started.session_id)
-    assert settled.state is SessionState.SETTLED  # type: ignore[attr-defined]
+    assert settled.state is SessionState.SETTLED
     output = supervisor.read(started.session_id, channel="stdout", offset=0, limit=1024)
     assert "CANARY" not in output.data
     assert "[REDACTED]" in output.data
-    reference = settled.stdout_artifact_reference  # type: ignore[attr-defined]
+    reference = settled.stdout_artifact_reference
     assert reference is not None
     assert b"CANARY" not in artifacts.read_bytes(reference)
 
@@ -137,19 +147,23 @@ def test_stateful_pty_input_is_bounded_and_settles_with_observed_artifacts(tmp_p
     settled = _await_settlement(supervisor, started.session_id)
 
     assert (tmp_path / "governed-effect").is_file()
-    assert settled.declared_effects == ("filesystem.write",)  # type: ignore[attr-defined]
-    assert settled.effect_settlement == "completed"  # type: ignore[attr-defined]
-    assert settled.observed_effects == (  # type: ignore[attr-defined]
-        "filesystem.change:governed-effect",
-    )
-    assert len(settled.result.produced_artifact_refs) == 1  # type: ignore[attr-defined,union-attr]
-    assert settled.result.started_at < settled.result.finished_at  # type: ignore[attr-defined,union-attr]
+    assert settled.result is not None
+    assert settled.declared_effects == ("filesystem.write",)
+    assert settled.effect_settlement == "completed"
+    assert settled.result.changed_paths == ("governed-effect",)
+    assert settled.result.scope_deviations == ()
+    assert settled.result.effect_observation_complete is True
+    assert settled.result.effect_diff_artifact_ref is not None
+    assert settled.observed_effects == ("filesystem.change:governed-effect",)
+    assert len(settled.result.produced_artifact_refs) == 1
+    assert settled.result.started_at < settled.result.finished_at
     rooted = _artifacts.plan_gc(watermark=utc_now() + timedelta(seconds=1))
-    assert settled.stdout_artifact_reference not in rooted.candidates  # type: ignore[attr-defined]
-    assert settled.result.produced_artifact_refs[0] not in rooted.candidates  # type: ignore[attr-defined,union-attr]
-    assert settled.retryable is False  # type: ignore[attr-defined]
-    assert "done" in settled.stdout_preview  # type: ignore[attr-defined]
-    assert settled.execution_location == "local"  # type: ignore[attr-defined]
+    assert settled.stdout_artifact_reference not in rooted.candidates
+    assert settled.result.produced_artifact_refs[0] not in rooted.candidates
+    assert settled.result.effect_diff_artifact_ref not in rooted.candidates
+    assert settled.retryable is False
+    assert "done" in settled.stdout_preview
+    assert settled.execution_location == "local"
 
 
 def test_pty_input_resize_cursor_and_lost_on_new_supervisor(tmp_path: Path) -> None:
@@ -258,7 +272,7 @@ def test_recovered_job_monitor_enforces_persisted_deadline_after_daemon_restart(
     tmp_path: Path,
 ) -> None:
     supervisor, artifacts, database = _supervisor(tmp_path)
-    supervisor._ensure_monitor = lambda _session_id: None  # type: ignore[method-assign]
+    supervisor._ensure_monitor = lambda _session_id: None  # type: ignore[assignment]
     started = supervisor.start(
         _request(ExecutionMode.JOB, ("-c", "sleep 10")).model_copy(
             update={"deadline": utc_now() + timedelta(milliseconds=150)}
@@ -281,3 +295,54 @@ def test_recovered_job_monitor_enforces_persisted_deadline_after_daemon_restart(
 
     assert settled.state is SessionState.SETTLED
     assert settled.result is not None and settled.result.status == "timed_out"
+
+
+def test_session_scope_deviation_is_durable_uncertainty(tmp_path: Path) -> None:
+    supervisor, _artifacts, _database = _supervisor(tmp_path)
+    started = supervisor.start(
+        _request(ExecutionMode.PTY, ()).model_copy(update={"declared_paths": ("allowed",)})
+    )
+
+    supervisor.write(
+        started.session_id,
+        b"touch outside; exit\n",
+        declared_effects=("filesystem.write",),
+    )
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        settled = supervisor.status(started.session_id)
+        if settled.state is SessionState.UNCERTAIN:
+            break
+        time.sleep(0.02)
+    else:
+        raise AssertionError("scope-deviating session did not settle as uncertain")
+
+    assert settled.result is not None
+    assert settled.result.status == "uncertain"
+    assert settled.result.changed_paths == ("outside",)
+    assert settled.result.scope_deviations == ("outside",)
+    assert settled.result.effect_settlement == "uncertain"
+
+
+def test_incomplete_workspace_observation_cannot_be_accepted(tmp_path: Path) -> None:
+    (tmp_path / "existing-a").write_text("a")
+    (tmp_path / "existing-b").write_text("b")
+    supervisor, _artifacts, _database = _supervisor(
+        tmp_path,
+        profile_updates={
+            "effect_observation": SessionEffectObservationConfig(
+                max_entries=1,
+                max_file_bytes=1024,
+                max_total_bytes=1024,
+                exclude=(".git/**", ".mishkan/**"),
+            )
+        },
+    )
+    started = supervisor.start(_request(ExecutionMode.JOB, ("-c", "true")))
+    settled = _await_settlement(supervisor, started.session_id)
+
+    assert settled.state is SessionState.UNCERTAIN
+    assert settled.result is not None
+    assert settled.result.status == "uncertain"
+    assert settled.result.effect_observation_complete is False
+    assert "entry_limit_reached" in settled.result.effect_observation_omissions
