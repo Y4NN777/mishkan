@@ -37,7 +37,7 @@ def _router(tmp_path: Path) -> tuple[McpFacadeRouter, list[ApplicationCommand]]:
             config.mcp,
             repository,
             execute,
-            schema_revision="i04_mcp",
+            schema_revision="capability_contract_v1",
             event_page_limit=100,
         ),
         submitted,
@@ -57,7 +57,7 @@ async def test_facade_exposes_only_implemented_allowlisted_operations(tmp_path: 
     )
     assert await router.invoke("system.health", {}, principal_id="harness") == {
         "status": "ready",
-        "schema": "i04_mcp",
+        "schema": "capability_contract_v1",
     }
     with pytest.raises(MishkanError) as hidden:
         await router.invoke("events.stream", {}, principal_id="harness")

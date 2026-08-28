@@ -6,7 +6,7 @@ import httpx
 import pytest
 from mcp.types import LATEST_PROTOCOL_VERSION
 from pydantic import AnyHttpUrl
-from support.i04 import loopback_listener, running_daemon
+from support.integrations import loopback_listener, running_daemon
 
 from mishkan.application import ApplicationCommand
 from mishkan.config.loader import ConfigLoader

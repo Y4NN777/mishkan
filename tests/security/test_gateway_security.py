@@ -48,7 +48,7 @@ def test_path_traversal_is_refused_before_dispatch(tmp_path: Path) -> None:
 
 @pytest.mark.symlinks
 def test_symlink_escape_is_refused_before_dispatch(tmp_path: Path) -> None:
-    outside = tmp_path.parent / "outside-i02.txt"
+    outside = tmp_path.parent / "outside-scope.txt"
     outside.write_text("outside", encoding="utf-8")
     (tmp_path / "link.txt").symlink_to(outside)
     policy = policy_for(

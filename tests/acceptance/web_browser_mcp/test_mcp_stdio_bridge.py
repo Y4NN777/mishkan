@@ -8,7 +8,7 @@ import pytest
 import yaml
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
-from support.i04 import loopback_listener, running_daemon
+from support.integrations import loopback_listener, running_daemon
 
 from mishkan.application import ApplicationCommand
 from mishkan.config.loader import ConfigLoader
@@ -69,7 +69,10 @@ async def test_stdio_bridge_is_a_stateless_client_of_mishkand(tmp_path: Path) ->
 
     assert initialized.serverInfo.name == "mishkan"
     assert "command.submit" in {item.name for item in tools.tools}
-    assert health.structuredContent == {"status": "ready", "schema": "i04_mcp"}
+    assert health.structuredContent == {
+        "status": "ready",
+        "schema": "execution_evidence_v1",
+    }
     assert result.isError is False
     assert result.structuredContent is not None
     assert result.structuredContent["status"] == "accepted"
