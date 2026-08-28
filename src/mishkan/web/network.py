@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import ipaddress
+import re
 import socket
 import ssl
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol, cast
 
@@ -14,6 +15,41 @@ import httpx
 
 from mishkan.config.models import NetworkProfileConfig
 from mishkan.domain.errors import ErrorCode, MishkanError
+
+_HTTP_FIELD_NAME = re.compile(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
+_TRANSPORT_CONTROLLED_HEADERS = frozenset(
+    {
+        "connection",
+        "content-length",
+        "host",
+        "keep-alive",
+        "proxy-authenticate",
+        "proxy-authorization",
+        "te",
+        "trailer",
+        "transfer-encoding",
+        "upgrade",
+    }
+)
+
+
+def validate_outbound_headers(headers: Mapping[str, str] | None) -> None:
+    """Keep HTTP routing and message framing under the verified transport's control."""
+
+    for name, value in (headers or {}).items():
+        normalized = name.casefold()
+        if not _HTTP_FIELD_NAME.fullmatch(name) or "\r" in value or "\n" in value:
+            raise MishkanError(
+                ErrorCode.WEB,
+                "web request contains an invalid HTTP header",
+                details={"header": name},
+            )
+        if normalized in _TRANSPORT_CONTROLLED_HEADERS:
+            raise MishkanError(
+                ErrorCode.AUTHORITY_NOT_GRANTED,
+                "HTTP routing and framing headers are controlled by the verified transport",
+                details={"header": normalized},
+            )
 
 
 class Resolver(Protocol):
@@ -339,6 +375,7 @@ class HttpxWebTransport:
     ) -> HttpExchange:
         guard = NetworkGuard(profile, self._resolver)
         target = guard.validate_url(url)
+        validate_outbound_headers(headers)
         transport = GuardedHTTPTransport(guard)
         timeout = httpx.Timeout(
             timeout_seconds or profile.read_timeout_seconds,

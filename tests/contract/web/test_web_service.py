@@ -495,6 +495,35 @@ def test_plain_credential_header_is_refused_before_transport(tmp_path: Path) -> 
     assert transport.calls == []
 
 
+def test_late_credential_cannot_take_control_of_http_routing_header(tmp_path: Path) -> None:
+    transport = RecordingTransport([])
+    service = WebService(
+        _web_config(),
+        _artifacts(tmp_path),
+        search_adapters={},
+        extraction_adapters={},
+        transport=transport,  # type: ignore[arg-type]
+    )
+    request = FetchRequest(
+        url=AnyHttpUrl("https://example.com"),
+        network_profile="public-read",
+        credential_refs=(
+            CredentialReference(source=CredentialSource.ENV, locator="WEB_TEST_TOKEN"),
+        ),
+        credential_origin="https://example.com",
+        credential_header="Host",
+        redirect_policy=RedirectPolicy.NONE,
+        cache=False,
+    )
+
+    with pytest.raises(MishkanError) as caught:
+        service.fetch(request, _context())
+
+    assert caught.value.envelope.code is ErrorCode.AUTHORITY_NOT_GRANTED
+    assert caught.value.envelope.details["header"] == "host"
+    assert transport.calls == []
+
+
 def test_stateful_http_request_is_distinct_from_fetch(tmp_path: Path) -> None:
     transport = RecordingTransport(
         [_exchange(b'{"updated": true}', headers={"content-type": "application/json"})]

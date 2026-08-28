@@ -44,7 +44,7 @@ from mishkan.web.models import (
     SourceSpan,
     WebOperationContext,
 )
-from mishkan.web.network import HttpxWebTransport, NetworkGuard
+from mishkan.web.network import HttpxWebTransport, NetworkGuard, validate_outbound_headers
 
 
 class WebCredentialResolver(Protocol):
@@ -318,6 +318,7 @@ class WebService:
                 "credential-bearing Web headers require late credential references",
                 details={"headers": unsafe_headers},
             )
+        validate_outbound_headers(request.headers)
         cache_enabled = request.cache and not request.credential_refs
         cache_key = self._cache_key(
             kind,
@@ -358,6 +359,15 @@ class WebService:
             if request.credential_origin
             else None
         )
+        if request.credential_header is not None:
+            normalized_credential_header = request.credential_header.casefold()
+            if normalized_credential_header not in profile.credential_header_names:
+                raise MishkanError(
+                    ErrorCode.AUTHORITY_NOT_GRANTED,
+                    "Web credential injection header is outside the configured network profile",
+                    details={"header": normalized_credential_header},
+                )
+            validate_outbound_headers({request.credential_header: "credential-placeholder"})
         resolver = credential_resolver or self._credentials
         credentials = resolver.resolve(request.credential_refs)
         body = (

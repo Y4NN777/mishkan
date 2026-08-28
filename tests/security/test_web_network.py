@@ -14,6 +14,7 @@ from mishkan.web.network import (
     GuardedNetworkBackend,
     HttpxWebTransport,
     NetworkGuard,
+    validate_outbound_headers,
 )
 
 
@@ -260,3 +261,22 @@ def test_httpx_transport_records_the_real_loopback_peer() -> None:
     assert result.content == b"bounded"
     assert result.connection.connected_address == "127.0.0.1"
     assert result.connection.dns_answers == ("127.0.0.1",)
+
+
+@pytest.mark.parametrize(
+    "header",
+    ("Host", "Content-Length", "Transfer-Encoding", "Connection", "Proxy-Authorization"),
+)
+def test_transport_refuses_caller_control_of_routing_and_framing_headers(header: str) -> None:
+    with pytest.raises(MishkanError) as caught:
+        validate_outbound_headers({header: "attacker-controlled"})
+
+    assert caught.value.envelope.code is ErrorCode.AUTHORITY_NOT_GRANTED
+    assert caught.value.envelope.details["header"] == header.casefold()
+
+
+def test_transport_refuses_invalid_header_name_before_httpx_dispatch() -> None:
+    with pytest.raises(MishkanError) as caught:
+        validate_outbound_headers({"invalid header": "value"})
+
+    assert caught.value.envelope.code is ErrorCode.WEB
