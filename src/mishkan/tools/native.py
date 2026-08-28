@@ -18,6 +18,9 @@ from mishkan.tools.adapters import (
     FileReadAdapter,
     FileResolveAdapter,
     FileStatAdapter,
+    GitHistorySearchAdapter,
+    PythonStructuralSearchAdapter,
+    PythonSymbolSearchAdapter,
     ReadFileAdapter,
     RipgrepTextSearchAdapter,
     SearchFilesAdapter,
@@ -73,7 +76,9 @@ def discover_native_environment(
             break
 
     dependencies = frozenset(
-        dependency for dependency in ("bash", "rg") if shutil.which(dependency, path=search_path)
+        dependency
+        for dependency in ("bash", "git", "rg")
+        if shutil.which(dependency, path=search_path)
     )
     for required_name in (*required_executables, *sorted(dependencies)):
         observed_path = shutil.which(required_name, path=search_path)
@@ -85,11 +90,15 @@ def discover_native_environment(
         FileReadAdapter.adapter_id,
         FileListAdapter.adapter_id,
         SearchFilesAdapter.adapter_id,
+        PythonStructuralSearchAdapter.adapter_id,
+        PythonSymbolSearchAdapter.adapter_id,
         ReadFileAdapter.adapter_id,
         DirectProcessAdapter.adapter_id,
     }
     if "rg" in dependencies:
         adapter_ids.add(RipgrepTextSearchAdapter.adapter_id)
+    if "git" in dependencies:
+        adapter_ids.add(GitHistorySearchAdapter.adapter_id)
     if "bash" in dependencies:
         adapter_ids.add(BashShellAdapter.adapter_id)
     return NativeCapabilityEnvironment(
@@ -145,6 +154,26 @@ def build_native_adapters(
                 _first_version_line(executable),
                 max_results=int(config["max_results"]),
                 max_output_bytes=int(config["max_output_bytes"]),
+                timeout_seconds=contract.resources.timeout_seconds,
+            )
+        elif adapter_id == PythonStructuralSearchAdapter.adapter_id:
+            adapters[adapter_id] = PythonStructuralSearchAdapter(
+                max_results=int(config["max_results"]),
+                max_files=int(config["max_files"]),
+                max_file_bytes=int(config["max_file_bytes"]),
+            )
+        elif adapter_id == PythonSymbolSearchAdapter.adapter_id:
+            adapters[adapter_id] = PythonSymbolSearchAdapter(
+                max_results=int(config["max_results"]),
+                max_files=int(config["max_files"]),
+                max_file_bytes=int(config["max_file_bytes"]),
+            )
+        elif adapter_id == GitHistorySearchAdapter.adapter_id:
+            executable = _observed_executable(environment, "git")
+            adapters[adapter_id] = GitHistorySearchAdapter(
+                executable,
+                _first_version_line(executable),
+                max_results=int(config["max_results"]),
                 timeout_seconds=contract.resources.timeout_seconds,
             )
         elif adapter_id == ReadFileAdapter.adapter_id:

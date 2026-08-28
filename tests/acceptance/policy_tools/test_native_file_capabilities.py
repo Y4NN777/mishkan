@@ -43,7 +43,9 @@ def test_file_resolve_returns_attributable_object_evidence(tmp_path: Path) -> No
     )
 
     assert result.status is CallStatus.COMPLETED
-    assert result.output == {
+    assert result.output is not None
+    operation_evidence = result.output["operation_evidence"]
+    assert {key: value for key, value in result.output.items() if key != "operation_evidence"} == {
         "requested_path": "src/main.py",
         "lexical_path": "src/main.py",
         "resolved_path": "src/main.py",
@@ -51,6 +53,22 @@ def test_file_resolve_returns_attributable_object_evidence(tmp_path: Path) -> No
         "object_type": "file",
         "is_symlink": False,
         "link_chain": [],
+    }
+    assert {
+        key: operation_evidence[key]
+        for key in (
+            "repository_id",
+            "revision",
+            "working_tree_dirty",
+            "working_tree_fingerprint",
+            "scope",
+        )
+    } == {
+        "repository_id": "test-repository",
+        "revision": "b" * 40,
+        "working_tree_dirty": False,
+        "working_tree_fingerprint": "0" * 64,
+        "scope": ["src/main.py"],
     }
 
 

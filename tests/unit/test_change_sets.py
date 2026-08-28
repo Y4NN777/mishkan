@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import hashlib
+import subprocess
 from collections.abc import Callable
 from pathlib import Path
 from uuid import uuid4
 
 import pytest
+from support.capabilities import context_for, inspector, policy_for
 
 from mishkan.artifacts import ArtifactProvenance
 from mishkan.artifacts.service import DurableArtifactService
@@ -21,6 +23,16 @@ from mishkan.edits import (
     PreconditionKind,
 )
 from mishkan.persistence import SchemaManager
+from mishkan.policy import Decision, PolicyAuthority
+from mishkan.repository import RepositoryInspector
+from mishkan.tools.adapters import FileReadAdapter
+from mishkan.tools.gateway import (
+    CapabilityGateway,
+    GitRepositoryStateObserver,
+    MappingCredentialResolver,
+    MemoryEvidenceSink,
+)
+from mishkan.tools.gateway_models import DeclaredTargets
 from mishkan.tools.inspection import ContentInspector, InspectionProfileLoader
 
 
@@ -84,6 +96,79 @@ def test_create_and_exact_replace_are_verified_and_journaled(tmp_path: Path) -> 
     assert result.diff_reference is not None
     assert b"MISHKAN" in artifacts.read_bytes(result.diff_reference)
     assert (workspace / "app.txt").read_text() == "hello MISHKAN"
+
+
+def test_full_read_base_token_is_accepted_by_revision_precondition(tmp_path: Path) -> None:
+    service, _artifacts, workspace = _services(tmp_path)
+    target = workspace / "app.txt"
+    target.write_text("before", encoding="utf-8")
+    subprocess.run(["git", "init", "-q"], cwd=workspace, check=True)
+    subprocess.run(["git", "config", "user.name", "Test Engineer"], cwd=workspace, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.invalid"], cwd=workspace, check=True
+    )
+    subprocess.run(["git", "add", "app.txt"], cwd=workspace, check=True)
+    subprocess.run(["git", "commit", "-qm", "initial"], cwd=workspace, check=True)
+    binding = RepositoryInspector().bind(workspace)
+    policy = policy_for(
+        "file.read",
+        Decision.ALLOW,
+        effect_class="read",
+        paths=("app.txt",),
+        repository=binding.repository_id,
+    )
+    context = context_for(workspace, "file.read", policy, ("app.txt",)).model_copy(
+        update={
+            "repository": binding.repository_id,
+            "repository_revision": binding.base_revision,
+            "repository_dirty": binding.working_tree_dirty,
+            "repository_state_fingerprint": binding.working_tree_fingerprint,
+        }
+    )
+    adapter = FileReadAdapter(max_bytes=1024, max_scan_bytes=1024)
+    gateway = CapabilityGateway(
+        workspace,
+        PolicyAuthority(),
+        MappingCredentialResolver({}),
+        inspector(workspace),
+        {adapter.adapter_id: adapter},
+        MemoryEvidenceSink(),
+        repository_observer=GitRepositoryStateObserver(),
+    )
+    read = gateway.invoke(
+        context,
+        {
+            "path": "app.txt",
+            "mode": "text",
+            "max_bytes": 1024,
+            "encoding": "utf-8",
+            "binary_policy": "reject",
+        },
+        DeclaredTargets(paths=("app.txt",)),
+    )
+    assert read.output is not None
+    token = read.output["operation_evidence"]["base_revision_token"]
+    assert isinstance(token, str)
+    change = ChangeSet(
+        scope="workspace",
+        declared_effects=("filesystem.write",),
+        operations=(
+            ChangeOperation(
+                kind=ChangeOperationKind.WRITE,
+                path="app.txt",
+                precondition=PreconditionKind.REVISION,
+                precondition_value=token,
+                inline_content="after",
+                expected_digest=_digest(b"after"),
+            ),
+        ),
+    )
+
+    service.plan(change)
+    result = service.apply(change.id)
+
+    assert result.state is ChangeSetState.VERIFIED
+    assert target.read_text(encoding="utf-8") == "after"
 
 
 @pytest.mark.secrets

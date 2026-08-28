@@ -18,6 +18,9 @@ roles:
       - file.list
       - search.files
       - search.text
+      - search.structural
+      - search.symbol
+      - search.history
       - core.process.exec
       - core.shell.run
   - name: Repository_Reviewer
@@ -32,3 +35,6 @@ roles:
       - file.list
       - search.files
       - search.text
+      - search.structural
+      - search.symbol
+      - search.history

@@ -1,7 +1,7 @@
 schema_version: "1.0"
 source_id: bundled.core
 source_kind: native
-revision: "10"
+revision: "11"
 adoption_authority: MISHKAN release
 tools:
   - tool_id: file.resolve
@@ -47,6 +47,28 @@ tools:
     source_kind: native
     contract_uri: package://mishkan.resources.tools/contracts/search-text.yaml
     availability: {dependencies: [rg]}
+  - tool_id: search.structural
+    version: 1.0.0
+    summary: Search bounded Python syntax trees without claiming semantic coverage.
+    effect_class: read
+    source_id: bundled.core
+    source_kind: native
+    contract_uri: package://mishkan.resources.tools/contracts/search-structural.yaml
+  - tool_id: search.symbol
+    version: 1.0.0
+    summary: Search Python definition and reference syntax with explicit non-semantic coverage.
+    effect_class: read
+    source_id: bundled.core
+    source_kind: native
+    contract_uri: package://mishkan.resources.tools/contracts/search-symbol.yaml
+  - tool_id: search.history
+    version: 1.0.0
+    summary: Search bounded local Git commit history without an implicit network operation.
+    effect_class: read
+    source_id: bundled.core
+    source_kind: native
+    contract_uri: package://mishkan.resources.tools/contracts/search-history.yaml
+    availability: {platforms: [linux, darwin], dependencies: [git]}
   - tool_id: repository.read_file
     version: 1.0.0
     summary: Read one exact repository-relative file bound to the accepted task.
@@ -201,6 +223,14 @@ toolsets:
     version: 1.0.0
     summary: Concretely available non-mutating search capabilities.
     tools: [search.files, search.text]
+  - toolset_id: search.code
+    version: 1.0.0
+    summary: Syntax, symbol, reference, and local repository-history search surfaces.
+    tools: [search.structural, search.symbol, search.history]
+  - toolset_id: search.complete
+    version: 1.0.0
+    summary: Complete distinct file, text, syntax, symbol, reference, and history search surface.
+    toolsets: [search.basic, search.code]
   - toolset_id: execution.process
     version: 1.0.0
     summary: Direct process execution without shell interpretation.

@@ -106,6 +106,7 @@ class ToolContract(ToolModel):
     availability: AvailabilityConditions = Field(default_factory=AvailabilityConditions)
     resources: ResourceRequest
     adapter_config: dict[str, Any] = Field(default_factory=dict)
+    operation_evidence: bool = False
 
     @model_validator(mode="after")
     def schemas_are_objects(self) -> Self:

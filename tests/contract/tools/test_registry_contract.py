@@ -118,6 +118,9 @@ def test_bundled_catalogue_lists_metadata_but_binds_only_available_adapters(
             "native.file.list",
             "native.search.files",
             "ripgrep.search.text",
+            "python.ast.search.structure",
+            "python.ast.search.symbol",
+            "git.search.history",
             "native.process.exec",
             "native.shell.bash",
         }
@@ -125,7 +128,7 @@ def test_bundled_catalogue_lists_metadata_but_binds_only_available_adapters(
     catalog = ToolCatalog(
         (CATALOG_URI,),
         tmp_path,
-        available_dependencies=frozenset({"rg", "bash"}),
+        available_dependencies=frozenset({"rg", "git", "bash"}),
         available_adapters=adapters,
     )
 
@@ -136,6 +139,9 @@ def test_bundled_catalogue_lists_metadata_but_binds_only_available_adapters(
         "file.list",
         "search.files",
         "search.text",
+        "search.structural",
+        "search.symbol",
+        "search.history",
         "repository.read_file",
         "core.process.exec",
         "core.shell.run",
@@ -167,6 +173,14 @@ def test_bundled_catalogue_lists_metadata_but_binds_only_available_adapters(
     assert tuple(tool.tool_id for tool in search_snapshot.tools) == (
         "search.files",
         "search.text",
+    )
+    complete_search = catalog.snapshot(("search.complete",))
+    assert tuple(tool.tool_id for tool in complete_search.tools) == (
+        "search.files",
+        "search.text",
+        "search.structural",
+        "search.symbol",
+        "search.history",
     )
     shell_snapshot = catalog.snapshot(("execution.shell",))
     assert tuple(tool.tool_id for tool in shell_snapshot.tools) == ("core.shell.run",)

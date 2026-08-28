@@ -7,6 +7,7 @@ effect_class: read
 source_id: bundled.core
 source_kind: native
 adapter: native.repository.read_file
+operation_evidence: true
 input_schema:
   type: object
   additionalProperties: false
@@ -16,10 +17,32 @@ input_schema:
 result_schema:
   type: object
   additionalProperties: false
-  required: [path, content]
+  required: [path, content, operation_evidence]
   properties:
     path: {type: string}
     content: {type: string}
+    operation_evidence: {$ref: "#/$defs/operation_evidence"}
+  $defs:
+    operation_evidence:
+      type: object
+      additionalProperties: false
+      required: [repository_id, revision, working_tree_dirty, working_tree_fingerprint, scope, engine, engine_version, normalized_query, freshness, limits, omissions, failures, truncated, continuation, base_revision_token]
+      properties:
+        repository_id: {type: string}
+        revision: {type: string}
+        working_tree_dirty: {type: boolean}
+        working_tree_fingerprint: {type: string, pattern: "^[a-f0-9]{64}$"}
+        scope: {type: array, items: {type: string}}
+        engine: {type: string}
+        engine_version: {type: string}
+        normalized_query: {type: object}
+        freshness: {type: object}
+        limits: {type: object}
+        omissions: {type: array, items: {type: string}}
+        failures: {type: array, items: {type: string}}
+        truncated: {type: boolean}
+        continuation: {type: [string, integer, "null"]}
+        base_revision_token: {type: [string, "null"]}
 timeout_behavior: cancel_local
 idempotency: idempotent
 target_scopes: [path]

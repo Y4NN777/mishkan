@@ -6,8 +6,10 @@ import hashlib
 import json
 import os
 import stat
+import subprocess
+import threading
 from collections.abc import Mapping
-from datetime import timedelta
+from datetime import datetime, timedelta
 from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import Any, Protocol
@@ -21,6 +23,8 @@ from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.time import utc_now
 from mishkan.policy import ApprovalEvidence, AuthorizationRequest, Decision, PolicyAuthority
 from mishkan.policy.models import security_identifier
+from mishkan.repository.profile import load_discovery_profile
+from mishkan.repository.tokens import content_base_revision_token
 from mishkan.tools.adapters import AdapterCall, CapabilityAdapter
 from mishkan.tools.execution import EffectSettlement
 from mishkan.tools.gateway_models import (
@@ -168,6 +172,72 @@ class PlannedCallJournal(Protocol):
     ) -> ToolResultEnvelope: ...
 
 
+class RepositoryStateObserver(Protocol):
+    def observe(self, root: Path, expected_revision: str) -> tuple[str, bool, str]: ...
+
+
+class GitRepositoryStateObserver:
+    """Observe local Git identity and dirty state without performing a network operation."""
+
+    def __init__(self, excluded_paths: tuple[str, ...] | None = None) -> None:
+        self._excluded_paths = (
+            excluded_paths
+            if excluded_paths is not None
+            else load_discovery_profile().excluded_directories
+        )
+
+    def observe(self, root: Path, expected_revision: str) -> tuple[str, bool, str]:
+        try:
+            repository_root = subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            ).stdout.strip()
+            revision = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            ).stdout.strip()
+            status = subprocess.run(
+                [
+                    "git",
+                    "status",
+                    "--porcelain=v1",
+                    "-z",
+                    "--untracked-files=all",
+                    "--",
+                    ".",
+                    *(f":(exclude){path}/**" for path in self._excluded_paths),
+                ],
+                # Public discovery-profile exclusions keep MISHKAN's own state and
+                # other explicitly ignored working directories out of project evidence.
+                cwd=root,
+                check=True,
+                capture_output=True,
+                timeout=10,
+            ).stdout
+        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+            raise MishkanError(
+                ErrorCode.PROJECT,
+                "repository state could not be observed before capability dispatch",
+            ) from exc
+        if Path(repository_root).resolve() != root:
+            raise MishkanError(ErrorCode.REVISION_MISMATCH, "repository root identity changed")
+        if revision != expected_revision:
+            raise MishkanError(
+                ErrorCode.REVISION_MISMATCH,
+                "repository revision differs from the accepted plan",
+                details={"expected": expected_revision, "observed": revision},
+            )
+        return revision, bool(status), hashlib.sha256(status).hexdigest()
+
+
 class CancellationSignal(Protocol):
     def requested(self, run_id: str, task_attempt_id: str) -> bool: ...
 
@@ -176,6 +246,30 @@ class NeverCancelled:
     def requested(self, run_id: str, task_attempt_id: str) -> bool:
         del run_id, task_attempt_id
         return False
+
+
+class ConcurrencyController:
+    """Non-blocking in-process leases enforcing the accepted per-capability bound."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._active: dict[str, int] = {}
+
+    def acquire(self, key: str, limit: int) -> bool:
+        with self._lock:
+            active = self._active.get(key, 0)
+            if active >= limit:
+                return False
+            self._active[key] = active + 1
+            return True
+
+    def release(self, key: str) -> None:
+        with self._lock:
+            remaining = self._active.get(key, 0) - 1
+            if remaining > 0:
+                self._active[key] = remaining
+            else:
+                self._active.pop(key, None)
 
 
 class CapabilityCancelled(Exception):
@@ -221,6 +315,8 @@ class CapabilityGateway:
         cancellation: CancellationSignal | None = None,
         artifact_store: ArtifactStore | None = None,
         planned_calls: PlannedCallJournal | None = None,
+        repository_observer: RepositoryStateObserver | None = None,
+        concurrency: ConcurrencyController | None = None,
     ) -> None:
         self._root = Path(repository_root).resolve()
         self._policy = policy_authority
@@ -231,6 +327,8 @@ class CapabilityGateway:
         self._cancellation = cancellation or NeverCancelled()
         self._artifact_store = artifact_store
         self._planned_calls = planned_calls
+        self._repository_observer = repository_observer
+        self._concurrency = concurrency or ConcurrencyController()
 
     def invoke(
         self,
@@ -262,6 +360,13 @@ class CapabilityGateway:
             resolved = self._resolve_targets(declared_targets)
             self._validate_declared_arguments(contract, arguments, resolved)
             self._validate_bound_targets(context.binding.allowed_targets, resolved)
+            operation_evidence = self._operation_evidence(
+                context,
+                contract,
+                resolved,
+                arguments,
+                started,
+            )
             request = AuthorizationRequest(
                 plan_fingerprint=context.plan_fingerprint,
                 identity=context.identity,
@@ -402,6 +507,16 @@ class CapabilityGateway:
                     "bound tool adapter is unavailable",
                     details={"adapter": contract.adapter},
                 )
+            concurrency_key = f"{context.repository}:{contract.tool_id}"
+            if not self._concurrency.acquire(concurrency_key, context.resources.concurrency):
+                raise MishkanError(
+                    ErrorCode.TOOL_UNAVAILABLE,
+                    "capability concurrency bound is currently exhausted",
+                    details={
+                        "tool_id": contract.tool_id,
+                        "concurrency": context.resources.concurrency,
+                    },
+                )
             if journal_reserved:
                 assert request_fingerprint is not None
                 self._planned_calls_or_raise().mark_planned_call_dispatching(
@@ -409,28 +524,42 @@ class CapabilityGateway:
                     request_fingerprint,
                 )
                 dispatch_started = True
-            adapter_result = adapter.invoke(
-                AdapterCall(
-                    arguments=arguments,
-                    targets=resolved,
-                    credentials=credentials,
-                    execution_id=call_id,
-                    resources=context.resources,
-                    isolation_profile=context.isolation_profile,
-                    cancellation_requested=lambda: self._cancellation.requested(
-                        context.run_id, context.task_attempt_id
-                    ),
-                    run_id=context.run_id,
-                    task_attempt_id=context.task_attempt_id,
-                    acting_identity=context.identity,
-                    capability=contract.tool_id,
-                    plan_fingerprint=context.plan_fingerprint,
-                    objective_class=context.objective_class,
-                    repository=context.repository,
-                    outcome=context.outcome,
-                    role=context.role,
-                )
+            self._audit(
+                context,
+                call_id,
+                "tool.call_started",
+                "dispatching",
+                "authorized capability dispatch started",
+                {
+                    "tool_version": contract.version,
+                    "deadline": deadline.isoformat(),
+                },
             )
+            try:
+                adapter_result = adapter.invoke(
+                    AdapterCall(
+                        arguments=arguments,
+                        targets=resolved,
+                        credentials=credentials,
+                        execution_id=call_id,
+                        resources=context.resources,
+                        isolation_profile=context.isolation_profile,
+                        cancellation_requested=lambda: self._cancellation.requested(
+                            context.run_id, context.task_attempt_id
+                        ),
+                        run_id=context.run_id,
+                        task_attempt_id=context.task_attempt_id,
+                        acting_identity=context.identity,
+                        capability=contract.tool_id,
+                        plan_fingerprint=context.plan_fingerprint,
+                        objective_class=context.objective_class,
+                        repository=context.repository,
+                        outcome=context.outcome,
+                        role=context.role,
+                    )
+                )
+            finally:
+                self._concurrency.release(concurrency_key)
             dispatched_status = adapter_result.call_status
             if adapter_result.actual_targets != resolved:
                 raise MishkanError(
@@ -441,6 +570,16 @@ class CapabilityGateway:
             for content in adapter_result.inspection_content:
                 self._inspector.inspect(content, secret_values)
             output_with_artifacts = dict(adapter_result.output)
+            if operation_evidence is not None:
+                if "operation_evidence" in output_with_artifacts:
+                    raise MishkanError(
+                        ErrorCode.TOOL_SCHEMA,
+                        "adapter attempted to replace Gateway operation evidence",
+                    )
+                output_with_artifacts["operation_evidence"] = self._complete_operation_evidence(
+                    operation_evidence,
+                    output_with_artifacts,
+                )
             references_with_artifacts = list(adapter_result.external_references)
             artifact_channels: set[str] = set()
             for candidate in adapter_result.artifact_candidates:
@@ -587,7 +726,7 @@ class CapabilityGateway:
             self._audit(
                 context,
                 terminal_result.call_id,
-                "tool.call_uncertain",
+                "tool.call_timed_out",
                 "uncertain",
                 terminal_result.reason,
                 {
@@ -619,6 +758,7 @@ class CapabilityGateway:
                 ErrorCode.POLICY_CONFLICT,
                 ErrorCode.TOOL_UNAVAILABLE,
                 ErrorCode.TOOL_DRIFT,
+                ErrorCode.REVISION_MISMATCH,
             }
             if call_id is None:
                 pre_dispatch_codes.update(
@@ -633,6 +773,8 @@ class CapabilityGateway:
                 CallStatus.UNCERTAIN: "tool.call_uncertain",
                 CallStatus.REFUSED: "tool.call_refused",
             }.get(status, "tool.call_failed")
+            if code is ErrorCode.TOOL_SCHEMA:
+                event_type = "tool.schema_failed"
             self._audit(
                 context,
                 terminal_result.call_id,
@@ -660,6 +802,101 @@ class CapabilityGateway:
         if self._planned_calls is None:
             raise MishkanError(ErrorCode.RUN_INTERRUPTED, "planned-call journal is unavailable")
         return self._planned_calls
+
+    def _operation_evidence(
+        self,
+        context: InvocationContext,
+        contract: ToolContract,
+        resolved: ResolvedTargets,
+        arguments: dict[str, Any],
+        observed_at: datetime,
+    ) -> dict[str, Any] | None:
+        if not contract.operation_evidence:
+            return None
+        revision = context.repository_revision
+        dirty = context.repository_dirty
+        state_fingerprint = context.repository_state_fingerprint
+        if self._repository_observer is not None:
+            revision, dirty, state_fingerprint = self._repository_observer.observe(
+                self._root,
+                context.repository_revision,
+            )
+        return {
+            "repository_id": context.repository,
+            "revision": revision,
+            "working_tree_dirty": dirty,
+            "working_tree_fingerprint": state_fingerprint,
+            "scope": [path.relative for path in resolved.paths],
+            "engine": contract.adapter,
+            "engine_version": contract.version,
+            "normalized_query": arguments,
+            "freshness": {
+                "kind": "live-observation",
+                "observed_at": observed_at.isoformat(),
+            },
+            "limits": {
+                "timeout_seconds": context.resources.timeout_seconds,
+                "memory_mb": context.resources.memory_mb,
+                "network": context.resources.network,
+                "adapter": contract.adapter_config,
+            },
+            "omissions": [],
+            "failures": [],
+            "truncated": False,
+            "continuation": None,
+            "base_revision_token": None,
+        }
+
+    @staticmethod
+    def _complete_operation_evidence(
+        evidence: dict[str, Any],
+        output: dict[str, Any],
+    ) -> dict[str, Any]:
+        completed = dict(evidence)
+        completed["engine"] = output.get("engine", completed["engine"])
+        completed["engine_version"] = output.get("engine_version", completed["engine_version"])
+        completed["normalized_query"] = output.get(
+            "normalized_query", completed["normalized_query"]
+        )
+        if "freshness" in output:
+            freshness = dict(completed["freshness"])
+            freshness["basis"] = output["freshness"]
+            completed["freshness"] = freshness
+        if "limits" in output:
+            limits = dict(completed["limits"])
+            limits["operation"] = output["limits"]
+            completed["limits"] = limits
+        omissions = list(output.get("omissions", ()))
+        omissions.extend(
+            f"inaccessible:{json.dumps(item, sort_keys=True)}"
+            for item in output.get("inaccessible", ())
+        )
+        omissions.extend(f"cycle:{item}" for item in output.get("cycles", ()))
+        completed["omissions"] = omissions
+        completed["failures"] = list(output.get("failures", ()))
+        completed["truncated"] = bool(output.get("truncated", False))
+        completed["continuation"] = output.get(
+            "continuation_cursor",
+            output.get("continuation_offset"),
+        )
+        content_digest = output.get("content_digest")
+        full_content = (
+            content_digest is not None
+            and output.get("byte_range") == [0, output.get("total_bytes")]
+            and output.get("truncated") is False
+        )
+        if content_digest is None and isinstance(output.get("content"), str):
+            content_digest = f"sha256:{hashlib.sha256(output['content'].encode()).hexdigest()}"
+            full_content = True
+        scope = completed["scope"]
+        if full_content and isinstance(content_digest, str) and len(scope) == 1:
+            completed["base_revision_token"] = content_base_revision_token(
+                repository_id=str(completed["repository_id"]),
+                repository_revision=str(completed["revision"]),
+                path=str(scope[0]),
+                content_digest=content_digest,
+            )
+        return completed
 
     def _complete_journaled_call(
         self,

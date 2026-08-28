@@ -32,6 +32,8 @@ def _discovery(tmp_path: Path) -> DiscoverySnapshot:
             repository_id="a" * 64,
             root=tmp_path,
             base_revision="b" * 40,
+            working_tree_dirty=False,
+            working_tree_fingerprint="0" * 64,
         ),
         facts=(),
         unknowns=(),
@@ -224,6 +226,25 @@ def test_interrupted_task_requires_effect_reconciliation_before_retry(tmp_path: 
     assert repository.recover_interrupted(run_id) == ("root-task",)
     assert repository.run_state(run_id) == RunState.RUNNING.value
     assert repository.claim_task(run_id, "root-task") == 2
+    repository.reserve_planned_call(
+        invocation_id=invocation_id,
+        run_id=run_id,
+        task_attempt_id="root-task:1",
+        planned_call_id="mutate-repository",
+        request_fingerprint=request_fingerprint,
+        tool_id="git.commit",
+        tool_version="1.0",
+        effect_class="repository_write",
+        declared_effects=("git.commit",),
+    )
+    retry_events = [
+        event
+        for event in repository.outbox_events()
+        if event["event_type"] == "tool.call_retry_reserved"
+    ]
+    assert retry_events[-1]["payload"]["task_attempt_id"] == "root-task:1"
+    assert retry_events[-1]["payload"]["tool_id"] == "git.commit"
+    assert retry_events[-1]["payload"]["tool_version"] == "1.0"
 
 
 def test_interrupted_call_without_declared_effect_is_released_for_retry(tmp_path: Path) -> None:
@@ -246,6 +267,13 @@ def test_interrupted_call_without_declared_effect_is_released_for_retry(tmp_path
 
     assert repository.recover_interrupted(run_id) == ("root-task",)
     assert repository.unresolved_planned_effects(run_id) == ()
+    reconciled = [
+        event
+        for event in repository.outbox_events()
+        if event["event_type"] == "tool.call_retry_reconciled"
+    ]
+    assert reconciled[-1]["payload"]["planned_call_id"] == "read-evidence"
+    assert reconciled[-1]["payload"]["tool_version"] == "1.0"
     assert (
         repository.reserve_planned_call(
             invocation_id=invocation_id,

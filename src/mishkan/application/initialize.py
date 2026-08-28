@@ -17,7 +17,11 @@ from mishkan.policy import PolicyAuthority, PolicyLoader
 from mishkan.repository import RepositoryInspector
 from mishkan.tools.capability_runtime import CapabilityRuntime, build_capability_runtime
 from mishkan.tools.catalog import ToolCatalog
-from mishkan.tools.gateway import CapabilityGateway, MappingCredentialResolver
+from mishkan.tools.gateway import (
+    CapabilityGateway,
+    GitRepositoryStateObserver,
+    MappingCredentialResolver,
+)
 from mishkan.tools.inspection import ContentInspector, InspectionProfileLoader
 from mishkan.tools.isolation import IsolationProfileLoader
 from mishkan.tools.native import (
@@ -147,6 +151,7 @@ class MishkanInitializer:
             cancellation=state_repository,
             artifact_store=artifact_store,
             planned_calls=state_repository,
+            repository_observer=GitRepositoryStateObserver(),
         )
         snapshot = state_repository.start_or_resume(discovery, objective, outcome.outcome_id)
         if on_run_started is not None:

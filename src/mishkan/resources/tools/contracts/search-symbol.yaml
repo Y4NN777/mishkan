@@ -1,0 +1,83 @@
+schema_version: "1.0"
+tool_id: search.symbol
+version: 1.0.0
+crewai_name: search_symbol
+summary: Search Python definition and reference syntax with explicit non-semantic coverage.
+effect_class: read
+source_id: bundled.core
+source_kind: native
+adapter: python.ast.search.symbol
+operation_evidence: true
+input_schema:
+  type: object
+  additionalProperties: false
+  required: [path, identifier]
+  properties:
+    path: {type: string, minLength: 1}
+    language: {type: string, const: python}
+    identifier: {type: string, minLength: 1}
+    relation: {type: string, enum: [definition, reference, both]}
+    include: {type: array, items: {type: string, minLength: 1}}
+    exclude: {type: array, items: {type: string, minLength: 1}}
+    include_hidden: {type: boolean}
+    max_results: {type: integer, minimum: 1}
+    max_files: {type: integer, minimum: 1}
+result_schema:
+  type: object
+  additionalProperties: false
+  required: [root, matches, engine, engine_version, coverage, semantic_coverage, normalized_query, query_digest, freshness, limits, examined_files, omissions, failures, truncated, continuation_cursor, operation_evidence]
+  properties:
+    root: {type: string}
+    matches:
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required: [path, relation, syntax_kind, line, column]
+        properties:
+          path: {type: string}
+          relation: {type: string, enum: [definition, reference]}
+          syntax_kind: {type: string}
+          line: {type: integer, minimum: 1}
+          column: {type: integer, minimum: 0}
+    engine: {type: string, const: python.ast}
+    engine_version: {type: string}
+    coverage: {type: string, const: syntax}
+    semantic_coverage: {type: boolean, const: false}
+    normalized_query: {type: object}
+    query_digest: {type: string, pattern: "^[a-f0-9]{64}$"}
+    freshness: {type: string, const: live-worktree}
+    limits: {type: object}
+    examined_files: {type: integer, minimum: 0}
+    omissions: {type: array, items: {type: string}}
+    failures: {type: array, items: {type: string}}
+    truncated: {type: boolean}
+    continuation_cursor: {type: "null"}
+    operation_evidence: {$ref: "#/$defs/operation_evidence"}
+  $defs:
+    operation_evidence:
+      type: object
+      additionalProperties: false
+      required: [repository_id, revision, working_tree_dirty, working_tree_fingerprint, scope, engine, engine_version, normalized_query, freshness, limits, omissions, failures, truncated, continuation, base_revision_token]
+      properties:
+        repository_id: {type: string}
+        revision: {type: string}
+        working_tree_dirty: {type: boolean}
+        working_tree_fingerprint: {type: string, pattern: "^[a-f0-9]{64}$"}
+        scope: {type: array, items: {type: string}}
+        engine: {type: string}
+        engine_version: {type: string}
+        normalized_query: {type: object}
+        freshness: {type: object}
+        limits: {type: object}
+        omissions: {type: array, items: {type: string}}
+        failures: {type: array, items: {type: string}}
+        truncated: {type: boolean}
+        continuation: {type: [string, integer, "null"]}
+        base_revision_token: {type: [string, "null"]}
+timeout_behavior: cancel_local
+idempotency: idempotent
+target_scopes: [path]
+target_arguments: {path: [path]}
+resources: {timeout_seconds: 30, memory_mb: 128, network: false, concurrency: 1}
+adapter_config: {max_results: 1000, max_files: 10000, max_file_bytes: 2097152}

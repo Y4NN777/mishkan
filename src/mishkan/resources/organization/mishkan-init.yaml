@@ -13,6 +13,9 @@ allowed_tools:
   - file.list
   - search.files
   - search.text
+  - search.structural
+  - search.symbol
+  - search.history
   - core.process.exec
   - core.shell.run
 max_tasks: 1

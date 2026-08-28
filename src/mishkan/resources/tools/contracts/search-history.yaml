@@ -1,0 +1,79 @@
+schema_version: "1.0"
+tool_id: search.history
+version: 1.0.0
+crewai_name: search_history
+summary: Search bounded local Git commit history without an implicit network operation.
+effect_class: read
+source_id: bundled.core
+source_kind: native
+adapter: git.search.history
+operation_evidence: true
+availability: {platforms: [linux, darwin], dependencies: [git]}
+input_schema:
+  type: object
+  additionalProperties: false
+  required: [path, query]
+  properties:
+    path: {type: string, minLength: 1}
+    query: {type: string, minLength: 1, maxLength: 1024}
+    field: {type: string, enum: [message, content]}
+    semantics: {type: string, enum: [literal, regex]}
+    max_results: {type: integer, minimum: 1}
+result_schema:
+  type: object
+  additionalProperties: false
+  required: [root, matches, engine, engine_version, coverage, semantic_coverage, normalized_query, query_digest, freshness, limits, omissions, failures, truncated, continuation_cursor, exit_code, operation_evidence]
+  properties:
+    root: {type: string}
+    matches:
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required: [commit, authored_at, author, subject]
+        properties:
+          commit: {type: string}
+          authored_at: {type: string}
+          author: {type: string}
+          subject: {type: string}
+    engine: {type: string, const: git}
+    engine_version: {type: string}
+    coverage: {type: string, const: committed-history}
+    semantic_coverage: {type: boolean, const: false}
+    normalized_query: {type: object}
+    query_digest: {type: string, pattern: "^[a-f0-9]{64}$"}
+    freshness: {type: string, const: local-object-database}
+    limits: {type: object}
+    omissions: {type: array, items: {type: string}}
+    failures: {type: array, items: {type: string}}
+    truncated: {type: boolean}
+    continuation_cursor: {type: "null"}
+    exit_code: {type: integer}
+    operation_evidence: {$ref: "#/$defs/operation_evidence"}
+  $defs:
+    operation_evidence:
+      type: object
+      additionalProperties: false
+      required: [repository_id, revision, working_tree_dirty, working_tree_fingerprint, scope, engine, engine_version, normalized_query, freshness, limits, omissions, failures, truncated, continuation, base_revision_token]
+      properties:
+        repository_id: {type: string}
+        revision: {type: string}
+        working_tree_dirty: {type: boolean}
+        working_tree_fingerprint: {type: string, pattern: "^[a-f0-9]{64}$"}
+        scope: {type: array, items: {type: string}}
+        engine: {type: string}
+        engine_version: {type: string}
+        normalized_query: {type: object}
+        freshness: {type: object}
+        limits: {type: object}
+        omissions: {type: array, items: {type: string}}
+        failures: {type: array, items: {type: string}}
+        truncated: {type: boolean}
+        continuation: {type: [string, integer, "null"]}
+        base_revision_token: {type: [string, "null"]}
+timeout_behavior: cancel_local
+idempotency: idempotent
+target_scopes: [path]
+target_arguments: {path: [path]}
+resources: {timeout_seconds: 30, memory_mb: 128, network: false, concurrency: 1}
+adapter_config: {max_results: 1000}

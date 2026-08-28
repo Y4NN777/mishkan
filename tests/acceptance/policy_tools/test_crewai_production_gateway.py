@@ -196,10 +196,13 @@ def test_production_crewai_task_uses_accepted_gateway_binding_and_durable_eviden
     ]
     assert capability_events == [
         "tool.call_authorized",
+        "tool.call_started",
         "tool.call_completed",
         "tool.call_authorized",
+        "tool.call_started",
         "tool.call_completed",
         "tool.call_authorized",
+        "tool.call_started",
         "tool.call_completed",
     ]
 

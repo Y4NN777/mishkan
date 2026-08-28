@@ -7,6 +7,7 @@ effect_class: read
 source_id: bundled.core
 source_kind: native
 adapter: ripgrep.search.text
+operation_evidence: true
 availability: {dependencies: [rg]}
 input_schema:
   type: object
@@ -40,6 +41,7 @@ result_schema:
     - partial_reason
     - continuation_cursor
     - exit_code
+    - operation_evidence
   properties:
     root: {type: string}
     matches:
@@ -83,6 +85,28 @@ result_schema:
       enum: [null, timeout, output_limit, result_limit, engine_failure]
     continuation_cursor: {type: "null"}
     exit_code: {type: integer}
+    operation_evidence: {$ref: "#/$defs/operation_evidence"}
+  $defs:
+    operation_evidence:
+      type: object
+      additionalProperties: false
+      required: [repository_id, revision, working_tree_dirty, working_tree_fingerprint, scope, engine, engine_version, normalized_query, freshness, limits, omissions, failures, truncated, continuation, base_revision_token]
+      properties:
+        repository_id: {type: string}
+        revision: {type: string}
+        working_tree_dirty: {type: boolean}
+        working_tree_fingerprint: {type: string, pattern: "^[a-f0-9]{64}$"}
+        scope: {type: array, items: {type: string}}
+        engine: {type: string}
+        engine_version: {type: string}
+        normalized_query: {type: object}
+        freshness: {type: object}
+        limits: {type: object}
+        omissions: {type: array, items: {type: string}}
+        failures: {type: array, items: {type: string}}
+        truncated: {type: boolean}
+        continuation: {type: [string, integer, "null"]}
+        base_revision_token: {type: [string, "null"]}
 timeout_behavior: cancel_local
 idempotency: idempotent
 target_scopes: [path]

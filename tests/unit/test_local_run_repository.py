@@ -100,6 +100,9 @@ def test_state_and_outbox_are_durable_and_resumable(tmp_path: Path) -> None:
     assert [event["event_type"] for event in repository.outbox_events()] == [
         "run.started",
         "plan.accepted",
+        "tool.selected",
+        "tool.bound",
+        "tool.bound",
         "run.queued",
         "run.running",
         "task.claimed",

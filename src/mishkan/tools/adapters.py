@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import base64
 import difflib
 import hashlib
@@ -13,13 +14,14 @@ import shlex
 import signal
 import stat
 import subprocess
+import sys
 import time
 from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass, replace
 from fnmatch import fnmatchcase
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, ClassVar, Protocol
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -626,6 +628,377 @@ class SearchFilesAdapter:
             },
             actual_targets=call.targets,
             evidence={"selection": "bounded native traversal"},
+        )
+
+
+def _bounded_python_sources(
+    root: Path,
+    *,
+    include: tuple[str, ...],
+    exclude: tuple[str, ...],
+    include_hidden: bool,
+    max_files: int,
+) -> tuple[list[Path], list[str], bool]:
+    sources: list[Path] = []
+    omissions: list[str] = []
+    truncated = False
+    for directory, names, files in os.walk(root, followlinks=False):
+        names[:] = sorted(
+            name
+            for name in names
+            if not (Path(directory) / name).is_symlink()
+            and (include_hidden or not name.startswith("."))
+        )
+        for name in sorted(files):
+            path = Path(directory) / name
+            relative = path.relative_to(root).as_posix()
+            if path.is_symlink() or not path.is_file():
+                omissions.append(f"unsupported_object:{relative}")
+                continue
+            if not include_hidden and any(part.startswith(".") for part in Path(relative).parts):
+                continue
+            if not any(fnmatchcase(relative, pattern) for pattern in include):
+                continue
+            if any(fnmatchcase(relative, pattern) for pattern in exclude):
+                continue
+            if len(sources) >= max_files:
+                truncated = True
+                omissions.append("file_limit_reached")
+                return sources, omissions, truncated
+            sources.append(path)
+    return sources, omissions, truncated
+
+
+def _python_node_name(node: ast.AST) -> str | None:
+    value = getattr(node, "name", None)
+    if isinstance(value, str):
+        return value
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    if isinstance(node, ast.Call):
+        return _python_node_name(node.func)
+    return None
+
+
+class PythonStructuralSearchAdapter:
+    """Bounded Python syntax search that never claims semantic coverage."""
+
+    adapter_id = "python.ast.search.structure"
+    _NODE_TYPES: ClassVar[dict[str, tuple[type[ast.AST], ...]]] = {
+        "FunctionDef": (ast.FunctionDef,),
+        "AsyncFunctionDef": (ast.AsyncFunctionDef,),
+        "ClassDef": (ast.ClassDef,),
+        "Call": (ast.Call,),
+        "Import": (ast.Import,),
+        "ImportFrom": (ast.ImportFrom,),
+        "Assign": (ast.Assign,),
+        "AnnAssign": (ast.AnnAssign,),
+    }
+
+    def __init__(self, *, max_results: int, max_files: int, max_file_bytes: int) -> None:
+        self._max_results = max_results
+        self._max_files = max_files
+        self._max_file_bytes = max_file_bytes
+
+    def invoke(self, call: AdapterCall) -> AdapterResult:
+        target = call.targets.paths[0]
+        if not target.absolute.is_dir():
+            raise MishkanError(ErrorCode.FILE, "structural search root must be a directory")
+        result_limit = min(
+            int(call.arguments.get("max_results", self._max_results)), self._max_results
+        )
+        file_limit = min(int(call.arguments.get("max_files", self._max_files)), self._max_files)
+        requested_types = tuple(str(value) for value in call.arguments["node_types"])
+        node_types = tuple(
+            node_type for requested in requested_types for node_type in self._NODE_TYPES[requested]
+        )
+        name = call.arguments.get("name")
+        include = tuple(str(value) for value in call.arguments.get("include", ("*.py", "**/*.py")))
+        exclude = tuple(str(value) for value in call.arguments.get("exclude", ()))
+        sources, omissions, truncated = _bounded_python_sources(
+            target.absolute,
+            include=include,
+            exclude=exclude,
+            include_hidden=bool(call.arguments.get("include_hidden", False)),
+            max_files=file_limit,
+        )
+        matches: list[dict[str, Any]] = []
+        failures: list[str] = []
+        examined_files = 0
+        for path in sources:
+            relative = path.relative_to(target.absolute).as_posix()
+            size = path.stat().st_size
+            if size > self._max_file_bytes:
+                omissions.append(f"file_size_limit:{relative}")
+                continue
+            try:
+                tree = ast.parse(path.read_bytes(), filename=relative)
+            except (OSError, SyntaxError, UnicodeError) as exc:
+                failures.append(f"{relative}:{type(exc).__name__}")
+                continue
+            examined_files += 1
+            for node in ast.walk(tree):
+                if not isinstance(node, node_types):
+                    continue
+                observed_name = _python_node_name(node)
+                if name is not None and observed_name != name:
+                    continue
+                matches.append(
+                    {
+                        "path": relative,
+                        "node_type": type(node).__name__,
+                        "name": observed_name,
+                        "line": int(getattr(node, "lineno", 1)),
+                        "end_line": int(getattr(node, "end_lineno", getattr(node, "lineno", 1))),
+                    }
+                )
+                if len(matches) >= result_limit:
+                    truncated = True
+                    omissions.append("result_limit_reached")
+                    break
+            if len(matches) >= result_limit:
+                break
+        normalized_query = {
+            "language": "python",
+            "node_types": sorted(requested_types),
+            "name": name,
+            "include": list(include),
+            "exclude": list(exclude),
+        }
+        return AdapterResult(
+            output={
+                "root": target.relative,
+                "matches": matches,
+                "engine": "python.ast",
+                "engine_version": sys.version.split()[0],
+                "coverage": "syntax",
+                "semantic_coverage": False,
+                "normalized_query": normalized_query,
+                "query_digest": hashlib.sha256(
+                    json.dumps(normalized_query, sort_keys=True, separators=(",", ":")).encode()
+                ).hexdigest(),
+                "freshness": "live-worktree",
+                "limits": {
+                    "max_results": result_limit,
+                    "max_files": file_limit,
+                    "max_file_bytes": self._max_file_bytes,
+                },
+                "examined_files": examined_files,
+                "omissions": omissions,
+                "failures": failures,
+                "truncated": truncated,
+                "continuation_cursor": None,
+            },
+            actual_targets=call.targets,
+            evidence={"parser": "stdlib-ast", "semantic_resolution": False},
+        )
+
+
+class PythonSymbolSearchAdapter:
+    """Search Python definitions and references with syntax-only attribution."""
+
+    adapter_id = "python.ast.search.symbol"
+
+    def __init__(self, *, max_results: int, max_files: int, max_file_bytes: int) -> None:
+        self._max_results = max_results
+        self._max_files = max_files
+        self._max_file_bytes = max_file_bytes
+
+    def invoke(self, call: AdapterCall) -> AdapterResult:
+        target = call.targets.paths[0]
+        if not target.absolute.is_dir():
+            raise MishkanError(ErrorCode.FILE, "symbol search root must be a directory")
+        result_limit = min(
+            int(call.arguments.get("max_results", self._max_results)), self._max_results
+        )
+        file_limit = min(int(call.arguments.get("max_files", self._max_files)), self._max_files)
+        identifier = str(call.arguments["identifier"])
+        relation = str(call.arguments.get("relation", "both"))
+        include = tuple(str(value) for value in call.arguments.get("include", ("*.py", "**/*.py")))
+        exclude = tuple(str(value) for value in call.arguments.get("exclude", ()))
+        sources, omissions, truncated = _bounded_python_sources(
+            target.absolute,
+            include=include,
+            exclude=exclude,
+            include_hidden=bool(call.arguments.get("include_hidden", False)),
+            max_files=file_limit,
+        )
+        matches: list[dict[str, Any]] = []
+        failures: list[str] = []
+        examined_files = 0
+        for path in sources:
+            relative = path.relative_to(target.absolute).as_posix()
+            if path.stat().st_size > self._max_file_bytes:
+                omissions.append(f"file_size_limit:{relative}")
+                continue
+            try:
+                tree = ast.parse(path.read_bytes(), filename=relative)
+            except (OSError, SyntaxError, UnicodeError) as exc:
+                failures.append(f"{relative}:{type(exc).__name__}")
+                continue
+            examined_files += 1
+            for node in ast.walk(tree):
+                observed_relation: str | None = None
+                if (
+                    isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+                    and node.name == identifier
+                ):
+                    observed_relation = "definition"
+                elif isinstance(node, ast.Name) and node.id == identifier:
+                    observed_relation = (
+                        "definition" if isinstance(node.ctx, ast.Store) else "reference"
+                    )
+                elif isinstance(node, ast.Attribute) and node.attr == identifier:
+                    observed_relation = "reference"
+                if observed_relation is None or relation not in {"both", observed_relation}:
+                    continue
+                matches.append(
+                    {
+                        "path": relative,
+                        "relation": observed_relation,
+                        "syntax_kind": type(node).__name__,
+                        "line": int(getattr(node, "lineno", 1)),
+                        "column": int(getattr(node, "col_offset", 0)),
+                    }
+                )
+                if len(matches) >= result_limit:
+                    truncated = True
+                    omissions.append("result_limit_reached")
+                    break
+            if len(matches) >= result_limit:
+                break
+        normalized_query = {
+            "language": "python",
+            "identifier": identifier,
+            "relation": relation,
+            "include": list(include),
+            "exclude": list(exclude),
+        }
+        return AdapterResult(
+            output={
+                "root": target.relative,
+                "matches": matches,
+                "engine": "python.ast",
+                "engine_version": sys.version.split()[0],
+                "coverage": "syntax",
+                "semantic_coverage": False,
+                "normalized_query": normalized_query,
+                "query_digest": hashlib.sha256(
+                    json.dumps(normalized_query, sort_keys=True, separators=(",", ":")).encode()
+                ).hexdigest(),
+                "freshness": "live-worktree",
+                "limits": {
+                    "max_results": result_limit,
+                    "max_files": file_limit,
+                    "max_file_bytes": self._max_file_bytes,
+                },
+                "examined_files": examined_files,
+                "omissions": omissions,
+                "failures": failures,
+                "truncated": truncated,
+                "continuation_cursor": None,
+            },
+            actual_targets=call.targets,
+            evidence={"parser": "stdlib-ast", "semantic_resolution": False},
+        )
+
+
+class GitHistorySearchAdapter:
+    """Bounded local Git history search with no implicit network operation."""
+
+    adapter_id = "git.search.history"
+
+    def __init__(
+        self, executable: Path, version: str, *, max_results: int, timeout_seconds: float
+    ) -> None:
+        self._executable = executable
+        self._version = version
+        self._max_results = max_results
+        self._timeout_seconds = timeout_seconds
+
+    def invoke(self, call: AdapterCall) -> AdapterResult:
+        target = call.targets.paths[0]
+        if not target.absolute.is_dir():
+            raise MishkanError(ErrorCode.FILE, "history search root must be a directory")
+        limit = min(int(call.arguments.get("max_results", self._max_results)), self._max_results)
+        field = str(call.arguments.get("field", "message"))
+        semantics = str(call.arguments.get("semantics", "literal"))
+        query = str(call.arguments["query"])
+        argv = [
+            str(self._executable),
+            "-c",
+            "color.ui=false",
+            "--no-pager",
+            "log",
+            "--format=%H%x1f%aI%x1f%an%x1f%s%x1e",
+            f"--max-count={limit + 1}",
+        ]
+        if field == "message":
+            if semantics == "literal":
+                argv.append("--fixed-strings")
+            argv.append(f"--grep={query}")
+        elif semantics == "literal":
+            argv.append(f"-S{query}")
+        else:
+            argv.append(f"-G{query}")
+        argv.extend(("--", "."))
+        try:
+            completed = subprocess.run(
+                argv,
+                cwd=target.absolute,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=self._timeout_seconds,
+                env={"LC_ALL": "C.UTF-8", "GIT_TERMINAL_PROMPT": "0"},
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise MishkanError(ErrorCode.FILE, "local Git history search failed") from exc
+        failures = [line for line in completed.stderr.splitlines() if line]
+        records: list[dict[str, str]] = []
+        for raw_record in completed.stdout.split("\x1e"):
+            fields = raw_record.strip().split("\x1f")
+            if len(fields) != 4:
+                continue
+            commit, authored_at, author, subject = fields
+            records.append(
+                {
+                    "commit": commit,
+                    "authored_at": authored_at,
+                    "author": author,
+                    "subject": subject,
+                }
+            )
+        truncated = len(records) > limit
+        del records[limit:]
+        normalized_query = {"field": field, "semantics": semantics, "query": query}
+        return AdapterResult(
+            output={
+                "root": target.relative,
+                "matches": records,
+                "engine": "git",
+                "engine_version": self._version,
+                "coverage": "committed-history",
+                "semantic_coverage": False,
+                "normalized_query": normalized_query,
+                "query_digest": hashlib.sha256(
+                    json.dumps(normalized_query, sort_keys=True, separators=(",", ":")).encode()
+                ).hexdigest(),
+                "freshness": "local-object-database",
+                "limits": {"max_results": limit},
+                "omissions": (["working-tree-not-searched"] if field == "content" else []),
+                "failures": failures,
+                "truncated": truncated,
+                "continuation_cursor": None,
+                "exit_code": completed.returncode,
+            },
+            actual_targets=call.targets,
+            evidence={"executable": str(self._executable), "network": False},
+            call_status=CallStatus.COMPLETED if completed.returncode == 0 else CallStatus.FAILED,
+            error_code=None if completed.returncode == 0 else ErrorCode.FILE.value,
+            reason=None if completed.returncode == 0 else "Git history engine returned failure",
         )
 
 

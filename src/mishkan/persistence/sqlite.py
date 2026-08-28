@@ -619,6 +619,37 @@ class LocalRunRepository:
                 "plan.accepted",
                 {"plan_fingerprint": plan.fingerprint},
             )
+            if plan.registry is not None:
+                selected: set[tuple[str, str]] = set()
+                for binding in plan.tool_bindings:
+                    contract = plan.registry.require(binding.tool_id)
+                    selection = (contract.tool_id, contract.version)
+                    if selection not in selected:
+                        self._add_event(
+                            session,
+                            run_id,
+                            "tool.selected",
+                            {
+                                "tool_id": contract.tool_id,
+                                "tool_version": contract.version,
+                                "registry_fingerprint": plan.registry.fingerprint,
+                                "plan_fingerprint": plan.fingerprint,
+                            },
+                        )
+                        selected.add(selection)
+                    self._add_event(
+                        session,
+                        run_id,
+                        "tool.bound",
+                        {
+                            "task_id": binding.task_id,
+                            "role": binding.role,
+                            "tool_id": binding.tool_id,
+                            "tool_version": binding.tool_version,
+                            "contract_fingerprint": binding.contract_fingerprint,
+                            "registry_fingerprint": binding.registry_fingerprint,
+                        },
+                    )
             self._add_event(session, run_id, "run.queued", {})
             session.flush()
             return self._snapshot(session, run, resumed=False)
@@ -926,6 +957,19 @@ class LocalRunRepository:
                 row.effect_settlement = None
                 row.result_payload = None
                 row.updated_at = utc_now().isoformat()
+                self._add_event(
+                    session,
+                    run_id,
+                    "tool.call_retry_reserved",
+                    {
+                        "invocation_id": row.id,
+                        "task_attempt_id": row.task_attempt_id,
+                        "planned_call_id": row.planned_call_id,
+                        "tool_id": row.tool_id,
+                        "tool_version": row.tool_version,
+                        "reason": "prior terminal result proved effect absent",
+                    },
+                )
             return None
 
     def mark_planned_call_dispatching(
@@ -1040,6 +1084,19 @@ class LocalRunRepository:
                 call.state = CallStatus.FAILED.value
                 call.effect_settlement = EffectSettlement.ABSENT.value
                 call.updated_at = utc_now().isoformat()
+                self._add_event(
+                    session,
+                    run_id,
+                    "tool.call_retry_reconciled",
+                    {
+                        "invocation_id": call.id,
+                        "task_attempt_id": call.task_attempt_id,
+                        "planned_call_id": call.planned_call_id,
+                        "tool_id": call.tool_id,
+                        "tool_version": call.tool_version,
+                        "reason": "interrupted call had no declared effects",
+                    },
+                )
             if retry_safe:
                 self._add_event(
                     session,

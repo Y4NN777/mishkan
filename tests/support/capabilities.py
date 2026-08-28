@@ -33,6 +33,9 @@ TEST_ADAPTERS = frozenset(
         "native.file.list",
         "native.search.files",
         "ripgrep.search.text",
+        "python.ast.search.structure",
+        "python.ast.search.symbol",
+        "git.search.history",
         "native.process.exec",
         "native.shell.bash",
         "native.repository.write_file",
@@ -86,6 +89,7 @@ def policy_for(
     credentials: tuple[str, ...] = ("*",),
     external_resources: tuple[str, ...] = ("*",),
     allow_network: bool = False,
+    repository: str = "test-repository",
 ) -> EffectivePolicy:
     document = PolicyDocument(
         source_id="test.policy",
@@ -99,7 +103,7 @@ def policy_for(
                 scope=PolicyScope(
                     identities=("role:Engineer",),
                     objective_classes=("test",),
-                    repositories=("test-repository",),
+                    repositories=(repository,),
                     outcomes=("test.outcome",),
                     roles=("Engineer",),
                     capabilities=(capability,),
@@ -156,7 +160,7 @@ def context_for(
         (source_uri,),
         root,
         runtime=runtime,
-        available_dependencies=frozenset({"rg", "bash", "playwright"}),
+        available_dependencies=frozenset({"rg", "git", "bash", "playwright"}),
         available_adapters=TEST_ADAPTERS,
     )
     snapshot = catalog.snapshot((tool_id,))
@@ -173,6 +177,9 @@ def context_for(
         identity="role:Engineer",
         objective_class="test",
         repository="test-repository",
+        repository_revision="b" * 40,
+        repository_dirty=False,
+        repository_state_fingerprint="0" * 64,
         outcome="test.outcome",
         role="Engineer",
         plan_fingerprint="a" * 64,

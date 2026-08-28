@@ -14,6 +14,8 @@ class RepositoryBinding(RepositoryModel):
     root: Path
     base_revision: str = Field(min_length=7)
     remote_url: str | None = None
+    working_tree_dirty: bool
+    working_tree_fingerprint: str = Field(min_length=64, max_length=64)
 
 
 class DiscoveryFact(RepositoryModel):

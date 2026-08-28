@@ -37,6 +37,7 @@ from mishkan.edits.models import (
 )
 from mishkan.persistence.migration import SchemaManager
 from mishkan.persistence.sqlite import ChangeOperationRow, ChangeSetRow, create_local_engine
+from mishkan.repository.tokens import content_base_revision_token
 
 
 class ChangeSetContentInspector(Protocol):
@@ -675,14 +676,51 @@ class ChangeSetService:
             payload["entries"] = json.dumps(entries[:1_001], separators=(",", ":"))
         return json.dumps(payload, sort_keys=True)
 
-    @staticmethod
-    def _revision_token(path: Path) -> str:
-        try:
-            metadata = path.lstat()
-        except FileNotFoundError:
+    def _revision_token(self, path: Path) -> str:
+        if not path.is_file() or path.is_symlink():
             return "absent"
-        return (
-            f"posix:{metadata.st_dev}:{metadata.st_ino}:{metadata.st_size}:{metadata.st_mtime_ns}"
+        try:
+            root = Path(
+                subprocess.run(
+                    ["git", "rev-parse", "--show-toplevel"],
+                    cwd=self._workspace,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                ).stdout.strip()
+            ).resolve(strict=True)
+            revision = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            ).stdout.strip()
+            remote = subprocess.run(
+                ["git", "remote", "get-url", "origin"],
+                cwd=root,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            ).stdout.strip()
+        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+            raise MishkanError(
+                ErrorCode.EDIT,
+                "repository-bound revision precondition could not be observed",
+            ) from exc
+        if root != self._workspace:
+            raise MishkanError(ErrorCode.REVISION_MISMATCH, "change workspace identity changed")
+        repository_id = hashlib.sha256((remote or str(root)).encode()).hexdigest()
+        relative = path.relative_to(root).as_posix()
+        content_digest = f"sha256:{hashlib.sha256(path.read_bytes()).hexdigest()}"
+        return content_base_revision_token(
+            repository_id=repository_id,
+            repository_revision=revision,
+            path=relative,
+            content_digest=content_digest,
         )
 
     @staticmethod

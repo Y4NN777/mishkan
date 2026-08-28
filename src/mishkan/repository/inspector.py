@@ -21,12 +21,24 @@ class RepositoryInspector:
         root = Path(self._git_text(path, "rev-parse", "--show-toplevel")).resolve()
         revision = self._git_text(root, "rev-parse", "HEAD")
         remote = self._git_text(root, "remote", "get-url", "origin", required=False) or None
+        working_tree = self._git_bytes(
+            root,
+            "status",
+            "--porcelain=v1",
+            "-z",
+            "--untracked-files=all",
+            "--",
+            ".",
+            *(f":(exclude){directory}/**" for directory in self._profile.excluded_directories),
+        )
         identity_source = remote or str(root)
         return RepositoryBinding(
             repository_id=hashlib.sha256(identity_source.encode()).hexdigest(),
             root=root,
             base_revision=revision,
             remote_url=remote,
+            working_tree_dirty=bool(working_tree),
+            working_tree_fingerprint=hashlib.sha256(working_tree).hexdigest(),
         )
 
     def discover(self, binding: RepositoryBinding) -> DiscoverySnapshot:
@@ -61,6 +73,8 @@ class RepositoryInspector:
         canonical = {
             "repository_id": binding.repository_id,
             "base_revision": binding.base_revision,
+            "working_tree_dirty": binding.working_tree_dirty,
+            "working_tree_fingerprint": binding.working_tree_fingerprint,
             "facts": [fact.model_dump(mode="json") for fact in facts],
             "unknowns": unknowns,
         }

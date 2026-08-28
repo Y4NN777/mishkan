@@ -63,6 +63,9 @@ class InvocationContext(GatewayModel):
     identity: str = Field(min_length=1)
     objective_class: str = Field(min_length=1)
     repository: str = Field(min_length=1)
+    repository_revision: str = Field(min_length=7)
+    repository_dirty: bool
+    repository_state_fingerprint: str = Field(min_length=64, max_length=64)
     outcome: str = Field(min_length=1)
     role: str = Field(min_length=1)
     plan_fingerprint: str = Field(min_length=64, max_length=64)

@@ -48,6 +48,7 @@ def test_authorized_write_uses_exact_binding_and_returns_reviewable_diff(tmp_pat
     assert result.output is not None and "+after" in result.output["diff"]
     assert [event.event_type for event in evidence.events] == [
         "tool.call_authorized",
+        "tool.call_started",
         "tool.call_completed",
     ]
 

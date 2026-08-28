@@ -1,6 +1,6 @@
 schema_version: "1.0"
 source_id: bundled.local
-revision: "8"
+revision: "9"
 adoption_authority: MISHKAN release
 priority: 0
 rules:
@@ -21,6 +21,9 @@ rules:
         - file.list
         - search.files
         - search.text
+        - search.structural
+        - search.symbol
+        - search.history
       effect_classes: [read]
       paths: ["*"]
       executables: ["*"]

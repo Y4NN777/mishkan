@@ -23,6 +23,8 @@ def _discovery(tmp_path: Path) -> DiscoverySnapshot:
             repository_id="a" * 64,
             root=tmp_path,
             base_revision="b" * 40,
+            working_tree_dirty=False,
+            working_tree_fingerprint="0" * 64,
         ),
         facts=(),
         unknowns=(),
