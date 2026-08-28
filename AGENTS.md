@@ -16,8 +16,10 @@ cross-baseline conformance audit then found gaps in durable concurrency, browser
 sensitive state, MCP containment and bounds, Web concurrency, and public input limits. Those gaps
 are closed at checkpoint `6a73e98`. A transient Chromium screenshot refusal exposed during
 promotion is closed at `3481ca5`. Its 400-test local gate and six-job Linux/macOS Python 3.11–3.13
-topic and `develop` matrices are recorded in `docs/VALIDATION/web-browser-mcp.md`; I04 is promoted
-to `develop` and green. I05 must not begin without explicit engineer authorization on a new topic.
+topic and `develop` matrices are recorded in `docs/VALIDATION/web-browser-mcp.md`. D-040 records the
+history-preserving integration checkpoint `0534988` and green six-job matrices on both `develop`
+and `main`; I04 is integrated and closed. I05 must not begin without explicit engineer authorization
+on a new topic.
 The rejected
 universal workflow, mandatory outcome catalogue, capability-family matrix, static role/tool matrix,
 competing runtime, and private operational deny-list must not return.

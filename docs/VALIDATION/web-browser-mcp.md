@@ -1,6 +1,6 @@
 # I04 Web, Browser, MCP, and External Harnesses — Validation Evidence
 
-**Status:** Passed — D-039 current baseline revalidated
+**Status:** Passed and integrated — D-040
 
 **Branch:** `feat/i04-web-browser-mcp-harnesses`
 
@@ -9,6 +9,8 @@
 **Cross-baseline audit checkpoint:** `6a73e98`, validated locally 2026-08-28
 
 **Current remote gate and promoted checkpoint:** `3481ca5`, validated 2026-08-28
+
+**Integration checkpoint:** `0534988`, validated on `develop` and `main` 2026-08-28
 
 **Identity:** `Y4NN777 <axel.studiesmail@gmail.com>`
 
@@ -205,9 +207,18 @@ The corrected topic matrix
 matrix [`33203711009`](https://github.com/Y4NN777/mishkan/actions/runs/33203711009) both passed all
 six Linux/macOS Python 3.11–3.13 jobs at `3481ca59ca663512d801a5dc5170599785bf2e9f`.
 
+The historical GitHub merge commits on `main` were not ancestors of the continuing `develop`
+line even though the I02 tree at `main` was byte-identical to `develop`'s common parent. Checkpoint
+`053498889d70ac28f9a69eff5d30016237c1ed40` merges that historical `main` tip into the topic without
+changing the validated I04 tree. The reconciled `develop` matrix
+[`33205106907`](https://github.com/Y4NN777/mishkan/actions/runs/33205106907) and the integrated `main`
+matrix [`33205571801`](https://github.com/Y4NN777/mishkan/actions/runs/33205571801) each passed all six
+Linux/macOS Python 3.11–3.13 jobs.
+
 ## Acceptance boundary
 
 D-039 records the original I04 acceptance on 2026-08-27 and the corrected current-baseline
 revalidation on 2026-08-28. The requested conformance audit is implemented at `6a73e98`; the
-promotion correction, 400-test local gate, topic matrix, and `develop` matrix are green at
-`3481ca5`. I04 is promoted to `develop`. I05 awaits explicit engineer authorization.
+promotion correction and 400-test local gate are green at `3481ca5`. D-040 accepts the
+history-preserving integration checkpoint `0534988` after complete green `develop` and `main`
+matrices. I04 is integrated and its gate is closed. I05 awaits explicit engineer authorization.
