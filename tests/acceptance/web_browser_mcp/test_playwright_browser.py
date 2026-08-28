@@ -84,7 +84,12 @@ def test_real_playwright_observation_action_and_cdp_diagnostics(tmp_path: Path) 
         action_timeout_seconds=10,
         navigation_timeout_seconds=10,
     )
-    driver = PlaywrightChromiumDriver({"gate": network})
+    driver = PlaywrightChromiumDriver(
+        {"gate": network},
+        max_diagnostic_entries=1_000,
+        max_pending_downloads=10,
+    )
+    origin = f"http://127.0.0.1:{port}"
     try:
         opened = driver.open(
             profile,
@@ -113,6 +118,7 @@ def test_real_playwright_observation_action_and_cdp_diagnostics(tmp_path: Path) 
                     kind=kind,
                     value=value,
                     resolved_effect=effect,
+                    authorized_origins=(origin,),
                     expected_session_revision=1,
                 ),
                 current_target,
@@ -128,6 +134,7 @@ def test_real_playwright_observation_action_and_cdp_diagnostics(tmp_path: Path) 
                 target_reference=target.reference,
                 kind=BrowserActionKind.CLICK,
                 resolved_effect="ui.interaction",
+                authorized_origins=(origin,),
                 expected_session_revision=1,
             ),
             target,
@@ -145,7 +152,7 @@ def test_real_playwright_observation_action_and_cdp_diagnostics(tmp_path: Path) 
             "Saved",
             BrowserActionKind.JAVASCRIPT,
             "element => element.setAttribute('data-proof', 'yes')",
-            "ui.interaction",
+            "script.execute",
         )
         driver.act(
             opened.handle,
@@ -156,6 +163,7 @@ def test_real_playwright_observation_action_and_cdp_diagnostics(tmp_path: Path) 
                 kind=BrowserActionKind.NAVIGATE,
                 value=f"http://127.0.0.1:{port}/again",
                 resolved_effect="navigation",
+                authorized_origins=(origin,),
                 expected_session_revision=1,
             ),
             None,

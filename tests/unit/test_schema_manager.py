@@ -10,7 +10,6 @@ from sqlalchemy import create_engine, text
 
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.persistence import DatabaseState, SchemaManager
-from mishkan.persistence.sqlite import Base
 
 
 def _migration_config(database: Path) -> Config:
@@ -37,60 +36,10 @@ def test_empty_database_is_initialized_only_explicitly(tmp_path: Path) -> None:
 
 def test_exact_legacy_database_is_backed_up_and_upgraded(tmp_path: Path) -> None:
     database = tmp_path / "mishkan.db"
+    command.upgrade(_migration_config(database), "i02_baseline")
     engine = create_engine(f"sqlite:///{database}")
-    Base.metadata.create_all(engine)
     with engine.begin() as connection:
-        for table in (
-            "tool_registry_entries",
-            "planned_tool_calls",
-            "event_retention_plans",
-            "event_holds",
-            "task_review_rejections",
-            "artifact_reconciliation_plans",
-            "mcp_progress",
-            "mcp_calls",
-            "mcp_primitives",
-            "mcp_connections",
-            "browser_actions",
-            "browser_observations",
-            "browser_sessions",
-            "web_cache_entries",
-            "execution_sessions",
-            "change_operations",
-            "change_sets",
-            "artifact_gc_plans",
-            "artifact_pins",
-            "artifact_holds",
-            "artifact_references",
-            "artifact_collections",
-            "artifact_uploads",
-            "artifacts",
-        ):
-            connection.execute(text(f"DROP TABLE {table}"))
-        connection.execute(text("DROP TABLE application_commands"))
-        connection.execute(text("DROP TABLE aggregate_revisions"))
-        connection.execute(text("ALTER TABLE event_outbox RENAME TO event_outbox_current"))
-        connection.execute(
-            text(
-                """
-                CREATE TABLE event_outbox (
-                    id VARCHAR(36) PRIMARY KEY,
-                    aggregate_id VARCHAR(36) NOT NULL,
-                    event_type VARCHAR(120) NOT NULL,
-                    payload TEXT NOT NULL,
-                    occurred_at VARCHAR(40) NOT NULL,
-                    published_at VARCHAR(40)
-                )
-                """
-            )
-        )
-        connection.execute(text("DROP TABLE event_outbox_current"))
-        connection.execute(text("ALTER TABLE runs DROP COLUMN revision"))
-        connection.execute(text("ALTER TABLE runs DROP COLUMN cancellation_requested"))
-        connection.execute(text("ALTER TABLE runs DROP COLUMN updated_at"))
-        connection.execute(text("ALTER TABLE tasks DROP COLUMN revision"))
-        connection.execute(text("ALTER TABLE tasks DROP COLUMN attempt_count"))
-        connection.execute(text("ALTER TABLE tasks DROP COLUMN updated_at"))
+        connection.execute(text("DROP TABLE alembic_version"))
     engine.dispose()
 
     manager = SchemaManager(database)
@@ -113,6 +62,35 @@ def test_unknown_database_is_refused_without_mutation(tmp_path: Path) -> None:
 
     assert caught.value.envelope.code is ErrorCode.VERSION
     assert manager.status().state is DatabaseState.UNKNOWN
+
+
+def test_legacy_lookalike_with_wrong_column_contract_is_refused(tmp_path: Path) -> None:
+    database = tmp_path / "lookalike.db"
+    command.upgrade(_migration_config(database), "i02_baseline")
+    with create_engine(f"sqlite:///{database}").begin() as connection:
+        connection.execute(text("DROP TABLE alembic_version"))
+        connection.execute(text("ALTER TABLE event_outbox RENAME TO original_events"))
+        connection.execute(
+            text(
+                """
+                CREATE TABLE event_outbox (
+                    id VARCHAR(36) PRIMARY KEY,
+                    aggregate_id VARCHAR(36) NOT NULL,
+                    event_type VARCHAR(120) NOT NULL,
+                    payload VARCHAR(999) NOT NULL,
+                    occurred_at VARCHAR(40) NOT NULL,
+                    published_at VARCHAR(40)
+                )
+                """
+            )
+        )
+        connection.execute(text("DROP TABLE original_events"))
+
+    manager = SchemaManager(database)
+    assert manager.status().state is DatabaseState.UNKNOWN
+    with pytest.raises(MishkanError) as caught:
+        manager.upgrade()
+    assert caught.value.envelope.code is ErrorCode.VERSION
 
 
 def test_registry_record_identity_migration_backfills_existing_entries(tmp_path: Path) -> None:

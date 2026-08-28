@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
+import io
 import json
+import os
+import stat
+import tarfile
+import threading
 from collections.abc import Callable, Mapping
+from contextlib import suppress
 from datetime import timedelta
 from fnmatch import fnmatchcase
 from pathlib import Path
@@ -36,7 +42,7 @@ from mishkan.browser.models import (
     BrowserSessionState,
     BrowserTarget,
 )
-from mishkan.config.models import BrowserConfig, BrowserProfileKind
+from mishkan.config.models import BrowserConfig, BrowserProfileConfig, BrowserProfileKind
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.time import utc_now
 from mishkan.persistence.migration import SchemaManager
@@ -68,7 +74,16 @@ class BrowserSupervisor:
         self._drivers = dict(drivers)
         self._inspector = inspector
         self._handles: dict[UUID, tuple[BrowserDriver, str]] = {}
+        self._session_secrets: dict[UUID, set[str]] = {}
+        self._session_locks: dict[UUID, threading.RLock] = {}
+        self._session_locks_guard = threading.Lock()
         self._engine = create_local_engine(database, busy_timeout_ms=busy_timeout_ms)
+
+    def profile(self, profile_id: str) -> BrowserProfileConfig:
+        try:
+            return self._config.profiles[profile_id]
+        except KeyError as exc:
+            raise MishkanError(ErrorCode.BROWSER, "browser profile is not configured") from exc
 
     def open(self, request: BrowserSessionRequest) -> BrowserSession:
         try:
@@ -91,6 +106,13 @@ class BrowserSupervisor:
                 "attached browser profile requires explicit selection",
             )
         workspace = self._resolve_workspace(request.workspace)
+        if profile.kind is BrowserProfileKind.PROJECT_PERSISTENT:
+            if workspace != self._workspace:
+                raise MishkanError(
+                    ErrorCode.AUTHORITY_NOT_GRANTED,
+                    "persistent browser profiles require the project workspace root",
+                )
+            self._restore_profile_state(request.profile_id, profile, workspace)
         initial_url = str(request.initial_url) if request.initial_url else None
         if initial_url is not None:
             self._require_origin(profile.allowed_origins, initial_url)
@@ -132,11 +154,19 @@ class BrowserSupervisor:
             self._replace_session(uncertain, expected_revision=0)
             return uncertain
         except Exception as exc:
+            state = (
+                BrowserSessionState.UNCERTAIN
+                if profile.kind is BrowserProfileKind.PROJECT_PERSISTENT
+                else BrowserSessionState.FAILED
+            )
             failed = opening.model_copy(
                 update={
-                    "state": BrowserSessionState.FAILED,
+                    "state": state,
                     "revision": 1,
                     "last_error": type(exc).__name__,
+                    "uncertain_effect": (
+                        "browser.profile.write" if state is BrowserSessionState.UNCERTAIN else None
+                    ),
                     "updated_at": utc_now(),
                 }
             )
@@ -183,6 +213,15 @@ class BrowserSupervisor:
         *,
         owner_identity: str,
     ) -> BrowserObservation:
+        with self._session_lock(request.session_id):
+            return self._observe(request, owner_identity=owner_identity)
+
+    def _observe(
+        self,
+        request: BrowserObservationRequest,
+        *,
+        owner_identity: str,
+    ) -> BrowserObservation:
         browser = self._active(request.session_id, owner_identity)
         self._require_revision(browser, request.expected_session_revision)
         if request.page_id not in browser.page_ids:
@@ -198,12 +237,16 @@ class BrowserSupervisor:
             self._config.profiles[browser.profile_id].allowed_origins,
             observed.url,
         )
-        clean_tree = self._inspector.inspect(observed.tree.decode(errors="replace")).encode()
+        secrets = tuple(self._session_secrets.get(browser.id, ()))
+        clean_tree = self._inspector.inspect(
+            observed.tree.decode(errors="replace"),
+            secrets,
+        ).encode()
         clean_targets = tuple(
-            target.model_copy(update={"name": self._inspector.inspect(target.name)})
+            target.model_copy(update={"name": self._inspector.inspect(target.name, secrets)})
             for target in observed.targets
         )
-        clean_title = self._inspector.inspect(observed.title)
+        clean_title = self._inspector.inspect(observed.title, secrets)
         tree = self._artifact(browser, "browser.tree", "text/yaml", clean_tree)
         screenshot = (
             self._artifact(browser, "browser.screenshot", "image/png", observed.screenshot)
@@ -247,6 +290,22 @@ class BrowserSupervisor:
         credential_values: Mapping[str, str] | None = None,
         cancellation_requested: Callable[[], bool] | None = None,
     ) -> BrowserActionResult:
+        with self._session_lock(request.session_id):
+            return self._act(
+                request,
+                owner_identity=owner_identity,
+                credential_values=credential_values,
+                cancellation_requested=cancellation_requested,
+            )
+
+    def _act(
+        self,
+        request: BrowserActionRequest,
+        *,
+        owner_identity: str,
+        credential_values: Mapping[str, str] | None = None,
+        cancellation_requested: Callable[[], bool] | None = None,
+    ) -> BrowserActionResult:
         replayed = self._action_by_key(request)
         if replayed is not None:
             return replayed
@@ -275,6 +334,7 @@ class BrowserSupervisor:
             self._artifacts.manifest(request.visual_evidence_artifact_reference)
         if (
             target is not None
+            and request.kind.value != "javascript"
             and target.candidate_effects
             and request.resolved_effect not in target.candidate_effects
         ):
@@ -282,10 +342,29 @@ class BrowserSupervisor:
                 ErrorCode.AUTHORITY_NOT_GRANTED,
                 "resolved browser effect differs from observed target evidence",
             )
+        profile = self._config.profiles[browser.profile_id]
+        for origin in request.authorized_origins:
+            if self._origin(origin) != origin:
+                raise MishkanError(
+                    ErrorCode.AUTHORITY_NOT_GRANTED,
+                    "browser action authority must name exact normalized origins",
+                )
+            self._require_origin(profile.allowed_origins, origin)
         if request.kind.value == "navigate" and isinstance(request.value, str):
-            self._require_origin(
-                self._config.profiles[browser.profile_id].allowed_origins,
-                request.value,
+            destination = self._origin(request.value)
+            if request.authorized_origins != (destination,):
+                raise MishkanError(
+                    ErrorCode.AUTHORITY_NOT_GRANTED,
+                    "browser navigation destination was not authorized exactly",
+                )
+        if (
+            target is not None
+            and target.destination_origin is not None
+            and target.destination_origin not in request.authorized_origins
+        ):
+            raise MishkanError(
+                ErrorCode.AUTHORITY_NOT_GRANTED,
+                "observed browser target destination was not authorized exactly",
             )
         self._require_safe_literal(request.value)
         dispatched = request
@@ -308,6 +387,9 @@ class BrowserSupervisor:
                 )
             dispatched = request.model_copy(
                 update={"value": resolved[request.credential_reference]}
+            )
+            self._session_secrets.setdefault(browser.id, set()).add(
+                resolved[request.credential_reference]
             )
         elif credential_values:
             raise MishkanError(
@@ -406,7 +488,10 @@ class BrowserSupervisor:
             limit,
         )
         raw_payload = json.dumps(observed.entries, sort_keys=True)
-        clean_payload = self._inspector.inspect(raw_payload)
+        clean_payload = self._inspector.inspect(
+            raw_payload,
+            tuple(self._session_secrets.get(browser.id, ())),
+        )
         loaded = json.loads(clean_payload)
         if not isinstance(loaded, list) or not all(isinstance(item, dict) for item in loaded):
             raise MishkanError(ErrorCode.BROWSER, "browser diagnostics failed inspection")
@@ -431,6 +516,10 @@ class BrowserSupervisor:
         )
 
     def close(self, session_id: UUID, *, owner_identity: str) -> BrowserSession:
+        with self._session_lock(session_id):
+            return self._close(session_id, owner_identity=owner_identity)
+
+    def _close(self, session_id: UUID, *, owner_identity: str) -> BrowserSession:
         browser = self._load_session(session_id)
         self._require_owner(browser, owner_identity)
         if browser.state is BrowserSessionState.CLOSED:
@@ -454,13 +543,23 @@ class BrowserSupervisor:
         self._replace_session(closing, expected_revision=browser.revision)
         try:
             pair[0].close(pair[1])
+            profile_reference = (
+                self._snapshot_profile_state(browser)
+                if browser.profile_kind is BrowserProfileKind.PROJECT_PERSISTENT
+                else None
+            )
         except Exception as exc:
             self._handles.pop(browser.id, None)
+            self._session_secrets.pop(browser.id, None)
             uncertain = closing.model_copy(
                 update={
                     "state": BrowserSessionState.UNCERTAIN,
                     "revision": closing.revision + 1,
-                    "uncertain_effect": "browser.session.close",
+                    "uncertain_effect": (
+                        "browser.profile.snapshot"
+                        if browser.profile_kind is BrowserProfileKind.PROJECT_PERSISTENT
+                        else "browser.session.close"
+                    ),
                     "last_error": type(exc).__name__,
                     "updated_at": utc_now(),
                 }
@@ -468,10 +567,12 @@ class BrowserSupervisor:
             self._replace_session(uncertain, expected_revision=closing.revision)
             return uncertain
         self._handles.pop(browser.id, None)
+        self._session_secrets.pop(browser.id, None)
         closed = closing.model_copy(
             update={
                 "state": BrowserSessionState.CLOSED,
                 "revision": closing.revision + 1,
+                "profile_state_artifact_reference": profile_reference,
                 "updated_at": utc_now(),
             }
         )
@@ -604,6 +705,10 @@ class BrowserSupervisor:
             raise MishkanError(ErrorCode.BROWSER, "live browser adapter handle is unavailable")
         return pair
 
+    def _session_lock(self, session_id: UUID) -> threading.RLock:
+        with self._session_locks_guard:
+            return self._session_locks.setdefault(session_id, threading.RLock())
+
     def _insert_session(self, browser: BrowserSession) -> None:
         with Session(self._engine) as session, session.begin():
             session.add(
@@ -677,10 +782,296 @@ class BrowserSupervisor:
             complete=True,
             sensitivity=browser.sensitivity,
             retention=browser.retention,
+            resolved_secrets=tuple(self._session_secrets.get(browser.id, ())),
         ).reference
 
     def _driver_artifact(self, browser: BrowserSession, artifact: DriverArtifact) -> str:
         return self._artifact(browser, artifact.channel, artifact.media_type, artifact.content)
+
+    def _snapshot_profile_state(self, browser: BrowserSession) -> str:
+        profile = self.profile(browser.profile_id)
+        assert profile.user_data_dir is not None
+        content = self._archive_directory(
+            self._workspace,
+            profile.user_data_dir,
+            self._config.max_profile_state_bytes,
+        )
+        reference = self._artifact(
+            browser,
+            "browser.profile_state",
+            "application/x-tar",
+            content,
+        )
+        current = self._artifacts.reference("browser-profile", browser.profile_id)
+        self._artifacts.update_reference(
+            "browser-profile",
+            browser.profile_id,
+            reference,
+            expected_revision=current.revision if current is not None else 0,
+        )
+        self._remove_tree(self._workspace, profile.user_data_dir)
+        return reference
+
+    def _restore_profile_state(
+        self,
+        profile_id: str,
+        profile: BrowserProfileConfig,
+        workspace: Path,
+    ) -> None:
+        assert profile.user_data_dir is not None
+        try:
+            observed = self._open_directory_beneath(workspace, profile.user_data_dir)
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            raise MishkanError(
+                ErrorCode.AUTHORITY_NOT_GRANTED,
+                "persistent browser profile path cannot be resolved without links",
+            ) from exc
+        else:
+            os.close(observed)
+            raise MishkanError(
+                ErrorCode.RUN_INTERRUPTED,
+                "persistent browser working state exists without a proven settlement",
+                details={"reconciliation_required": True},
+            )
+        current = self._artifacts.reference("browser-profile", profile_id)
+        if current is None:
+            return
+        content = self._artifacts.read_bytes(current.artifact_reference)
+        if len(content) > self._config.max_profile_state_bytes:
+            raise MishkanError(ErrorCode.BROWSER, "browser profile artifact exceeds its bound")
+        root = self._create_directory_beneath(workspace, profile.user_data_dir)
+        try:
+            extracted_bytes = 0
+            with tarfile.open(fileobj=io.BytesIO(content), mode="r:") as archive:
+                for member in archive.getmembers():
+                    relative = Path(member.name)
+                    if (
+                        relative.is_absolute()
+                        or not relative.parts
+                        or ".." in relative.parts
+                        or member.issym()
+                        or member.islnk()
+                    ):
+                        raise MishkanError(ErrorCode.BROWSER, "browser profile artifact is unsafe")
+                    if member.isdir():
+                        directory = self._open_directory_at(
+                            root,
+                            relative.parts,
+                            create=True,
+                        )
+                        os.close(directory)
+                        continue
+                    if not member.isfile() or member.size > self._config.max_profile_state_bytes:
+                        raise MishkanError(ErrorCode.BROWSER, "browser profile artifact is unsafe")
+                    source = archive.extractfile(member)
+                    if source is None:
+                        raise MishkanError(ErrorCode.BROWSER, "browser profile artifact is corrupt")
+                    data = source.read(self._config.max_profile_state_bytes + 1)
+                    extracted_bytes += len(data)
+                    if (
+                        len(data) != member.size
+                        or extracted_bytes > self._config.max_profile_state_bytes
+                    ):
+                        raise MishkanError(ErrorCode.BROWSER, "browser profile artifact is corrupt")
+                    parent = self._open_directory_at(root, relative.parts[:-1], create=True)
+                    try:
+                        descriptor = os.open(
+                            relative.name,
+                            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                            member.mode & 0o700 or 0o600,
+                            dir_fd=parent,
+                        )
+                        try:
+                            view = memoryview(data)
+                            while view:
+                                written = os.write(descriptor, view)
+                                if written < 1:
+                                    raise OSError("short browser profile restore write")
+                                view = view[written:]
+                            os.fsync(descriptor)
+                        finally:
+                            os.close(descriptor)
+                    finally:
+                        os.close(parent)
+            os.fsync(root)
+        except Exception:
+            os.close(root)
+            self._remove_tree(workspace, profile.user_data_dir)
+            raise
+        os.close(root)
+
+    @staticmethod
+    def _archive_directory(base: Path, relative: Path, max_bytes: int) -> bytes:
+        buffer = io.BytesIO()
+        total = 0
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW
+
+        def visit(archive: tarfile.TarFile, directory: int, prefix: Path) -> None:
+            nonlocal total
+            for name in sorted(os.listdir(directory)):
+                observed = os.stat(name, dir_fd=directory, follow_symlinks=False)
+                relative = prefix / name
+                if stat.S_ISDIR(observed.st_mode):
+                    info = tarfile.TarInfo(relative.as_posix() + "/")
+                    info.type = tarfile.DIRTYPE
+                    info.mode = stat.S_IMODE(observed.st_mode) & 0o700
+                    info.mtime = 0
+                    archive.addfile(info)
+                    child = os.open(name, flags, dir_fd=directory)
+                    try:
+                        visit(archive, child, relative)
+                    finally:
+                        os.close(child)
+                    continue
+                if not stat.S_ISREG(observed.st_mode):
+                    raise MishkanError(
+                        ErrorCode.BROWSER,
+                        "persistent browser profile contains an unsupported object",
+                    )
+                descriptor = os.open(
+                    name,
+                    os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW,
+                    dir_fd=directory,
+                )
+                try:
+                    chunks: list[bytes] = []
+                    received = 0
+                    while True:
+                        chunk = os.read(
+                            descriptor,
+                            min(65_536, max_bytes - total - received + 1),
+                        )
+                        if not chunk:
+                            break
+                        chunks.append(chunk)
+                        received += len(chunk)
+                        if total + received > max_bytes:
+                            raise MishkanError(
+                                ErrorCode.BROWSER,
+                                "persistent browser profile exceeds its configured bound",
+                            )
+                    data = b"".join(chunks)
+                    if len(data) != observed.st_size:
+                        raise MishkanError(
+                            ErrorCode.BROWSER,
+                            "persistent browser profile changed during snapshot",
+                        )
+                finally:
+                    os.close(descriptor)
+                total += len(data)
+                info = tarfile.TarInfo(relative.as_posix())
+                info.size = len(data)
+                info.mode = stat.S_IMODE(observed.st_mode) & 0o700
+                info.mtime = 0
+                archive.addfile(info, io.BytesIO(data))
+
+        root_descriptor = BrowserSupervisor._open_directory_beneath(base, relative)
+        try:
+            with tarfile.open(fileobj=buffer, mode="w") as archive:
+                visit(archive, root_descriptor, Path())
+        finally:
+            os.close(root_descriptor)
+        content = buffer.getvalue()
+        if len(content) > max_bytes:
+            raise MishkanError(
+                ErrorCode.BROWSER,
+                "persistent browser profile archive exceeds its configured bound",
+            )
+        return content
+
+    @staticmethod
+    def _remove_tree(base: Path, relative: Path) -> None:
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW
+
+        def remove_at(parent: int, name: str) -> None:
+            child = os.open(name, flags, dir_fd=parent)
+            try:
+                for entry in os.listdir(child):
+                    observed = os.stat(entry, dir_fd=child, follow_symlinks=False)
+                    if stat.S_ISDIR(observed.st_mode):
+                        remove_at(child, entry)
+                    else:
+                        os.unlink(entry, dir_fd=child)
+            finally:
+                os.close(child)
+            os.rmdir(name, dir_fd=parent)
+
+        parts = BrowserSupervisor._safe_relative_parts(relative)
+        parent = (
+            os.open(base, flags)
+            if len(parts) == 1
+            else BrowserSupervisor._open_directory_beneath(base, Path(*parts[:-1]))
+        )
+        try:
+            remove_at(parent, parts[-1])
+        finally:
+            os.close(parent)
+
+    @staticmethod
+    def _safe_relative_parts(relative: Path) -> tuple[str, ...]:
+        if relative.is_absolute() or not relative.parts or ".." in relative.parts:
+            raise MishkanError(
+                ErrorCode.AUTHORITY_NOT_GRANTED,
+                "browser profile path is outside its managed root",
+            )
+        return relative.parts
+
+    @staticmethod
+    def _open_directory_at(
+        root: int,
+        parts: tuple[str, ...],
+        *,
+        create: bool,
+    ) -> int:
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW
+        current = os.dup(root)
+        try:
+            for part in parts:
+                if part in {"", ".", ".."}:
+                    raise MishkanError(
+                        ErrorCode.AUTHORITY_NOT_GRANTED,
+                        "browser profile member path is unsafe",
+                    )
+                if create:
+                    with suppress(FileExistsError):
+                        os.mkdir(part, mode=0o700, dir_fd=current)
+                following = os.open(part, flags, dir_fd=current)
+                os.close(current)
+                current = following
+            return current
+        except Exception:
+            os.close(current)
+            raise
+
+    @staticmethod
+    def _open_directory_beneath(base: Path, relative: Path) -> int:
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW
+        root = os.open(base, flags)
+        try:
+            return BrowserSupervisor._open_directory_at(
+                root,
+                BrowserSupervisor._safe_relative_parts(relative),
+                create=False,
+            )
+        finally:
+            os.close(root)
+
+    @staticmethod
+    def _create_directory_beneath(base: Path, relative: Path) -> int:
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW
+        parts = BrowserSupervisor._safe_relative_parts(relative)
+        root = os.open(base, flags)
+        try:
+            parent = BrowserSupervisor._open_directory_at(root, parts[:-1], create=True)
+        finally:
+            os.close(root)
+        try:
+            os.mkdir(parts[-1], mode=0o700, dir_fd=parent)
+            return os.open(parts[-1], flags, dir_fd=parent)
+        finally:
+            os.close(parent)
 
     def _insert_action(self, request: BrowserActionRequest, state: BrowserActionState) -> None:
         now = utc_now()

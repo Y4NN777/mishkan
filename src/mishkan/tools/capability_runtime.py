@@ -11,6 +11,7 @@ from mishkan.browser import (
     BrowserSupervisor,
     LazyPlaywrightChromiumDriver,
     build_browser_tool_adapters,
+    playwright_chromium_ready,
 )
 from mishkan.config.models import MishkanConfig
 from mishkan.domain.errors import ErrorCode, MishkanError
@@ -104,8 +105,15 @@ def build_capability_runtime(
     configured_drivers = {profile.adapter for profile in browser_config.profiles.values()}
     browser: LazyPlaywrightChromiumDriver | None = None
     supervisor: BrowserSupervisor | None = None
-    if LazyPlaywrightChromiumDriver.adapter_id in configured_drivers:
-        browser = LazyPlaywrightChromiumDriver(web_config.network_profiles)
+    if (
+        LazyPlaywrightChromiumDriver.adapter_id in configured_drivers
+        and playwright_chromium_ready()
+    ):
+        browser = LazyPlaywrightChromiumDriver(
+            web_config.network_profiles,
+            max_diagnostic_entries=browser_config.max_diagnostic_entries,
+            max_pending_downloads=browser_config.max_pending_downloads,
+        )
         supervisor = BrowserSupervisor(
             database,
             workspace,

@@ -52,6 +52,20 @@
           "title": "Max Observation Bytes",
           "type": "integer"
         },
+        "max_pending_downloads": {
+          "default": 100,
+          "maximum": 10000,
+          "minimum": 1,
+          "title": "Max Pending Downloads",
+          "type": "integer"
+        },
+        "max_profile_state_bytes": {
+          "default": 67108864,
+          "maximum": 1073741824,
+          "minimum": 1,
+          "title": "Max Profile State Bytes",
+          "type": "integer"
+        },
         "observation_ttl_seconds": {
           "exclusiveMinimum": 0,
           "maximum": 3600,
@@ -140,6 +154,12 @@
           "maximum": 1000,
           "minimum": 1,
           "title": "Max Pages",
+          "type": "integer"
+        },
+        "max_upload_bytes": {
+          "default": 16777216,
+          "minimum": 1,
+          "title": "Max Upload Bytes",
           "type": "integer"
         },
         "navigation_timeout_seconds": {
@@ -338,6 +358,13 @@
           "title": "Host",
           "type": "string"
         },
+        "max_request_bytes": {
+          "default": 8388608,
+          "maximum": 1073741824,
+          "minimum": 1,
+          "title": "Max Request Bytes",
+          "type": "integer"
+        },
         "port": {
           "maximum": 65535,
           "minimum": 1,
@@ -394,6 +421,34 @@
         },
         "facade": {
           "$ref": "#/$defs/McpFacadeConfig"
+        },
+        "max_progress_events_per_call": {
+          "default": 10000,
+          "maximum": 1000000,
+          "minimum": 1,
+          "title": "Max Progress Events Per Call",
+          "type": "integer"
+        },
+        "max_progress_message_bytes": {
+          "default": 16384,
+          "maximum": 1048576,
+          "minimum": 1,
+          "title": "Max Progress Message Bytes",
+          "type": "integer"
+        },
+        "progress_page_limit": {
+          "default": 500,
+          "maximum": 10000,
+          "minimum": 1,
+          "title": "Progress Page Limit",
+          "type": "integer"
+        },
+        "progress_prune_batch_size": {
+          "default": 1000,
+          "maximum": 100000,
+          "minimum": 1,
+          "title": "Progress Prune Batch Size",
+          "type": "integer"
         },
         "progress_retention_seconds": {
           "maximum": 31536000,
@@ -468,6 +523,13 @@
           "title": "Credential Refs",
           "type": "array"
         },
+        "discovery_timeout_seconds": {
+          "default": 30,
+          "exclusiveMinimum": 0,
+          "maximum": 3600,
+          "title": "Discovery Timeout Seconds",
+          "type": "number"
+        },
         "enabled": {
           "default": true,
           "title": "Enabled",
@@ -513,6 +575,39 @@
           },
           "title": "Inherit Environment",
           "type": "array"
+        },
+        "isolation_profile": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Isolation Profile"
+        },
+        "max_discovered_primitives": {
+          "default": 10000,
+          "maximum": 100000,
+          "minimum": 1,
+          "title": "Max Discovered Primitives",
+          "type": "integer"
+        },
+        "max_discovery_bytes": {
+          "default": 16777216,
+          "maximum": 268435456,
+          "minimum": 1,
+          "title": "Max Discovery Bytes",
+          "type": "integer"
+        },
+        "max_discovery_pages": {
+          "default": 100,
+          "maximum": 10000,
+          "minimum": 1,
+          "title": "Max Discovery Pages",
+          "type": "integer"
         },
         "max_result_bytes": {
           "minimum": 1,

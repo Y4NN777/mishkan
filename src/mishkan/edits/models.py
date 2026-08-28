@@ -58,20 +58,20 @@ class ChangeOperation(DomainRecord):
     path: str = Field(min_length=1, max_length=4096)
     destination: str | None = Field(default=None, min_length=1, max_length=4096)
     precondition: PreconditionKind
-    precondition_value: str | None = None
+    precondition_value: str | None = Field(default=None, max_length=4_096)
     destination_precondition: PreconditionKind | None = None
-    destination_precondition_value: str | None = None
-    inline_content: str | None = None
+    destination_precondition_value: str | None = Field(default=None, max_length=4_096)
+    inline_content: str | None = Field(default=None, max_length=1_048_576)
     artifact_reference: str | None = None
-    match: str | None = None
-    replacement: str | None = None
+    match: str | None = Field(default=None, max_length=262_144)
+    replacement: str | None = Field(default=None, max_length=1_048_576)
     expected_occurrences: int | None = Field(default=None, ge=0)
-    patch: str | None = None
+    patch: str | None = Field(default=None, max_length=1_048_576)
     expected_digest: str | None = None
     result_mode: int | None = Field(default=None, ge=0, le=0o7777)
     rewrite_engine: str | None = None
     rewrite_version: str | None = None
-    rewrite_rule: str | None = None
+    rewrite_rule: str | None = Field(default=None, max_length=262_144)
     rewrite_language: str | None = None
     rewrite_scope: str | None = None
     rewrite_matches: int | None = Field(default=None, ge=0)
@@ -79,7 +79,7 @@ class ChangeOperation(DomainRecord):
     rewrite_ignored_files: tuple[str, ...] = ()
     rewrite_formatting: str | None = None
     rewrite_limits: dict[str, int] = Field(default_factory=dict)
-    semantic_preservation_evidence: str | None = None
+    semantic_preservation_evidence: str | None = Field(default=None, max_length=262_144)
     rollback: RollbackPolicy = RollbackPolicy.RESTORE
 
     @model_validator(mode="after")

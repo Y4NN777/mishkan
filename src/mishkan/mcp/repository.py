@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import ClassVar
 from uuid import UUID
@@ -392,7 +393,14 @@ class McpRepository:
             row.updated_at = result.completed_at.isoformat()
         return result
 
-    def append_progress(self, progress: McpProgressEvent) -> McpProgressEvent:
+    def append_progress(
+        self,
+        progress: McpProgressEvent,
+        *,
+        max_events: int,
+    ) -> McpProgressEvent:
+        if max_events < 1:
+            raise MishkanError(ErrorCode.OUTPUT_CONTRACT, "MCP progress bound is invalid")
         with Session(self._engine) as session, session.begin():
             call = session.get(McpCallRow, str(progress.request_id))
             if call is None:
@@ -410,6 +418,12 @@ class McpRepository:
             expected = 0 if latest is None else latest + 1
             if progress.cursor != expected:
                 raise MishkanError(ErrorCode.REVISION_MISMATCH, "MCP progress cursor is not next")
+            if expected >= max_events:
+                raise MishkanError(
+                    ErrorCode.MCP,
+                    "MCP progress exceeds its configured per-call bound",
+                    details={"event_limit": max_events},
+                )
             session.add(
                 McpProgressRow(
                     request_id=str(progress.request_id),
@@ -420,8 +434,14 @@ class McpRepository:
             )
         return progress
 
-    def progress_after(self, request_id: UUID, cursor: int) -> tuple[McpProgressEvent, ...]:
-        if cursor < 0:
+    def progress_after(
+        self,
+        request_id: UUID,
+        cursor: int,
+        *,
+        limit: int,
+    ) -> tuple[McpProgressEvent, ...]:
+        if cursor < 0 or limit < 1:
             raise MishkanError(ErrorCode.OUTPUT_CONTRACT, "MCP progress cursor is invalid")
         with Session(self._engine) as session:
             rows = session.scalars(
@@ -431,8 +451,30 @@ class McpRepository:
                     McpProgressRow.cursor >= cursor,
                 )
                 .order_by(McpProgressRow.cursor)
+                .limit(limit)
             ).all()
         return tuple(McpProgressEvent.model_validate_json(row.payload) for row in rows)
+
+    def prune_progress(self, *, before: datetime, batch_size: int) -> int:
+        if before.tzinfo is None or before.utcoffset() is None or batch_size < 1:
+            raise MishkanError(ErrorCode.OUTPUT_CONTRACT, "MCP progress retention bound is invalid")
+        with Session(self._engine) as session, session.begin():
+            identities = tuple(
+                session.execute(
+                    select(McpProgressRow.request_id, McpProgressRow.cursor)
+                    .where(McpProgressRow.created_at < before.isoformat())
+                    .order_by(McpProgressRow.created_at)
+                    .limit(batch_size)
+                ).all()
+            )
+            for request_id, cursor in identities:
+                session.execute(
+                    delete(McpProgressRow).where(
+                        McpProgressRow.request_id == request_id,
+                        McpProgressRow.cursor == cursor,
+                    )
+                )
+        return len(identities)
 
     def list_calls(
         self,

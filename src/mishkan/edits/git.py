@@ -211,13 +211,14 @@ class GovernedGitService:
                     "Git remote URL differs from the authorized remote",
                 )
             assert request.branch is not None
+            assert request.expected_remote_url is not None
             remote_before = self._remote_oid(
                 workspace,
-                request.remote,
+                request.expected_remote_url,
                 request.branch,
                 credential_value=credential_value,
             )
-        argv = self._argv(request)
+        argv = self._argv(request, remote_target=request.expected_remote_url)
         completed = (
             self._run_remote(
                 workspace,
@@ -233,7 +234,7 @@ class GovernedGitService:
         remote_after = (
             self._remote_oid(
                 workspace,
-                request.remote,
+                request.expected_remote_url or "",
                 request.branch or "",
                 credential_value=credential_value,
             )
@@ -394,7 +395,11 @@ class GovernedGitService:
         )
 
     @staticmethod
-    def _argv(request: GitEffectRequest) -> list[str]:
+    def _argv(
+        request: GitEffectRequest,
+        *,
+        remote_target: str | None = None,
+    ) -> list[str]:
         if request.mode is GitEffectMode.STAGE:
             return ["add", "--", *request.paths]
         if request.mode is GitEffectMode.COMMIT:
@@ -409,17 +414,22 @@ class GovernedGitService:
                 request.message,
             ]
         assert request.remote and request.branch
+        if remote_target is None:
+            raise MishkanError(
+                ErrorCode.AUTHORIZATION_MISSING,
+                "Git remote effect has no immutable authorized destination",
+            )
         if request.mode is GitEffectMode.PUSH:
-            return ["push", request.remote, request.branch]
+            return ["push", remote_target, request.branch]
         if request.mode is GitEffectMode.FORCE_WITH_LEASE:
             assert request.expected_remote_oid
             return [
                 "push",
                 f"--force-with-lease={request.branch}:{request.expected_remote_oid}",
-                request.remote,
+                remote_target,
                 request.branch,
             ]
-        return ["push", "--force", request.remote, request.branch]
+        return ["push", "--force", remote_target, request.branch]
 
     @classmethod
     def _run_remote(

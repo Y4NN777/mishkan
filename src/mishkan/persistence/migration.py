@@ -13,7 +13,7 @@ from alembic import command
 from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import Integer, String, Text, create_engine, inspect
 from sqlalchemy.engine.reflection import Inspector
 
 from mishkan.domain.errors import ErrorCode, MishkanError
@@ -51,6 +51,74 @@ _I02_COLUMNS = {
         "occurred_at",
         "published_at",
     },
+}
+
+_I02_NULLABLE = {
+    "event_outbox": {"published_at"},
+}
+
+_I02_INTEGER_COLUMNS = {("tasks", "position")}
+
+_I02_TEXT_COLUMNS = {
+    ("runs", "objective"),
+    ("plans", "payload"),
+    ("tasks", "contract"),
+    ("accepted_results", "payload"),
+    ("task_acceptances", "review_payload"),
+    ("event_outbox", "payload"),
+}
+
+_I02_STRING_LENGTHS = {
+    "runs": {
+        "id": 36,
+        "resume_key": 64,
+        "repository_id": 64,
+        "repository_revision": 128,
+        "discovery_fingerprint": 64,
+        "outcome_id": 160,
+        "status": 32,
+        "created_at": 40,
+    },
+    "plans": {"id": 36, "run_id": 36, "fingerprint": 64, "accepted_at": 40},
+    "tasks": {"id": 36, "run_id": 36, "task_key": 64, "status": 32},
+    "accepted_results": {"id": 36, "run_id": 36, "task_key": 64, "accepted_at": 40},
+    "task_acceptances": {
+        "id": 36,
+        "run_id": 36,
+        "task_key": 64,
+        "result_id": 36,
+        "accepted_at": 40,
+    },
+    "event_outbox": {
+        "id": 36,
+        "aggregate_id": 36,
+        "event_type": 120,
+        "occurred_at": 40,
+        "published_at": 40,
+    },
+}
+
+_I02_PRIMARY_KEYS = {table: ("id",) for table in _I02_COLUMNS}
+
+_I02_UNIQUES = {
+    "runs": {("resume_key",)},
+    "plans": {("run_id",)},
+    "tasks": {("run_id", "task_key")},
+    "accepted_results": {("run_id", "task_key")},
+    "task_acceptances": {("run_id", "task_key")},
+    "event_outbox": set(),
+}
+
+_I02_FOREIGN_KEYS = {
+    "runs": set(),
+    "plans": {("run_id", "runs", "id")},
+    "tasks": {("run_id", "runs", "id")},
+    "accepted_results": {("run_id", "runs", "id")},
+    "task_acceptances": {
+        ("run_id", "runs", "id"),
+        ("result_id", "accepted_results", "id"),
+    },
+    "event_outbox": set(),
 }
 
 
@@ -199,7 +267,49 @@ class SchemaManager:
     def _is_i02(inspector: Inspector, tables: set[str]) -> bool:
         if tables != set(_I02_COLUMNS):
             return False
-        return all(
-            {column["name"] for column in inspector.get_columns(table)} == expected
-            for table, expected in _I02_COLUMNS.items()
-        )
+        for table, expected_names in _I02_COLUMNS.items():
+            columns = {column["name"]: column for column in inspector.get_columns(table)}
+            if set(columns) != expected_names:
+                return False
+            for name, column in columns.items():
+                expected_nullable = name in _I02_NULLABLE.get(table, set())
+                if bool(column["nullable"]) != expected_nullable:
+                    return False
+                observed_type = column["type"]
+                if (table, name) in _I02_INTEGER_COLUMNS:
+                    if not isinstance(observed_type, Integer):
+                        return False
+                elif (table, name) in _I02_TEXT_COLUMNS:
+                    if not isinstance(observed_type, Text):
+                        return False
+                elif (
+                    not isinstance(observed_type, String)
+                    or observed_type.length != _I02_STRING_LENGTHS[table][name]
+                ):
+                    return False
+                if column.get("default") is not None:
+                    return False
+            primary_key = tuple(inspector.get_pk_constraint(table).get("constrained_columns") or ())
+            if primary_key != _I02_PRIMARY_KEYS[table]:
+                return False
+            uniques = {
+                tuple(item.get("column_names") or ())
+                for item in inspector.get_unique_constraints(table)
+            }
+            if uniques != _I02_UNIQUES[table]:
+                return False
+            foreign_keys = {
+                (
+                    next(iter(item.get("constrained_columns") or ())),
+                    str(item.get("referred_table")),
+                    next(iter(item.get("referred_columns") or ())),
+                )
+                for item in inspector.get_foreign_keys(table)
+                if len(tuple(item.get("constrained_columns") or ())) == 1
+                and len(tuple(item.get("referred_columns") or ())) == 1
+            }
+            if foreign_keys != _I02_FOREIGN_KEYS[table]:
+                return False
+            if inspector.get_indexes(table) or inspector.get_check_constraints(table):
+                return False
+        return True

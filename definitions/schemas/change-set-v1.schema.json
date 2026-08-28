@@ -48,6 +48,7 @@
         "destination_precondition_value": {
           "anyOf": [
             {
+              "maxLength": 4096,
               "type": "string"
             },
             {
@@ -90,6 +91,7 @@
         "inline_content": {
           "anyOf": [
             {
+              "maxLength": 1048576,
               "type": "string"
             },
             {
@@ -105,6 +107,7 @@
         "match": {
           "anyOf": [
             {
+              "maxLength": 262144,
               "type": "string"
             },
             {
@@ -117,6 +120,7 @@
         "patch": {
           "anyOf": [
             {
+              "maxLength": 1048576,
               "type": "string"
             },
             {
@@ -138,6 +142,7 @@
         "precondition_value": {
           "anyOf": [
             {
+              "maxLength": 4096,
               "type": "string"
             },
             {
@@ -150,6 +155,7 @@
         "replacement": {
           "anyOf": [
             {
+              "maxLength": 1048576,
               "type": "string"
             },
             {
@@ -248,6 +254,7 @@
         "rewrite_rule": {
           "anyOf": [
             {
+              "maxLength": 262144,
               "type": "string"
             },
             {
@@ -293,6 +300,7 @@
         "semantic_preservation_evidence": {
           "anyOf": [
             {
+              "maxLength": 262144,
               "type": "string"
             },
             {

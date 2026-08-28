@@ -219,6 +219,37 @@ def test_exact_command_retry_returns_original_result(tmp_path: Path) -> None:
     assert len(repository.events().events) == 1
 
 
+def test_reserved_precondition_is_rechecked_before_effect_dispatch(tmp_path: Path) -> None:
+    repository = _repository(tmp_path)
+    first = ApplicationCommand(
+        command_type="system.checkpoint",
+        actor_id="operator",
+        target_type="system",
+        target_id="shared",
+        expected_revision=0,
+        payload={"sequence": 1},
+    )
+    waiting = first.model_copy(
+        update={
+            "command_id": ApplicationCommand(
+                command_type="system.checkpoint",
+                actor_id="operator",
+                target_type="system",
+            ).command_id,
+            "payload": {"sequence": 2},
+        }
+    )
+
+    assert repository.reserve(waiting, target_id="shared") is None
+    repository.accept(first, target_id="shared", event_type="system.checkpoint_recorded")
+
+    with pytest.raises(MishkanError) as caught:
+        repository.verify_reserved_precondition(waiting, target_id="shared")
+
+    assert caught.value.envelope.code is ErrorCode.REVISION_MISMATCH
+    assert caught.value.envelope.details["effect_dispatched"] is False
+
+
 def test_reused_command_identity_with_different_content_is_refused(tmp_path: Path) -> None:
     repository = _repository(tmp_path)
     command = ApplicationCommand(
@@ -413,3 +444,36 @@ def test_removed_event_cursor_requires_a_fresh_snapshot(tmp_path: Path) -> None:
     with pytest.raises(MishkanError) as unbounded:
         repository.events(limit=0)
     assert unbounded.value.envelope.code is ErrorCode.OUTPUT_CONTRACT
+
+
+def test_event_cursor_is_never_reused_after_highest_event_is_deleted(tmp_path: Path) -> None:
+    repository = _repository(tmp_path)
+    database = tmp_path / "mishkan.db"
+    for index in range(3):
+        repository.accept(
+            ApplicationCommand(
+                command_type="system.checkpoint",
+                actor_id="operator",
+                target_type="system",
+                target_id=str(index),
+                payload={"index": index},
+            ),
+            target_id=str(index),
+            event_type="system.checkpoint_recorded",
+        )
+    with create_engine(f"sqlite:///{database}").begin() as connection:
+        connection.execute(text("DELETE FROM event_outbox WHERE cursor = 3"))
+
+    result = repository.accept(
+        ApplicationCommand(
+            command_type="system.checkpoint",
+            actor_id="operator",
+            target_type="system",
+            target_id="next",
+            payload={},
+        ),
+        target_id="next",
+        event_type="system.checkpoint_recorded",
+    )
+
+    assert result.event_cursor == 4

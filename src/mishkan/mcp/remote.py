@@ -17,11 +17,6 @@ from mishkan.mcp.facade import EventQuery, RunQuery
 class DaemonMcpFacade:
     """Forward exposed MCP operations to the authenticated mishkand HTTP API."""
 
-    _SUPPORTED = frozenset(
-        {"system.health", "system.snapshot", "events.list", "run.get", "command.submit"}
-    )
-    _RESOURCES = frozenset({"mishkan://snapshot", "mishkan://runs", "mishkan://events"})
-
     def __init__(
         self,
         mcp: McpConfig,
@@ -31,8 +26,8 @@ class DaemonMcpFacade:
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         profile = mcp.exposure_profiles[mcp.facade.exposure_profile]
-        self.operations = tuple(item for item in profile.operations if item in self._SUPPORTED)
-        self.resources = tuple(item for item in profile.resources if item in self._RESOURCES)
+        self.operations = profile.operations
+        self.resources = profile.resources
         host = f"[{daemon.host}]" if ":" in daemon.host else daemon.host
         self._base_url = f"http://{host}:{daemon.port}"
         self._token_file = token_file

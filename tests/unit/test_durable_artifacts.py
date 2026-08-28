@@ -135,6 +135,39 @@ def test_security_scan_blocks_secret_split_across_upload_chunks(tmp_path: Path) 
     assert not staged.exists()
 
 
+def test_immediate_artifact_publication_blocks_an_exact_runtime_credential(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "mishkan.db"
+    SchemaManager(database).initialize()
+    inspector = ContentInspector(
+        InspectionProfileLoader().load(
+            "package://mishkan.resources.inspection/default-security.yaml",
+            tmp_path,
+        )
+    )
+    service = DurableArtifactService(
+        database,
+        tmp_path / "artifacts",
+        max_artifact_bytes=1_024,
+        max_chunk_bytes=8,
+        content_inspector=inspector,
+    )
+    credential = "runtime-credential-without-a-generic-pattern"
+
+    with pytest.raises(MishkanError) as caught:
+        service.put_bytes(
+            f"screen contains {credential}".encode(),
+            media_type="text/plain",
+            provenance=_provenance(),
+            complete=True,
+            resolved_secrets=(credential,),
+        )
+
+    assert caught.value.envelope.code is ErrorCode.SECRET_CONTENT
+    assert service.list_manifests() == ()
+
+
 @pytest.mark.symlinks
 def test_commit_refuses_an_in_root_staging_symlink(tmp_path: Path) -> None:
     service = _service(tmp_path)

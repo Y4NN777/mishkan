@@ -86,6 +86,10 @@ class BrowserSession(BrowserModel):
     retention: str
     last_error: str | None = None
     uncertain_effect: str | None = None
+    profile_state_artifact_reference: str | None = Field(
+        default=None,
+        pattern=r"^artifact:[0-9a-f-]{36}$",
+    )
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
 
@@ -101,6 +105,10 @@ class BrowserTarget(BrowserModel):
     name: str
     element_revision: str = Field(min_length=1)
     candidate_effects: tuple[str, ...] = ()
+    destination_origin: str | None = Field(
+        default=None,
+        pattern=r"^https?://[^/?#]+$",
+    )
 
 
 class BrowserObservationRequest(BrowserModel):
@@ -158,6 +166,7 @@ class BrowserActionRequest(BrowserModel):
         pattern=r"^artifact:[0-9a-f-]{36}$",
     )
     resolved_effect: str = Field(min_length=1)
+    authorized_origins: tuple[str, ...] = ()
     expected_session_revision: int = Field(ge=0)
     idempotency_key: UUID = Field(default_factory=new_id)
 
@@ -187,6 +196,13 @@ class BrowserActionRequest(BrowserModel):
                 raise ValueError("browser fill cannot contain a value and credential reference")
         if (self.credential_reference is None) != (self.credential_origin is None):
             raise ValueError("browser credential reference requires its exact authorized origin")
+        if len(self.authorized_origins) != len(set(self.authorized_origins)):
+            raise ValueError("browser authorized origins must be unique")
+        if self.kind is BrowserActionKind.JAVASCRIPT:
+            if self.resolved_effect != "script.execute":
+                raise ValueError("browser JavaScript requires its separate script.execute effect")
+        elif self.resolved_effect == "script.execute":
+            raise ValueError("browser script.execute effect belongs only to JavaScript")
         return self
 
 

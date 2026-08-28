@@ -78,6 +78,19 @@
     "profile_kind": {
       "$ref": "#/$defs/BrowserProfileKind"
     },
+    "profile_state_artifact_reference": {
+      "anyOf": [
+        {
+          "pattern": "^artifact:[0-9a-f-]{36}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Profile State Artifact Reference"
+    },
     "retention": {
       "title": "Retention",
       "type": "string"

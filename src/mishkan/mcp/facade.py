@@ -8,7 +8,7 @@ from typing import Any, Protocol
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from mishkan.application import ApplicationCommand, CommandResult
-from mishkan.config.models import McpConfig
+from mishkan.config.models import SUPPORTED_MCP_FACADE_OPERATIONS, McpConfig
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.events import EventPage
 from mishkan.persistence import SQLiteApplicationRepository
@@ -50,7 +50,7 @@ class RunQuery(FacadeModel):
 class McpFacadeRouter:
     """Expose only allowlisted operations that have an executable daemon handler."""
 
-    _QUERY_OPERATIONS = frozenset({"system.health", "system.snapshot", "events.list", "run.get"})
+    _QUERY_OPERATIONS = SUPPORTED_MCP_FACADE_OPERATIONS - {"command.submit"}
 
     def __init__(
         self,
@@ -62,13 +62,8 @@ class McpFacadeRouter:
         event_page_limit: int,
     ) -> None:
         profile = config.exposure_profiles[config.facade.exposure_profile]
-        supported = self._QUERY_OPERATIONS | {"command.submit"}
-        self.operations = tuple(item for item in profile.operations if item in supported)
-        self.resources = tuple(
-            item
-            for item in profile.resources
-            if item in {"mishkan://snapshot", "mishkan://runs", "mishkan://events"}
-        )
+        self.operations = profile.operations
+        self.resources = profile.resources
         self._repository = repository
         self._execute = command_executor
         self._schema_revision = schema_revision

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from pathlib import Path
 
@@ -136,6 +138,35 @@ class RecordingSearch:
         )
 
 
+class BlockingSearch:
+    adapter_id = "test.blocking"
+
+    def __init__(self) -> None:
+        self.entered = threading.Event()
+        self.release = threading.Event()
+        self.calls = 0
+
+    def search(self, *args: object, **kwargs: object) -> ProviderSearchResult:
+        del args, kwargs
+        self.calls += 1
+        self.entered.set()
+        assert self.release.wait(timeout=5)
+        return ProviderSearchResult(
+            hits=(
+                SearchHit(
+                    source_id="only",
+                    upstream="fixture",
+                    rank=1,
+                    title="Bounded evidence",
+                    url=AnyHttpUrl("https://example.com/evidence"),
+                    snippet="Observed result",
+                    score_scale="fixture.rank",
+                ),
+            ),
+            upstreams=("fixture",),
+        )
+
+
 class SecretSearch:
     adapter_id = "test.secret"
 
@@ -204,6 +235,50 @@ def test_configured_default_search_strategy_is_executed_when_request_omits_it(
 
     assert result.strategy is SearchStrategy.AUTOMATIC
     assert adapter.calls == ["first"]
+
+
+def test_network_profile_concurrency_bound_is_enforced_across_parallel_calls(
+    tmp_path: Path,
+) -> None:
+    base = _web_config()
+    network = base.network_profiles["public-read"].model_copy(
+        update={"max_concurrency": 1, "connect_timeout_seconds": 0.05}
+    )
+    template = base.sources[base.default_search_sources[0]]
+    source = template.model_copy(
+        update={
+            "adapter": BlockingSearch.adapter_id,
+            "endpoint": AnyHttpUrl("https://example.com/search"),
+            "network_profile": "public-read",
+        }
+    )
+    config = base.model_copy(
+        update={
+            "network_profiles": {**base.network_profiles, "public-read": network},
+            "sources": {"only": source},
+            "default_search_sources": ("only",),
+            "default_search_strategy": SearchStrategy.DIRECT,
+        }
+    )
+    adapter = BlockingSearch()
+    service = WebService(
+        config,
+        _artifacts(tmp_path),
+        search_adapters={adapter.adapter_id: adapter},
+        extraction_adapters={},
+    )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(service.search, SearchRequest(query="first", cache=False))
+        assert adapter.entered.wait(timeout=5)
+        second = executor.submit(service.search, SearchRequest(query="second", cache=False))
+        with pytest.raises(MishkanError) as saturated:
+            second.result(timeout=2)
+        adapter.release.set()
+        assert first.result(timeout=5).hits
+
+    assert saturated.value.envelope.code is ErrorCode.WEB
+    assert adapter.calls == 1
 
 
 @pytest.mark.secrets

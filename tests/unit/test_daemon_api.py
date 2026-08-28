@@ -61,6 +61,30 @@ async def test_health_is_public_but_queries_require_authentication(tmp_path: Pat
 
 
 @pytest.mark.anyio
+async def test_daemon_rejects_request_bodies_above_the_public_configured_bound(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    assert config.daemon is not None
+    config = config.model_copy(
+        update={"daemon": config.daemon.model_copy(update={"max_request_bytes": 128})}
+    )
+    paths = DaemonBootstrap().setup(config)
+    token = TokenFile(paths.token_file).read().token
+    transport = httpx.ASGITransport(app=create_app(config))
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/commands",
+            headers={"Authorization": f"Bearer {token}"},
+            content=b"x" * 129,
+        )
+
+    assert response.status_code == 413
+    assert response.json()["code"] == ErrorCode.OUTPUT_CONTRACT
+
+
+@pytest.mark.anyio
 async def test_authenticated_command_and_event_query_share_durable_contract(
     tmp_path: Path,
 ) -> None:
@@ -152,6 +176,56 @@ async def test_slow_command_keeps_health_responsive_and_deduplicates_in_flight(
     assert health.status_code == 200
     assert health_latency < 0.15
     assert first_response.json() == duplicate_response.json()
+    assert invocations == 1
+
+
+@pytest.mark.anyio
+async def test_waiting_command_rechecks_revision_before_dispatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from mishkan.daemon import api as daemon_api
+
+    config = _config(tmp_path)
+    paths = DaemonBootstrap().setup(config)
+    token = TokenFile(paths.token_file).read().token
+    headers = {"Authorization": f"Bearer {token}"}
+    commands = [
+        ApplicationCommand(
+            command_type="system.checkpoint",
+            actor_id="local-operator",
+            target_type="system",
+            target_id="shared-checkpoint",
+            expected_revision=0,
+            payload={"checkpoint": f"sequence-{sequence}"},
+        )
+        for sequence in (1, 2)
+    ]
+    original = daemon_api._dispatch
+    invocations = 0
+
+    def delayed_dispatch(*args: object, **kwargs: object) -> tuple[str, dict[str, object]]:
+        nonlocal invocations
+        invocations += 1
+        time.sleep(0.2)
+        return original(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(daemon_api, "_dispatch", delayed_dispatch)
+    transport = httpx.ASGITransport(app=create_app(config))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        first = asyncio.create_task(
+            client.post("/v1/commands", headers=headers, json=commands[0].model_dump(mode="json"))
+        )
+        await asyncio.sleep(0.03)
+        second = asyncio.create_task(
+            client.post("/v1/commands", headers=headers, json=commands[1].model_dump(mode="json"))
+        )
+        first_response, second_response = await asyncio.gather(first, second)
+
+    assert first_response.status_code == 200, first_response.text
+    assert first_response.json()["status"] == "accepted"
+    assert second_response.json()["status"] == "refused"
+    assert second_response.json()["error"]["code"] == ErrorCode.REVISION_MISMATCH
+    assert second_response.json()["error"]["details"]["effect_dispatched"] is False
     assert invocations == 1
 
 

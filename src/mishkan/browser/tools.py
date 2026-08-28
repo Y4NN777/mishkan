@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import PurePosixPath
 from typing import TypeVar
 
 import httpx
@@ -138,9 +139,27 @@ class BrowserOpenToolAdapter(_BrowserToolAdapter):
     def invoke(self, call: AdapterCall) -> AdapterResult:
         request = self._request(call, BrowserSessionRequest)
         self._verify_identity(call, request)
-        network = (self._origin(str(request.initial_url)),) if request.initial_url else ()
-        self._verify_targets(call, paths=(request.workspace,), network=network)
-        self._verify_effects(call, ("browser.session.open",))
+        profile = self._supervisor.profile(request.profile_id)
+        network = tuple(
+            dict.fromkeys(
+                item
+                for item in (
+                    self._origin(str(request.initial_url)) if request.initial_url else None,
+                    self._origin(str(profile.cdp_endpoint)) if profile.cdp_endpoint else None,
+                )
+                if item is not None
+            )
+        )
+        paths = [request.workspace]
+        effects = ["browser.session.open"]
+        if profile.kind.value == "project_persistent":
+            assert profile.user_data_dir is not None
+            paths.append(str(PurePosixPath(request.workspace) / profile.user_data_dir))
+            effects.append("browser.profile.write")
+        elif profile.kind.value == "attached_existing":
+            effects.append("browser.session.attach")
+        self._verify_targets(call, paths=tuple(paths), network=network)
+        self._verify_effects(call, tuple(effects))
         if call.credentials:
             raise MishkanError(ErrorCode.TOOL_SCHEMA, "Browser open has undeclared credentials")
         session = self._supervisor.open(request)
@@ -177,11 +196,7 @@ class BrowserActToolAdapter(_BrowserToolAdapter):
     def invoke(self, call: AdapterCall) -> AdapterResult:
         request = self._request(call, BrowserActionRequest)
         resource = self._session_resource(request.session_id)
-        network = (
-            (self._origin(request.value),)
-            if request.kind is BrowserActionKind.NAVIGATE and isinstance(request.value, str)
-            else ()
-        )
+        network = request.authorized_origins
         paths = self._string_list(call, "paths") if request.kind is BrowserActionKind.UPLOAD else ()
         expected_paths = (
             self._upload_values(request) if request.kind is BrowserActionKind.UPLOAD else ()

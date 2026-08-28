@@ -71,6 +71,11 @@
       "default": null,
       "title": "Input Schema"
     },
+    "invocation_supported": {
+      "default": false,
+      "title": "Invocation Supported",
+      "type": "boolean"
+    },
     "kind": {
       "$ref": "#/$defs/McpPrimitiveKind"
     },

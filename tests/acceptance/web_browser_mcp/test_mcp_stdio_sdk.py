@@ -7,7 +7,20 @@ import pytest
 from mcp.types import LATEST_PROTOCOL_VERSION
 
 from mishkan.config.models import McpConnectionConfig, McpProtocolStrategy, McpTransport
+from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.mcp import McpPrimitiveKind, McpSdkClient
+
+
+class _DirectTestCommand:
+    def build(
+        self,
+        workspace: Path,
+        command: tuple[str, ...],
+        *,
+        environment_names: tuple[str, ...] = (),
+    ) -> tuple[str, ...]:
+        del workspace, environment_names
+        return command
 
 
 def _connection(server: Path, *, max_result_bytes: int = 16_384) -> McpConnectionConfig:
@@ -18,6 +31,7 @@ def _connection(server: Path, *, max_result_bytes: int = 16_384) -> McpConnectio
         trust="test-fixture",
         exposure_profile="fixture",
         command=sys.executable,
+        isolation_profile="acceptance-stdio",
         arguments=(str(server),),
         connect_timeout_seconds=30,
         call_timeout_seconds=30,
@@ -27,11 +41,33 @@ def _connection(server: Path, *, max_result_bytes: int = 16_384) -> McpConnectio
 
 @pytest.mark.acceptance
 @pytest.mark.anyio
-async def test_official_stdio_sdk_discovers_and_invokes_typed_primitives(
+async def test_stdio_connection_refuses_execution_without_a_ready_isolation_builder(
     tmp_path: Path,
 ) -> None:
     server = Path(__file__).parents[2] / "fixtures" / "mcp_test_server.py"
-    client = McpSdkClient({})
+
+    with pytest.raises(MishkanError) as unavailable:
+        await McpSdkClient({}).discover(
+            "fixture",
+            _connection(server),
+            credentials={},
+            workspace=tmp_path,
+        )
+
+    assert unavailable.value.envelope.code is ErrorCode.REQUIRED_DEPENDENCY
+
+
+@pytest.mark.acceptance
+@pytest.mark.anyio
+async def test_official_stdio_sdk_discovers_and_invokes_typed_primitives(
+    tmp_path: Path,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    server = Path(__file__).parents[2] / "fixtures" / "mcp_test_server.py"
+    client = McpSdkClient(
+        {},
+        stdio_commands={"acceptance-stdio": _DirectTestCommand()},
+    )
     configured = _connection(server)
 
     discovery = await client.discover(
@@ -43,9 +79,11 @@ async def test_official_stdio_sdk_discovers_and_invokes_typed_primitives(
     observed = {(item.kind, item.name): item for item in discovery.primitives}
 
     tool = observed[(McpPrimitiveKind.TOOL, "repository.read")]
-    assert tool.effect_disposition.value == "read_only"
-    assert (McpPrimitiveKind.RESOURCE, "fixture.status") in observed
-    assert (McpPrimitiveKind.PROMPT, "review.evidence") in observed
+    assert tool.effect_disposition.value == "unknown"
+    resource = observed[(McpPrimitiveKind.RESOURCE, "fixture.status")]
+    prompt = observed[(McpPrimitiveKind.PROMPT, "review.evidence")]
+    assert resource.invocation_supported is False
+    assert prompt.invocation_supported is False
 
     progress: list[tuple[float, float | None, str | None]] = []
 
@@ -70,3 +108,4 @@ async def test_official_stdio_sdk_discovers_and_invokes_typed_primitives(
     assert result.output["isError"] is False
     assert result.output["structuredContent"] == {"path": "src", "content": "fixture evidence"}
     assert progress == []
+    assert "MISHKAN_MCP_STDERR_CANARY" not in capfd.readouterr().err

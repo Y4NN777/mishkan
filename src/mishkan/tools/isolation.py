@@ -152,7 +152,13 @@ class ContainerCommand:
         self._runner = runner
         self.image_identity = image_identity or profile.image
 
-    def build(self, workspace: Path, command: tuple[str, ...]) -> tuple[str, ...]:
+    def build(
+        self,
+        workspace: Path,
+        command: tuple[str, ...],
+        *,
+        environment_names: tuple[str, ...] = (),
+    ) -> tuple[str, ...]:
         if not command:
             raise MishkanError(ErrorCode.TOOL_SCHEMA, "container command argv is empty")
         try:
@@ -193,6 +199,14 @@ class ContainerCommand:
         ]
         if self.profile.read_only_root:
             argv.append("--read-only")
+        allowed_environment = set(self.profile.environment_allowlist)
+        if not set(environment_names).issubset(allowed_environment):
+            raise MishkanError(
+                ErrorCode.AUTHORITY_NOT_GRANTED,
+                "isolated command environment exceeds its public profile",
+            )
+        for name in environment_names:
+            argv.extend(("--env", name))
         argv.extend((self.image_identity, *command))
         return tuple(argv)
 

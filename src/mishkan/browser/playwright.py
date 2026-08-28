@@ -25,6 +25,7 @@ from playwright.sync_api import (
     CDPSession,
     ConsoleMessage,
     Download,
+    FilePayload,
     Locator,
     Page,
     Playwright,
@@ -57,7 +58,7 @@ from mishkan.config.models import (
     NetworkProfileConfig,
 )
 from mishkan.domain.errors import ErrorCode, MishkanError
-from mishkan.web.network import HttpxWebTransport, Resolver
+from mishkan.web.network import HttpxWebTransport, NetworkGuard, Resolver
 
 _T = TypeVar("_T")
 _REFERENCE = re.compile(r'^\s*-\s+([A-Za-z][\w-]*)(?:\s+("(?:[^"\\]|\\.)*"))?.*?\[ref=([^\]\s]+)\]')
@@ -137,7 +138,10 @@ class _LiveSession:
     page_keys: dict[int, str] = field(default_factory=dict)
     cdp: dict[str, CDPSession] = field(default_factory=dict)
     diagnostics: list[dict[str, Any]] = field(default_factory=list)
+    diagnostic_base_cursor: int = 0
     downloads: list[Download] = field(default_factory=list)
+    download_overflow: bool = False
+    authorized_origins: tuple[str, ...] = ()
 
 
 class PlaywrightChromiumDriver:
@@ -149,9 +153,15 @@ class PlaywrightChromiumDriver:
         self,
         network_profiles: Mapping[str, NetworkProfileConfig],
         *,
+        max_diagnostic_entries: int,
+        max_pending_downloads: int,
         resolver: Resolver | None = None,
     ) -> None:
+        if min(max_diagnostic_entries, max_pending_downloads) < 1:
+            raise ValueError("browser live evidence bounds must be positive")
         self._network_profiles = dict(network_profiles)
+        self._max_diagnostic_entries = max_diagnostic_entries
+        self._max_pending_downloads = max_pending_downloads
         self._transport = HttpxWebTransport(resolver)
         self._worker = _EngineThread()
         self._sessions: dict[str, _LiveSession] = {}
@@ -242,7 +252,16 @@ class PlaywrightChromiumDriver:
             browser = context.browser
         else:
             assert profile.cdp_endpoint is not None
-            browser = engine.chromium.connect_over_cdp(str(profile.cdp_endpoint), timeout=timeout)
+            network_profile = self._network_profiles.get(profile.network_profile)
+            if network_profile is None:
+                raise MishkanError(
+                    ErrorCode.CONFIGURATION,
+                    "attached browser profile references an unavailable network profile",
+                )
+            cdp_endpoint = (
+                NetworkGuard(network_profile).validate_url(str(profile.cdp_endpoint)).value
+            )
+            browser = engine.chromium.connect_over_cdp(cdp_endpoint, timeout=timeout)
             if not browser.contexts:
                 raise MishkanError(
                     ErrorCode.BROWSER,
@@ -256,6 +275,9 @@ class PlaywrightChromiumDriver:
         self._sessions[handle] = live
         try:
             self._install_network_mediation(live)
+            live.authorized_origins = (
+                (self._origin(initial_url),) if initial_url is not None else ()
+            )
             page = context.pages[0] if context.pages else context.new_page()
             self._refresh_pages(live)
             if initial_url is not None:
@@ -290,6 +312,7 @@ class PlaywrightChromiumDriver:
                     name=name,
                     element_revision=self._fingerprint(evidence),
                     candidate_effects=self._candidate_effects(role, evidence),
+                    destination_origin=self._destination_origin(evidence, page.url),
                 )
             )
         image = page.screenshot(type="png") if screenshot else None
@@ -322,6 +345,8 @@ class PlaywrightChromiumDriver:
                 raise MishkanError(ErrorCode.BROWSER, "browser target changed after observation")
         download: Download | None = None
         download_count = len(live.downloads)
+        live.download_overflow = False
+        live.authorized_origins = request.authorized_origins
         try:
             if cancellation_requested():
                 raise BrowserOperationCancelled("browser action cancelled before dispatch")
@@ -341,21 +366,28 @@ class PlaywrightChromiumDriver:
                 "Playwright lost certainty after interaction dispatch"
             ) from exc
         observed_downloads = live.downloads[download_count:]
+        if live.download_overflow:
+            del live.downloads[download_count:]
+            raise BrowserUncertainEffect("browser pending download evidence exceeded its bound")
         if request.resolved_effect != "file.download" and observed_downloads:
             for item in observed_downloads:
                 with suppress(PlaywrightError):
                     item.cancel()
+            del live.downloads[download_count:]
             raise BrowserUncertainEffect("browser action produced an undeclared download effect")
         if download is None:
+            del live.downloads[download_count:]
             return DriverActionOutcome(tuple(live.pages))
         if len(observed_downloads) > 1:
             for item in observed_downloads:
                 with suppress(PlaywrightError):
                     item.cancel()
+            del live.downloads[download_count:]
             raise BrowserUncertainEffect("browser action produced multiple download effects")
         artifact = self._download_artifact(live, download)
         with suppress(PlaywrightError):
             download.delete()
+        del live.downloads[download_count:]
         return DriverActionOutcome(tuple(live.pages), (artifact,))
 
     def _dispatch_action(
@@ -389,7 +421,7 @@ class PlaywrightChromiumDriver:
         elif request.kind is BrowserActionKind.CHECK:
             locator.check() if value is not False else locator.uncheck()
         elif request.kind is BrowserActionKind.UPLOAD:
-            locator.set_input_files(self._upload_paths(live, value))
+            locator.set_input_files(self._upload_payloads(live, value))
         elif request.kind is BrowserActionKind.JAVASCRIPT:
             locator.evaluate(self._string_value(value, "JavaScript"))
         else:
@@ -406,16 +438,28 @@ class PlaywrightChromiumDriver:
         live = self._session(handle)
         self._page(live, page_id)
         self._capture_cdp_snapshots(live, page_id, channels)
+        if cursor < live.diagnostic_base_cursor:
+            raise MishkanError(
+                ErrorCode.RUN_INTERRUPTED,
+                "browser diagnostic cursor was removed by the configured bound",
+                details={"category": "cursor_gap", "snapshot_required": True},
+            )
         selected: list[dict[str, Any]] = []
-        next_cursor = min(cursor, len(live.diagnostics))
-        for index in range(next_cursor, len(live.diagnostics)):
-            next_cursor = index + 1
-            item = live.diagnostics[index]
+        next_cursor = min(
+            cursor,
+            live.diagnostic_base_cursor + len(live.diagnostics),
+        )
+        start = next_cursor - live.diagnostic_base_cursor
+        for item in live.diagnostics[start:]:
+            next_cursor = int(item["cursor"]) + 1
             if item.get("channel") in channels:
                 selected.append(item)
                 if len(selected) == limit:
                     break
-        remaining = any(item.get("channel") in channels for item in live.diagnostics[next_cursor:])
+        remaining_start = max(0, next_cursor - live.diagnostic_base_cursor)
+        remaining = any(
+            item.get("channel") in channels for item in live.diagnostics[remaining_start:]
+        )
         return DriverDiagnostics(tuple(selected), next_cursor, remaining)
 
     def _close(self, handle: str) -> None:
@@ -446,6 +490,11 @@ class PlaywrightChromiumDriver:
             url = request.url
             try:
                 self._require_origin(live.profile.allowed_origins, url)
+                if self._origin(url) not in live.authorized_origins:
+                    raise MishkanError(
+                        ErrorCode.AUTHORITY_NOT_GRANTED,
+                        "browser request destination was not authorized by the current action",
+                    )
                 exchange = self._transport.request(
                     request.method,
                     url,
@@ -619,6 +668,11 @@ class PlaywrightChromiumDriver:
         )
 
     def _download_event(self, live: _LiveSession, page_id: str, download: Download) -> None:
+        if len(live.downloads) >= self._max_pending_downloads:
+            live.download_overflow = True
+            with suppress(PlaywrightError):
+                download.cancel()
+            return
         live.downloads.append(download)
         self._record(
             live,
@@ -666,16 +720,18 @@ class PlaywrightChromiumDriver:
             content=b"".join(chunks),
         )
 
-    @staticmethod
     def _record(
+        self,
         live: _LiveSession,
         channel: str,
         kind: str,
         payload: dict[str, Any],
     ) -> None:
-        live.diagnostics.append(
-            {"cursor": len(live.diagnostics), "channel": channel, "kind": kind, **payload}
-        )
+        cursor = live.diagnostic_base_cursor + len(live.diagnostics)
+        live.diagnostics.append({"cursor": cursor, "channel": channel, "kind": kind, **payload})
+        if len(live.diagnostics) > self._max_diagnostic_entries:
+            live.diagnostics.pop(0)
+            live.diagnostic_base_cursor += 1
 
     @staticmethod
     def _element_evidence(locator: Locator) -> dict[str, object]:
@@ -686,7 +742,7 @@ class PlaywrightChromiumDriver:
           name: element.getAttribute('name') || '',
           href: element.getAttribute('href') || '',
           download: element.hasAttribute('download'),
-          formAction: element.getAttribute('formaction') || '',
+          formAction: element.formAction || (element.form && element.form.action) || '',
           contentEditable: element.isContentEditable,
           text: (element.innerText || '').slice(0, 512)
         })"""
@@ -720,6 +776,17 @@ class PlaywrightChromiumDriver:
             return ("form.field.update",)
         return ("ui.interaction",)
 
+    @classmethod
+    def _destination_origin(
+        cls,
+        evidence: dict[str, object],
+        page_url: str,
+    ) -> str | None:
+        candidate = str(evidence.get("href") or evidence.get("formAction") or "")
+        if not candidate:
+            return None
+        return cls._origin(str(httpx.URL(page_url).join(candidate)))
+
     @staticmethod
     def _string_value(value: object, operation: str) -> str:
         if not isinstance(value, str):
@@ -735,17 +802,66 @@ class PlaywrightChromiumDriver:
         raise MishkanError(ErrorCode.BROWSER, f"browser {operation} requires string values")
 
     @staticmethod
-    def _upload_paths(live: _LiveSession, value: object) -> list[str]:
+    def _upload_payloads(live: _LiveSession, value: object) -> list[FilePayload]:
         values = [value] if isinstance(value, str) else value
         if not isinstance(values, list) or not all(isinstance(item, str) for item in values):
             raise MishkanError(ErrorCode.BROWSER, "browser upload requires workspace paths")
-        resolved: list[str] = []
+        payloads: list[FilePayload] = []
+        total = 0
+        directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC
+        directory_flags |= getattr(os, "O_NOFOLLOW", 0)
         for item in cast(list[str], values):
-            path = (live.workspace / item).resolve(strict=True)
-            if not path.is_relative_to(live.workspace):
+            relative = Path(item)
+            if relative.is_absolute() or not relative.parts or ".." in relative.parts:
                 raise MishkanError(ErrorCode.AUTHORITY_NOT_GRANTED, "browser upload escapes scope")
-            resolved.append(str(path))
-        return resolved
+            directory = os.open(live.workspace, directory_flags)
+            try:
+                for part in relative.parts[:-1]:
+                    child = os.open(part, directory_flags, dir_fd=directory)
+                    os.close(directory)
+                    directory = child
+                file_flags = os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
+                descriptor = os.open(relative.name, file_flags, dir_fd=directory)
+                try:
+                    metadata = os.fstat(descriptor)
+                    if not stat.S_ISREG(metadata.st_mode):
+                        raise MishkanError(
+                            ErrorCode.AUTHORITY_NOT_GRANTED,
+                            "browser upload source is not a regular file",
+                        )
+                    remaining = live.profile.max_upload_bytes - total
+                    chunks: list[bytes] = []
+                    received = 0
+                    while True:
+                        chunk = os.read(descriptor, min(65_536, remaining + 1 - received))
+                        if not chunk:
+                            break
+                        chunks.append(chunk)
+                        received += len(chunk)
+                        if received > remaining:
+                            raise MishkanError(
+                                ErrorCode.OUTPUT_CONTRACT,
+                                "browser upload exceeds its configured bound",
+                            )
+                    content = b"".join(chunks)
+                    total += len(content)
+                finally:
+                    os.close(descriptor)
+            except OSError as exc:
+                raise MishkanError(
+                    ErrorCode.AUTHORITY_NOT_GRANTED,
+                    "browser upload path could not be opened without following links",
+                ) from exc
+            finally:
+                os.close(directory)
+            payloads.append(
+                FilePayload(
+                    name=relative.name,
+                    mimeType="application/octet-stream",
+                    buffer=content,
+                )
+            )
+        return payloads
 
     def _session(self, handle: str) -> _LiveSession:
         try:
@@ -779,6 +895,15 @@ class PlaywrightChromiumDriver:
             raise MishkanError(ErrorCode.AUTHORITY_NOT_GRANTED, "browser origin is not allowed")
 
     @staticmethod
+    def _origin(raw_url: str) -> str:
+        url = httpx.URL(raw_url)
+        if url.scheme not in {"http", "https"} or url.host is None or url.userinfo:
+            raise MishkanError(ErrorCode.AUTHORITY_NOT_GRANTED, "browser URL origin is invalid")
+        port = url.port or (443 if url.scheme == "https" else 80)
+        default = (url.scheme == "https" and port == 443) or (url.scheme == "http" and port == 80)
+        return f"{url.scheme}://{url.host}" if default else f"{url.scheme}://{url.host}:{port}"
+
+    @staticmethod
     def _safe_url(raw_url: str) -> str:
         try:
             url = httpx.URL(raw_url)
@@ -798,10 +923,14 @@ class LazyPlaywrightChromiumDriver:
         self,
         network_profiles: Mapping[str, NetworkProfileConfig],
         *,
+        max_diagnostic_entries: int,
+        max_pending_downloads: int,
         resolver: Resolver | None = None,
     ) -> None:
         self._network_profiles = dict(network_profiles)
         self._resolver = resolver
+        self._max_diagnostic_entries = max_diagnostic_entries
+        self._max_pending_downloads = max_pending_downloads
         self._lock = threading.Lock()
         self._driver: PlaywrightChromiumDriver | None = None
 
@@ -872,6 +1001,17 @@ class LazyPlaywrightChromiumDriver:
             if self._driver is None:
                 self._driver = PlaywrightChromiumDriver(
                     self._network_profiles,
+                    max_diagnostic_entries=self._max_diagnostic_entries,
+                    max_pending_downloads=self._max_pending_downloads,
                     resolver=self._resolver,
                 )
             return self._driver
+
+
+def playwright_chromium_ready() -> bool:
+    """Prove that Playwright and its Chromium executable are installed."""
+    try:
+        with sync_playwright() as engine:
+            return Path(engine.chromium.executable_path).is_file()
+    except BaseException:
+        return False

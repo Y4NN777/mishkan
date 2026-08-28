@@ -18,6 +18,14 @@
   },
   "additionalProperties": false,
   "properties": {
+    "authorized_origins": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Authorized Origins",
+      "type": "array"
+    },
     "coordinates": {
       "anyOf": [
         {

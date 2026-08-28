@@ -682,6 +682,48 @@ def _python_node_name(node: ast.AST) -> str | None:
     return None
 
 
+def _read_python_source_beneath(root: Path, relative: Path, max_bytes: int) -> bytes:
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC
+    directory_flags |= getattr(os, "O_NOFOLLOW", 0)
+    directory = os.open(root, directory_flags)
+    try:
+        for part in relative.parts[:-1]:
+            child = os.open(part, directory_flags, dir_fd=directory)
+            os.close(directory)
+            directory = child
+        file_flags = os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(relative.name, file_flags, dir_fd=directory)
+        try:
+            observed = os.fstat(descriptor)
+            if not stat.S_ISREG(observed.st_mode):
+                raise MishkanError(ErrorCode.FILE, "Python source is not a regular file")
+            if observed.st_size > max_bytes:
+                raise MishkanError(ErrorCode.OUTPUT_CONTRACT, "Python source exceeds its bound")
+            chunks: list[bytes] = []
+            received = 0
+            while True:
+                chunk = os.read(descriptor, min(65_536, max_bytes + 1 - received))
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                received += len(chunk)
+                if received > max_bytes:
+                    raise MishkanError(
+                        ErrorCode.OUTPUT_CONTRACT,
+                        "Python source exceeds its bound",
+                    )
+            return b"".join(chunks)
+        finally:
+            os.close(descriptor)
+    except OSError as exc:
+        raise MishkanError(
+            ErrorCode.AUTHORITY_NOT_GRANTED,
+            "Python source could not be opened without following links",
+        ) from exc
+    finally:
+        os.close(directory)
+
+
 class PythonStructuralSearchAdapter:
     """Bounded Python syntax search that never claims semantic coverage."""
 
@@ -729,13 +771,14 @@ class PythonStructuralSearchAdapter:
         examined_files = 0
         for path in sources:
             relative = path.relative_to(target.absolute).as_posix()
-            size = path.stat().st_size
-            if size > self._max_file_bytes:
-                omissions.append(f"file_size_limit:{relative}")
-                continue
             try:
-                tree = ast.parse(path.read_bytes(), filename=relative)
-            except (OSError, SyntaxError, UnicodeError) as exc:
+                content = _read_python_source_beneath(
+                    target.absolute,
+                    Path(relative),
+                    self._max_file_bytes,
+                )
+                tree = ast.parse(content, filename=relative)
+            except (MishkanError, SyntaxError, UnicodeError) as exc:
                 failures.append(f"{relative}:{type(exc).__name__}")
                 continue
             examined_files += 1
@@ -830,12 +873,14 @@ class PythonSymbolSearchAdapter:
         examined_files = 0
         for path in sources:
             relative = path.relative_to(target.absolute).as_posix()
-            if path.stat().st_size > self._max_file_bytes:
-                omissions.append(f"file_size_limit:{relative}")
-                continue
             try:
-                tree = ast.parse(path.read_bytes(), filename=relative)
-            except (OSError, SyntaxError, UnicodeError) as exc:
+                content = _read_python_source_beneath(
+                    target.absolute,
+                    Path(relative),
+                    self._max_file_bytes,
+                )
+                tree = ast.parse(content, filename=relative)
+            except (MishkanError, SyntaxError, UnicodeError) as exc:
                 failures.append(f"{relative}:{type(exc).__name__}")
                 continue
             examined_files += 1

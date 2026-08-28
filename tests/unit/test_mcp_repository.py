@@ -63,6 +63,7 @@ def _primitive(name: str = "repository.read") -> McpPrimitiveDescriptor:
         input_schema=input_schema,
         annotations=annotations,
         effect_disposition=McpEffectDisposition.READ_ONLY,
+        invocation_supported=True,
         schema_hash=McpPrimitiveDescriptor.claim_hash(
             McpPrimitiveKind.TOOL,
             name,
@@ -179,12 +180,13 @@ def test_call_lifecycle_progress_and_completion_are_monotone(tmp_path: Path) -> 
     assert regression.value.envelope.code is ErrorCode.REVISION_MISMATCH
 
     first = McpProgressEvent(request_id=request.id, cursor=0, message="started")
-    repository.append_progress(first)
+    repository.append_progress(first, max_events=100)
     with pytest.raises(MishkanError):
         repository.append_progress(
-            McpProgressEvent(request_id=request.id, cursor=2, message="skipped")
+            McpProgressEvent(request_id=request.id, cursor=2, message="skipped"),
+            max_events=100,
         )
-    assert repository.progress_after(request.id, 0) == (first,)
+    assert repository.progress_after(request.id, 0, limit=100) == (first,)
 
     result = McpCallResult(
         request_id=request.id,
@@ -200,7 +202,8 @@ def test_call_lifecycle_progress_and_completion_are_monotone(tmp_path: Path) -> 
     assert repository.reserve_call(request).existing_result == result
     with pytest.raises(MishkanError):
         repository.append_progress(
-            McpProgressEvent(request_id=request.id, cursor=1, message="late")
+            McpProgressEvent(request_id=request.id, cursor=1, message="late"),
+            max_events=100,
         )
 
 

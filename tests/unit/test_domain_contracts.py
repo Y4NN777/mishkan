@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -145,3 +146,24 @@ def test_public_contract_catalogue_exports_deterministically(tmp_path: Path) -> 
 
     assert {path.name for path in first} == expected
     assert {path.name: path.read_bytes() for path in second} == initial_content
+
+
+def test_schema_export_prunes_only_previously_generated_stale_contracts(tmp_path: Path) -> None:
+    stale = tmp_path / "stale-v1.schema.json"
+    custom = tmp_path / "custom-v1.schema.json"
+    stale.write_text("{}", encoding="utf-8")
+    custom.write_text("{}", encoding="utf-8")
+    (tmp_path / ".mishkan-schema-export.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "1.0",
+                "files": ["stale-v1.schema.json"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    export_schemas(tmp_path)
+
+    assert not stale.exists()
+    assert custom.is_file()

@@ -11,6 +11,19 @@
           "title": "Candidate Effects",
           "type": "array"
         },
+        "destination_origin": {
+          "anyOf": [
+            {
+              "pattern": "^https?://[^/?#]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Destination Origin"
+        },
         "element_revision": {
           "minLength": 1,
           "title": "Element Revision",

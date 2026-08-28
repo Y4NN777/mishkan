@@ -277,7 +277,7 @@ def test_recovered_job_monitor_enforces_persisted_deadline_after_daemon_restart(
     supervisor._ensure_monitor = lambda _session_id: None  # type: ignore[assignment]
     started = supervisor.start(
         _request(ExecutionMode.JOB, ("-c", "sleep 10")).model_copy(
-            update={"deadline": utc_now() + timedelta(milliseconds=150)}
+            update={"deadline": utc_now() + timedelta(seconds=1)}
         )
     )
     config = ConfigLoader().load([tmp_path / "config.yaml"]).value
@@ -292,8 +292,14 @@ def test_recovered_job_monitor_enforces_persisted_deadline_after_daemon_restart(
 
     recovered = replacement.reconcile_all()
     assert recovered[0].state is SessionState.RUNNING
-    time.sleep(0.8)
-    settled = replacement.status(started.session_id)
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline:
+        settled = replacement.status(started.session_id)
+        if settled.state is SessionState.SETTLED:
+            break
+        time.sleep(0.02)
+    else:
+        raise AssertionError("recovered job did not enforce its persisted deadline")
 
     assert settled.state is SessionState.SETTLED
     assert settled.result is not None and settled.result.status == "timed_out"

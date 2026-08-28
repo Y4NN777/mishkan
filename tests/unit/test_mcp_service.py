@@ -56,6 +56,7 @@ def _configured(*, remote_tasks_enabled: bool = False) -> McpConnectionConfig:
         trust="project-configured",
         exposure_profile="repository-read",
         command="fixture-mcp",
+        isolation_profile="test-stdio",
         connect_timeout_seconds=5,
         call_timeout_seconds=5,
         max_result_bytes=16_384,
@@ -108,6 +109,7 @@ def _primitive(
         output_schema=output_schema,
         annotations=annotations,
         effect_disposition=disposition,
+        invocation_supported=True,
         schema_hash=McpPrimitiveDescriptor.claim_hash(
             McpPrimitiveKind.TOOL,
             "repository.read",
@@ -469,7 +471,7 @@ async def test_connect_invoke_progress_and_exact_replay_are_durable(tmp_path: Pa
     assert result.state is McpCallState.COMPLETED
     assert replay == result
     assert client.calls == 1
-    assert repository.progress_after(request.id, 0)[0].message == "complete"
+    assert repository.progress_after(request.id, 0, limit=100)[0].message == "complete"
     journal = repository.list_calls()
     assert journal[0]["request"]["id"] == str(request.id)
     assert journal[0]["state"] == McpCallState.COMPLETED.value
@@ -506,7 +508,7 @@ async def test_exact_pre_authorized_elicitation_is_journaled_before_response(
 
     assert result.state is McpCallState.COMPLETED
     assert client.response == types.ElicitResult(action="accept", content={"view": "summary"})
-    evidence = repository.progress_after(request.id, 0)
+    evidence = repository.progress_after(request.id, 0, limit=100)
     assert len(evidence) == 1
     assert evidence[0].kind is McpProgressKind.ELICITATION
     assert evidence[0].elicitation_request_hash == answer.expected_request_hash
@@ -534,7 +536,7 @@ async def test_unplanned_elicitation_is_declined_and_remains_visible(tmp_path: P
 
     assert result.state is McpCallState.FAILED
     assert isinstance(client.response, types.ErrorData)
-    evidence = repository.progress_after(request.id, 0)
+    evidence = repository.progress_after(request.id, 0, limit=100)
     assert len(evidence) == 1
     assert evidence[0].kind is McpProgressKind.ELICITATION
     assert evidence[0].elicitation_action is McpElicitationAction.DECLINE
@@ -566,7 +568,7 @@ async def test_url_elicitation_accepts_contentless_pre_authorized_acknowledgemen
 
     assert result.state is McpCallState.COMPLETED
     assert client.response == types.ElicitResult(action="accept")
-    evidence = repository.progress_after(request.id, 0)
+    evidence = repository.progress_after(request.id, 0, limit=100)
     assert evidence[0].elicitation_mode == "url"
     assert evidence[0].elicitation_action is McpElicitationAction.ACCEPT
     assert evidence[0].elicitation_content_hash is None
@@ -594,7 +596,7 @@ async def test_invalid_form_answer_is_journaled_as_cancelled_before_refusal(tmp_
     result = await service.invoke(request, credentials={})
 
     assert result.state is McpCallState.FAILED
-    evidence = repository.progress_after(request.id, 0)
+    evidence = repository.progress_after(request.id, 0, limit=100)
     assert evidence[0].elicitation_action is McpElicitationAction.CANCEL
     assert evidence[0].elicitation_request_hash == answer.expected_request_hash
 

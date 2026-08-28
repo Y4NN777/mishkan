@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 import time
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from datetime import datetime
 from fnmatch import fnmatchcase
 from typing import Protocol
@@ -76,6 +78,10 @@ class WebService:
         self._credentials = credential_resolver or CredentialPoolResolver()
         self._cache = cache
         self._inspector = content_inspector
+        self._network_slots = {
+            profile_id: threading.BoundedSemaphore(profile.max_concurrency)
+            for profile_id, profile in config.network_profiles.items()
+        }
 
     def search(
         self,
@@ -158,13 +164,14 @@ class WebService:
                 resolver = credential_resolver or self._credentials
                 credentials = resolver.resolve(source.credential_refs)
                 resolved_secrets.extend(value for value in credentials if value is not None)
-                result = adapter.search(
-                    effective_request,
-                    source_id=source_id,
-                    source=source,
-                    profile=self._config.network_profiles[source.network_profile],
-                    credentials=credentials,
-                )
+                with self._network_slot(source.network_profile):
+                    result = adapter.search(
+                        effective_request,
+                        source_id=source_id,
+                        source=source,
+                        profile=self._config.network_profiles[source.network_profile],
+                        credentials=credentials,
+                    )
             except MishkanError as error:
                 routes.append(
                     SearchRoute(
@@ -387,14 +394,15 @@ class WebService:
                 credential = credentials[0]
                 if credential is not None:
                     base_headers[request.credential_header] = request.credential_prefix + credential
-            exchange = self._transport.request(
-                request.method,
-                current.value,
-                profile=profile,
-                headers=base_headers,
-                content=body,
-                timeout_seconds=request.timeout_seconds,
-            )
+            with self._network_slot(request.network_profile):
+                exchange = self._transport.request(
+                    request.method,
+                    current.value,
+                    profile=profile,
+                    headers=base_headers,
+                    content=body,
+                    timeout_seconds=request.timeout_seconds,
+                )
             location = exchange.headers.get("location")
             if 300 <= exchange.status_code < 400 and location:
                 if request.redirect_policy is RedirectPolicy.NONE:
@@ -664,6 +672,29 @@ class WebService:
     def _cache_key(kind: str, *payloads: object) -> str:
         canonical = json.dumps(payloads, sort_keys=True, separators=(",", ":"))
         return "sha256:" + hashlib.sha256(f"{kind}:{canonical}".encode()).hexdigest()
+
+    @contextmanager
+    def _network_slot(self, profile_id: str) -> Iterator[None]:
+        try:
+            semaphore = self._network_slots[profile_id]
+        except KeyError as exc:
+            raise MishkanError(
+                ErrorCode.CONFIGURATION,
+                "Web network profile is unavailable",
+            ) from exc
+        acquired = semaphore.acquire(
+            timeout=self._config.network_profiles[profile_id].connect_timeout_seconds
+        )
+        if not acquired:
+            raise MishkanError(
+                ErrorCode.WEB,
+                "Web network profile concurrency queue timed out",
+                retryable=True,
+            )
+        try:
+            yield
+        finally:
+            semaphore.release()
 
     def _cache_get(
         self,

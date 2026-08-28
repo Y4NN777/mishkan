@@ -29,7 +29,7 @@ class CommandStatus(StrEnum):
 class ApplicationCommand(ApplicationModel):
     """One idempotent request to mutate authoritative application state."""
 
-    schema_version: str = "1.0"
+    schema_version: Literal["1.0"] = "1.0"
     command_id: UUID = Field(default_factory=new_id)
     command_type: str = Field(pattern=r"^[a-z][a-z0-9_.-]{2,127}$")
     actor_id: str = Field(min_length=1, max_length=256)
@@ -60,7 +60,7 @@ class RunInitializationRequest(ApplicationModel):
 
 
 class CommandResult(ApplicationModel):
-    schema_version: str = "1.0"
+    schema_version: Literal["1.0"] = "1.0"
     command_id: UUID
     status: CommandStatus
     target_type: str
@@ -78,7 +78,7 @@ class CommandResult(ApplicationModel):
 
 
 class SnapshotEnvelope(ApplicationModel):
-    schema_version: str = "1.0"
+    schema_version: Literal["1.0"] = "1.0"
     cursor: int = Field(ge=0)
     generated_at: datetime = Field(default_factory=utc_now)
     projections: dict[str, Any]

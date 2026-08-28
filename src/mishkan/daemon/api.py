@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator, Mapping
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Annotated, Literal
@@ -15,6 +15,7 @@ from fastapi import Depends, FastAPI, Header, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from mishkan.application import (
     ApplicationCommand,
@@ -66,12 +67,69 @@ from mishkan.mcp import (
     McpService,
     McpServiceRunner,
 )
+from mishkan.mcp.sdk import McpStdioCommandBuilder
 from mishkan.persistence import LocalRunRepository, SchemaManager, SQLiteApplicationRepository
 from mishkan.policy import Decision
 from mishkan.policy.models import EffectivePolicy
 from mishkan.runtime import TaskReviewRejection
 from mishkan.tools.inspection import ContentInspector, InspectionProfileLoader
+from mishkan.tools.isolation import IsolationProfileLoader, observe_container_commands
 from mishkan.tools.lifecycle import ToolRegistryLifecycle
+
+
+class _RequestBodyLimitMiddleware:
+    def __init__(self, app: ASGIApp, *, max_bytes: int) -> None:
+        self._app = app
+        self._max_bytes = max_bytes
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self._app(scope, receive, send)
+            return
+        headers = {name.lower(): value for name, value in scope.get("headers", ())}
+        declared = headers.get(b"content-length")
+        if declared is not None:
+            try:
+                if int(declared) > self._max_bytes:
+                    await self._reject(scope, receive, send)
+                    return
+            except ValueError:
+                await self._reject(scope, receive, send)
+                return
+        body = bytearray()
+        while True:
+            message = await receive()
+            if message["type"] == "http.disconnect":
+                return
+            chunk = message.get("body", b"")
+            body.extend(chunk)
+            if len(body) > self._max_bytes:
+                await self._reject(scope, receive, send)
+                return
+            if not message.get("more_body", False):
+                break
+        delivered = False
+
+        async def replay() -> Message:
+            nonlocal delivered
+            if delivered:
+                await asyncio.Event().wait()
+                raise RuntimeError("unreachable request receive state")
+            delivered = True
+            return {"type": "http.request", "body": bytes(body), "more_body": False}
+
+        await self._app(scope, replay, send)
+
+    @staticmethod
+    async def _reject(scope: Scope, receive: Receive, send: Send) -> None:
+        response = JSONResponse(
+            status_code=413,
+            content={
+                "code": ErrorCode.OUTPUT_CONTRACT,
+                "message": "application request body exceeds its configured bound",
+            },
+        )
+        await response(scope, receive, send)
 
 
 def _http_status(error: MishkanError) -> int:
@@ -87,7 +145,11 @@ def _http_status(error: MishkanError) -> int:
     return 400
 
 
-def create_app(config: MishkanConfig) -> FastAPI:
+def create_app(
+    config: MishkanConfig,
+    *,
+    mcp_stdio_commands: Mapping[str, McpStdioCommandBuilder] | None = None,
+) -> FastAPI:
     paths = DaemonPaths.from_config(config)
     SchemaManager(paths.database).require_current()
     token_file = TokenFile(paths.token_file)
@@ -169,11 +231,23 @@ def create_app(config: MishkanConfig) -> FastAPI:
             paths.database,
             busy_timeout_ms=persistence.busy_timeout_ms,
         )
+        stdio_commands = dict(mcp_stdio_commands or {})
+        if mcp_stdio_commands is None and any(
+            connection.transport.value == "stdio" for connection in mcp_config.connections.values()
+        ):
+            loader = IsolationProfileLoader()
+            profiles = tuple(
+                loader.load(source, paths.workspace) for source in config.isolation_profiles
+            )
+            stdio_commands.update(observe_container_commands(profiles))
         mcp_service = McpService(
             paths.workspace,
             mcp_config,
             mcp_repository,
-            McpSdkClient(web_config.network_profiles),
+            McpSdkClient(
+                web_config.network_profiles,
+                stdio_commands=stdio_commands,
+            ),
             content_inspector,
         )
         mcp_service.reconcile_after_restart()
@@ -392,6 +466,11 @@ def create_app(config: MishkanConfig) -> FastAPI:
                 async def execute_effect() -> CommandResult:
                     async with target_lock:
                         try:
+                            await asyncio.to_thread(
+                                repository.verify_reserved_precondition,
+                                command,
+                                target_id=target_id,
+                            )
                             event_type, result_payload = await asyncio.to_thread(
                                 _dispatch,
                                 command,
@@ -503,6 +582,7 @@ def create_app(config: MishkanConfig) -> FastAPI:
         redoc_url=None,
         lifespan=lifespan,
     )
+    app.add_middleware(_RequestBodyLimitMiddleware, max_bytes=daemon.max_request_bytes)
 
     @app.exception_handler(MishkanError)
     async def mishkan_error_handler(_request: Request, error: MishkanError) -> JSONResponse:
@@ -531,7 +611,7 @@ def create_app(config: MishkanConfig) -> FastAPI:
 
     @app.get("/v1/health")
     async def health() -> dict[str, str]:
-        status = SchemaManager(paths.database).status()
+        status = await asyncio.to_thread(SchemaManager(paths.database).status)
         return {"status": "ready", "schema": status.head_revision}
 
     @app.post("/v1/commands", response_model=CommandResult)
@@ -545,14 +625,14 @@ def create_app(config: MishkanConfig) -> FastAPI:
     async def snapshot(
         _principal: TokenRecord = authenticated,
     ) -> SnapshotEnvelope:
-        return repository.snapshot(limit=daemon.event_page_limit)
+        return await asyncio.to_thread(repository.snapshot, limit=daemon.event_page_limit)
 
     @app.get("/v1/tools/registry")
     async def tool_registry(
         _principal: TokenRecord = authenticated,
         limit: Annotated[int, Query(ge=1, le=1_000)] = 1_000,
     ) -> dict[str, object]:
-        entries = registry_lifecycle.entries(limit=limit)
+        entries = await asyncio.to_thread(registry_lifecycle.entries, limit=limit)
         return {
             "entries": [entry.model_dump(mode="json") for entry in entries],
             "count": len(entries),
@@ -574,7 +654,8 @@ def create_app(config: MishkanConfig) -> FastAPI:
         occurred_before: datetime | None = None,
         security_relevant: bool | None = None,
     ) -> EventPage:
-        return repository.events(
+        return await asyncio.to_thread(
+            repository.events,
             after_cursor=after,
             limit=limit or daemon.event_page_limit,
             event_types=tuple(event_type or ()),
@@ -594,7 +675,7 @@ def create_app(config: MishkanConfig) -> FastAPI:
         _principal: TokenRecord = authenticated,
         active_only: bool = False,
     ) -> tuple[EventEvidenceHold, ...]:
-        return repository.event_holds(active_only=active_only)
+        return await asyncio.to_thread(repository.event_holds, active_only=active_only)
 
     @app.get("/v1/events/retention-policy")
     async def event_retention_policy_query(
@@ -609,7 +690,7 @@ def create_app(config: MishkanConfig) -> FastAPI:
     async def event_retention_plans(
         _principal: TokenRecord = authenticated,
     ) -> tuple[EventRetentionPlan, ...]:
-        return repository.event_retention_plans()
+        return await asyncio.to_thread(repository.event_retention_plans)
 
     @app.get("/v1/events/stream")
     async def event_stream(
@@ -637,7 +718,8 @@ def create_app(config: MishkanConfig) -> FastAPI:
                     ErrorCode.OUTPUT_CONTRACT,
                     "Last-Event-ID must contain an integer event cursor",
                 ) from exc
-        initial = repository.events(
+        initial = await asyncio.to_thread(
+            repository.events,
             after_cursor=cursor,
             limit=daemon.event_page_limit,
             event_types=tuple(event_type or ()),
@@ -674,7 +756,8 @@ def create_app(config: MishkanConfig) -> FastAPI:
                 if heartbeat_elapsed >= daemon.heartbeat_seconds:
                     yield f": heartbeat {current}\n\n"
                     heartbeat_elapsed = 0.0
-                page = repository.events(
+                page = await asyncio.to_thread(
+                    repository.events,
                     after_cursor=current,
                     limit=daemon.event_page_limit,
                     event_types=tuple(event_type or ()),
@@ -701,27 +784,26 @@ def create_app(config: MishkanConfig) -> FastAPI:
         offset: Annotated[int, Query(ge=0)] = 0,
         limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
     ) -> tuple[ArtifactManifest, ...]:
-        return artifacts.list_manifests(offset=offset, limit=limit)
+        return await asyncio.to_thread(artifacts.list_manifests, offset=offset, limit=limit)
 
     @app.get("/v1/artifacts/{artifact_id}")
     async def artifact_manifest(
         artifact_id: str,
         _principal: TokenRecord = authenticated,
     ) -> ArtifactManifest:
-        return artifacts.manifest(f"artifact:{artifact_id}")
+        return await asyncio.to_thread(artifacts.manifest, f"artifact:{artifact_id}")
 
     @app.get("/v1/artifacts/{artifact_id}/content")
     async def artifact_content(
         artifact_id: str,
         _principal: TokenRecord = authenticated,
     ) -> StreamingResponse:
-        manifest = artifacts.manifest(f"artifact:{artifact_id}")
+        manifest = await asyncio.to_thread(artifacts.manifest, f"artifact:{artifact_id}")
 
-        async def body() -> AsyncIterator[bytes]:
-            for chunk in artifacts.iter_bytes(
+        def body() -> Iterator[bytes]:
+            yield from artifacts.iter_bytes(
                 manifest.reference, chunk_size=artifact_config.chunk_bytes
-            ):
-                yield chunk
+            )
 
         return StreamingResponse(
             body(),
@@ -734,7 +816,7 @@ def create_app(config: MishkanConfig) -> FastAPI:
         upload_id: UUID,
         _principal: TokenRecord = authenticated,
     ) -> UploadSession:
-        return artifacts.upload(upload_id)
+        return await asyncio.to_thread(artifacts.upload, upload_id)
 
     @app.get("/v1/artifact-collections")
     async def artifact_collection_list(
@@ -742,7 +824,7 @@ def create_app(config: MishkanConfig) -> FastAPI:
         offset: Annotated[int, Query(ge=0)] = 0,
         limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
     ) -> tuple[ArtifactCollection, ...]:
-        return artifacts.list_collections(offset=offset, limit=limit)
+        return await asyncio.to_thread(artifacts.list_collections, offset=offset, limit=limit)
 
     @app.get("/v1/artifact-references")
     async def artifact_reference_list(
@@ -750,7 +832,7 @@ def create_app(config: MishkanConfig) -> FastAPI:
         offset: Annotated[int, Query(ge=0)] = 0,
         limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
     ) -> tuple[WorkingReference, ...]:
-        return artifacts.list_references(offset=offset, limit=limit)
+        return await asyncio.to_thread(artifacts.list_references, offset=offset, limit=limit)
 
     @app.get("/v1/artifact-holds")
     async def artifact_hold_list(
@@ -758,7 +840,7 @@ def create_app(config: MishkanConfig) -> FastAPI:
         offset: Annotated[int, Query(ge=0)] = 0,
         limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
     ) -> tuple[ArtifactEvidenceHold, ...]:
-        return artifacts.list_holds(offset=offset, limit=limit)
+        return await asyncio.to_thread(artifacts.list_holds, offset=offset, limit=limit)
 
     @app.get("/v1/artifact-pins")
     async def artifact_pin_list(
@@ -766,7 +848,7 @@ def create_app(config: MishkanConfig) -> FastAPI:
         offset: Annotated[int, Query(ge=0)] = 0,
         limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
     ) -> tuple[ArtifactPin, ...]:
-        return artifacts.list_pins(offset=offset, limit=limit)
+        return await asyncio.to_thread(artifacts.list_pins, offset=offset, limit=limit)
 
     @app.get("/v1/change-sets")
     async def change_set_list(
@@ -774,14 +856,14 @@ def create_app(config: MishkanConfig) -> FastAPI:
         offset: Annotated[int, Query(ge=0)] = 0,
         limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
     ) -> tuple[ChangeSetResult, ...]:
-        return changes.list(offset=offset, limit=limit)
+        return await asyncio.to_thread(changes.list, offset=offset, limit=limit)
 
     @app.get("/v1/change-sets/{change_set_id}")
     async def change_set_get(
         change_set_id: UUID,
         _principal: TokenRecord = authenticated,
     ) -> ChangeSetResult:
-        return changes.get(change_set_id)
+        return await asyncio.to_thread(changes.get, change_set_id)
 
     @app.get("/v1/sessions")
     async def session_list(
@@ -789,14 +871,14 @@ def create_app(config: MishkanConfig) -> FastAPI:
         offset: Annotated[int, Query(ge=0)] = 0,
         limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
     ) -> tuple[ExecutionSession, ...]:
-        return supervisor.list(offset=offset, limit=limit)
+        return await asyncio.to_thread(supervisor.list, offset=offset, limit=limit)
 
     @app.get("/v1/sessions/{session_id}")
     async def session_get(
         session_id: UUID,
         _principal: TokenRecord = authenticated,
     ) -> ExecutionSession:
-        return supervisor.status(session_id)
+        return await asyncio.to_thread(supervisor.status, session_id)
 
     @app.get("/v1/sessions/{session_id}/output")
     async def session_output(
@@ -808,7 +890,8 @@ def create_app(config: MishkanConfig) -> FastAPI:
         binary: bool = False,
     ) -> CursorRead:
         selected: Literal["stdout", "stderr"] = "stdout" if channel == "stdout" else "stderr"
-        return supervisor.read(
+        return await asyncio.to_thread(
+            supervisor.read,
             session_id,
             channel=selected,
             offset=offset,
@@ -822,7 +905,7 @@ def create_app(config: MishkanConfig) -> FastAPI:
         offset: Annotated[int, Query(ge=0)] = 0,
         limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
     ) -> tuple[dict[str, object], ...]:
-        return repository.runs(offset=offset, limit=limit)
+        return await asyncio.to_thread(repository.runs, offset=offset, limit=limit)
 
     @app.get("/v1/runs/{run_id}/tasks")
     async def task_list(
@@ -831,14 +914,14 @@ def create_app(config: MishkanConfig) -> FastAPI:
         offset: Annotated[int, Query(ge=0)] = 0,
         limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
     ) -> tuple[dict[str, object], ...]:
-        return repository.tasks(run_id, offset=offset, limit=limit)
+        return await asyncio.to_thread(repository.tasks, run_id, offset=offset, limit=limit)
 
     @app.get("/v1/runs/{run_id}/review-rejections")
     async def review_rejection_list(
         run_id: str,
         _principal: TokenRecord = authenticated,
     ) -> tuple[TaskReviewRejection, ...]:
-        return run_repository.rejected_reviews(run_id)
+        return await asyncio.to_thread(run_repository.rejected_reviews, run_id)
 
     @app.get("/v1/mcp/connections")
     async def mcp_connection_list(
@@ -848,10 +931,12 @@ def create_app(config: MishkanConfig) -> FastAPI:
     ) -> tuple[dict[str, object], ...]:
         if mcp_repository is None:
             return ()
-        return tuple(
-            item.model_dump(mode="json")
-            for item in mcp_repository.list_connections(offset=offset, limit=limit)
+        connections = await asyncio.to_thread(
+            mcp_repository.list_connections,
+            offset=offset,
+            limit=limit,
         )
+        return tuple(item.model_dump(mode="json") for item in connections)
 
     @app.get("/v1/mcp/connections/{connection_id}/primitives")
     async def mcp_primitive_list(
@@ -860,9 +945,8 @@ def create_app(config: MishkanConfig) -> FastAPI:
     ) -> tuple[dict[str, object], ...]:
         if mcp_repository is None:
             return ()
-        return tuple(
-            item.model_dump(mode="json") for item in mcp_repository.list_primitives(connection_id)
-        )
+        primitives = await asyncio.to_thread(mcp_repository.list_primitives, connection_id)
+        return tuple(item.model_dump(mode="json") for item in primitives)
 
     @app.get("/v1/mcp/connections/{connection_id}/contracts")
     async def mcp_contract_list(
@@ -872,9 +956,10 @@ def create_app(config: MishkanConfig) -> FastAPI:
         if mcp_repository is None or mcp_config is None:
             return ()
         factory = McpContractFactory(mcp_config)
+        primitives = await asyncio.to_thread(mcp_repository.list_primitives, connection_id)
         return tuple(
             factory.build(connection_id, item).model_dump(mode="json")
-            for item in mcp_repository.list_primitives(connection_id)
+            for item in primitives
             if item.kind is McpPrimitiveKind.TOOL
         )
 
@@ -886,20 +971,25 @@ def create_app(config: MishkanConfig) -> FastAPI:
     ) -> tuple[dict[str, object], ...]:
         if mcp_repository is None:
             return ()
-        return mcp_repository.list_calls(offset=offset, limit=limit)
+        return await asyncio.to_thread(mcp_repository.list_calls, offset=offset, limit=limit)
 
     @app.get("/v1/mcp/calls/{request_id}/progress")
     async def mcp_progress_list(
         request_id: UUID,
         _principal: TokenRecord = authenticated,
         cursor: Annotated[int, Query(ge=0)] = 0,
+        limit: Annotated[int, Query(ge=1, le=10_000)] = 100,
     ) -> tuple[dict[str, object], ...]:
         if mcp_repository is None:
             return ()
-        return tuple(
-            item.model_dump(mode="json")
-            for item in mcp_repository.progress_after(request_id, cursor)
+        assert mcp_config is not None
+        progress = await asyncio.to_thread(
+            mcp_repository.progress_after,
+            request_id,
+            cursor,
+            limit=min(limit, mcp_config.progress_page_limit),
         )
+        return tuple(item.model_dump(mode="json") for item in progress)
 
     if mcp_http is not None:
         assert mcp_config is not None

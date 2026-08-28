@@ -28,7 +28,6 @@ from mishkan.domain.errors import MishkanError
 from mishkan.domain.time import utc_now
 from mishkan.mcp import (
     McpCallRequest,
-    McpEffectDisposition,
     McpRemoteTaskTerminal,
     McpRepository,
     McpSdkClient,
@@ -39,6 +38,18 @@ from mishkan.tools.inspection import ContentInspector, InspectionProfileLoader
 
 class _SimulatedDaemonCrash(RuntimeError):
     pass
+
+
+class _DirectTestCommand:
+    def build(
+        self,
+        workspace: Path,
+        command: tuple[str, ...],
+        *,
+        environment_names: tuple[str, ...] = (),
+    ) -> tuple[str, ...]:
+        del workspace, environment_names
+        return command
 
 
 class _CrashAfterRemoteIdentityClient(McpSdkClient):
@@ -73,6 +84,7 @@ def _config(tmp_path: Path) -> MishkanConfig:
         trust="acceptance-fixture",
         exposure_profile="fixture",
         command=sys.executable,
+        isolation_profile="acceptance-stdio",
         arguments=(str(server),),
         connect_timeout_seconds=30,
         call_timeout_seconds=30,
@@ -107,7 +119,10 @@ async def test_daemon_connect_command_discovers_without_receiving_secret_values(
         expected_revision=0,
         payload={},
     )
-    app = create_app(config)
+    app = create_app(
+        config,
+        mcp_stdio_commands={"acceptance-stdio": _DirectTestCommand()},
+    )
     transport = httpx.ASGITransport(app=app)
 
     async with (
@@ -151,7 +166,10 @@ async def test_daemon_mcp_connection_command_refuses_payload_credentials(tmp_pat
     config = _config(tmp_path)
     paths = DaemonBootstrap().setup(config)
     token = TokenFile(paths.token_file).read()
-    app = create_app(config)
+    app = create_app(
+        config,
+        mcp_stdio_commands={"acceptance-stdio": _DirectTestCommand()},
+    )
     transport = httpx.ASGITransport(app=app)
     command = ApplicationCommand(
         command_type="mcp.connection.connect",
@@ -191,7 +209,10 @@ async def test_official_sdk_negotiates_and_completes_durable_remote_task(
             "remote_tasks_enabled": True,
         }
     )
-    client = McpSdkClient({})
+    client = McpSdkClient(
+        {},
+        stdio_commands={"acceptance-stdio": _DirectTestCommand()},
+    )
     snapshot = await client.discover(
         "fixture",
         configured,
@@ -314,7 +335,10 @@ async def test_daemon_commands_reconcile_and_cancel_remote_tasks_after_transport
         paths.workspace,
         config.mcp,
         repository,
-        _CrashAfterRemoteIdentityClient({}),
+        _CrashAfterRemoteIdentityClient(
+            {},
+            stdio_commands={"acceptance-stdio": _DirectTestCommand()},
+        ),
         ContentInspector(
             InspectionProfileLoader().load(config.inspection_profile, paths.workspace)
         ),
@@ -338,7 +362,7 @@ async def test_daemon_commands_reconcile_and_cancel_remote_tasks_after_transport
             task_attempt_id=f"task-{path}:attempt-1",
             arguments={"path": path},
             declared_effects=("external_read",),
-            effect_disposition=McpEffectDisposition.READ_ONLY,
+            effect_disposition=primitive.effect_disposition,
             expected_schema_hash=primitive.schema_hash,
             remote_task_allowed=True,
             deadline=utc_now() + timedelta(seconds=30),
@@ -353,7 +377,10 @@ async def test_daemon_commands_reconcile_and_cancel_remote_tasks_after_transport
 
     token = TokenFile(paths.token_file).read()
     headers = {"Authorization": f"Bearer {token.token}"}
-    app = create_app(config)
+    app = create_app(
+        config,
+        mcp_stdio_commands={"acceptance-stdio": _DirectTestCommand()},
+    )
     transport = httpx.ASGITransport(app=app)
     reconcile = ApplicationCommand(
         command_type="mcp.call.reconcile",

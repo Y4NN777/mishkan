@@ -422,6 +422,58 @@ class SQLiteApplicationRepository:
             row.completed_at = result.completed_at.isoformat()
             return result
 
+    def verify_reserved_precondition(
+        self,
+        command: ApplicationCommand,
+        *,
+        target_id: str,
+    ) -> None:
+        """Recheck a reserved command immediately before its external effect.
+
+        ``reserve`` deliberately happens before a target's in-process effect lock so
+        duplicate command identities can be settled quickly.  The aggregate may have
+        advanced while the command waited for that lock, so the expected revision is
+        authoritative only after this second check.
+        """
+        with Session(self._engine) as session, session.begin():
+            row = session.get(CommandRow, str(command.command_id))
+            if row is None:
+                raise MishkanError(ErrorCode.RUN_INTERRUPTED, "command was not reserved")
+            if row.fingerprint != command.fingerprint:
+                raise MishkanError(
+                    ErrorCode.DUPLICATE_RESULT,
+                    "command identity was already used for different content",
+                    details={"command_id": str(command.command_id)},
+                )
+            current_result = CommandResult.model_validate_json(row.result_payload)
+            if (
+                current_result.status is not CommandStatus.REFUSED
+                or current_result.error is None
+                or not current_result.error.details.get("reconciliation_required")
+            ):
+                raise MishkanError(
+                    ErrorCode.DUPLICATE_RESULT,
+                    "reserved command is already settled",
+                    details={"command_id": str(command.command_id)},
+                )
+            revision_row = session.get(AggregateRevisionRow, (command.target_type, target_id))
+            current_revision = revision_row.revision if revision_row is not None else 0
+            if (
+                command.expected_revision is not None
+                and command.expected_revision != current_revision
+            ):
+                raise MishkanError(
+                    ErrorCode.REVISION_MISMATCH,
+                    "aggregate revision changed before command effect dispatch",
+                    details={
+                        "target_type": command.target_type,
+                        "target_id": target_id,
+                        "expected": command.expected_revision,
+                        "current": current_revision,
+                        "effect_dispatched": False,
+                    },
+                )
+
     def fail_reserved(
         self,
         command: ApplicationCommand,

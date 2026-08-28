@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 from datetime import timedelta
 from importlib.metadata import version
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 import anyio
 import httpx
@@ -30,14 +30,34 @@ from mishkan.mcp.models import (
     McpPrimitiveKind,
     McpRemoteTaskTerminal,
 )
-from mishkan.web.network import GuardedAsyncHTTPTransport, NetworkGuard
+from mishkan.web.network import (
+    GuardedAsyncHTTPTransport,
+    NetworkGuard,
+    validate_outbound_headers,
+)
+
+
+class McpStdioCommandBuilder(Protocol):
+    def build(
+        self,
+        workspace: Path,
+        command: tuple[str, ...],
+        *,
+        environment_names: tuple[str, ...] = (),
+    ) -> tuple[str, ...]: ...
 
 
 class McpSdkClient:
     """Open bounded SDK sessions without persisting transport secrets or handles."""
 
-    def __init__(self, network_profiles: Mapping[str, NetworkProfileConfig]) -> None:
+    def __init__(
+        self,
+        network_profiles: Mapping[str, NetworkProfileConfig],
+        *,
+        stdio_commands: Mapping[str, McpStdioCommandBuilder] | None = None,
+    ) -> None:
         self._network_profiles = dict(network_profiles)
+        self._stdio_commands = dict(stdio_commands or {})
 
     async def discover(
         self,
@@ -52,9 +72,28 @@ class McpSdkClient:
             protocol_version,
             capabilities,
         ):
-            tools = await self._all_pages(session.list_tools, "tools")
-            resources = await self._all_pages(session.list_resources, "resources")
-            prompts = await self._all_pages(session.list_prompts, "prompts")
+            with anyio.fail_after(configured.discovery_timeout_seconds):
+                tools, tool_bytes = await self._all_pages(
+                    session.list_tools,
+                    "tools",
+                    max_pages=configured.max_discovery_pages,
+                    max_values=configured.max_discovered_primitives,
+                    max_bytes=configured.max_discovery_bytes,
+                )
+                resources, resource_bytes = await self._all_pages(
+                    session.list_resources,
+                    "resources",
+                    max_pages=configured.max_discovery_pages,
+                    max_values=configured.max_discovered_primitives - len(tools),
+                    max_bytes=configured.max_discovery_bytes - tool_bytes,
+                )
+                prompts, _prompt_bytes = await self._all_pages(
+                    session.list_prompts,
+                    "prompts",
+                    max_pages=configured.max_discovery_pages,
+                    max_values=(configured.max_discovered_primitives - len(tools) - len(resources)),
+                    max_bytes=(configured.max_discovery_bytes - tool_bytes - resource_bytes),
+                )
         primitives = (
             tuple(self._tool(connection_id, protocol_version, item) for item in tools)
             + tuple(self._resource(connection_id, protocol_version, item) for item in resources)
@@ -354,6 +393,14 @@ class McpSdkClient:
         timeout = timedelta(seconds=configured.call_timeout_seconds)
         if configured.transport is McpTransport.STDIO:
             assert configured.command is not None
+            assert configured.isolation_profile is not None
+            builder = self._stdio_commands.get(configured.isolation_profile)
+            if builder is None:
+                raise MishkanError(
+                    ErrorCode.REQUIRED_DEPENDENCY,
+                    "configured MCP STDIO isolation profile is not ready",
+                    details={"isolation_profile": configured.isolation_profile},
+                )
             inherited = get_default_environment()
             environment = {name: "" for name in inherited}
             environment.update(
@@ -369,27 +416,33 @@ class McpSdkClient:
                     for name, reference in configured.environment.items()
                 }
             )
+            argv = builder.build(
+                workspace,
+                (configured.command, *configured.arguments),
+                environment_names=tuple(configured.environment),
+            )
             parameters = StdioServerParameters(
-                command=configured.command,
-                args=list(configured.arguments),
+                command=argv[0],
+                args=list(argv[1:]),
                 env=environment,
                 cwd=workspace,
             )
-            async with (
-                stdio_client(parameters) as (read_stream, write_stream),
-                ClientSession(
-                    read_stream,
-                    write_stream,
-                    read_timeout_seconds=timeout,
-                    elicitation_callback=elicitation,
-                    client_info=client_info,
-                ) as session,
-            ):
-                with anyio.fail_after(configured.connect_timeout_seconds):
-                    initialized = await session.initialize()
-                protocol = str(initialized.protocolVersion)
-                self._require_protocol(configured, protocol)
-                yield session, protocol, initialized.capabilities
+            with open(os.devnull, "w", encoding="utf-8") as errlog:
+                async with (
+                    stdio_client(parameters, errlog=errlog) as (read_stream, write_stream),
+                    ClientSession(
+                        read_stream,
+                        write_stream,
+                        read_timeout_seconds=timeout,
+                        elicitation_callback=elicitation,
+                        client_info=client_info,
+                    ) as session,
+                ):
+                    with anyio.fail_after(configured.connect_timeout_seconds):
+                        initialized = await session.initialize()
+                    protocol = str(initialized.protocolVersion)
+                    self._require_protocol(configured, protocol)
+                    yield session, protocol, initialized.capabilities
             return
 
         assert configured.endpoint is not None
@@ -403,6 +456,7 @@ class McpSdkClient:
         headers = {
             name: resolved[reference.locator] for name, reference in configured.headers.items()
         }
+        validate_outbound_headers(headers)
         transport = GuardedAsyncHTTPTransport(guard)
         http_timeout = httpx.Timeout(
             configured.call_timeout_seconds,
@@ -461,15 +515,53 @@ class McpSdkClient:
     async def _all_pages(
         operation: Callable[..., Awaitable[Any]],
         attribute: str,
-    ) -> tuple[Any, ...]:
+        *,
+        max_pages: int,
+        max_values: int,
+        max_bytes: int,
+    ) -> tuple[tuple[Any, ...], int]:
+        if min(max_pages, max_values, max_bytes) < 1:
+            raise MishkanError(ErrorCode.MCP, "MCP discovery exhausted its configured bound")
         cursor: str | None = None
+        seen_cursors: set[str] = set()
         values: list[Any] = []
-        while True:
+        total_bytes = 0
+        for _page_number in range(max_pages):
             page = await operation(cursor=cursor)
-            values.extend(getattr(page, attribute))
+            page_values = tuple(getattr(page, attribute))
+            values.extend(page_values)
+            total_bytes += len(
+                json.dumps(
+                    [
+                        item.model_dump(mode="json", by_alias=True, exclude_none=True)
+                        for item in page_values
+                    ],
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode()
+            )
+            if len(values) > max_values or total_bytes > max_bytes:
+                raise MishkanError(
+                    ErrorCode.MCP,
+                    "MCP discovery exceeds its configured size bound",
+                    details={
+                        "primitives": len(values),
+                        "primitive_limit": max_values,
+                        "bytes": total_bytes,
+                        "byte_limit": max_bytes,
+                    },
+                )
             cursor = page.nextCursor
             if cursor is None:
-                return tuple(values)
+                return tuple(values), total_bytes
+            if cursor in seen_cursors:
+                raise MishkanError(ErrorCode.MCP, "MCP discovery returned a cursor cycle")
+            seen_cursors.add(cursor)
+        raise MishkanError(
+            ErrorCode.MCP,
+            "MCP discovery exceeds its configured page bound",
+            details={"page_limit": max_pages},
+        )
 
     @classmethod
     def _tool(
@@ -581,18 +673,16 @@ class McpSdkClient:
             output_schema=output_schema,
             annotations=annotations,
             effect_disposition=disposition,
+            invocation_supported=kind is McpPrimitiveKind.TOOL,
             schema_hash=schema_hash,
             provenance=f"mcp:{connection_id}:{protocol}",
         )
 
     @staticmethod
     def _disposition(annotations: Mapping[str, Any]) -> McpEffectDisposition:
-        if annotations.get("readOnlyHint") is True:
-            return McpEffectDisposition.READ_ONLY
-        if annotations.get("destructiveHint") is True:
-            return McpEffectDisposition.NON_IDEMPOTENT
-        if annotations.get("idempotentHint") is True:
-            return McpEffectDisposition.IDEMPOTENT
+        # MCP annotations are untrusted discovery claims.  They remain in the
+        # descriptor for review but cannot grant retry or side-effect authority.
+        del annotations
         return McpEffectDisposition.UNKNOWN
 
     @staticmethod

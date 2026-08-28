@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import sqlite3
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from pathlib import Path
 from uuid import UUID
@@ -36,7 +38,12 @@ from mishkan.browser.driver import (
 )
 from mishkan.browser.playwright import _LiveSession
 from mishkan.browser.tools import BrowserActToolAdapter
-from mishkan.config.models import BrowserConfig, BrowserProfileConfig, MishkanConfig
+from mishkan.config.models import (
+    BrowserConfig,
+    BrowserProfileConfig,
+    BrowserProfileKind,
+    MishkanConfig,
+)
 from mishkan.config.presets import preset_text
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.time import utc_now
@@ -165,9 +172,11 @@ def _config() -> BrowserConfig:
 def _supervisor(
     tmp_path: Path,
     driver: FakeDriver,
+    config: BrowserConfig | None = None,
 ) -> BrowserSupervisor:
     database = tmp_path / ".mishkan" / "mishkan.db"
-    SchemaManager(database).initialize()
+    if not database.exists():
+        SchemaManager(database).initialize()
     artifacts = DurableArtifactService(
         database,
         tmp_path / ".mishkan" / "artifacts",
@@ -183,11 +192,52 @@ def _supervisor(
     return BrowserSupervisor(
         database,
         tmp_path,
-        _config(),
+        config or _config(),
         artifacts,
         {driver.adapter_id: driver},
         inspector,
     )
+
+
+def _persistent_config() -> BrowserConfig:
+    config = _config()
+    source = config.profiles[config.default_profile]
+    profile = source.model_copy(
+        update={
+            "kind": BrowserProfileKind.PROJECT_PERSISTENT,
+            "user_data_dir": config.staging_root / "profiles" / "project",
+        }
+    )
+    return config.model_copy(
+        update={
+            "default_profile": "persistent-project",
+            "profiles": {"persistent-project": profile},
+        }
+    )
+
+
+class PersistentStateDriver(FakeDriver):
+    def __init__(self) -> None:
+        super().__init__()
+        self.restored_state = False
+
+    def open(
+        self,
+        profile: BrowserProfileConfig,
+        *,
+        workspace: str,
+        initial_url: str | None,
+    ) -> DriverSession:
+        del initial_url
+        assert profile.user_data_dir is not None
+        root = Path(workspace) / profile.user_data_dir
+        marker = root / "Default" / "Cookies.fixture"
+        self.restored_state = (
+            marker.read_bytes() == b"authenticated-state" if marker.exists() else False
+        )
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_bytes(b"authenticated-state")
+        return DriverSession(f"handle-{self.actions}", ("page-1",), "fixture-1")
 
 
 def _open(supervisor: BrowserSupervisor):
@@ -289,6 +339,223 @@ def test_open_failure_and_uncertainty_remain_durable_queryable_session_states(
 
     assert failed.state is BrowserSessionState.FAILED
     assert failed_supervisor.get(failed.id, owner_identity="role:Engineer") == failed
+
+
+def test_persistent_profile_is_settled_as_artifact_and_restored_on_next_open(
+    tmp_path: Path,
+) -> None:
+    driver = PersistentStateDriver()
+    config = _persistent_config()
+    supervisor = _supervisor(tmp_path, driver, config)
+
+    opened = supervisor.open(
+        BrowserSessionRequest(
+            profile_id=config.default_profile,
+            owner_identity="role:Engineer",
+            run_id="run-1",
+            task_attempt_id="task:1",
+            workspace=".",
+        )
+    )
+    assert opened.state is BrowserSessionState.ACTIVE
+    assert driver.restored_state is False
+    user_data_dir = config.profiles[config.default_profile].user_data_dir
+    assert user_data_dir is not None
+    profile_path = tmp_path / user_data_dir
+    assert profile_path.is_dir()
+
+    closed = supervisor.close(opened.id, owner_identity="role:Engineer")
+
+    assert closed.state is BrowserSessionState.CLOSED
+    assert closed.profile_state_artifact_reference is not None
+    assert not profile_path.exists()
+
+    reopened = supervisor.open(
+        BrowserSessionRequest(
+            profile_id=config.default_profile,
+            owner_identity="role:Engineer",
+            run_id="run-2",
+            task_attempt_id="task:2",
+            workspace=".",
+        )
+    )
+    assert reopened.state is BrowserSessionState.ACTIVE
+    assert driver.restored_state is True
+
+
+def test_persistent_profile_refuses_unsettled_raw_state_after_restart(tmp_path: Path) -> None:
+    config = _persistent_config()
+    first = _supervisor(tmp_path, PersistentStateDriver(), config)
+    opened = first.open(
+        BrowserSessionRequest(
+            profile_id=config.default_profile,
+            owner_identity="role:Engineer",
+            run_id="run-1",
+            task_attempt_id="task:1",
+            workspace=".",
+        )
+    )
+    assert opened.state is BrowserSessionState.ACTIVE
+
+    restarted = _supervisor(tmp_path, PersistentStateDriver(), config)
+    with pytest.raises(MishkanError) as unsettled:
+        restarted.open(
+            BrowserSessionRequest(
+                profile_id=config.default_profile,
+                owner_identity="role:Engineer",
+                run_id="run-2",
+                task_attempt_id="task:2",
+                workspace=".",
+            )
+        )
+
+    assert unsettled.value.envelope.code is ErrorCode.RUN_INTERRUPTED
+    assert unsettled.value.envelope.details["reconciliation_required"] is True
+
+
+def test_persistent_profile_refuses_a_symlinked_managed_directory_chain(tmp_path: Path) -> None:
+    config = _persistent_config()
+    managed = tmp_path / config.staging_root
+    managed.mkdir(parents=True)
+    outside = tmp_path / "outside-profile"
+    outside.mkdir()
+    (managed / "profiles").symlink_to(outside, target_is_directory=True)
+    supervisor = _supervisor(tmp_path, PersistentStateDriver(), config)
+
+    with pytest.raises(MishkanError) as escaped:
+        supervisor.open(
+            BrowserSessionRequest(
+                profile_id=config.default_profile,
+                owner_identity="role:Engineer",
+                run_id="run-1",
+                task_attempt_id="task:1",
+                workspace=".",
+            )
+        )
+
+    assert escaped.value.envelope.code is ErrorCode.AUTHORITY_NOT_GRANTED
+    assert not any(outside.iterdir())
+
+
+def test_concurrent_session_actions_recheck_revision_before_the_second_effect(
+    tmp_path: Path,
+) -> None:
+    class BlockingDriver(FakeDriver):
+        def __init__(self) -> None:
+            super().__init__()
+            self.entered = threading.Event()
+            self.release = threading.Event()
+
+        def act(self, *args, **kwargs):
+            self.entered.set()
+            assert self.release.wait(timeout=5)
+            return super().act(*args, **kwargs)
+
+    driver = BlockingDriver()
+    supervisor = _supervisor(tmp_path, driver)
+    browser = _open(supervisor)
+    observation = supervisor.observe(
+        BrowserObservationRequest(
+            session_id=browser.id,
+            page_id="page-1",
+            expected_session_revision=browser.revision,
+        ),
+        owner_identity="role:Engineer",
+    )
+
+    def request(identity: int) -> BrowserActionRequest:
+        return BrowserActionRequest(
+            session_id=browser.id,
+            page_id="page-1",
+            observation_id=observation.id,
+            target_reference="button:save",
+            kind=BrowserActionKind.CLICK,
+            resolved_effect="form.submit",
+            expected_session_revision=browser.revision,
+            idempotency_key=UUID(int=identity),
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(
+            supervisor.act,
+            request(10),
+            owner_identity="role:Engineer",
+        )
+        assert driver.entered.wait(timeout=5)
+        second = executor.submit(
+            supervisor.act,
+            request(11),
+            owner_identity="role:Engineer",
+        )
+        driver.release.set()
+
+        assert first.result(timeout=5).state is BrowserActionState.COMPLETED
+        with pytest.raises(MishkanError) as stale:
+            second.result(timeout=5)
+
+    assert stale.value.envelope.code is ErrorCode.REVISION_MISMATCH
+    assert driver.actions == 1
+
+
+def test_observed_link_destination_requires_exact_action_network_authority(
+    tmp_path: Path,
+) -> None:
+    class LinkDriver(FakeDriver):
+        def observe(
+            self,
+            handle: str,
+            page_id: str,
+            *,
+            screenshot: bool,
+        ) -> DriverObservation:
+            del handle, page_id, screenshot
+            target = BrowserTarget(
+                reference="link:next",
+                role="link",
+                name="Next",
+                element_revision="sha256:" + hashlib.sha256(b"next").hexdigest(),
+                candidate_effects=("ui.interaction",),
+                destination_origin="https://example.com",
+            )
+            return DriverObservation(
+                url="https://example.com/form",
+                title="Form",
+                tree=b"- link Next [ref=link:next]",
+                targets=(target,),
+            )
+
+    driver = LinkDriver()
+    supervisor = _supervisor(tmp_path, driver)
+    browser = _open(supervisor)
+    observation = supervisor.observe(
+        BrowserObservationRequest(
+            session_id=browser.id,
+            page_id="page-1",
+            expected_session_revision=browser.revision,
+        ),
+        owner_identity="role:Engineer",
+    )
+    request = BrowserActionRequest(
+        session_id=browser.id,
+        page_id="page-1",
+        observation_id=observation.id,
+        target_reference="link:next",
+        kind=BrowserActionKind.CLICK,
+        resolved_effect="ui.interaction",
+        expected_session_revision=browser.revision,
+    )
+
+    with pytest.raises(MishkanError) as unauthorized:
+        supervisor.act(request, owner_identity="role:Engineer")
+    assert unauthorized.value.envelope.code is ErrorCode.AUTHORITY_NOT_GRANTED
+    assert driver.actions == 0
+
+    accepted = supervisor.act(
+        request.model_copy(update={"authorized_origins": ("https://example.com",)}),
+        owner_identity="role:Engineer",
+    )
+    assert accepted.state is BrowserActionState.COMPLETED
+    assert driver.actions == 1
 
 
 def test_download_result_is_committed_as_an_immutable_artifact(tmp_path: Path) -> None:
@@ -859,6 +1126,8 @@ def test_playwright_refuses_websockets_that_cannot_use_the_verified_transport(
     context = Context()
     driver = object.__new__(PlaywrightChromiumDriver)
     driver._network_profiles = configured.web.network_profiles  # type: ignore[attr-defined]
+    driver._max_diagnostic_entries = 100  # type: ignore[attr-defined]
+    driver._max_pending_downloads = 10  # type: ignore[attr-defined]
     live = _LiveSession(
         configured.browser.profiles[configured.browser.default_profile],
         tmp_path,

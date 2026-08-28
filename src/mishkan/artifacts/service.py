@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import stat
+import threading
 from collections.abc import Iterator
 from datetime import datetime, timedelta
 from pathlib import Path, PurePosixPath
@@ -91,6 +92,7 @@ class DurableArtifactService:
         self._max_chunk_bytes = max_chunk_bytes
         self._staging_ttl_seconds = staging_ttl_seconds
         self._content_inspector = content_inspector
+        self._cas_locks = tuple(threading.RLock() for _ in range(64))
         for directory in (self._blobs, self._staging):
             directory.mkdir(parents=True, exist_ok=True)
         self._engine = create_local_engine(database, busy_timeout_ms=busy_timeout_ms)
@@ -166,6 +168,7 @@ class DurableArtifactService:
         complete: bool,
         sensitivity: str = "internal",
         retention: str = "run",
+        resolved_secrets: tuple[str, ...] = (),
     ) -> ArtifactManifest:
         if not complete:
             raise MishkanError(
@@ -186,7 +189,7 @@ class DurableArtifactService:
                 offset=offset,
                 content=content[offset : offset + self._max_chunk_bytes],
             )
-        return self.commit_upload(upload.upload_id)
+        return self.commit_upload(upload.upload_id, resolved_secrets=resolved_secrets)
 
     def append_chunk(self, upload_id: UUID, *, offset: int, content: bytes) -> UploadSession:
         if not content or len(content) > self._max_chunk_bytes:
@@ -236,7 +239,24 @@ class DurableArtifactService:
             row.updated_at = utc_now().isoformat()
             return self._upload_model(row)
 
-    def commit_upload(self, upload_id: UUID) -> ArtifactManifest:
+    def commit_upload(
+        self,
+        upload_id: UUID,
+        *,
+        resolved_secrets: tuple[str, ...] = (),
+    ) -> ArtifactManifest:
+        with Session(self._engine) as session:
+            row = self._require_upload(session, upload_id)
+            storage_ref = f"sha256/{row.expected_digest[7:9]}/{row.expected_digest[9:]}"
+        with self._cas_lock(storage_ref):
+            return self._commit_upload_locked(upload_id, resolved_secrets=resolved_secrets)
+
+    def _commit_upload_locked(
+        self,
+        upload_id: UUID,
+        *,
+        resolved_secrets: tuple[str, ...],
+    ) -> ArtifactManifest:
         with Session(self._engine) as session:
             row = self._require_upload(session, upload_id)
             if row.state == "committed" and row.artifact_id is not None:
@@ -263,6 +283,7 @@ class DurableArtifactService:
                     content_digest,
                     size,
                     self._content_inspector,
+                    resolved_secrets,
                 )
             else:
                 self._require_existing_committed_blob(destination, content_digest, size)
@@ -544,6 +565,24 @@ class DurableArtifactService:
                 for row in rows
             )
 
+    def reference(self, scope: str, name: str) -> WorkingReference | None:
+        with Session(self._engine) as session:
+            row = session.get(ArtifactReferenceRow, (scope, name))
+            if row is None:
+                return None
+            return WorkingReference(
+                id=UUID(row.record_id),
+                scope=row.scope,
+                name=row.name,
+                artifact_reference=f"artifact:{row.artifact_id}",
+                revision=row.revision,
+                prior_artifact_reference=(
+                    f"artifact:{row.prior_artifact_id}" if row.prior_artifact_id else None
+                ),
+                prior_revision=row.prior_revision,
+                updated_at=datetime.fromisoformat(row.updated_at),
+            )
+
     def update_reference(
         self,
         scope: str,
@@ -740,31 +779,32 @@ class DurableArtifactService:
                     blobs.add(row.storage_ref)
             plan_row.applied_at = utc_now().isoformat()
         for storage_ref in blobs:
-            with Session(self._engine) as session:
-                live = session.scalar(
-                    select(ArtifactRow.id).where(
-                        ArtifactRow.storage_ref == storage_ref,
-                        ArtifactRow.lifecycle.not_in(
-                            (
-                                ArtifactLifecycle.TOMBSTONED.value,
-                                ArtifactLifecycle.DELETED.value,
-                                ArtifactLifecycle.MISSING.value,
-                                ArtifactLifecycle.CORRUPT.value,
-                            )
-                        ),
-                    )
-                )
-            if live is None:
-                self._safe_blob(storage_ref).unlink(missing_ok=True)
-                with Session(self._engine) as session, session.begin():
-                    rows = session.scalars(
-                        select(ArtifactRow).where(
+            with self._cas_lock(storage_ref):
+                with Session(self._engine) as session:
+                    live = session.scalar(
+                        select(ArtifactRow.id).where(
                             ArtifactRow.storage_ref == storage_ref,
-                            ArtifactRow.lifecycle == ArtifactLifecycle.TOMBSTONED.value,
+                            ArtifactRow.lifecycle.not_in(
+                                (
+                                    ArtifactLifecycle.TOMBSTONED.value,
+                                    ArtifactLifecycle.DELETED.value,
+                                    ArtifactLifecycle.MISSING.value,
+                                    ArtifactLifecycle.CORRUPT.value,
+                                )
+                            ),
                         )
-                    ).all()
-                    for row in rows:
-                        self._set_row_lifecycle(row, ArtifactLifecycle.DELETED)
+                    )
+                if live is None:
+                    self._safe_blob(storage_ref).unlink(missing_ok=True)
+                    with Session(self._engine) as session, session.begin():
+                        rows = session.scalars(
+                            select(ArtifactRow).where(
+                                ArtifactRow.storage_ref == storage_ref,
+                                ArtifactRow.lifecycle == ArtifactLifecycle.TOMBSTONED.value,
+                            )
+                        ).all()
+                        for row in rows:
+                            self._set_row_lifecycle(row, ArtifactLifecycle.DELETED)
         return GarbageCollectionPlan(
             plan_id=plan_id,
             candidates=candidates,
@@ -897,7 +937,23 @@ class DurableArtifactService:
                 issue.action is ArtifactReconciliationAction.DELETE_ORPHAN_BLOB
                 and issue.storage_ref is not None
             ):
-                self._safe_blob(issue.storage_ref).unlink(missing_ok=True)
+                with self._cas_lock(issue.storage_ref):
+                    with Session(self._engine) as session:
+                        live = session.scalar(
+                            select(ArtifactRow.id).where(
+                                ArtifactRow.storage_ref == issue.storage_ref,
+                                ArtifactRow.lifecycle.not_in(
+                                    (
+                                        ArtifactLifecycle.TOMBSTONED.value,
+                                        ArtifactLifecycle.DELETED.value,
+                                        ArtifactLifecycle.MISSING.value,
+                                        ArtifactLifecycle.CORRUPT.value,
+                                    )
+                                ),
+                            )
+                        )
+                    if live is None:
+                        self._safe_blob(issue.storage_ref).unlink(missing_ok=True)
 
         expired_staging: list[Path] = []
         with Session(self._engine) as session, session.begin():
@@ -1192,6 +1248,10 @@ class DurableArtifactService:
             created_at=datetime.fromisoformat(row.created_at),
         )
 
+    def _cas_lock(self, storage_ref: str) -> threading.RLock:
+        digest = hashlib.sha256(storage_ref.encode()).digest()
+        return self._cas_locks[int.from_bytes(digest[:2], "big") % len(self._cas_locks)]
+
     @staticmethod
     def _commit_staged_blob(
         staged: Path,
@@ -1199,6 +1259,7 @@ class DurableArtifactService:
         digest: str,
         size: int,
         inspector: ArtifactContentInspector | None,
+        resolved_secrets: tuple[str, ...],
     ) -> None:
         try:
             source_descriptor = os.open(staged, os.O_RDONLY | os.O_NOFOLLOW)
@@ -1255,7 +1316,7 @@ class DurableArtifactService:
             )
         try:
             if inspector is not None:
-                inspector.require_safe_file(temporary)
+                inspector.require_safe_file(temporary, resolved_secrets)
             try:
                 os.link(temporary, destination, follow_symlinks=False)
             except FileExistsError:

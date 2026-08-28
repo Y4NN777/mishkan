@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import json
 from collections.abc import Callable, Mapping
+from datetime import timedelta
 from pathlib import Path
 from typing import Any, Protocol, cast
 from uuid import UUID
@@ -193,6 +194,10 @@ class McpService:
         credentials: Mapping[str, str],
     ) -> McpCallResult:
         configured, primitive = self._validate_call(request)
+        self._repository.prune_progress(
+            before=utc_now() - timedelta(seconds=self._config.progress_retention_seconds),
+            batch_size=self._config.progress_prune_batch_size,
+        )
         serialized_request = json.dumps(
             request.model_dump(mode="json"),
             sort_keys=True,
@@ -261,11 +266,27 @@ class McpService:
         task = asyncio.current_task()
         if task is not None:
             self._active[request.id] = task
-        existing_progress = self._repository.progress_after(request.id, 0)
+        existing_progress = self._repository.progress_after(
+            request.id,
+            0,
+            limit=self._config.max_progress_events_per_call,
+        )
         cursor = existing_progress[-1].cursor + 1 if existing_progress else 0
         elicitation_sequence = sum(
             item.kind is McpProgressKind.ELICITATION for item in existing_progress
         )
+
+        def bounded_progress_message(message: str | None) -> str | None:
+            if message is None:
+                return None
+            cleaned = self._inspector.inspect(message, tuple(credentials.values()))
+            if len(cleaned.encode()) > self._config.max_progress_message_bytes:
+                raise MishkanError(
+                    ErrorCode.MCP,
+                    "MCP progress message exceeds its configured bound",
+                    details={"byte_limit": self._config.max_progress_message_bytes},
+                )
+            return cleaned
 
         async def progress(value: float, total: float | None, message: str | None) -> None:
             nonlocal cursor
@@ -275,8 +296,9 @@ class McpService:
                     cursor=cursor,
                     progress=value,
                     total=total,
-                    message=self._inspector.inspect(message) if message is not None else None,
-                )
+                    message=bounded_progress_message(message),
+                ),
+                max_events=self._config.max_progress_events_per_call,
             )
             cursor += 1
 
@@ -328,15 +350,13 @@ class McpService:
                     request_id=request.id,
                     cursor=cursor,
                     kind=McpProgressKind.ELICITATION,
-                    message=self._inspector.inspect(
-                        params.message,
-                        tuple(credentials.values()),
-                    ),
+                    message=bounded_progress_message(params.message),
                     elicitation_request_hash=request_hash,
                     elicitation_mode=params.mode,
                     elicitation_action=recorded_action,
                     elicitation_content_hash=content_hash,
-                )
+                ),
+                max_events=self._config.max_progress_events_per_call,
             )
             cursor += 1
             elicitation_sequence += 1
@@ -508,6 +528,11 @@ class McpService:
             request.expected_schema_hash,
             kind=McpPrimitiveKind.TOOL,
         )
+        if not primitive.invocation_supported:
+            raise MishkanError(
+                ErrorCode.REQUIRED_DEPENDENCY,
+                "discovered MCP primitive has no executable adapter",
+            )
         if request.effect_disposition is not primitive.effect_disposition:
             raise MishkanError(
                 ErrorCode.TOOL_DRIFT,

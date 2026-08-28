@@ -17,6 +17,7 @@ def _task_state_path() -> Path | None:
 
 
 TASK_STATE = _task_state_path()
+print("MISHKAN_MCP_STDERR_CANARY", file=sys.stderr, flush=True)
 
 
 def _load_tasks() -> dict[str, dict[str, Any]]:

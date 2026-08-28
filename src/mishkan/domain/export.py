@@ -133,14 +133,41 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "task-review-rejection-v1.schema.json": TaskReviewRejection,
 }
 
+_EXPORT_MANIFEST = ".mishkan-schema-export.json"
+
 
 def export_schemas(output: Path) -> tuple[Path, ...]:
     target = output.expanduser().resolve()
     target.mkdir(parents=True, exist_ok=True)
+    manifest_path = target / _EXPORT_MANIFEST
+    if manifest_path.is_file():
+        try:
+            previous = json.loads(manifest_path.read_text(encoding="utf-8"))
+            previous_files = previous["files"]
+        except (OSError, KeyError, TypeError, json.JSONDecodeError):
+            previous_files = []
+        if isinstance(previous_files, list):
+            for filename in previous_files:
+                if (
+                    isinstance(filename, str)
+                    and Path(filename).name == filename
+                    and filename.endswith(".schema.json")
+                    and filename not in SCHEMAS
+                ):
+                    (target / filename).unlink(missing_ok=True)
     written: list[Path] = []
     for filename, model in SCHEMAS.items():
         path = target / filename
         content = json.dumps(model.model_json_schema(), indent=2, sort_keys=True) + "\n"
         path.write_text(content, encoding="utf-8")
         written.append(path)
+    manifest_path.write_text(
+        json.dumps(
+            {"schema_version": "1.0", "files": sorted(SCHEMAS)},
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     return tuple(written)

@@ -93,6 +93,7 @@ class DaemonConfig(StrictConfigModel):
     event_poll_seconds: float = Field(ge=0.05, le=30)
     event_page_limit: int = Field(ge=1, le=1_000)
     request_timeout_seconds: int = Field(ge=1, le=3_600)
+    max_request_bytes: int = Field(default=8_388_608, ge=1, le=1_073_741_824)
 
     @field_validator("host")
     @classmethod
@@ -350,6 +351,7 @@ class BrowserProfileConfig(StrictConfigModel):
     headless: bool
     max_pages: int = Field(ge=1, le=1_000)
     max_download_bytes: int = Field(ge=1)
+    max_upload_bytes: int = Field(default=16_777_216, ge=1)
     action_timeout_seconds: float = Field(gt=0, le=3_600)
     navigation_timeout_seconds: float = Field(gt=0, le=3_600)
     user_data_dir: Path | None = None
@@ -358,7 +360,11 @@ class BrowserProfileConfig(StrictConfigModel):
     @model_validator(mode="after")
     def profile_inputs_match_kind(self) -> Self:
         if self.kind is BrowserProfileKind.PROJECT_PERSISTENT:
-            if self.user_data_dir is None or self.user_data_dir.is_absolute():
+            if (
+                self.user_data_dir is None
+                or self.user_data_dir.is_absolute()
+                or ".." in self.user_data_dir.parts
+            ):
                 raise ValueError("persistent browser profile requires a project-relative directory")
         elif self.user_data_dir is not None:
             raise ValueError("only persistent browser profiles may declare a user-data directory")
@@ -377,11 +383,13 @@ class BrowserConfig(StrictConfigModel):
     observation_ttl_seconds: float = Field(gt=0, le=3_600)
     max_observation_bytes: int = Field(ge=1)
     max_diagnostic_entries: int = Field(ge=1, le=1_000_000)
+    max_pending_downloads: int = Field(default=100, ge=1, le=10_000)
+    max_profile_state_bytes: int = Field(default=67_108_864, ge=1, le=1_073_741_824)
 
     @field_validator("staging_root")
     @classmethod
     def staging_root_is_project_relative(cls, value: Path) -> Path:
-        if value.is_absolute() or not value.parts:
+        if value.is_absolute() or not value.parts or ".." in value.parts:
             raise ValueError("browser staging root must be project-relative")
         return value
 
@@ -389,6 +397,15 @@ class BrowserConfig(StrictConfigModel):
     def default_profile_exists(self) -> Self:
         if self.default_profile not in self.profiles:
             raise ValueError("default browser profile does not exist")
+        for profile in self.profiles.values():
+            if (
+                profile.kind is BrowserProfileKind.PROJECT_PERSISTENT
+                and profile.user_data_dir is not None
+                and not profile.user_data_dir.is_relative_to(self.staging_root)
+            ):
+                raise ValueError(
+                    "persistent browser state must live below the managed Browser staging root"
+                )
         return self
 
 
@@ -413,6 +430,7 @@ class McpConnectionConfig(StrictConfigModel):
     network_profile: str | None = None
     endpoint: AnyHttpUrl | None = None
     command: str | None = None
+    isolation_profile: str | None = None
     arguments: tuple[str, ...] = ()
     inherit_environment: tuple[str, ...] = ()
     environment: dict[str, CredentialReference] = Field(default_factory=dict)
@@ -422,21 +440,29 @@ class McpConnectionConfig(StrictConfigModel):
     connect_timeout_seconds: float = Field(gt=0, le=3_600)
     call_timeout_seconds: float = Field(gt=0, le=86_400)
     max_result_bytes: int = Field(ge=1)
+    discovery_timeout_seconds: float = Field(default=30, gt=0, le=3_600)
+    max_discovery_pages: int = Field(default=100, ge=1, le=10_000)
+    max_discovered_primitives: int = Field(default=10_000, ge=1, le=100_000)
+    max_discovery_bytes: int = Field(default=16_777_216, ge=1, le=268_435_456)
 
     @model_validator(mode="after")
     def transport_inputs_are_disjoint(self) -> Self:
         if self.transport is McpTransport.STDIO:
             if (
                 not self.command
+                or not self.isolation_profile
                 or self.endpoint is not None
                 or self.network_profile is not None
                 or self.headers
             ):
-                raise ValueError("STDIO MCP connection requires only an explicit command")
+                raise ValueError(
+                    "STDIO MCP connection requires an explicit command and isolation profile"
+                )
         elif (
             self.endpoint is None
             or not self.network_profile
             or self.command is not None
+            or self.isolation_profile is not None
             or self.environment
         ):
             raise ValueError("Streamable HTTP MCP connection requires endpoint and network profile")
@@ -449,6 +475,14 @@ class McpConnectionConfig(StrictConfigModel):
         if not mapped.issubset(declared):
             raise ValueError("MCP credential mappings must reference declared credentials")
         return self
+
+
+SUPPORTED_MCP_FACADE_OPERATIONS = frozenset(
+    {"system.health", "system.snapshot", "events.list", "run.get", "command.submit"}
+)
+SUPPORTED_MCP_FACADE_RESOURCES = frozenset(
+    {"mishkan://snapshot", "mishkan://runs", "mishkan://events"}
+)
 
 
 class McpExposureProfileConfig(StrictConfigModel):
@@ -469,6 +503,10 @@ class McpConfig(StrictConfigModel):
     exposure_profiles: dict[str, McpExposureProfileConfig] = Field(min_length=1)
     facade: McpFacadeConfig
     progress_retention_seconds: int = Field(ge=1, le=31_536_000)
+    progress_page_limit: int = Field(default=500, ge=1, le=10_000)
+    max_progress_events_per_call: int = Field(default=10_000, ge=1, le=1_000_000)
+    max_progress_message_bytes: int = Field(default=16_384, ge=1, le=1_048_576)
+    progress_prune_batch_size: int = Field(default=1_000, ge=1, le=100_000)
     cancellation_poll_seconds: float = Field(gt=0, le=60)
     task_poll_min_seconds: float = Field(default=0.1, gt=0, le=60)
     task_poll_max_seconds: float = Field(default=5.0, gt=0, le=3_600)
@@ -485,6 +523,15 @@ class McpConfig(StrictConfigModel):
         if missing_exposures:
             raise ValueError(
                 f"MCP connections reference unknown exposure profiles: {missing_exposures}"
+            )
+        facade = self.exposure_profiles[self.facade.exposure_profile]
+        if (self.facade.enabled or self.facade.stdio_bridge_enabled) and (
+            set(facade.operations) - SUPPORTED_MCP_FACADE_OPERATIONS
+            or set(facade.resources) - SUPPORTED_MCP_FACADE_RESOURCES
+            or facade.prompts
+        ):
+            raise ValueError(
+                "active MCP facade profile contains a primitive without an executable adapter"
             )
         if self.task_poll_min_seconds > self.task_poll_max_seconds:
             raise ValueError("MCP task polling minimum exceeds its maximum")

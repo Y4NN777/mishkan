@@ -189,6 +189,7 @@ class ReviewRejectionRow(Base):
 
 class OutboxRow(Base):
     __tablename__ = "event_outbox"
+    __table_args__ = {"sqlite_autoincrement": True}  # noqa: RUF012
 
     cursor: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     id: Mapped[str] = mapped_column(String(36), unique=True, nullable=False)

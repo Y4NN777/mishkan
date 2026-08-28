@@ -161,6 +161,7 @@ class McpPrimitiveDescriptor(McpModel):
     output_schema: dict[str, Any] | None = None
     annotations: dict[str, Any] = Field(default_factory=dict)
     effect_disposition: McpEffectDisposition = McpEffectDisposition.UNKNOWN
+    invocation_supported: bool = False
     sensitivity: str = "untrusted"
     schema_hash: str
     provenance: str = Field(min_length=1)
