@@ -98,7 +98,7 @@ def test_capability_runtime_binds_only_concrete_adapters_without_starting_browse
     assert len(reconciliations) == 2
 
 
-def test_schema_13_initializer_assembles_i04_adapters_without_eager_browser_effect(
+def test_schema_13_initializer_assembles_integration_adapters_without_eager_browser_effect(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -22,12 +22,13 @@ def test_empty_database_is_initialized_only_explicitly(tmp_path: Path) -> None:
         assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
 
 
-def test_exact_i02_database_is_backed_up_and_upgraded(tmp_path: Path) -> None:
+def test_exact_legacy_database_is_backed_up_and_upgraded(tmp_path: Path) -> None:
     database = tmp_path / "mishkan.db"
     engine = create_engine(f"sqlite:///{database}")
     Base.metadata.create_all(engine)
     with engine.begin() as connection:
         for table in (
+            "planned_tool_calls",
             "event_retention_plans",
             "event_holds",
             "task_review_rejections",
@@ -54,7 +55,7 @@ def test_exact_i02_database_is_backed_up_and_upgraded(tmp_path: Path) -> None:
             connection.execute(text(f"DROP TABLE {table}"))
         connection.execute(text("DROP TABLE application_commands"))
         connection.execute(text("DROP TABLE aggregate_revisions"))
-        connection.execute(text("ALTER TABLE event_outbox RENAME TO event_outbox_i03"))
+        connection.execute(text("ALTER TABLE event_outbox RENAME TO event_outbox_current"))
         connection.execute(
             text(
                 """
@@ -69,7 +70,7 @@ def test_exact_i02_database_is_backed_up_and_upgraded(tmp_path: Path) -> None:
                 """
             )
         )
-        connection.execute(text("DROP TABLE event_outbox_i03"))
+        connection.execute(text("DROP TABLE event_outbox_current"))
         connection.execute(text("ALTER TABLE runs DROP COLUMN revision"))
         connection.execute(text("ALTER TABLE runs DROP COLUMN cancellation_requested"))
         connection.execute(text("ALTER TABLE runs DROP COLUMN updated_at"))

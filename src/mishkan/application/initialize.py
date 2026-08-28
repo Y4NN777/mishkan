@@ -146,6 +146,7 @@ class MishkanInitializer:
             state_repository,
             cancellation=state_repository,
             artifact_store=artifact_store,
+            planned_calls=state_repository,
         )
         snapshot = state_repository.start_or_resume(discovery, objective, outcome.outcome_id)
         if on_run_started is not None:

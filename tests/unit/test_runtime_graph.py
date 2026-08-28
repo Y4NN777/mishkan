@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
 from mishkan.domain.errors import ErrorCode, MishkanError
+from mishkan.domain.time import utc_now
 from mishkan.persistence import LocalRunRepository, SchemaManager
 from mishkan.planning.models import (
     AcceptedPlan,
@@ -20,6 +22,8 @@ from mishkan.runtime import (
     RunState,
     TaskState,
 )
+from mishkan.tools.execution import EffectSettlement
+from mishkan.tools.gateway_models import CallStatus, ToolResultEnvelope
 
 
 def _discovery(tmp_path: Path) -> DiscoverySnapshot:
@@ -162,13 +166,100 @@ def test_active_run_cancellation_is_signalled_then_durably_settled(tmp_path: Pat
 def test_interrupted_task_requires_effect_reconciliation_before_retry(tmp_path: Path) -> None:
     repository, run_id = _repository(tmp_path)
     repository.claim_task(run_id, "root-task")
+    invocation_id = str(uuid4())
+    request_fingerprint = "e" * 64
+    assert (
+        repository.reserve_planned_call(
+            invocation_id=invocation_id,
+            run_id=run_id,
+            task_attempt_id="root-task:1",
+            planned_call_id="mutate-repository",
+            request_fingerprint=request_fingerprint,
+            tool_id="git.commit",
+            tool_version="1.0",
+            effect_class="repository_write",
+            declared_effects=("git.commit",),
+        )
+        is None
+    )
+    with pytest.raises(MishkanError) as reused:
+        repository.reserve_planned_call(
+            invocation_id=invocation_id,
+            run_id=run_id,
+            task_attempt_id="root-task:1",
+            planned_call_id="mutate-repository",
+            request_fingerprint="f" * 64,
+            tool_id="git.commit",
+            tool_version="1.0",
+            effect_class="repository_write",
+            declared_effects=("git.commit",),
+        )
+    assert reused.value.envelope.code is ErrorCode.DUPLICATE_RESULT
+    repository.mark_planned_call_dispatching(invocation_id, request_fingerprint)
     with pytest.raises(MishkanError) as blocked:
-        repository.recover_interrupted(run_id, uncertain_effects=("change:1",))
+        repository.recover_interrupted(run_id)
     assert blocked.value.envelope.details["automatic_retry"] is False
+    assert blocked.value.envelope.details["effects"] == (
+        "planned-call:root-task:1:mutate-repository:dispatching",
+    )
     assert repository.run_state(run_id) == RunState.BLOCKED.value
+    now = utc_now()
+    repository.complete_planned_call(
+        invocation_id,
+        request_fingerprint,
+        ToolResultEnvelope(
+            call_id=invocation_id,
+            run_id=run_id,
+            task_attempt_id="root-task:1",
+            tool_id="git.commit",
+            tool_version="1.0",
+            status=CallStatus.FAILED,
+            started_at=now,
+            completed_at=now,
+            retryable=True,
+            reason="dispatch was proven to have no effect",
+        ),
+        EffectSettlement.ABSENT,
+    )
     assert repository.recover_interrupted(run_id) == ("root-task",)
     assert repository.run_state(run_id) == RunState.RUNNING.value
     assert repository.claim_task(run_id, "root-task") == 2
+
+
+def test_interrupted_call_without_declared_effect_is_released_for_retry(tmp_path: Path) -> None:
+    repository, run_id = _repository(tmp_path)
+    repository.claim_task(run_id, "root-task")
+    invocation_id = str(uuid4())
+    request_fingerprint = "a" * 64
+    repository.reserve_planned_call(
+        invocation_id=invocation_id,
+        run_id=run_id,
+        task_attempt_id="root-task:1",
+        planned_call_id="read-evidence",
+        request_fingerprint=request_fingerprint,
+        tool_id="repository.read_file",
+        tool_version="1.0",
+        effect_class="read",
+        declared_effects=(),
+    )
+    repository.mark_planned_call_dispatching(invocation_id, request_fingerprint)
+
+    assert repository.recover_interrupted(run_id) == ("root-task",)
+    assert repository.unresolved_planned_effects(run_id) == ()
+    assert (
+        repository.reserve_planned_call(
+            invocation_id=invocation_id,
+            run_id=run_id,
+            task_attempt_id="root-task:1",
+            planned_call_id="read-evidence",
+            request_fingerprint=request_fingerprint,
+            tool_id="repository.read_file",
+            tool_version="1.0",
+            effect_class="read",
+            declared_effects=(),
+        )
+        is None
+    )
 
 
 def test_bounded_loop_uses_the_predicate_dsl_for_its_exit() -> None:

@@ -219,7 +219,7 @@ _COMMAND_PAYLOAD_FIELDS = MappingProxyType(
         "system.checkpoint": (frozenset(), frozenset({"checkpoint", "index"})),
         "run.initialize": (frozenset({"objective"}), frozenset({"schema_version"})),
         "run.cancel": (frozenset(), frozenset()),
-        "run.recover": (frozenset(), frozenset({"uncertain_effects"})),
+        "run.recover": (frozenset(), frozenset()),
         "artifact.upload.open": (
             frozenset({"expected_size", "expected_digest", "media_type", "provenance"}),
             frozenset({"sensitivity", "retention"}),

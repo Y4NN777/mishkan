@@ -4,7 +4,7 @@ from mishkan.config.loader import ConfigLoader
 from mishkan.config.migration import migrate_to_1_2
 
 
-def test_explicit_config_migration_adds_public_i03_surfaces(tmp_path: Path) -> None:
+def test_explicit_config_migration_adds_public_durability_surfaces(tmp_path: Path) -> None:
     source = tmp_path / "config.yaml"
     fixture = Path("tests/fixtures/config/local-valid.yaml").read_text(encoding="utf-8")
     source.write_text(fixture, encoding="utf-8")

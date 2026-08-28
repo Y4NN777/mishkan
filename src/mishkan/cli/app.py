@@ -1214,18 +1214,14 @@ def cancel_run(
 def recover_run(
     ctx: typer.Context,
     run_id: str,
-    uncertain_effect: Annotated[
-        list[str] | None,
-        typer.Option("--uncertain-effect", help="Unreconciled effect; repeat as needed."),
-    ] = None,
     expected_revision: Annotated[int | None, typer.Option(min=0)] = None,
 ) -> None:
-    """Release interrupted tasks only after effect reconciliation."""
+    """Ask the daemon to release only tasks whose durable effects are reconciled."""
     _run_effect(
         ctx,
         run_id,
         "run.recover",
-        {"uncertain_effects": uncertain_effect or []},
+        {},
         expected_revision,
     )
 

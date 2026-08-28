@@ -207,6 +207,7 @@ Rules:
             task_contract.task_id,
             role.name,
             task_contract.tools,
+            task_contract,
         )
         return json.dumps(
             self._execute_planned_calls(
@@ -290,6 +291,7 @@ concrete finding grounded in the file content and execution output. Do not modif
             f"review-{task_contract.task_id}",
             role.name,
             review_tool_ids,
+            task_contract,
         )
         return json.dumps(
             self._execute_planned_calls(
@@ -450,6 +452,7 @@ another role's work.
         binding_task_id: str,
         role: str,
         tool_ids: tuple[str, ...],
+        planned_task: PlanTask,
     ) -> list[BaseTool]:
         registry = plan.registry
         if (
@@ -486,6 +489,11 @@ another role's work.
                     self._gateway,
                     context,
                     approval=plan.approvals,
+                    planned_call_ids={
+                        call.argument_fingerprint: call.call_id
+                        for call in planned_task.tool_calls
+                        if call.tool_id == tool_id
+                    },
                 )
             )
         return tools

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import stat
@@ -10,6 +11,7 @@ from datetime import timedelta
 from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import Any, Protocol
+from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from jsonschema import Draft202012Validator  # type: ignore[import-untyped]
 from jsonschema.exceptions import SchemaError, ValidationError  # type: ignore[import-untyped]
@@ -20,6 +22,7 @@ from mishkan.domain.time import utc_now
 from mishkan.policy import ApprovalEvidence, AuthorizationRequest, Decision, PolicyAuthority
 from mishkan.policy.models import security_identifier
 from mishkan.tools.adapters import AdapterCall, CapabilityAdapter
+from mishkan.tools.execution import EffectSettlement
 from mishkan.tools.gateway_models import (
     AuditEvent,
     CallStatus,
@@ -135,6 +138,36 @@ class EvidenceSink(Protocol):
     def record(self, event: AuditEvent) -> None: ...
 
 
+class PlannedCallJournal(Protocol):
+    def reserve_planned_call(
+        self,
+        *,
+        invocation_id: str,
+        run_id: str,
+        task_attempt_id: str,
+        planned_call_id: str,
+        request_fingerprint: str,
+        tool_id: str,
+        tool_version: str,
+        effect_class: str,
+        declared_effects: tuple[str, ...],
+    ) -> ToolResultEnvelope | None: ...
+
+    def mark_planned_call_dispatching(
+        self,
+        invocation_id: str,
+        request_fingerprint: str,
+    ) -> None: ...
+
+    def complete_planned_call(
+        self,
+        invocation_id: str,
+        request_fingerprint: str,
+        result: ToolResultEnvelope,
+        effect_settlement: EffectSettlement,
+    ) -> ToolResultEnvelope: ...
+
+
 class CancellationSignal(Protocol):
     def requested(self, run_id: str, task_attempt_id: str) -> bool: ...
 
@@ -187,6 +220,7 @@ class CapabilityGateway:
         evidence: EvidenceSink,
         cancellation: CancellationSignal | None = None,
         artifact_store: ArtifactStore | None = None,
+        planned_calls: PlannedCallJournal | None = None,
     ) -> None:
         self._root = Path(repository_root).resolve()
         self._policy = policy_authority
@@ -196,6 +230,7 @@ class CapabilityGateway:
         self._evidence = evidence
         self._cancellation = cancellation or NeverCancelled()
         self._artifact_store = artifact_store
+        self._planned_calls = planned_calls
 
     def invoke(
         self,
@@ -203,9 +238,13 @@ class CapabilityGateway:
         arguments: dict[str, Any],
         declared_targets: DeclaredTargets,
         approval: ApprovalEvidence | tuple[ApprovalEvidence, ...] | None = None,
+        planned_call_id: str | None = None,
     ) -> ToolResultEnvelope:
         started = utc_now()
         call_id: str | None = None
+        request_fingerprint: str | None = None
+        journal_reserved = False
+        dispatch_started = False
         dispatched_status: CallStatus | None = None
         contract = context.registry.require(context.binding.tool_id)
         try:
@@ -278,7 +317,23 @@ class CapabilityGateway:
                         details={"tool_id": contract.tool_id},
                     )
             deadline = started + timedelta(seconds=context.resources.timeout_seconds)
+            invocation_id = (
+                uuid5(
+                    NAMESPACE_URL,
+                    ":".join(
+                        (
+                            "mishkan",
+                            context.run_id,
+                            context.task_attempt_id,
+                            planned_call_id,
+                        )
+                    ),
+                )
+                if planned_call_id is not None
+                else uuid4()
+            )
             envelope = InvocationEnvelope(
+                id=invocation_id,
                 run_id=context.run_id,
                 task_attempt_id=context.task_attempt_id,
                 acting_identity=context.identity,
@@ -293,6 +348,37 @@ class CapabilityGateway:
                 deadline=deadline,
             )
             call_id = str(envelope.id)
+            if planned_call_id is not None and self._planned_calls is not None:
+                request_fingerprint = self._planned_request_fingerprint(
+                    context,
+                    contract,
+                    planned_call_id,
+                    arguments,
+                    declared_targets,
+                    authorization.request_fingerprint,
+                )
+                replayed = self._planned_calls.reserve_planned_call(
+                    invocation_id=call_id,
+                    run_id=context.run_id,
+                    task_attempt_id=context.task_attempt_id,
+                    planned_call_id=planned_call_id,
+                    request_fingerprint=request_fingerprint,
+                    tool_id=contract.tool_id,
+                    tool_version=contract.version,
+                    effect_class=contract.effect_class.value,
+                    declared_effects=request.effects,
+                )
+                if replayed is not None:
+                    self._audit(
+                        context,
+                        call_id,
+                        "tool.call_replayed",
+                        replayed.status.value,
+                        "returned the exact durable planned-call result",
+                        {"planned_call_id": planned_call_id},
+                    )
+                    return replayed
+                journal_reserved = True
             self._audit(
                 context,
                 call_id,
@@ -316,6 +402,13 @@ class CapabilityGateway:
                     "bound tool adapter is unavailable",
                     details={"adapter": contract.adapter},
                 )
+            if journal_reserved:
+                assert request_fingerprint is not None
+                self._planned_calls_or_raise().mark_planned_call_dispatching(
+                    call_id,
+                    request_fingerprint,
+                )
+                dispatch_started = True
             adapter_result = adapter.invoke(
                 AdapterCall(
                     arguments=arguments,
@@ -441,7 +534,16 @@ class CapabilityGateway:
                 completed.reason,
                 {"result_id": str(completed.id), "status": completed.status.value},
             )
-            return completed
+            return self._complete_journaled_call(
+                completed,
+                request_fingerprint=request_fingerprint,
+                journal_reserved=journal_reserved,
+                settlement=self._effect_settlement(
+                    request.effects,
+                    completed,
+                    dispatch_started=dispatch_started,
+                ),
+            )
         except CapabilityCancelled:
             terminal_result = self._terminal(
                 context,
@@ -463,7 +565,16 @@ class CapabilityGateway:
                     "error_code": terminal_result.error_code,
                 },
             )
-            return terminal_result
+            return self._complete_journaled_call(
+                terminal_result,
+                request_fingerprint=request_fingerprint,
+                journal_reserved=journal_reserved,
+                settlement=(
+                    EffectSettlement.UNCERTAIN
+                    if dispatch_started and request.effects
+                    else EffectSettlement.ABSENT
+                ),
+            )
         except TimeoutError:
             terminal_result = self._terminal(
                 context,
@@ -485,7 +596,16 @@ class CapabilityGateway:
                     "error_code": terminal_result.error_code,
                 },
             )
-            return terminal_result
+            return self._complete_journaled_call(
+                terminal_result,
+                request_fingerprint=request_fingerprint,
+                journal_reserved=journal_reserved,
+                settlement=(
+                    EffectSettlement.UNCERTAIN
+                    if dispatch_started and request.effects
+                    else EffectSettlement.ABSENT
+                ),
+            )
         except (MishkanError, OSError, ValueError) as exc:
             if isinstance(exc, MishkanError):
                 code = exc.envelope.code
@@ -525,7 +645,88 @@ class CapabilityGateway:
                     "error_code": terminal_result.error_code,
                 },
             )
-            return terminal_result
+            return self._complete_journaled_call(
+                terminal_result,
+                request_fingerprint=request_fingerprint,
+                journal_reserved=journal_reserved,
+                settlement=(
+                    EffectSettlement.UNCERTAIN
+                    if dispatch_started and request.effects
+                    else EffectSettlement.ABSENT
+                ),
+            )
+
+    def _planned_calls_or_raise(self) -> PlannedCallJournal:
+        if self._planned_calls is None:
+            raise MishkanError(ErrorCode.RUN_INTERRUPTED, "planned-call journal is unavailable")
+        return self._planned_calls
+
+    def _complete_journaled_call(
+        self,
+        result: ToolResultEnvelope,
+        *,
+        request_fingerprint: str | None,
+        journal_reserved: bool,
+        settlement: EffectSettlement,
+    ) -> ToolResultEnvelope:
+        if not journal_reserved:
+            return result
+        assert request_fingerprint is not None
+        return self._planned_calls_or_raise().complete_planned_call(
+            result.call_id,
+            request_fingerprint,
+            result,
+            settlement,
+        )
+
+    @staticmethod
+    def _effect_settlement(
+        declared_effects: tuple[str, ...],
+        result: ToolResultEnvelope,
+        *,
+        dispatch_started: bool,
+    ) -> EffectSettlement:
+        if not declared_effects:
+            return EffectSettlement.ABSENT
+        if result.output is not None:
+            raw = result.output.get("effect_settlement", result.output.get("settlement"))
+            if isinstance(raw, str):
+                try:
+                    return EffectSettlement(raw)
+                except ValueError:
+                    pass
+        if result.status is CallStatus.COMPLETED:
+            return EffectSettlement.COMPLETED
+        return EffectSettlement.UNCERTAIN if dispatch_started else EffectSettlement.ABSENT
+
+    @staticmethod
+    def _planned_request_fingerprint(
+        context: InvocationContext,
+        contract: ToolContract,
+        planned_call_id: str,
+        arguments: dict[str, Any],
+        declared_targets: DeclaredTargets,
+        authorization_fingerprint: str,
+    ) -> str:
+        payload = json.dumps(
+            {
+                "run_id": context.run_id,
+                "task_attempt_id": context.task_attempt_id,
+                "planned_call_id": planned_call_id,
+                "tool_id": contract.tool_id,
+                "tool_version": contract.version,
+                "contract_fingerprint": context.binding.contract_fingerprint,
+                "registry_fingerprint": context.registry.fingerprint,
+                "plan_fingerprint": context.plan_fingerprint,
+                "policy_fingerprint": context.policy.fingerprint,
+                "authorization_fingerprint": authorization_fingerprint,
+                "arguments": arguments,
+                "declared_targets": declared_targets.model_dump(mode="json"),
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+        return hashlib.sha256(payload).hexdigest()
 
     def _resolve_targets(self, declared: DeclaredTargets) -> ResolvedTargets:
         paths: list[ResolvedPath] = []

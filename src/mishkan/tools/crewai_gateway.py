@@ -73,6 +73,7 @@ class GatewayCrewAITool(BaseTool):
     _enforce_exact_calls: bool = PrivateAttr()
     _remaining_call_fingerprints: set[str] = PrivateAttr()
     _completed_call_fingerprints: set[str] = PrivateAttr()
+    _planned_call_ids: dict[str, str] = PrivateAttr()
 
     def __init__(
         self,
@@ -81,6 +82,7 @@ class GatewayCrewAITool(BaseTool):
         context: InvocationContext,
         target_builder: TargetBuilder | None = None,
         approval: ApprovalEvidence | tuple[ApprovalEvidence, ...] | None = None,
+        planned_call_ids: dict[str, str] | None = None,
     ) -> None:
         super().__init__(
             name=contract.crewai_name,
@@ -96,6 +98,12 @@ class GatewayCrewAITool(BaseTool):
         self._enforce_exact_calls = bool(context.binding.allowed_call_fingerprints)
         self._remaining_call_fingerprints = set(context.binding.allowed_call_fingerprints)
         self._completed_call_fingerprints = set()
+        self._planned_call_ids = dict(planned_call_ids or {})
+        if set(self._planned_call_ids) - self._remaining_call_fingerprints:
+            raise MishkanError(
+                ErrorCode.TOOL_DRIFT,
+                "planned call identities differ from the exact tool binding",
+            )
 
     @property
     def pending_call_fingerprints(self) -> frozenset[str]:
@@ -122,6 +130,7 @@ class GatewayCrewAITool(BaseTool):
             kwargs,
             self._targets(kwargs),
             self._approval,
+            planned_call_id=self._planned_call_ids.get(fingerprint),
         )
         if result.status is not CallStatus.COMPLETED or result.output is None:
             code = ErrorCode(result.error_code) if result.error_code else ErrorCode.TOOL_EFFECT

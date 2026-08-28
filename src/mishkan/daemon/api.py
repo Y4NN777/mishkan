@@ -987,8 +987,7 @@ def _dispatch(
         snapshot = runs.cancel_run(command.target_id)
         return "run.cancellation_requested", {"run_id": snapshot.run_id}
     if command.command_type == "run.recover" and command.target_id is not None:
-        effects = tuple(str(value) for value in payload.get("uncertain_effects", []))
-        released = runs.recover_interrupted(command.target_id, uncertain_effects=effects)
+        released = runs.recover_interrupted(command.target_id)
         return "run.recovered", {"run_id": command.target_id, "released_tasks": released}
     if command.command_type == "mcp.connection.connect" and command.target_id is not None:
         if command.payload:

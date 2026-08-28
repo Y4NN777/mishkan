@@ -30,7 +30,8 @@ from mishkan.domain.time import utc_now
 from mishkan.planning.models import AcceptedPlan, InitializationResult, PlanTask, ReviewDecision
 from mishkan.repository.models import DiscoverySnapshot
 from mishkan.runtime import RunState, TaskReviewRejection, TaskState
-from mishkan.tools.gateway_models import AuditEvent
+from mishkan.tools.execution import EffectSettlement
+from mishkan.tools.gateway_models import AuditEvent, CallStatus, ToolResultEnvelope
 
 DEFAULT_BUSY_TIMEOUT_MS = 5_000
 
@@ -104,6 +105,33 @@ class TaskRow(Base):
     revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     contract: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class PlannedToolCallRow(Base):
+    __tablename__ = "planned_tool_calls"
+    __table_args__ = (
+        UniqueConstraint(
+            "run_id",
+            "task_attempt_id",
+            "planned_call_id",
+            name="uq_planned_tool_call_identity",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id"), nullable=False, index=True)
+    task_attempt_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    planned_call_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    tool_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    tool_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    effect_class: Mapped[str] = mapped_column(String(64), nullable=False)
+    declared_effects_payload: Mapped[str] = mapped_column(Text, nullable=False)
+    state: Mapped[str] = mapped_column(String(32), nullable=False)
+    effect_settlement: Mapped[str | None] = mapped_column(String(32))
+    result_payload: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
     updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
 
 
@@ -798,6 +826,167 @@ class LocalRunRepository:
             run = session.get(RunRow, run_id)
             return run is not None and run.cancellation_requested
 
+    def reserve_planned_call(
+        self,
+        *,
+        invocation_id: str,
+        run_id: str,
+        task_attempt_id: str,
+        planned_call_id: str,
+        request_fingerprint: str,
+        tool_id: str,
+        tool_version: str,
+        effect_class: str,
+        declared_effects: tuple[str, ...],
+    ) -> ToolResultEnvelope | None:
+        """Reserve one accepted call or replay its exact durable terminal result."""
+        with Session(self._engine) as session, session.begin():
+            self._require_run(session, run_id)
+            row = session.scalar(
+                select(PlannedToolCallRow).where(
+                    PlannedToolCallRow.run_id == run_id,
+                    PlannedToolCallRow.task_attempt_id == task_attempt_id,
+                    PlannedToolCallRow.planned_call_id == planned_call_id,
+                )
+            )
+            if row is None:
+                now = utc_now().isoformat()
+                session.add(
+                    PlannedToolCallRow(
+                        id=invocation_id,
+                        run_id=run_id,
+                        task_attempt_id=task_attempt_id,
+                        planned_call_id=planned_call_id,
+                        request_fingerprint=request_fingerprint,
+                        tool_id=tool_id,
+                        tool_version=tool_version,
+                        effect_class=effect_class,
+                        declared_effects_payload=json.dumps(declared_effects),
+                        state="reserved",
+                        effect_settlement=None,
+                        result_payload=None,
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+                return None
+            identity = (
+                row.id,
+                row.request_fingerprint,
+                row.tool_id,
+                row.tool_version,
+                row.effect_class,
+            )
+            expected = (
+                invocation_id,
+                request_fingerprint,
+                tool_id,
+                tool_version,
+                effect_class,
+            )
+            if identity != expected or tuple(json.loads(row.declared_effects_payload)) != (
+                declared_effects
+            ):
+                raise MishkanError(
+                    ErrorCode.DUPLICATE_RESULT,
+                    "planned call identity was reused for different content",
+                    details={
+                        "run_id": run_id,
+                        "task_attempt_id": task_attempt_id,
+                        "planned_call_id": planned_call_id,
+                    },
+                )
+            if row.state == CallStatus.COMPLETED.value and row.result_payload is not None:
+                return ToolResultEnvelope.model_validate_json(row.result_payload)
+            if row.state in {"dispatching", CallStatus.UNCERTAIN.value} or (
+                row.effect_settlement == EffectSettlement.UNCERTAIN.value
+            ):
+                raise MishkanError(
+                    ErrorCode.RUN_INTERRUPTED,
+                    "planned call has an unreconciled effect",
+                    details={
+                        "planned_call_id": planned_call_id,
+                        "state": row.state,
+                        "effect_settlement": row.effect_settlement,
+                        "automatic_retry": False,
+                    },
+                )
+            if row.state in {
+                CallStatus.FAILED.value,
+                CallStatus.CANCELLED.value,
+                CallStatus.REFUSED.value,
+            }:
+                if row.effect_settlement != EffectSettlement.ABSENT.value:
+                    raise MishkanError(
+                        ErrorCode.RUN_INTERRUPTED,
+                        "planned call cannot be retried without absent-effect proof",
+                        details={"planned_call_id": planned_call_id, "automatic_retry": False},
+                    )
+                row.state = "reserved"
+                row.effect_settlement = None
+                row.result_payload = None
+                row.updated_at = utc_now().isoformat()
+            return None
+
+    def mark_planned_call_dispatching(
+        self,
+        invocation_id: str,
+        request_fingerprint: str,
+    ) -> None:
+        """Persist the conservative crash boundary immediately before adapter dispatch."""
+        with Session(self._engine) as session, session.begin():
+            row = session.get(PlannedToolCallRow, invocation_id)
+            if row is None or row.request_fingerprint != request_fingerprint:
+                raise MishkanError(ErrorCode.DUPLICATE_RESULT, "planned call reservation differs")
+            if row.state != "reserved":
+                raise MishkanError(
+                    ErrorCode.REVISION_MISMATCH,
+                    "planned call is not reserved for dispatch",
+                    details={"state": row.state},
+                )
+            row.state = "dispatching"
+            row.updated_at = utc_now().isoformat()
+
+    def complete_planned_call(
+        self,
+        invocation_id: str,
+        request_fingerprint: str,
+        result: ToolResultEnvelope,
+        effect_settlement: EffectSettlement,
+    ) -> ToolResultEnvelope:
+        """Store the inspected terminal envelope before it can be accepted by CrewAI."""
+        payload = result.model_dump_json()
+        self._require_safe_content(payload)
+        with Session(self._engine) as session, session.begin():
+            row = session.get(PlannedToolCallRow, invocation_id)
+            if row is None or row.request_fingerprint != request_fingerprint:
+                raise MishkanError(ErrorCode.DUPLICATE_RESULT, "planned call reservation differs")
+            if row.result_payload is not None:
+                existing = ToolResultEnvelope.model_validate_json(row.result_payload)
+                if existing != result or row.effect_settlement != effect_settlement.value:
+                    raise MishkanError(
+                        ErrorCode.DUPLICATE_RESULT,
+                        "planned call completion differs from its durable result",
+                    )
+                return existing
+            if row.state not in {"reserved", "dispatching"}:
+                raise MishkanError(
+                    ErrorCode.REVISION_MISMATCH,
+                    "planned call cannot accept a completion from its current state",
+                    details={"state": row.state},
+                )
+            row.state = result.status.value
+            row.effect_settlement = effect_settlement.value
+            row.result_payload = payload
+            row.updated_at = utc_now().isoformat()
+            return result
+
+    def unresolved_planned_effects(self, run_id: str) -> tuple[str, ...]:
+        """Return blockers derived only from the authoritative planned-call journal."""
+        with Session(self._engine) as session:
+            self._require_run(session, run_id)
+            return self._unresolved_planned_effects(session, run_id)
+
     def settle_cancellation(self, run_id: str) -> RunSnapshot:
         """Settle active tasks only after their local execution boundary has returned."""
         with Session(self._engine) as session, session.begin():
@@ -836,27 +1025,44 @@ class LocalRunRepository:
     def recover_interrupted(
         self,
         run_id: str,
-        *,
-        uncertain_effects: tuple[str, ...] = (),
     ) -> tuple[str, ...]:
-        """Release interrupted work only after callers reconcile every stateful effect."""
-        if uncertain_effects:
-            with Session(self._engine) as session, session.begin():
-                run = self._require_run(session, run_id)
-                if run.status != RunState.BLOCKED.value:
-                    run.status = RunState.BLOCKED.value
-                    run.revision += 1
-                    run.updated_at = utc_now().isoformat()
-                    self._add_event(
-                        session,
-                        run_id,
-                        "run.blocked",
-                        {"effect_count": len(uncertain_effects)},
-                    )
+        """Release work only after the daemon proves every planned effect retry-safe."""
+        with Session(self._engine) as session, session.begin():
+            run = self._require_run(session, run_id)
+            retry_safe = session.scalars(
+                select(PlannedToolCallRow).where(
+                    PlannedToolCallRow.run_id == run_id,
+                    PlannedToolCallRow.state == "dispatching",
+                    PlannedToolCallRow.declared_effects_payload == "[]",
+                )
+            ).all()
+            for call in retry_safe:
+                call.state = CallStatus.FAILED.value
+                call.effect_settlement = EffectSettlement.ABSENT.value
+                call.updated_at = utc_now().isoformat()
+            if retry_safe:
+                self._add_event(
+                    session,
+                    run_id,
+                    "run.retry_safe_calls_reconciled",
+                    {"call_count": len(retry_safe)},
+                )
+            unresolved_effects = self._unresolved_durable_effects(session, run_id)
+            if unresolved_effects and run.status != RunState.BLOCKED.value:
+                run.status = RunState.BLOCKED.value
+                run.revision += 1
+                run.updated_at = utc_now().isoformat()
+                self._add_event(
+                    session,
+                    run_id,
+                    "run.blocked",
+                    {"effect_count": len(unresolved_effects)},
+                )
+        if unresolved_effects:
             raise MishkanError(
                 ErrorCode.RUN_INTERRUPTED,
                 "run contains unreconciled stateful effects",
-                details={"effects": uncertain_effects, "automatic_retry": False},
+                details={"effects": unresolved_effects, "automatic_retry": False},
             )
         with Session(self._engine) as session, session.begin():
             run = self._require_run(session, run_id)
@@ -892,6 +1098,70 @@ class LocalRunRepository:
                     session, run_id, "run.interrupted_tasks_released", {"tasks": released}
                 )
             return tuple(released)
+
+    @staticmethod
+    def _unresolved_planned_effects(session: Session, run_id: str) -> tuple[str, ...]:
+        rows = session.scalars(
+            select(PlannedToolCallRow)
+            .where(
+                PlannedToolCallRow.run_id == run_id,
+                (
+                    PlannedToolCallRow.state.in_(("dispatching", CallStatus.UNCERTAIN.value))
+                    | (PlannedToolCallRow.effect_settlement == EffectSettlement.UNCERTAIN.value)
+                ),
+            )
+            .order_by(
+                PlannedToolCallRow.task_attempt_id,
+                PlannedToolCallRow.planned_call_id,
+            )
+        ).all()
+        return tuple(
+            f"planned-call:{row.task_attempt_id}:{row.planned_call_id}:{row.state}" for row in rows
+        )
+
+    @classmethod
+    def _unresolved_durable_effects(cls, session: Session, run_id: str) -> tuple[str, ...]:
+        blockers = list(cls._unresolved_planned_effects(session, run_id))
+        execution_rows = session.scalars(
+            select(ExecutionSessionRow).where(ExecutionSessionRow.run_id == run_id)
+        ).all()
+        for execution_row in execution_rows:
+            try:
+                request = json.loads(execution_row.request_payload)
+                declared = request.get("declared_effects", [])
+            except (AttributeError, json.JSONDecodeError):
+                blockers.append(f"execution:{execution_row.id}:corrupt")
+                continue
+            stateful_active = execution_row.state in {
+                "starting",
+                "running",
+                "ready",
+                "cancelling",
+            } and bool(declared)
+            if (
+                stateful_active
+                or execution_row.state in {"uncertain"}
+                or execution_row.effect_settlement == EffectSettlement.UNCERTAIN.value
+            ):
+                blockers.append(f"execution:{execution_row.id}:{execution_row.state}")
+        browser_rows = session.scalars(
+            select(BrowserSessionRow).where(BrowserSessionRow.run_id == run_id)
+        ).all()
+        for browser_row in browser_rows:
+            if browser_row.state == "uncertain":
+                blockers.append(f"browser:{browser_row.id}:{browser_row.state}")
+        mcp_rows = session.scalars(select(McpCallRow)).all()
+        for mcp_row in mcp_rows:
+            try:
+                request = json.loads(mcp_row.request_payload)
+            except json.JSONDecodeError:
+                blockers.append(f"mcp:{mcp_row.id}:corrupt")
+                continue
+            if not isinstance(request, dict) or request.get("run_id") != run_id:
+                continue
+            if mcp_row.state in {"dispatching", "running", "cancel_requested", "uncertain"}:
+                blockers.append(f"mcp:{mcp_row.id}:{mcp_row.state}")
+        return tuple(dict.fromkeys(blockers))
 
     def task_states(self, run_id: str) -> dict[str, str]:
         with Session(self._engine) as session:

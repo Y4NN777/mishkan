@@ -18,7 +18,7 @@ def _write_previous_schema(path: Path, version: str) -> None:
     path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
 
 
-def test_explicit_config_migration_adds_public_i04_surfaces(tmp_path: Path) -> None:
+def test_explicit_config_migration_adds_public_integration_surfaces(tmp_path: Path) -> None:
     source = tmp_path / "config.yaml"
     _write_previous_schema(source, "1.2")
 
