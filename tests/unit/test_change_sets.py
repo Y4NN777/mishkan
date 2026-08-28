@@ -553,3 +553,37 @@ def test_move_crash_recovery_uses_both_path_identities_without_replay(tmp_path: 
     assert not source.exists()
     assert (workspace / "destination.txt").read_text() == "content"
     assert (workspace / "destination.txt").stat().st_mode & 0o777 == 0o640
+
+
+def test_move_validation_failure_rolls_back_without_losing_the_source(tmp_path: Path) -> None:
+    service, _artifacts, workspace = _services(tmp_path)
+    source = workspace / "source.txt"
+    source.write_text("content")
+    change = ChangeSet(
+        scope="workspace",
+        declared_effects=("filesystem.move",),
+        operations=(
+            ChangeOperation(
+                kind=ChangeOperationKind.MOVE,
+                path="source.txt",
+                destination="destination.txt",
+                precondition=PreconditionKind.DIGEST,
+                precondition_value=_digest(b"content"),
+                destination_precondition=PreconditionKind.ABSENT,
+            ),
+        ),
+        validations=(
+            ChangeValidation(
+                kind=ChangeValidationKind.DIGEST,
+                path="destination.txt",
+                expected_value=_digest(b"different"),
+            ),
+        ),
+    )
+
+    service.plan(change)
+    result = service.apply(change.id)
+
+    assert result.state is ChangeSetState.ROLLED_BACK
+    assert source.read_text() == "content"
+    assert not (workspace / "destination.txt").exists()
