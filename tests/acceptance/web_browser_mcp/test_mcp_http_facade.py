@@ -118,7 +118,7 @@ async def test_official_sdk_uses_authenticated_stateless_daemon_facade(tmp_path:
     assert health.isError is False
     assert health.structuredContent == {
         "status": "ready",
-        "schema": "tool_registry_record_identity_v1",
+        "schema": "artifact_record_identity_v1",
     }
     assert result.isError is False
     assert result.structuredContent is not None

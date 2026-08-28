@@ -140,3 +140,46 @@ def test_registry_record_identity_migration_backfills_existing_entries(tmp_path:
             )
         ).scalar_one()
     assert str(UUID(record_id)) == record_id
+
+
+def test_artifact_auxiliary_record_identity_migration_backfills_existing_rows(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "artifacts.db"
+    config = _migration_config(database)
+    command.upgrade(config, "tool_registry_record_identity_v1")
+    artifact_id = "11111111-1111-4111-8111-111111111111"
+    with create_engine(f"sqlite:///{database}").begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO artifact_references "
+                "(scope, name, artifact_id, revision, prior_artifact_id, prior_revision, "
+                "updated_at) "
+                "VALUES ('run:test', 'latest', :artifact_id, 1, NULL, NULL, :timestamp)"
+            ),
+            {"artifact_id": artifact_id, "timestamp": "2026-08-28T00:00:00+00:00"},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO artifact_holds (artifact_id, reason, created_at) "
+                "VALUES (:artifact_id, 'test hold', :timestamp)"
+            ),
+            {"artifact_id": artifact_id, "timestamp": "2026-08-28T00:00:00+00:00"},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO artifact_pins (artifact_id, created_at) "
+                "VALUES (:artifact_id, :timestamp)"
+            ),
+            {"artifact_id": artifact_id, "timestamp": "2026-08-28T00:00:00+00:00"},
+        )
+
+    command.upgrade(config, "head")
+
+    with create_engine(f"sqlite:///{database}").connect() as connection:
+        identities = [
+            connection.execute(text(f"SELECT record_id FROM {table}")).scalar_one()
+            for table in ("artifact_references", "artifact_holds", "artifact_pins")
+        ]
+    assert len(set(identities)) == 3
+    assert all(str(UUID(identity)) == identity for identity in identities)

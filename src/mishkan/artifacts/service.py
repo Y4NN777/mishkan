@@ -530,6 +530,7 @@ class DurableArtifactService:
             ).all()
             return tuple(
                 WorkingReference(
+                    id=UUID(row.record_id),
                     scope=row.scope,
                     name=row.name,
                     artifact_reference=f"artifact:{row.artifact_id}",
@@ -575,6 +576,7 @@ class DurableArtifactService:
                 row = ArtifactReferenceRow(
                     scope=scope,
                     name=name,
+                    record_id=str(new_id()),
                     artifact_id=str(artifact_id),
                     revision=1,
                     prior_artifact_id=None,
@@ -590,6 +592,7 @@ class DurableArtifactService:
                 row.updated_at = now.isoformat()
             session.flush()
             return WorkingReference(
+                id=UUID(row.record_id),
                 scope=scope,
                 name=name,
                 artifact_reference=artifact_reference,
@@ -615,7 +618,10 @@ class DurableArtifactService:
                     )
                 return self._hold_model(existing)
             row = ArtifactHoldRow(
-                artifact_id=str(artifact_id), reason=reason, created_at=utc_now().isoformat()
+                artifact_id=str(artifact_id),
+                record_id=str(new_id()),
+                reason=reason,
+                created_at=utc_now().isoformat(),
             )
             session.add(row)
             session.flush()
@@ -649,7 +655,11 @@ class DurableArtifactService:
                 raise MishkanError(ErrorCode.ARTIFACT, "artifact pin target does not exist")
             row = session.get(ArtifactPinRow, str(artifact_id))
             if row is None:
-                row = ArtifactPinRow(artifact_id=str(artifact_id), created_at=utc_now().isoformat())
+                row = ArtifactPinRow(
+                    artifact_id=str(artifact_id),
+                    record_id=str(new_id()),
+                    created_at=utc_now().isoformat(),
+                )
                 session.add(row)
                 session.flush()
             return self._pin_model(row)
@@ -1343,6 +1353,7 @@ class DurableArtifactService:
     @staticmethod
     def _hold_model(row: ArtifactHoldRow) -> ArtifactHold:
         return ArtifactHold(
+            id=UUID(row.record_id),
             artifact_reference=f"artifact:{row.artifact_id}",
             reason=row.reason,
             created_at=datetime.fromisoformat(row.created_at),
@@ -1351,6 +1362,7 @@ class DurableArtifactService:
     @staticmethod
     def _pin_model(row: ArtifactPinRow) -> ArtifactPin:
         return ArtifactPin(
+            id=UUID(row.record_id),
             artifact_reference=f"artifact:{row.artifact_id}",
             created_at=datetime.fromisoformat(row.created_at),
         )

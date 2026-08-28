@@ -307,6 +307,7 @@ class ArtifactReferenceRow(Base):
 
     scope: Mapped[str] = mapped_column(String(256), primary_key=True)
     name: Mapped[str] = mapped_column(String(256), primary_key=True)
+    record_id: Mapped[str] = mapped_column(String(36), nullable=False, unique=True)
     artifact_id: Mapped[str] = mapped_column(ForeignKey("artifacts.id"), nullable=False)
     revision: Mapped[int] = mapped_column(Integer, nullable=False)
     prior_artifact_id: Mapped[str | None] = mapped_column(String(36))
@@ -318,6 +319,7 @@ class ArtifactHoldRow(Base):
     __tablename__ = "artifact_holds"
 
     artifact_id: Mapped[str] = mapped_column(ForeignKey("artifacts.id"), primary_key=True)
+    record_id: Mapped[str] = mapped_column(String(36), nullable=False, unique=True)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[str] = mapped_column(String(40), nullable=False)
 
@@ -326,6 +328,7 @@ class ArtifactPinRow(Base):
     __tablename__ = "artifact_pins"
 
     artifact_id: Mapped[str] = mapped_column(ForeignKey("artifacts.id"), primary_key=True)
+    record_id: Mapped[str] = mapped_column(String(36), nullable=False, unique=True)
     created_at: Mapped[str] = mapped_column(String(40), nullable=False)
 
 

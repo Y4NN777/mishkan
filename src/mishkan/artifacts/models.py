@@ -9,7 +9,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from mishkan.domain.identity import DomainRecord
+from mishkan.domain.identity import DomainRecord, new_id
 from mishkan.domain.time import utc_now
 
 
@@ -146,6 +146,7 @@ class ArtifactCollection(ArtifactModel):
 
 class WorkingReference(ArtifactModel):
     schema_version: str = "1.0"
+    id: UUID = Field(default_factory=new_id)
     scope: str = Field(min_length=1, max_length=256)
     name: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,255}$")
     artifact_reference: str = Field(pattern=r"^artifact:[0-9a-f-]{36}$")
@@ -165,6 +166,7 @@ class WorkingReference(ArtifactModel):
 
 class ArtifactHold(ArtifactModel):
     schema_version: Literal["1.0"] = "1.0"
+    id: UUID = Field(default_factory=new_id)
     artifact_reference: str = Field(pattern=r"^artifact:[0-9a-f-]{36}$")
     reason: str = Field(min_length=1, max_length=2_048)
     created_at: datetime
@@ -172,6 +174,7 @@ class ArtifactHold(ArtifactModel):
 
 class ArtifactPin(ArtifactModel):
     schema_version: Literal["1.0"] = "1.0"
+    id: UUID = Field(default_factory=new_id)
     artifact_reference: str = Field(pattern=r"^artifact:[0-9a-f-]{36}$")
     created_at: datetime
 

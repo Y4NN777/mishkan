@@ -238,6 +238,7 @@ def test_working_reference_requires_compare_and_swap(tmp_path: Path) -> None:
         service.update_reference("run:1", "latest", second, expected_revision=0)
     assert conflict.value.envelope.code is ErrorCode.REVISION_MISMATCH
     updated = service.update_reference("run:1", "latest", second, expected_revision=1)
+    assert updated.id == current.id
     assert updated.revision == 2
     assert updated.prior_artifact_reference == first
     assert updated.prior_revision == 1
@@ -255,6 +256,7 @@ def test_collections_validate_paths_and_holds_root_gc(tmp_path: Path) -> None:
     with pytest.raises(MishkanError):
         service.create_collection({"../escape": kept})
     hold = service.hold(kept, "incident evidence")
+    assert service.hold(kept, "incident evidence").id == hold.id
     assert service.list_holds() == (hold,)
 
     plan = service.plan_gc(watermark=utc_now() + timedelta(seconds=1))
@@ -294,6 +296,7 @@ def test_pinned_derivation_roots_its_source_until_pin_release(tmp_path: Path) ->
     derived = service.commit_upload(upload.upload_id).reference
 
     pin = service.pin(derived)
+    assert service.pin(derived).id == pin.id
     assert service.list_pins() == (pin,)
     rooted = service.plan_gc(watermark=utc_now() + timedelta(seconds=1))
     assert source not in rooted.candidates
