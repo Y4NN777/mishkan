@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import stat
+from collections.abc import Iterator
 from datetime import datetime, timedelta
 from pathlib import Path, PurePosixPath
 from typing import Literal, Protocol, cast
@@ -386,7 +387,49 @@ class DurableArtifactService:
             )
 
     def read_bytes(self, reference: str) -> bytes:
-        return self.body_path(reference).read_bytes()
+        return b"".join(self.iter_bytes(reference, chunk_size=self._max_chunk_bytes))
+
+    def iter_bytes(self, reference: str, *, chunk_size: int) -> Iterator[bytes]:
+        """Verify and stream one immutable body through the same no-follow descriptor."""
+        if chunk_size < 1 or chunk_size > self._max_chunk_bytes:
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT,
+                "artifact stream chunk exceeds the configured backpressure bound",
+                details={"chunk_size": chunk_size, "maximum": self._max_chunk_bytes},
+            )
+        manifest = self.manifest(reference)
+        if manifest.lifecycle is not ArtifactLifecycle.AVAILABLE:
+            raise MishkanError(
+                ErrorCode.ARTIFACT,
+                "artifact body is not available",
+                details={"lifecycle": manifest.lifecycle.value},
+            )
+        blob = self._safe_blob(manifest.storage_ref)
+        try:
+            descriptor = os.open(blob, os.O_RDONLY | os.O_NOFOLLOW)
+        except OSError as exc:
+            self._set_lifecycle(manifest.id, ArtifactLifecycle.MISSING)
+            raise MishkanError(ErrorCode.ARTIFACT, "artifact body is missing") from exc
+        try:
+            observed = os.fstat(descriptor)
+            if not stat.S_ISREG(observed.st_mode):
+                self._set_lifecycle(manifest.id, ArtifactLifecycle.CORRUPT)
+                raise MishkanError(ErrorCode.ARTIFACT, "artifact body is not a regular file")
+            digest = hashlib.sha256()
+            size = 0
+            while chunk := os.read(descriptor, self._max_chunk_bytes):
+                digest.update(chunk)
+                size += len(chunk)
+            if size != manifest.size_bytes or f"sha256:{digest.hexdigest()}" != manifest.digest:
+                self._set_lifecycle(manifest.id, ArtifactLifecycle.CORRUPT)
+                raise MishkanError(
+                    ErrorCode.ARTIFACT, "artifact body failed integrity verification"
+                )
+            os.lseek(descriptor, 0, os.SEEK_SET)
+            while chunk := os.read(descriptor, chunk_size):
+                yield chunk
+        finally:
+            os.close(descriptor)
 
     def upload(self, upload_id: UUID) -> UploadSession:
         with Session(self._engine) as session:

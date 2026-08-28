@@ -74,6 +74,27 @@ def test_chunked_upload_is_invisible_until_verified_commit(tmp_path: Path) -> No
     assert manifest.facts.authorization == "contextual_policy_required"
 
 
+def test_stream_uses_one_verified_no_follow_descriptor_during_path_replacement(
+    tmp_path: Path,
+) -> None:
+    service = _service(tmp_path)
+    content = b"immutable-stream"
+    reference = _upload(service, content)
+    blob = service.body_path(reference)
+    stream = service.iter_bytes(reference, chunk_size=4)
+
+    first = next(stream)
+    blob.unlink()
+    blob.write_bytes(b"replaced")
+    observed = first + b"".join(stream)
+
+    assert observed == content
+    with pytest.raises(MishkanError) as caught:
+        service.read_bytes(reference)
+    assert caught.value.envelope.code is ErrorCode.ARTIFACT
+    assert service.manifest(reference).lifecycle is ArtifactLifecycle.CORRUPT
+
+
 def test_security_scan_blocks_secret_split_across_upload_chunks(tmp_path: Path) -> None:
     database = tmp_path / "mishkan.db"
     SchemaManager(database).initialize()

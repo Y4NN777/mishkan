@@ -664,12 +664,12 @@ def create_app(config: MishkanConfig) -> FastAPI:
         _principal: TokenRecord = authenticated,
     ) -> StreamingResponse:
         manifest = artifacts.manifest(f"artifact:{artifact_id}")
-        path = artifacts.body_path(manifest.reference)
 
         async def body() -> AsyncIterator[bytes]:
-            with path.open("rb") as stream:
-                while chunk := stream.read(artifact_config.chunk_bytes):
-                    yield chunk
+            for chunk in artifacts.iter_bytes(
+                manifest.reference, chunk_size=artifact_config.chunk_bytes
+            ):
+                yield chunk
 
         return StreamingResponse(
             body(),
