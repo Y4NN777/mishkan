@@ -8,7 +8,7 @@
 
 **Cross-baseline audit checkpoint:** `6a73e98`, validated locally 2026-08-28
 
-**Current remote gate:** `c69e192`, validated 2026-08-28
+**Current remote gate and promoted checkpoint:** `3481ca5`, validated 2026-08-28
 
 **Identity:** `Y4NN777 <axel.studiesmail@gmail.com>`
 
@@ -82,8 +82,8 @@ discovery alone.
 
 | Check | Observed result |
 |---|---|
-| Full deterministic suite excluding external-model markers | 398 passed, 1 skipped, 2 deselected |
-| Global branch coverage | 80.23%, threshold 80% |
+| Full deterministic suite excluding external-model markers | 400 passed, 1 skipped, 2 deselected |
+| Global branch coverage | 80.24%, threshold 80% |
 | Real Playwright Chromium acceptance fixture | Passed |
 | Real MCP STDIO transport fixture | Passed |
 | Real MCP Streamable HTTP transport fixture | Passed |
@@ -190,11 +190,24 @@ GitHub Actions run
 `c69e192867413afc07f30992f8ad7f6fa2eaaae2`. All six Linux/macOS jobs on Python 3.11, 3.12, and
 3.13 passed the deterministic suite with branch coverage, Ruff, formatting, strict typing,
 deterministic schema export, and distribution build. This run contains code checkpoint `6a73e98`
-and the corrected validation baseline; it is the remote evidence for the current I04 gate.
+and the first corrected validation baseline; it is retained as the audit-checkpoint evidence.
+
+The first promotion run on `develop`,
+[`33195052261`](https://github.com/Y4NN777/mishkan/actions/runs/33195052261), exposed a transient
+Chromium `Page.captureScreenshot` refusal on Python 3.13/Ubuntu. The same real-browser test passed
+alone, proving a capture race rather than an unsupported platform or deterministic contract error.
+Checkpoint `3481ca5` retries only that exact read-only Chromium refusal once; other Playwright errors
+remain immediate failures. Regression tests prove both behaviors. The full Python 3.13 local gate
+then passed with 400 tests and 80.24% branch coverage.
+
+The corrected topic matrix
+[`33203400309`](https://github.com/Y4NN777/mishkan/actions/runs/33203400309) and promoted `develop`
+matrix [`33203711009`](https://github.com/Y4NN777/mishkan/actions/runs/33203711009) both passed all
+six Linux/macOS Python 3.11–3.13 jobs at `3481ca59ca663512d801a5dc5170599785bf2e9f`.
 
 ## Acceptance boundary
 
 D-039 records the original I04 acceptance on 2026-08-27 and the corrected current-baseline
-revalidation on 2026-08-28. The requested conformance audit is implemented at `6a73e98`; its local
-gate and the six-job remote matrix at `c69e192` are green. I04 may now follow topic-to-`develop`.
-I05 still waits for that promotion.
+revalidation on 2026-08-28. The requested conformance audit is implemented at `6a73e98`; the
+promotion correction, 400-test local gate, topic matrix, and `develop` matrix are green at
+`3481ca5`. I04 is promoted to `develop`. I05 awaits explicit engineer authorization.
