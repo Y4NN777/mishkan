@@ -182,7 +182,7 @@ printf '%s|%s' "$joined" "${matches[*]}"
 
 
 @pytest.mark.commands
-def test_bash_sources_only_explicit_startup_and_records_declared_write_uncertain(
+def test_bash_sources_only_explicit_startup_files(
     tmp_path: Path,
 ) -> None:
     startup = tmp_path / "shell" / "project.bash"
@@ -192,27 +192,23 @@ def test_bash_sources_only_explicit_startup_and_records_declared_write_uncertain
 read -r -d '' payload <<'EOF' || true
 heredoc
 EOF
-printf '%s:%s\n' "$FROM_PROFILE" "$payload" > generated.txt
-printf '%s' "$FROM_PROFILE"
+printf '%s:%s' "$FROM_PROFILE" "$payload"
 """
     value = arguments(
         script,
         shell_profile=profile(startup_files=["shell/project.bash"]),
-        declared_paths=["generated.txt"],
-        declared_effects=["repository.write"],
     )
     result = gateway(tmp_path).invoke(shell_context(tmp_path, value), value, targets(value))
 
-    assert result.status is CallStatus.UNCERTAIN
+    assert result.status is CallStatus.COMPLETED
     assert result.output is not None
     assert result.output["status"] == "completed"
-    assert result.output["effect_settlement"] == "uncertain"
-    assert (tmp_path / "generated.txt").read_text(encoding="utf-8") == "loaded:heredoc\n"
+    assert result.output["stdout_preview"] == "loaded:heredoc"
     assert result.adapter_evidence["startup_files"] == ["shell/project.bash"]
 
 
 @pytest.mark.commands
-def test_bash_filesystem_mutation_is_verified_with_a_diff_artifact(tmp_path: Path) -> None:
+def test_host_bash_filesystem_mutation_is_refused_before_effect(tmp_path: Path) -> None:
     store = FilesystemArtifactStore(tmp_path / ".mishkan" / "artifacts", max_artifact_bytes=4096)
     value = arguments(
         "printf 'verified' > generated.txt",
@@ -224,14 +220,9 @@ def test_bash_filesystem_mutation_is_verified_with_a_diff_artifact(tmp_path: Pat
         shell_context(tmp_path, value), value, targets(value)
     )
 
-    assert result.status is CallStatus.COMPLETED
-    assert result.output is not None
-    assert result.output["changed_paths"] == ["generated.txt"]
-    assert result.output["scope_deviations"] == []
-    assert result.output["effect_settlement"] == "completed"
-    reference = result.output["effect_diff_artifact_ref"]
-    assert reference in result.external_references
-    assert b'"path": "generated.txt"' in store.read_bytes(reference)
+    assert result.status is CallStatus.REFUSED
+    assert result.error_code == "ERR-TOL-002"
+    assert not (tmp_path / "generated.txt").exists()
 
 
 @pytest.mark.commands
@@ -415,7 +406,7 @@ def test_bash_large_output_uses_the_same_immutable_artifact_surface(tmp_path: Pa
 
 
 @pytest.mark.commands
-def test_artifact_failure_preserves_an_already_uncertain_shell_effect(tmp_path: Path) -> None:
+def test_host_bash_refusal_precedes_artifact_persistence(tmp_path: Path) -> None:
     class FailingStore:
         def put_bytes(self, *_: Any, **__: Any) -> Any:
             raise MishkanError(ErrorCode.ARTIFACT, "injected artifact failure")
@@ -430,6 +421,6 @@ def test_artifact_failure_preserves_an_already_uncertain_shell_effect(tmp_path: 
         shell_context(tmp_path, value), value, targets(value)
     )
 
-    assert result.status is CallStatus.UNCERTAIN
-    assert result.error_code == "ERR-ART-001"
-    assert (tmp_path / "changed.txt").exists()
+    assert result.status is CallStatus.REFUSED
+    assert result.error_code == "ERR-TOL-002"
+    assert not (tmp_path / "changed.txt").exists()

@@ -447,7 +447,7 @@ def test_secret_output_never_reaches_artifact_storage(tmp_path: Path) -> None:
 
 
 @pytest.mark.commands
-def test_unverified_declared_effect_remains_uncertain_after_zero_exit(tmp_path: Path) -> None:
+def test_host_process_refuses_declared_effect_before_dispatch(tmp_path: Path) -> None:
     value = arguments(
         "-c",
         "print('process-exited')",
@@ -455,16 +455,14 @@ def test_unverified_declared_effect_remains_uncertain_after_zero_exit(tmp_path: 
     )
     result = gateway(tmp_path).invoke(process_context(tmp_path, value), value, targets(value))
 
-    assert result.status is CallStatus.UNCERTAIN
+    assert result.status is CallStatus.REFUSED
     assert result.retryable is False
-    assert result.output is not None
-    assert result.output["status"] == "completed"
-    assert result.output["effect_settlement"] == "uncertain"
-    assert result.output["declared_effects"] == ["repository.write"]
+    assert result.error_code == "ERR-TOL-002"
+    assert result.output is None
 
 
 @pytest.mark.commands
-def test_process_filesystem_mutation_captures_diff_and_verified_effect(tmp_path: Path) -> None:
+def test_host_process_refuses_filesystem_mutation_before_effect(tmp_path: Path) -> None:
     store = FilesystemArtifactStore(tmp_path / ".mishkan" / "artifacts", max_artifact_bytes=4096)
     value = arguments(
         "-c",
@@ -478,20 +476,13 @@ def test_process_filesystem_mutation_captures_diff_and_verified_effect(tmp_path:
         targets(value),
     )
 
-    assert result.status is CallStatus.COMPLETED
-    assert result.output is not None
-    assert result.output["observed_effects"] == ["filesystem.write"]
-    assert result.output["effect_settlement"] == "completed"
-    assert result.output["changed_paths"] == ["generated.txt"]
-    assert result.output["scope_deviations"] == []
-    assert result.output["effect_observation_complete"] is True
-    reference = result.output["effect_diff_artifact_ref"]
-    assert reference in result.external_references
-    assert b'"path": "generated.txt"' in store.read_bytes(reference)
+    assert result.status is CallStatus.REFUSED
+    assert result.error_code == "ERR-TOL-002"
+    assert not (tmp_path / "generated.txt").exists()
 
 
 @pytest.mark.commands
-def test_process_scope_deviation_remains_uncertain_and_visible(tmp_path: Path) -> None:
+def test_host_process_scope_escape_is_refused_before_effect(tmp_path: Path) -> None:
     (tmp_path / "allowed").mkdir()
     store = FilesystemArtifactStore(tmp_path / ".mishkan" / "artifacts", max_artifact_bytes=4096)
     value = arguments(
@@ -507,11 +498,9 @@ def test_process_scope_deviation_remains_uncertain_and_visible(tmp_path: Path) -
         targets(value),
     )
 
-    assert result.status is CallStatus.UNCERTAIN
-    assert result.output is not None
-    assert result.output["changed_paths"] == ["outside.txt"]
-    assert result.output["scope_deviations"] == ["outside.txt"]
-    assert result.output["effect_settlement"] == "uncertain"
+    assert result.status is CallStatus.REFUSED
+    assert result.error_code == "ERR-TOL-002"
+    assert not (tmp_path / "outside.txt").exists()
 
 
 @pytest.mark.commands

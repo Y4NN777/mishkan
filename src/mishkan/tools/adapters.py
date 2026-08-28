@@ -1392,6 +1392,15 @@ class DirectProcessAdapter:
     def _validate_common_constraints(self, request: ExecutionRequest, call: AdapterCall) -> None:
         assert request.timeout_seconds is not None
         assert request.output_policy is not None
+        if request.declared_effects:
+            raise MishkanError(
+                ErrorCode.TOOL_UNAVAILABLE,
+                "native host execution cannot contain a state-changing command",
+                details={
+                    "constraint": "filesystem-scope",
+                    "required_adapter": "isolated execution adapter",
+                },
+            )
         if not call.resources.network:
             raise MishkanError(
                 ErrorCode.TOOL_UNAVAILABLE,
