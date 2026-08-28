@@ -104,8 +104,17 @@ def create_app(config: MishkanConfig) -> FastAPI:
     security_dependency = Depends(security)
     daemon = config.daemon
     artifact_config = config.artifacts
+    inspection_source = config.inspection_profile
     assert daemon is not None
     assert artifact_config is not None
+    if inspection_source is None:
+        raise MishkanError(
+            ErrorCode.CONFIGURATION,
+            "daemon artifact persistence requires an inspection profile",
+        )
+    content_inspector = ContentInspector(
+        InspectionProfileLoader().load(inspection_source, paths.workspace)
+    )
     artifacts = DurableArtifactService(
         paths.database,
         paths.artifacts,
@@ -113,6 +122,7 @@ def create_app(config: MishkanConfig) -> FastAPI:
         max_chunk_bytes=artifact_config.chunk_bytes,
         busy_timeout_ms=persistence.busy_timeout_ms,
         staging_ttl_seconds=artifact_config.staging_ttl_seconds,
+        content_inspector=content_inspector,
     )
     changes = ChangeSetService(
         paths.database,
@@ -140,8 +150,7 @@ def create_app(config: MishkanConfig) -> FastAPI:
     mcp_config = config.mcp
     if mcp_config is not None:
         web_config = config.web
-        inspection_source = config.inspection_profile
-        if web_config is None or inspection_source is None:
+        if web_config is None:
             raise MishkanError(
                 ErrorCode.CONFIGURATION,
                 "daemon MCP mediation requires Web and inspection configuration",
@@ -155,7 +164,7 @@ def create_app(config: MishkanConfig) -> FastAPI:
             mcp_config,
             mcp_repository,
             McpSdkClient(web_config.network_profiles),
-            ContentInspector(InspectionProfileLoader().load(inspection_source, paths.workspace)),
+            content_inspector,
         )
         mcp_service.reconcile_after_restart()
         mcp_runner = McpServiceRunner(mcp_service)

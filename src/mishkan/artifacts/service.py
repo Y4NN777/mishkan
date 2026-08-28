@@ -5,9 +5,10 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import stat
 from datetime import datetime, timedelta
 from pathlib import Path, PurePosixPath
-from typing import Literal, cast
+from typing import Literal, Protocol, cast
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -58,6 +59,14 @@ from mishkan.persistence.sqlite import (
 )
 
 
+class ArtifactContentInspector(Protocol):
+    def require_safe_file(
+        self,
+        path: Path,
+        resolved_secrets: tuple[str, ...] = (),
+    ) -> None: ...
+
+
 class DurableArtifactService:
     """Keep authoritative metadata transactional and bodies immutable in local CAS."""
 
@@ -70,6 +79,7 @@ class DurableArtifactService:
         max_chunk_bytes: int,
         busy_timeout_ms: int = 5_000,
         staging_ttl_seconds: int | None = None,
+        content_inspector: ArtifactContentInspector | None = None,
     ) -> None:
         SchemaManager(database).require_current()
         self._root = root.resolve()
@@ -79,6 +89,7 @@ class DurableArtifactService:
         self._max_artifact_bytes = max_artifact_bytes
         self._max_chunk_bytes = max_chunk_bytes
         self._staging_ttl_seconds = staging_ttl_seconds
+        self._content_inspector = content_inspector
         for directory in (self._blobs, self._staging):
             directory.mkdir(parents=True, exist_ok=True)
         self._engine = create_local_engine(database, busy_timeout_ms=busy_timeout_ms)
@@ -194,16 +205,26 @@ class DurableArtifactService:
             if row.offset + len(content) > row.expected_size:
                 raise MishkanError(ErrorCode.ARTIFACT, "artifact chunk exceeds expected size")
             staged = self._staging_path(row)
-            observed = staged.stat().st_size
-            if observed != row.offset:
+            try:
+                descriptor = os.open(staged, os.O_WRONLY | os.O_APPEND | os.O_NOFOLLOW)
+            except OSError as exc:
                 row.state = "uncertain"
                 raise MishkanError(
                     ErrorCode.ARTIFACT,
-                    "artifact staging body differs from its durable cursor",
-                    details={"durable_offset": row.offset, "observed_size": observed},
-                )
-            descriptor = os.open(staged, os.O_WRONLY | os.O_APPEND | os.O_NOFOLLOW)
+                    "artifact staging body could not be opened without following links",
+                ) from exc
             try:
+                metadata = os.fstat(descriptor)
+                if not stat.S_ISREG(metadata.st_mode) or metadata.st_size != row.offset:
+                    row.state = "uncertain"
+                    raise MishkanError(
+                        ErrorCode.ARTIFACT,
+                        "artifact staging body differs from its durable cursor",
+                        details={
+                            "durable_offset": row.offset,
+                            "observed_size": metadata.st_size,
+                        },
+                    )
                 written = os.write(descriptor, content)
                 if written != len(content):
                     raise OSError("short artifact chunk write")
@@ -224,26 +245,21 @@ class DurableArtifactService:
             if row.state != "staging":
                 raise MishkanError(ErrorCode.ARTIFACT, "artifact upload is not committable")
             staged = self._staging_path(row)
-            content_digest, size = self._hash_file(staged)
-            observed_digest = f"sha256:{content_digest}"
-            if size != row.expected_size or observed_digest != row.expected_digest:
-                raise MishkanError(
-                    ErrorCode.ARTIFACT,
-                    "artifact upload failed size or digest verification",
-                    details={
-                        "expected_size": row.expected_size,
-                        "observed_size": size,
-                        "expected_digest": row.expected_digest,
-                        "observed_digest": observed_digest,
-                    },
-                )
+            content_digest = row.expected_digest.removeprefix("sha256:")
+            size = row.expected_size
             storage_ref = f"sha256/{content_digest[:2]}/{content_digest[2:]}"
             destination = self._safe_blob(storage_ref)
             destination.parent.mkdir(parents=True, exist_ok=True)
-            self._commit_staged_blob(staged, destination, content_digest, size)
+            self._commit_staged_blob(
+                staged,
+                destination,
+                content_digest,
+                size,
+                self._content_inspector,
+            )
             metadata = json.loads(row.metadata_payload)
             manifest = ArtifactManifest(
-                digest=observed_digest,
+                digest=f"sha256:{content_digest}",
                 size_bytes=size,
                 declared_media_type=row.media_type,
                 detected_media_type=None,
@@ -255,6 +271,11 @@ class DurableArtifactService:
                 storage_ref=storage_ref,
                 facts=ArtifactFacts(
                     integrity=ArtifactFactState.PASSED,
+                    security_scan=(
+                        ArtifactFactState.PASSED
+                        if self._content_inspector is not None
+                        else ArtifactFactState.NOT_EVALUATED
+                    ),
                     sensitivity=str(metadata["sensitivity"]),
                     availability=ArtifactAvailability.AVAILABLE,
                 ),
@@ -1023,10 +1044,13 @@ class DurableArtifactService:
         ).model_dump_json()
 
     def _staging_path(self, row: ArtifactUploadRow) -> Path:
-        path = (self._staging / row.staging_path).resolve()
-        if not path.is_relative_to(self._staging) or path.parent != self._staging:
+        expected_name = f"{row.id}.upload"
+        if (
+            row.staging_path != expected_name
+            or PurePosixPath(row.staging_path).name != expected_name
+        ):
             raise MishkanError(ErrorCode.ARTIFACT, "artifact staging path escaped its root")
-        return path
+        return self._staging / expected_name
 
     def _safe_blob(self, storage_ref: str) -> Path:
         path = (self._blobs / storage_ref).resolve()
@@ -1056,27 +1080,114 @@ class DurableArtifactService:
         )
 
     @staticmethod
-    def _commit_staged_blob(staged: Path, destination: Path, digest: str, size: int) -> None:
+    def _commit_staged_blob(
+        staged: Path,
+        destination: Path,
+        digest: str,
+        size: int,
+        inspector: ArtifactContentInspector | None,
+    ) -> None:
         try:
-            os.link(staged, destination, follow_symlinks=False)
+            source_descriptor = os.open(staged, os.O_RDONLY | os.O_NOFOLLOW)
+        except OSError as exc:
+            raise MishkanError(
+                ErrorCode.ARTIFACT,
+                "artifact staging body could not be opened without following links",
+            ) from exc
+        source_stat = os.fstat(source_descriptor)
+        if not stat.S_ISREG(source_stat.st_mode):
+            os.close(source_descriptor)
+            raise MishkanError(ErrorCode.ARTIFACT, "artifact staging body is not a regular file")
+        temporary = destination.parent / f".{destination.name}.{new_id()}.tmp"
+        try:
+            target_descriptor = os.open(
+                temporary,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                0o600,
+            )
+        except Exception:
+            os.close(source_descriptor)
+            raise
+        observed_digest = hashlib.sha256()
+        observed_size = 0
+        try:
+            while chunk := os.read(source_descriptor, 1024 * 1024):
+                observed_size += len(chunk)
+                observed_digest.update(chunk)
+                view = memoryview(chunk)
+                while view:
+                    written = os.write(target_descriptor, view)
+                    if written < 1:
+                        raise OSError("short artifact CAS write")
+                    view = view[written:]
+            os.fsync(target_descriptor)
+        except Exception:
+            temporary.unlink(missing_ok=True)
+            raise
+        finally:
+            os.close(target_descriptor)
+            os.close(source_descriptor)
+        observed_digest_value = observed_digest.hexdigest()
+        if observed_digest_value != digest or observed_size != size:
+            temporary.unlink(missing_ok=True)
+            raise MishkanError(
+                ErrorCode.ARTIFACT,
+                "artifact upload failed size or digest verification",
+                details={
+                    "expected_size": size,
+                    "observed_size": observed_size,
+                    "expected_digest": f"sha256:{digest}",
+                    "observed_digest": f"sha256:{observed_digest_value}",
+                },
+            )
+        try:
+            if inspector is not None:
+                inspector.require_safe_file(temporary)
+            try:
+                os.link(temporary, destination, follow_symlinks=False)
+            except FileExistsError:
+                try:
+                    existing_digest, existing_size = DurableArtifactService._hash_file(destination)
+                except OSError as exc:
+                    raise MishkanError(
+                        ErrorCode.ARTIFACT,
+                        "artifact CAS destination is not a readable regular file",
+                    ) from exc
+                if existing_digest != digest or existing_size != size:
+                    raise MishkanError(
+                        ErrorCode.ARTIFACT, "artifact CAS collision was detected"
+                    ) from None
             descriptor = os.open(destination.parent, os.O_RDONLY)
             try:
                 os.fsync(descriptor)
             finally:
                 os.close(descriptor)
-        except FileExistsError:
-            observed_digest, observed_size = DurableArtifactService._hash_file(destination)
-            if observed_digest != digest or observed_size != size:
+            try:
+                current = os.stat(staged, follow_symlinks=False)
+            except FileNotFoundError as exc:
                 raise MishkanError(
-                    ErrorCode.ARTIFACT, "artifact CAS collision was detected"
-                ) from None
-        staged.unlink(missing_ok=True)
+                    ErrorCode.ARTIFACT,
+                    "artifact staging body changed during commit",
+                ) from exc
+            if (
+                current.st_dev != source_stat.st_dev
+                or current.st_ino != source_stat.st_ino
+                or not stat.S_ISREG(current.st_mode)
+            ):
+                raise MishkanError(
+                    ErrorCode.ARTIFACT,
+                    "artifact staging body changed during commit",
+                )
+            staged.unlink()
+        finally:
+            temporary.unlink(missing_ok=True)
 
     @staticmethod
     def _hash_file(path: Path) -> tuple[str, int]:
         digest = hashlib.sha256()
         size = 0
-        with path.open("rb") as stream:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        with os.fdopen(descriptor, "rb") as stream:
             for chunk in iter(lambda: stream.read(1024 * 1024), b""):
                 size += len(chunk)
                 digest.update(chunk)

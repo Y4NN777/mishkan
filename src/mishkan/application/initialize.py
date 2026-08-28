@@ -82,6 +82,7 @@ class MishkanInitializer:
                 max_chunk_bytes=artifact_config.chunk_bytes,
                 busy_timeout_ms=busy_timeout_ms,
                 staging_ttl_seconds=artifact_config.staging_ttl_seconds,
+                content_inspector=inspector,
             )
             runtime = build_capability_runtime(
                 config,

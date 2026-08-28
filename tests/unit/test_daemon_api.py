@@ -538,12 +538,94 @@ async def test_artifact_upload_commands_publish_only_verified_content(tmp_path: 
     assert opened.status_code == 200
     assert chunked.status_code == 200
     assert committed.status_code == 200
+    assert committed.json()["payload"]["facts"]["security_scan"] == "passed"
     assert body.content == content
     assert held.status_code == 200
     assert collected.status_code == 200
     assert holds.json()[0]["reason"] == "acceptance evidence"
     assert collections.json()[0]["ordered_paths"] == ["evidence/output.txt"]
     assert released.status_code == 200
+
+
+@pytest.mark.anyio
+@pytest.mark.secrets
+async def test_artifact_secret_is_refused_with_non_secret_durable_evidence(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    paths = DaemonBootstrap().setup(config)
+    token = TokenFile(paths.token_file).read().token
+    headers = {"Authorization": f"Bearer {token}"}
+    content = b"api_key=must-never-become-an-artifact"
+    provenance = {
+        "producer_identity": "engineer",
+        "run_id": "run-secret",
+        "task_attempt_id": "attempt-secret",
+        "call_id": "call-secret",
+        "capability": "terminal.process",
+        "channel": "stdout",
+    }
+    transport = httpx.ASGITransport(app=create_app(config))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        opened = await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=ApplicationCommand(
+                command_type="artifact.upload.open",
+                actor_id="local-operator",
+                target_type="artifact_service",
+                payload={
+                    "expected_size": len(content),
+                    "expected_digest": f"sha256:{hashlib.sha256(content).hexdigest()}",
+                    "media_type": "text/plain",
+                    "provenance": provenance,
+                },
+            ).model_dump(mode="json"),
+        )
+        upload_id = opened.json()["payload"]["upload_id"]
+        await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=ApplicationCommand(
+                command_type="artifact.upload.chunk",
+                actor_id="local-operator",
+                target_type="artifact_upload",
+                target_id=upload_id,
+                payload={
+                    "offset": 0,
+                    "content_base64": base64.b64encode(content).decode(),
+                },
+            ).model_dump(mode="json"),
+        )
+        commit_command = ApplicationCommand(
+            command_type="artifact.upload.commit",
+            actor_id="local-operator",
+            target_type="artifact_upload",
+            target_id=upload_id,
+            payload={},
+        )
+        refused = await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=commit_command.model_dump(mode="json"),
+        )
+        replayed = await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=commit_command.model_dump(mode="json"),
+        )
+        artifacts = await client.get("/v1/artifacts", headers=headers)
+        events = await client.get("/v1/events", headers=headers)
+
+    assert refused.status_code == 200
+    assert refused.json()["status"] == "refused"
+    assert refused.json()["error"]["code"] == ErrorCode.SECRET_CONTENT
+    assert replayed.json() == refused.json()
+    assert artifacts.json() == []
+    final_event = events.json()["events"][-1]
+    assert final_event["event_type"] == "application.command_effect_unaccepted"
+    assert final_event["payload"]["error_code"] == ErrorCode.SECRET_CONTENT
+    assert content.decode() not in str(final_event)
 
 
 @pytest.mark.anyio

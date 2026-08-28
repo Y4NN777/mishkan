@@ -19,6 +19,7 @@ from mishkan.artifacts.service import DurableArtifactService
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.time import utc_now
 from mishkan.persistence import SchemaManager
+from mishkan.tools.inspection import ContentInspector, InspectionProfileLoader
 
 
 def _provenance() -> ArtifactProvenance:
@@ -71,6 +72,69 @@ def test_chunked_upload_is_invisible_until_verified_commit(tmp_path: Path) -> No
     assert manifest.facts.integrity is ArtifactFactState.PASSED
     assert manifest.facts.availability is ArtifactAvailability.AVAILABLE
     assert manifest.facts.authorization == "contextual_policy_required"
+
+
+def test_security_scan_blocks_secret_split_across_upload_chunks(tmp_path: Path) -> None:
+    database = tmp_path / "mishkan.db"
+    SchemaManager(database).initialize()
+    inspector = ContentInspector(
+        InspectionProfileLoader().load(
+            "package://mishkan.resources.inspection/default-security.yaml",
+            tmp_path,
+        )
+    )
+    service = DurableArtifactService(
+        database,
+        tmp_path / "artifacts",
+        max_artifact_bytes=1_024,
+        max_chunk_bytes=8,
+        content_inspector=inspector,
+    )
+    content = b"api_key=split-across-chunks"
+    upload = service.open_upload(
+        expected_size=len(content),
+        expected_digest=f"sha256:{hashlib.sha256(content).hexdigest()}",
+        media_type="text/plain",
+        provenance=_provenance(),
+    )
+    for offset in range(0, len(content), 8):
+        service.append_chunk(
+            upload.upload_id,
+            offset=offset,
+            content=content[offset : offset + 8],
+        )
+
+    with pytest.raises(MishkanError) as caught:
+        service.commit_upload(upload.upload_id)
+
+    assert caught.value.envelope.code is ErrorCode.SECRET_CONTENT
+    assert service.list_manifests() == ()
+    assert service.upload(upload.upload_id).lifecycle == "staging"
+
+
+@pytest.mark.symlinks
+def test_commit_refuses_an_in_root_staging_symlink(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    content = b"x"
+    upload = service.open_upload(
+        expected_size=len(content),
+        expected_digest=f"sha256:{hashlib.sha256(content).hexdigest()}",
+        media_type="text/plain",
+        provenance=_provenance(),
+    )
+    staging = tmp_path / "artifacts" / "staging"
+    staged = staging / f"{upload.upload_id}.upload"
+    substitute = staging / "substitute.upload"
+    substitute.write_bytes(content)
+    staged.unlink()
+    staged.symlink_to(substitute)
+
+    with pytest.raises(MishkanError) as caught:
+        service.commit_upload(upload.upload_id)
+
+    assert caught.value.envelope.code is ErrorCode.ARTIFACT
+    assert service.list_manifests() == ()
+    assert substitute.read_bytes() == content
 
 
 def test_upload_rejects_stale_offset_and_wrong_digest(tmp_path: Path) -> None:

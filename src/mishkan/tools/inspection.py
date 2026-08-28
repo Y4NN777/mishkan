@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import mmap
+import os
 import re
 from enum import StrEnum
 from importlib.resources import files
@@ -45,6 +47,9 @@ class ContentInspector:
         self.profile = profile
         try:
             self._compiled = tuple((rule, re.compile(rule.pattern)) for rule in profile.rules)
+            self._compiled_bytes = tuple(
+                (rule, re.compile(rule.pattern.encode("utf-8"))) for rule in profile.rules
+            )
         except re.error as exc:
             raise MishkanError(
                 ErrorCode.CONFIGURATION,
@@ -71,6 +76,44 @@ class ContentInspector:
                 )
             inspected = expression.sub(rule.replacement, inspected)
         return inspected
+
+    def require_safe_file(
+        self,
+        path: Path,
+        resolved_secrets: tuple[str, ...] = (),
+    ) -> None:
+        """Reject immutable content containing a configured or resolved secret.
+
+        Artifact content cannot be redacted in place because doing so would invalidate its
+        accepted digest. The byte-oriented scan operates on a read-only mapping, keeping memory
+        bounded even for the largest configured artifact.
+        """
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        try:
+            size = os.fstat(descriptor).st_size
+            if size == 0:
+                return
+            with mmap.mmap(descriptor, 0, access=mmap.ACCESS_READ) as content:
+                for secret in resolved_secrets:
+                    if secret and content.find(secret.encode("utf-8")) >= 0:
+                        raise MishkanError(
+                            ErrorCode.SECRET_CONTENT,
+                            "resolved credential content reached an inspection boundary",
+                            details={"profile_id": self.profile.profile_id},
+                        )
+                for rule, expression in self._compiled_bytes:
+                    if expression.search(content) is None:
+                        continue
+                    raise MishkanError(
+                        ErrorCode.SECRET_CONTENT,
+                        "configured inspection rule blocked immutable artifact content",
+                        details={
+                            "profile_id": self.profile.profile_id,
+                            "rule_id": rule.rule_id,
+                        },
+                    )
+        finally:
+            os.close(descriptor)
 
 
 class InspectionProfileLoader:
