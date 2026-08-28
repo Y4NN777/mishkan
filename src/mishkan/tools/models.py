@@ -58,6 +58,22 @@ class AvailabilityState(StrEnum):
     UNAVAILABLE = "unavailable"
 
 
+class RegistryEntryKind(StrEnum):
+    SOURCE = "source"
+    ADAPTER = "adapter"
+    TOOL = "tool"
+    TOOLSET = "toolset"
+
+
+class RegistryLifecycleAction(StrEnum):
+    ADD = "add"
+    ENABLE = "enable"
+    DISABLE = "disable"
+    UPDATE = "update"
+    REMOVE = "remove"
+    SET_PRECEDENCE = "set_precedence"
+
+
 class AvailabilityConditions(ToolModel):
     platforms: tuple[str, ...] = ("*",)
     runtimes: tuple[str, ...] = ("*",)
@@ -178,6 +194,57 @@ class ToolSourceIndex(ToolModel):
         return hashlib.sha256(
             json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
         ).hexdigest()
+
+
+class AdapterDescriptor(ToolModel):
+    adapter_id: str = Field(pattern=r"^[a-z][a-z0-9_.-]{2,127}$")
+    version: str = Field(pattern=r"^[0-9]+\.[0-9]+\.[0-9]+$")
+    implementation: str = Field(min_length=1, max_length=500)
+
+
+class RegistryMutation(ToolModel):
+    entry_kind: RegistryEntryKind
+    identity: str = Field(pattern=r"^[a-z][a-z0-9_.-]{2,127}$")
+    action: RegistryLifecycleAction
+    definition: dict[str, Any] | None = None
+    precedence: int | None = Field(default=None, ge=-1_000_000, le=1_000_000)
+
+    @model_validator(mode="after")
+    def fields_match_action(self) -> Self:
+        if self.action in {RegistryLifecycleAction.ADD, RegistryLifecycleAction.UPDATE}:
+            if self.definition is None:
+                raise ValueError("add and update require a complete typed definition")
+        elif self.definition is not None:
+            raise ValueError("this lifecycle action does not accept a definition")
+        if self.action is RegistryLifecycleAction.SET_PRECEDENCE:
+            if self.precedence is None:
+                raise ValueError("set_precedence requires a precedence value")
+        elif self.precedence is not None:
+            raise ValueError("precedence is accepted only by set_precedence")
+        return self
+
+
+class RegistryEntry(ToolModel):
+    entry_kind: RegistryEntryKind
+    identity: str
+    enabled: bool
+    removed: bool
+    precedence: int
+    revision: int = Field(ge=1)
+    definition: dict[str, Any] | None = None
+    definition_fingerprint: str | None = None
+    updated_at: str
+
+
+class RegistryLifecycleProjection(ToolModel):
+    source_indices: tuple[ToolSourceIndex, ...] = ()
+    tool_contracts: tuple[ToolContract, ...] = ()
+    toolsets: tuple[ToolsetDefinition, ...] = ()
+    disabled_sources: frozenset[str] = frozenset()
+    disabled_adapters: frozenset[str] = frozenset()
+    disabled_tools: frozenset[str] = frozenset()
+    disabled_toolsets: frozenset[str] = frozenset()
+    source_precedence: dict[str, int] = Field(default_factory=dict)
 
 
 class AvailabilityResult(ToolModel):

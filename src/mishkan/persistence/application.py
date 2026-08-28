@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -187,6 +187,93 @@ class SQLiteApplicationRepository:
             raise MishkanError(
                 ErrorCode.DUPLICATE_RESULT,
                 "application command could not be committed uniquely",
+            ) from exc
+
+    def accept_with_mutation(
+        self,
+        command: ApplicationCommand,
+        *,
+        target_id: str,
+        event_type: str,
+        mutation: Callable[[Session, int], tuple[Mapping[str, Any], Mapping[str, Any]]],
+        source: str = "mishkan.application",
+        sensitivity: str = "internal",
+    ) -> CommandResult:
+        """Commit a state mutation, aggregate revision, event, and receipt together."""
+        try:
+            with Session(self._engine) as session, session.begin():
+                existing = session.get(CommandRow, str(command.command_id))
+                if existing is not None:
+                    return self._existing(existing, command)
+                revision_row = session.get(AggregateRevisionRow, (command.target_type, target_id))
+                current_revision = revision_row.revision if revision_row is not None else 0
+                if (
+                    command.expected_revision is not None
+                    and command.expected_revision != current_revision
+                ):
+                    raise MishkanError(
+                        ErrorCode.REVISION_MISMATCH,
+                        "application command expected a stale aggregate revision",
+                        details={
+                            "target_type": command.target_type,
+                            "target_id": target_id,
+                            "expected": command.expected_revision,
+                            "current": current_revision,
+                        },
+                    )
+                next_revision = current_revision + 1
+                result_payload, event_payload = mutation(session, next_revision)
+                now = utc_now()
+                if revision_row is None:
+                    session.add(
+                        AggregateRevisionRow(
+                            entity_type=command.target_type,
+                            entity_id=target_id,
+                            revision=next_revision,
+                            updated_at=now.isoformat(),
+                        )
+                    )
+                else:
+                    revision_row.revision = next_revision
+                    revision_row.updated_at = now.isoformat()
+                event_row = OutboxRow(
+                    id=str(new_id()),
+                    schema_version="1.0",
+                    aggregate_id=target_id,
+                    entity_type=command.target_type,
+                    **self._event_dimensions(command, target_id, sensitivity),
+                    event_type=event_type,
+                    source=source,
+                    payload=json.dumps(dict(event_payload), sort_keys=True, separators=(",", ":")),
+                    occurred_at=now.isoformat(),
+                    command_id=str(command.command_id),
+                    correlation_id=str(command.command_id),
+                    causation_id=None,
+                    sensitivity=sensitivity,
+                    published_at=None,
+                )
+                session.add(event_row)
+                session.flush()
+                result = CommandResult(
+                    command_id=command.command_id,
+                    status=CommandStatus.ACCEPTED,
+                    target_type=command.target_type,
+                    target_id=target_id,
+                    revision=next_revision,
+                    event_cursor=event_row.cursor,
+                    payload=dict(result_payload),
+                    completed_at=now,
+                )
+                session.add(self._command_row(command, result))
+                return result
+        except IntegrityError as exc:
+            with Session(self._engine) as session:
+                existing = session.get(CommandRow, str(command.command_id))
+                if existing is not None:
+                    return self._existing(existing, command)
+            raise MishkanError(
+                ErrorCode.DUPLICATE_RESULT,
+                "application command mutation could not be committed uniquely",
             ) from exc
 
     def reserve(self, command: ApplicationCommand, *, target_id: str) -> CommandResult | None:

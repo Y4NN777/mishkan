@@ -135,6 +135,20 @@ class PlannedToolCallRow(Base):
     updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
 
 
+class ToolRegistryEntryRow(Base):
+    __tablename__ = "tool_registry_entries"
+
+    entry_kind: Mapped[str] = mapped_column(String(16), primary_key=True)
+    identity: Mapped[str] = mapped_column(String(128), primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    removed: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    precedence: Mapped[int] = mapped_column(Integer, nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    definition_payload: Mapped[str | None] = mapped_column(Text)
+    definition_fingerprint: Mapped[str | None] = mapped_column(String(64))
+    updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
 class ResultRow(Base):
     __tablename__ = "accepted_results"
     __table_args__ = (UniqueConstraint("run_id", "task_key"),)

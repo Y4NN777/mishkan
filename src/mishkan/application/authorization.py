@@ -40,6 +40,7 @@ from mishkan.policy import (
     PolicyLoader,
     ResourceRequest,
 )
+from mishkan.tools.models import RegistryEntryKind, RegistryLifecycleAction, RegistryMutation
 
 
 class ChangeSetLookup(Protocol):
@@ -171,6 +172,14 @@ COMMAND_SEMANTICS = MappingProxyType(
         "mcp.call.reconcile": CommandSemantics(
             "application.mcp.control", "external", ("mcp.call.reconcile",), True
         ),
+        **{
+            f"registry.entry.{action.value}": CommandSemantics(
+                "application.registry.lifecycle",
+                "registry_lifecycle",
+                (f"registry.{action.value}",),
+            )
+            for action in RegistryLifecycleAction
+        },
     }
 )
 
@@ -211,6 +220,10 @@ _COMMAND_TARGETS = MappingProxyType(
         "mcp.connection.connect": ("mcp_connection", "required"),
         "mcp.call.cancel": ("mcp_call", "uuid"),
         "mcp.call.reconcile": ("mcp_call", "uuid"),
+        **{
+            f"registry.entry.{action.value}": ("registry_entry", "required")
+            for action in RegistryLifecycleAction
+        },
     }
 )
 
@@ -266,6 +279,15 @@ _COMMAND_PAYLOAD_FIELDS = MappingProxyType(
         "mcp.connection.connect": (frozenset(), frozenset()),
         "mcp.call.cancel": (frozenset(), frozenset()),
         "mcp.call.reconcile": (frozenset(), frozenset()),
+        "registry.entry.add": (frozenset({"entry_kind", "definition"}), frozenset()),
+        "registry.entry.enable": (frozenset({"entry_kind"}), frozenset()),
+        "registry.entry.disable": (frozenset({"entry_kind"}), frozenset()),
+        "registry.entry.update": (frozenset({"entry_kind", "definition"}), frozenset()),
+        "registry.entry.remove": (frozenset({"entry_kind"}), frozenset()),
+        "registry.entry.set_precedence": (
+            frozenset({"entry_kind", "precedence"}),
+            frozenset(),
+        ),
     }
 )
 
@@ -277,6 +299,7 @@ class AuthorizedApplicationCommand:
     decision: AuthorizationDecision
     session_request: ExecutionRequest | None = None
     git_request: GitEffectRequest | None = None
+    registry_mutation: RegistryMutation | None = None
 
 
 class ApplicationCommandAuthority:
@@ -327,6 +350,7 @@ class ApplicationCommandAuthority:
         timeout = 120
         session_request: ExecutionRequest | None = None
         git_request: GitEffectRequest | None = None
+        registry_mutation: RegistryMutation | None = None
 
         try:
             if normalized.command_type == "run.initialize":
@@ -466,6 +490,28 @@ class ApplicationCommandAuthority:
                 else:
                     assert connection.endpoint is not None
                     network_destinations = (self._network_destination(str(connection.endpoint)),)
+            elif normalized.command_type.startswith("registry.entry."):
+                if normalized.target_id is None:
+                    raise ValueError("registry lifecycle target identity is required")
+                kind_value, separator, entry_identity = normalized.target_id.partition(":")
+                if not separator or not entry_identity:
+                    raise ValueError("registry target must be '<kind>:<identity>'")
+                action = RegistryLifecycleAction(
+                    normalized.command_type.removeprefix("registry.entry.")
+                )
+                entry_kind = RegistryEntryKind(str(normalized.payload["entry_kind"]))
+                if kind_value != entry_kind.value:
+                    raise ValueError("registry target kind differs from its typed payload")
+                registry_mutation = RegistryMutation(
+                    entry_kind=entry_kind,
+                    identity=entry_identity,
+                    action=action,
+                    definition=normalized.payload.get("definition"),
+                    precedence=normalized.payload.get("precedence"),
+                )
+                external_resources = (
+                    f"registry:{registry_mutation.entry_kind.value}:{registry_mutation.identity}",
+                )
             elif normalized.target_id is not None:
                 external_resources = (f"{normalized.target_type}:{normalized.target_id}",)
         except (KeyError, TypeError, ValueError, ValidationError) as exc:
@@ -506,6 +552,7 @@ class ApplicationCommandAuthority:
             decision,
             session_request=session_request,
             git_request=git_request,
+            registry_mutation=registry_mutation,
         )
 
     @staticmethod

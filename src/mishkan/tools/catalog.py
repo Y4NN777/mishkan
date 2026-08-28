@@ -18,6 +18,7 @@ from mishkan.domain.sources import resolve_source_path
 from mishkan.tools.models import (
     AvailabilityResult,
     AvailabilityState,
+    RegistryLifecycleProjection,
     RegistrySnapshot,
     ToolBinding,
     ToolContract,
@@ -40,6 +41,7 @@ class ToolCatalog:
         available_adapters: frozenset[str] = frozenset(),
         runtime_contracts: tuple[ToolContract, ...] = (),
         memory_mb: int | None = None,
+        lifecycle: RegistryLifecycleProjection | None = None,
     ) -> None:
         if not source_uris:
             raise MishkanError(
@@ -52,12 +54,49 @@ class ToolCatalog:
         self._services = available_services
         self._dependencies = available_dependencies
         self._credentials = available_credentials
-        self._adapters = available_adapters
-        self._runtime_contracts = {contract.tool_id: contract for contract in runtime_contracts}
-        if len(self._runtime_contracts) != len(runtime_contracts):
+        self._lifecycle = lifecycle
+        self._adapters = available_adapters - (
+            lifecycle.disabled_adapters if lifecycle is not None else frozenset()
+        )
+        effective_contracts = (
+            (*runtime_contracts, *lifecycle.tool_contracts)
+            if lifecycle is not None
+            else runtime_contracts
+        )
+        self._runtime_contracts = {contract.tool_id: contract for contract in effective_contracts}
+        if len(self._runtime_contracts) != len(effective_contracts):
             raise MishkanError(ErrorCode.TOOL_DRIFT, "runtime tool contract identity collides")
         self._memory_mb = memory_mb
-        self._indices = tuple(self._load_index(uri) for uri in source_uris)
+        configured_indices = tuple(self._load_index(uri) for uri in source_uris)
+        if lifecycle is None:
+            self._indices = configured_indices
+            self._runtime_toolsets: tuple[ToolsetDefinition, ...] = ()
+        else:
+            overlays = {index.source_id: index for index in lifecycle.source_indices}
+            merged = {
+                index.source_id: index
+                for index in configured_indices
+                if index.source_id not in lifecycle.disabled_sources
+            }
+            merged.update(
+                (source_id, index)
+                for source_id, index in overlays.items()
+                if source_id not in lifecycle.disabled_sources
+            )
+            positions = {
+                index.source_id: position for position, index in enumerate(configured_indices)
+            }
+            self._indices = tuple(
+                sorted(
+                    merged.values(),
+                    key=lambda index: (
+                        -lifecycle.source_precedence.get(index.source_id, 0),
+                        positions.get(index.source_id, len(positions)),
+                        index.source_id,
+                    ),
+                )
+            )
+            self._runtime_toolsets = lifecycle.toolsets
         self._validate_collisions()
 
     def list_metadata(self) -> tuple[ToolMetadata, ...]:
@@ -75,7 +114,17 @@ class ToolCatalog:
             )
             for contract in self._runtime_contracts.values()
         )
-        return (*configured, *runtime)
+        combined = (
+            (*runtime, *configured) if self._lifecycle is not None else (*configured, *runtime)
+        )
+        if self._lifecycle is None:
+            return combined
+        disabled = self._lifecycle.disabled_tools
+        selected: dict[str, ToolMetadata] = {}
+        for metadata in combined:
+            if metadata.tool_id not in disabled and metadata.tool_id not in selected:
+                selected[metadata.tool_id] = metadata
+        return tuple(selected.values())
 
     def search(self, query: str) -> tuple[ToolMetadata, ...]:
         normalized = query.casefold()
@@ -264,13 +313,17 @@ class ToolCatalog:
         return tuple(dict.fromkeys(item for item in resolved if item not in excluded))
 
     def _toolset(self, toolset_id: str) -> ToolsetDefinition | None:
+        if self._lifecycle is not None and toolset_id in self._lifecycle.disabled_toolsets:
+            return None
         matches = [
             toolset
-            for index in self._indices
-            for toolset in index.toolsets
+            for toolset in (
+                *self._runtime_toolsets,
+                *(toolset for index in self._indices for toolset in index.toolsets),
+            )
             if toolset.toolset_id == toolset_id
         ]
-        if len(matches) > 1:
+        if len(matches) > 1 and self._lifecycle is None:
             raise MishkanError(
                 ErrorCode.TOOL_DRIFT,
                 "toolset identity collides across configured sources",
@@ -293,11 +346,25 @@ class ToolCatalog:
             for identity, sources in {**claims, **toolset_claims}.items()
             if len(sources) > 1
         }
-        if collisions:
+        unresolved = collisions
+        if collisions and self._lifecycle is not None:
+            explicit_tools = {tool.tool_id for tool in self._lifecycle.tool_contracts}
+            explicit_toolsets = {toolset.toolset_id for toolset in self._lifecycle.toolsets}
+            unresolved = {}
+            for identity, sources in collisions.items():
+                if identity in explicit_tools or identity in explicit_toolsets:
+                    continue
+                scores = [self._lifecycle.source_precedence.get(source, 0) for source in sources]
+                highest = max(scores)
+                if scores.count(highest) != 1 or not any(
+                    source in self._lifecycle.source_precedence for source in sources
+                ):
+                    unresolved[identity] = sources
+        if unresolved:
             raise MishkanError(
                 ErrorCode.TOOL_DRIFT,
                 "tool or toolset identities collide across configured sources",
-                details={"collisions": collisions},
+                details={"collisions": unresolved},
             )
 
     def _load_index(self, uri: str) -> ToolSourceIndex:

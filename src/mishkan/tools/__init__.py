@@ -12,7 +12,16 @@ from mishkan.tools.execution import (
     ShellOptions,
     ShellProfile,
 )
-from mishkan.tools.models import RegistrySnapshot, ToolBinding, ToolContract
+from mishkan.tools.models import (
+    RegistryEntry,
+    RegistryEntryKind,
+    RegistryLifecycleAction,
+    RegistryLifecycleProjection,
+    RegistryMutation,
+    RegistrySnapshot,
+    ToolBinding,
+    ToolContract,
+)
 from mishkan.tools.native import (
     NativeCapabilityEnvironment,
     available_contracts,
@@ -28,6 +37,11 @@ __all__ = [
     "GatewayCrewAITool",
     "NativeCapabilityEnvironment",
     "ReadinessProbe",
+    "RegistryEntry",
+    "RegistryEntryKind",
+    "RegistryLifecycleAction",
+    "RegistryLifecycleProjection",
+    "RegistryMutation",
     "RegistrySnapshot",
     "ShellDialect",
     "ShellOptions",

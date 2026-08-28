@@ -24,6 +24,7 @@ from mishkan.tools.gateway import (
 )
 from mishkan.tools.inspection import ContentInspector, InspectionProfileLoader
 from mishkan.tools.isolation import IsolationProfileLoader
+from mishkan.tools.lifecycle import ToolRegistryLifecycle
 from mishkan.tools.native import (
     available_contracts,
     build_native_adapters,
@@ -111,6 +112,7 @@ class MishkanInitializer:
             discovery.binding.root,
             available_dependencies=available_environment.dependencies,
             available_adapters=available_environment.adapter_ids,
+            lifecycle=ToolRegistryLifecycle(database, busy_timeout_ms=busy_timeout_ms).projection(),
         )
         isolation_loader = IsolationProfileLoader()
         isolation_profiles = tuple(

@@ -28,6 +28,7 @@ def test_exact_legacy_database_is_backed_up_and_upgraded(tmp_path: Path) -> None
     Base.metadata.create_all(engine)
     with engine.begin() as connection:
         for table in (
+            "tool_registry_entries",
             "planned_tool_calls",
             "event_retention_plans",
             "event_holds",

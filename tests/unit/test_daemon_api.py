@@ -99,13 +99,80 @@ async def test_authenticated_command_and_event_query_share_durable_contract(
         "command_type": "system.checkpoint",
         "matched_rule_ids": ["local.application-commands"],
         "policy_fingerprint": event_payload["policy_fingerprint"],
-        "policy_revisions": ["bundled.local@8"],
+        "policy_revisions": ["bundled.local@10"],
         "request_schema_version": "1.0",
         "payload_fields": ["checkpoint"],
         "result_fields": ["recorded"],
     }
     assert len(event_payload["authorization_request_fingerprint"]) == 64
     assert len(event_payload["policy_fingerprint"]) == 64
+
+
+@pytest.mark.anyio
+async def test_registry_lifecycle_command_is_atomic_idempotent_and_revisioned(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    paths = DaemonBootstrap().setup(config)
+    token_record = TokenFile(paths.token_file).read()
+    headers = {"Authorization": f"Bearer {token_record.token}"}
+    disabled = ApplicationCommand(
+        command_type="registry.entry.disable",
+        actor_id=token_record.principal_id,
+        target_type="registry_entry",
+        target_id="adapter:native.repository.read_file",
+        expected_revision=0,
+        payload={"entry_kind": "adapter"},
+    )
+
+    transport = httpx.ASGITransport(app=create_app(config))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        first = await client.post(
+            "/v1/commands", headers=headers, json=disabled.model_dump(mode="json")
+        )
+        replayed = await client.post(
+            "/v1/commands", headers=headers, json=disabled.model_dump(mode="json")
+        )
+        stale = ApplicationCommand(
+            command_type="registry.entry.enable",
+            actor_id=token_record.principal_id,
+            target_type="registry_entry",
+            target_id="adapter:native.repository.read_file",
+            expected_revision=0,
+            payload={"entry_kind": "adapter"},
+        )
+        refused = await client.post(
+            "/v1/commands", headers=headers, json=stale.model_dump(mode="json")
+        )
+        registry = await client.get("/v1/tools/registry", headers=headers)
+        events = await client.get(
+            "/v1/events", headers=headers, params={"entity_type": "registry_entry"}
+        )
+
+    assert first.status_code == 200
+    assert first.json()["status"] == "accepted"
+    assert first.json()["revision"] == 1
+    assert replayed.json() == first.json()
+    assert refused.status_code == 200
+    assert refused.json()["status"] == "refused"
+    assert refused.json()["error"]["code"] == ErrorCode.REVISION_MISMATCH
+    assert registry.json()["entries"] == [
+        {
+            "entry_kind": "adapter",
+            "identity": "native.repository.read_file",
+            "enabled": False,
+            "removed": False,
+            "precedence": 0,
+            "revision": 1,
+            "definition": None,
+            "definition_fingerprint": None,
+            "updated_at": registry.json()["entries"][0]["updated_at"],
+        }
+    ]
+    assert [event["event_type"] for event in events.json()["events"]] == [
+        "registry.entry_disable",
+        "application.command_refused",
+    ]
 
 
 @pytest.mark.anyio

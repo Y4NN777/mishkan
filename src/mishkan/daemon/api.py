@@ -14,6 +14,7 @@ from uuid import UUID
 from fastapi import Depends, FastAPI, Header, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy.orm import Session
 
 from mishkan.application import (
     ApplicationCommand,
@@ -70,6 +71,7 @@ from mishkan.policy import Decision
 from mishkan.policy.models import EffectivePolicy
 from mishkan.runtime import TaskReviewRejection
 from mishkan.tools.inspection import ContentInspector, InspectionProfileLoader
+from mishkan.tools.lifecycle import ToolRegistryLifecycle
 
 
 def _http_status(error: MishkanError) -> int:
@@ -95,6 +97,9 @@ def create_app(config: MishkanConfig) -> FastAPI:
     repository = SQLiteApplicationRepository(
         paths.database,
         busy_timeout_ms=persistence.busy_timeout_ms,
+    )
+    registry_lifecycle = ToolRegistryLifecycle(
+        paths.database, busy_timeout_ms=persistence.busy_timeout_ms
     )
     security = HTTPBearer(auto_error=False)
     security_dependency = Depends(security)
@@ -215,6 +220,53 @@ def create_app(config: MishkanConfig) -> FastAPI:
                 },
             )
         command = authorized.command
+        if command.command_type.startswith("registry.entry."):
+            mutation = authorized.registry_mutation
+            if mutation is None or command.target_id is None:
+                raise MishkanError(
+                    ErrorCode.OUTPUT_CONTRACT,
+                    "authorized registry lifecycle mutation is absent",
+                )
+
+            def apply_registry_mutation(
+                session: Session, next_revision: int
+            ) -> tuple[dict[str, object], dict[str, object]]:
+                entry = registry_lifecycle.mutate(session, mutation, revision=next_revision)
+                result = entry.model_dump(mode="json")
+                evidence = {
+                    "entry_kind": entry.entry_kind.value,
+                    "identity": entry.identity,
+                    "action": mutation.action.value,
+                    "enabled": entry.enabled,
+                    "removed": entry.removed,
+                    "precedence": entry.precedence,
+                    "definition_fingerprint": entry.definition_fingerprint,
+                    **_authorization_projection(authorized),
+                }
+                return result, evidence
+
+            async with command_lock:
+                try:
+                    return repository.accept_with_mutation(
+                        command,
+                        target_id=command.target_id,
+                        event_type=f"registry.entry_{mutation.action.value}",
+                        mutation=apply_registry_mutation,
+                        source="mishkand.registry",
+                    )
+                except MishkanError as error:
+                    return repository.refuse(
+                        command,
+                        target_id=command.target_id,
+                        error=error,
+                        event_payload={
+                            "command_type": command.command_type,
+                            "entry_kind": mutation.entry_kind.value,
+                            "identity": mutation.identity,
+                            **_authorization_projection(authorized),
+                            "error_code": error.envelope.code,
+                        },
+                    )
         resolved_credentials = _resolve_command_credentials(
             authorized,
             credential_resolver,
@@ -442,6 +494,17 @@ def create_app(config: MishkanConfig) -> FastAPI:
         _principal: TokenRecord = authenticated,
     ) -> SnapshotEnvelope:
         return repository.snapshot(limit=daemon.event_page_limit)
+
+    @app.get("/v1/tools/registry")
+    async def tool_registry(
+        _principal: TokenRecord = authenticated,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 1_000,
+    ) -> dict[str, object]:
+        entries = registry_lifecycle.entries(limit=limit)
+        return {
+            "entries": [entry.model_dump(mode="json") for entry in entries],
+            "count": len(entries),
+        }
 
     @app.get("/v1/events")
     async def events(
