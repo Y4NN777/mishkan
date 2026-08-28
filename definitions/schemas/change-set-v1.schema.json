@@ -34,6 +34,29 @@
           "default": null,
           "title": "Destination"
         },
+        "destination_precondition": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PreconditionKind"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "destination_precondition_value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Destination Precondition Value"
+        },
         "expected_digest": {
           "anyOf": [
             {
@@ -136,6 +159,20 @@
           "default": null,
           "title": "Replacement"
         },
+        "result_mode": {
+          "anyOf": [
+            {
+              "maximum": 4095,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Result Mode"
+        },
         "rewrite_engine": {
           "anyOf": [
             {
@@ -148,6 +185,66 @@
           "default": null,
           "title": "Rewrite Engine"
         },
+        "rewrite_formatting": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rewrite Formatting"
+        },
+        "rewrite_ignored_files": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Rewrite Ignored Files",
+          "type": "array"
+        },
+        "rewrite_language": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rewrite Language"
+        },
+        "rewrite_limits": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Rewrite Limits",
+          "type": "object"
+        },
+        "rewrite_matches": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rewrite Matches"
+        },
+        "rewrite_parse_failures": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Rewrite Parse Failures",
+          "type": "array"
+        },
         "rewrite_rule": {
           "anyOf": [
             {
@@ -159,6 +256,18 @@
           ],
           "default": null,
           "title": "Rewrite Rule"
+        },
+        "rewrite_scope": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rewrite Scope"
         },
         "rewrite_version": {
           "anyOf": [
@@ -180,6 +289,18 @@
           "default": "1.0",
           "title": "Schema Version",
           "type": "string"
+        },
+        "semantic_preservation_evidence": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Semantic Preservation Evidence"
         }
       },
       "required": [
@@ -203,6 +324,66 @@
         "delete"
       ],
       "title": "ChangeOperationKind",
+      "type": "string"
+    },
+    "ChangeValidation": {
+      "additionalProperties": false,
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "expected_value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Value"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/ChangeValidationKind"
+        },
+        "path": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "schema_version": {
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "path"
+      ],
+      "title": "ChangeValidation",
+      "type": "object"
+    },
+    "ChangeValidationKind": {
+      "enum": [
+        "exists",
+        "absent",
+        "digest",
+        "mode"
+      ],
+      "title": "ChangeValidationKind",
       "type": "string"
     },
     "PreconditionKind": {
@@ -253,6 +434,16 @@
       "title": "Operations",
       "type": "array"
     },
+    "path_scopes": {
+      "default": [
+        "."
+      ],
+      "items": {
+        "type": "string"
+      },
+      "title": "Path Scopes",
+      "type": "array"
+    },
     "schema_version": {
       "default": "1.0",
       "title": "Schema Version",
@@ -262,6 +453,14 @@
       "minLength": 1,
       "title": "Scope",
       "type": "string"
+    },
+    "validations": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ChangeValidation"
+      },
+      "title": "Validations",
+      "type": "array"
     },
     "workspace": {
       "default": ".",

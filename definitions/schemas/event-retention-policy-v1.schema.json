@@ -1,0 +1,36 @@
+{
+  "additionalProperties": false,
+  "description": "The exact public policy snapshot used to select retention candidates.",
+  "properties": {
+    "batch_size": {
+      "maximum": 1000,
+      "minimum": 1,
+      "title": "Batch Size",
+      "type": "integer"
+    },
+    "max_age_days": {
+      "maximum": 36500,
+      "minimum": 1,
+      "title": "Max Age Days",
+      "type": "integer"
+    },
+    "protect_incomplete_runs": {
+      "const": true,
+      "default": true,
+      "title": "Protect Incomplete Runs",
+      "type": "boolean"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "max_age_days",
+    "batch_size"
+  ],
+  "title": "EventRetentionPolicy",
+  "type": "object"
+}

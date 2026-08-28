@@ -3,6 +3,7 @@
     "BrowserActionKind": {
       "enum": [
         "click",
+        "coordinate_click",
         "fill",
         "press",
         "select",
@@ -17,6 +18,42 @@
   },
   "additionalProperties": false,
   "properties": {
+    "coordinates": {
+      "anyOf": [
+        {
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Coordinates"
+    },
+    "credential_origin": {
+      "anyOf": [
+        {
+          "format": "uri",
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Credential Origin"
+    },
     "credential_reference": {
       "anyOf": [
         {
@@ -82,6 +119,19 @@
     "value": {
       "default": null,
       "title": "Value"
+    },
+    "visual_evidence_artifact_reference": {
+      "anyOf": [
+        {
+          "pattern": "^artifact:[0-9a-f-]{36}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Visual Evidence Artifact Reference"
     }
   },
   "required": [

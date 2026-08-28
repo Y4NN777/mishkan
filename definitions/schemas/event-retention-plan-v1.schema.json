@@ -1,0 +1,129 @@
+{
+  "$defs": {
+    "EventRetentionPlanState": {
+      "enum": [
+        "planned",
+        "applied"
+      ],
+      "title": "EventRetentionPlanState",
+      "type": "string"
+    },
+    "EventRetentionPolicy": {
+      "additionalProperties": false,
+      "description": "The exact public policy snapshot used to select retention candidates.",
+      "properties": {
+        "batch_size": {
+          "maximum": 1000,
+          "minimum": 1,
+          "title": "Batch Size",
+          "type": "integer"
+        },
+        "max_age_days": {
+          "maximum": 36500,
+          "minimum": 1,
+          "title": "Max Age Days",
+          "type": "integer"
+        },
+        "protect_incomplete_runs": {
+          "const": true,
+          "default": true,
+          "title": "Protect Incomplete Runs",
+          "type": "boolean"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "max_age_days",
+        "batch_size"
+      ],
+      "title": "EventRetentionPolicy",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "applied_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Applied At"
+    },
+    "candidate_cursors": {
+      "items": {
+        "type": "integer"
+      },
+      "title": "Candidate Cursors",
+      "type": "array"
+    },
+    "candidate_event_ids": {
+      "items": {
+        "format": "uuid",
+        "type": "string"
+      },
+      "title": "Candidate Event Ids",
+      "type": "array"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "cutoff": {
+      "format": "date-time",
+      "title": "Cutoff",
+      "type": "string"
+    },
+    "deleted_count": {
+      "minimum": 0,
+      "title": "Deleted Count",
+      "type": "integer"
+    },
+    "plan_id": {
+      "format": "uuid",
+      "title": "Plan Id",
+      "type": "string"
+    },
+    "policy": {
+      "$ref": "#/$defs/EventRetentionPolicy"
+    },
+    "policy_fingerprint": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Policy Fingerprint",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "state": {
+      "$ref": "#/$defs/EventRetentionPlanState"
+    }
+  },
+  "required": [
+    "plan_id",
+    "policy",
+    "policy_fingerprint",
+    "cutoff",
+    "candidate_event_ids",
+    "candidate_cursors",
+    "state",
+    "deleted_count",
+    "created_at"
+  ],
+  "title": "EventRetentionPlan",
+  "type": "object"
+}

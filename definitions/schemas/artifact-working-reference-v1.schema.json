@@ -6,10 +6,41 @@
       "title": "Artifact Reference",
       "type": "string"
     },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
     "name": {
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,255}$",
       "title": "Name",
       "type": "string"
+    },
+    "prior_artifact_reference": {
+      "anyOf": [
+        {
+          "pattern": "^artifact:[0-9a-f-]{36}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Prior Artifact Reference"
+    },
+    "prior_revision": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Prior Revision"
     },
     "revision": {
       "minimum": 1,

@@ -1,0 +1,83 @@
+{
+  "$defs": {
+    "EventHoldScope": {
+      "enum": [
+        "all",
+        "run",
+        "event"
+      ],
+      "title": "EventHoldScope",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "actor_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Actor Id",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "hold_id": {
+      "format": "uuid",
+      "title": "Hold Id",
+      "type": "string"
+    },
+    "reason": {
+      "maxLength": 2048,
+      "minLength": 1,
+      "title": "Reason",
+      "type": "string"
+    },
+    "released_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Released At"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "scope": {
+      "$ref": "#/$defs/EventHoldScope"
+    },
+    "scope_id": {
+      "anyOf": [
+        {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Scope Id"
+    }
+  },
+  "required": [
+    "hold_id",
+    "scope",
+    "reason",
+    "actor_id",
+    "created_at"
+  ],
+  "title": "EventHold",
+  "type": "object"
+}

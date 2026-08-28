@@ -1,5 +1,80 @@
 {
   "$defs": {
+    "ArtifactAvailability": {
+      "enum": [
+        "available",
+        "unavailable"
+      ],
+      "title": "ArtifactAvailability",
+      "type": "string"
+    },
+    "ArtifactFactState": {
+      "enum": [
+        "not_evaluated",
+        "passed",
+        "failed"
+      ],
+      "title": "ArtifactFactState",
+      "type": "string"
+    },
+    "ArtifactFacts": {
+      "additionalProperties": false,
+      "description": "Independent evidence dimensions; none grants use authority.",
+      "properties": {
+        "authorization": {
+          "const": "contextual_policy_required",
+          "default": "contextual_policy_required",
+          "title": "Authorization",
+          "type": "string"
+        },
+        "availability": {
+          "$ref": "#/$defs/ArtifactAvailability",
+          "default": "unavailable"
+        },
+        "detected_media_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Detected Media Type"
+        },
+        "integrity": {
+          "$ref": "#/$defs/ArtifactFactState",
+          "default": "not_evaluated"
+        },
+        "rendering": {
+          "$ref": "#/$defs/ArtifactFactState",
+          "default": "not_evaluated"
+        },
+        "schema_validity": {
+          "$ref": "#/$defs/ArtifactFactState",
+          "default": "not_evaluated"
+        },
+        "security_scan": {
+          "$ref": "#/$defs/ArtifactFactState",
+          "default": "not_evaluated"
+        },
+        "sensitivity": {
+          "minLength": 1,
+          "title": "Sensitivity",
+          "type": "string"
+        },
+        "trust": {
+          "$ref": "#/$defs/ArtifactTrust",
+          "default": "untrusted"
+        }
+      },
+      "required": [
+        "sensitivity"
+      ],
+      "title": "ArtifactFacts",
+      "type": "object"
+    },
     "ArtifactLifecycle": {
       "enum": [
         "staging",
@@ -34,6 +109,61 @@
           "title": "Channel",
           "type": "string"
         },
+        "configuration_fingerprint": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Configuration Fingerprint"
+        },
+        "declared_loss": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Declared Loss"
+        },
+        "engine": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Engine"
+        },
+        "engine_version": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Engine Version"
+        },
         "producer_identity": {
           "minLength": 1,
           "title": "Producer Identity",
@@ -43,6 +173,13 @@
           "minLength": 1,
           "title": "Run Id",
           "type": "string"
+        },
+        "source_artifacts": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Source Artifacts",
+          "type": "array"
         },
         "task_attempt_id": {
           "minLength": 1,
@@ -60,6 +197,15 @@
       ],
       "title": "ArtifactProvenance",
       "type": "object"
+    },
+    "ArtifactTrust": {
+      "enum": [
+        "untrusted",
+        "trusted",
+        "quarantined"
+      ],
+      "title": "ArtifactTrust",
+      "type": "string"
     },
     "ArtifactValidation": {
       "enum": [
@@ -104,6 +250,9 @@
       "pattern": "^sha256:[a-f0-9]{64}$",
       "title": "Digest",
       "type": "string"
+    },
+    "facts": {
+      "$ref": "#/$defs/ArtifactFacts"
     },
     "id": {
       "format": "uuid",

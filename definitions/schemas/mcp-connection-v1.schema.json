@@ -75,6 +75,14 @@
       "default": null,
       "title": "Credential Principal"
     },
+    "credential_references": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Credential References",
+      "type": "array"
+    },
     "direction": {
       "$ref": "#/$defs/McpDirection",
       "default": "outbound"
@@ -118,6 +126,11 @@
       "default": null,
       "title": "Negotiated Protocol Version"
     },
+    "policy_fingerprint": {
+      "minLength": 1,
+      "title": "Policy Fingerprint",
+      "type": "string"
+    },
     "protocol_strategy": {
       "$ref": "#/$defs/McpProtocolStrategy"
     },
@@ -146,6 +159,11 @@
     "schema_version": {
       "default": "1.0",
       "title": "Schema Version",
+      "type": "string"
+    },
+    "server_identity": {
+      "minLength": 1,
+      "title": "Server Identity",
       "type": "string"
     },
     "state": {
@@ -182,6 +200,8 @@
     "configured_protocol_versions",
     "trust",
     "exposure_profile",
+    "server_identity",
+    "policy_fingerprint",
     "state",
     "revision",
     "health"

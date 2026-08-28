@@ -1,0 +1,39 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "artifact_reference": {
+      "pattern": "^artifact:[0-9a-f-]{36}$",
+      "title": "Artifact Reference",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "reason": {
+      "maxLength": 2048,
+      "minLength": 1,
+      "title": "Reason",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "artifact_reference",
+    "reason",
+    "created_at"
+  ],
+  "title": "ArtifactHold",
+  "type": "object"
+}

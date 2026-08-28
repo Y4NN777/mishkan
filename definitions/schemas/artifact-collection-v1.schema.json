@@ -18,6 +18,13 @@
       "title": "Entries",
       "type": "object"
     },
+    "ordered_paths": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Ordered Paths",
+      "type": "array"
+    },
     "schema_version": {
       "default": "1.0",
       "title": "Schema Version",

@@ -1,0 +1,341 @@
+{
+  "$defs": {
+    "EffectSettlement": {
+      "enum": [
+        "absent",
+        "completed",
+        "uncertain"
+      ],
+      "title": "EffectSettlement",
+      "type": "string"
+    },
+    "ExecutionMode": {
+      "enum": [
+        "process",
+        "shell",
+        "pty",
+        "job"
+      ],
+      "title": "ExecutionMode",
+      "type": "string"
+    },
+    "ExecutionStatus": {
+      "enum": [
+        "completed",
+        "failed",
+        "timed_out",
+        "cancelled",
+        "lost",
+        "uncertain"
+      ],
+      "title": "ExecutionStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "after_snapshot_fingerprint": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "minLength": 64,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "After Snapshot Fingerprint"
+    },
+    "args": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Args",
+      "type": "array"
+    },
+    "base_snapshot_fingerprint": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "minLength": 64,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Base Snapshot Fingerprint"
+    },
+    "changed_paths": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Changed Paths",
+      "type": "array"
+    },
+    "credential_environment_names": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Credential Environment Names",
+      "type": "array"
+    },
+    "cwd": {
+      "title": "Cwd",
+      "type": "string"
+    },
+    "declared_effects": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Declared Effects",
+      "type": "array"
+    },
+    "effect_diff_artifact_ref": {
+      "anyOf": [
+        {
+          "pattern": "^artifact:[0-9a-f-]{36}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Effect Diff Artifact Ref"
+    },
+    "effect_observation_complete": {
+      "default": false,
+      "title": "Effect Observation Complete",
+      "type": "boolean"
+    },
+    "effect_observation_omissions": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Effect Observation Omissions",
+      "type": "array"
+    },
+    "effect_settlement": {
+      "$ref": "#/$defs/EffectSettlement"
+    },
+    "effect_validation": {
+      "default": "not-applicable",
+      "title": "Effect Validation",
+      "type": "string"
+    },
+    "environment_names": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Environment Names",
+      "type": "array"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error"
+    },
+    "executable": {
+      "title": "Executable",
+      "type": "string"
+    },
+    "execution_id": {
+      "format": "uuid",
+      "title": "Execution Id",
+      "type": "string"
+    },
+    "execution_location": {
+      "title": "Execution Location",
+      "type": "string"
+    },
+    "exit_code": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Exit Code"
+    },
+    "expected_exit_codes": {
+      "items": {
+        "type": "integer"
+      },
+      "title": "Expected Exit Codes",
+      "type": "array"
+    },
+    "finished_at": {
+      "format": "date-time",
+      "title": "Finished At",
+      "type": "string"
+    },
+    "mode": {
+      "$ref": "#/$defs/ExecutionMode"
+    },
+    "observed_effects": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Observed Effects",
+      "type": "array"
+    },
+    "produced_artifact_refs": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Produced Artifact Refs",
+      "type": "array"
+    },
+    "retryable": {
+      "default": false,
+      "title": "Retryable",
+      "type": "boolean"
+    },
+    "schema_version": {
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "scope_deviations": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Scope Deviations",
+      "type": "array"
+    },
+    "signal": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Signal"
+    },
+    "started_at": {
+      "format": "date-time",
+      "title": "Started At",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/ExecutionStatus"
+    },
+    "stderr_artifact_ref": {
+      "anyOf": [
+        {
+          "pattern": "^artifact:[0-9a-f-]{36}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Stderr Artifact Ref"
+    },
+    "stderr_bytes": {
+      "minimum": 0,
+      "title": "Stderr Bytes",
+      "type": "integer"
+    },
+    "stderr_digest": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Stderr Digest",
+      "type": "string"
+    },
+    "stderr_preview": {
+      "title": "Stderr Preview",
+      "type": "string"
+    },
+    "stdout_artifact_ref": {
+      "anyOf": [
+        {
+          "pattern": "^artifact:[0-9a-f-]{36}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Stdout Artifact Ref"
+    },
+    "stdout_bytes": {
+      "minimum": 0,
+      "title": "Stdout Bytes",
+      "type": "integer"
+    },
+    "stdout_digest": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Stdout Digest",
+      "type": "string"
+    },
+    "stdout_preview": {
+      "title": "Stdout Preview",
+      "type": "string"
+    },
+    "termination_cause": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Termination Cause"
+    },
+    "truncated": {
+      "title": "Truncated",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "execution_id",
+    "mode",
+    "status",
+    "executable",
+    "args",
+    "cwd",
+    "exit_code",
+    "signal",
+    "started_at",
+    "finished_at",
+    "stdout_preview",
+    "stderr_preview",
+    "stdout_bytes",
+    "stderr_bytes",
+    "stdout_digest",
+    "stderr_digest",
+    "truncated",
+    "expected_exit_codes",
+    "environment_names",
+    "credential_environment_names",
+    "declared_effects",
+    "effect_settlement",
+    "execution_location"
+  ],
+  "title": "ExecutionResult",
+  "type": "object"
+}

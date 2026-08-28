@@ -1,9 +1,22 @@
 {
+  "$defs": {
+    "BrowserDiagnosticChannel": {
+      "enum": [
+        "console",
+        "network",
+        "performance",
+        "storage",
+        "service_worker"
+      ],
+      "title": "BrowserDiagnosticChannel",
+      "type": "string"
+    }
+  },
   "additionalProperties": false,
   "properties": {
     "channels": {
       "items": {
-        "type": "string"
+        "$ref": "#/$defs/BrowserDiagnosticChannel"
       },
       "minItems": 1,
       "title": "Channels",

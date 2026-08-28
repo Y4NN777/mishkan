@@ -6,7 +6,8 @@
         "mark_corrupt",
         "delete_orphan_blob",
         "delete_invalid_reference",
-        "delete_incomplete_collection"
+        "delete_incomplete_collection",
+        "abort_expired_upload"
       ],
       "title": "ArtifactReconciliationAction",
       "type": "string"
@@ -77,6 +78,19 @@
           ],
           "default": null,
           "title": "Storage Ref"
+        },
+        "upload_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Upload Id"
         }
       },
       "required": [

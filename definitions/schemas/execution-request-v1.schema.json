@@ -1,0 +1,463 @@
+{
+  "$defs": {
+    "CredentialReference": {
+      "additionalProperties": false,
+      "description": "A late-resolution locator; never a credential value.",
+      "properties": {
+        "locator": {
+          "minLength": 1,
+          "title": "Locator",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/CredentialSource"
+        }
+      },
+      "required": [
+        "source",
+        "locator"
+      ],
+      "title": "CredentialReference",
+      "type": "object"
+    },
+    "CredentialSource": {
+      "enum": [
+        "env",
+        "file",
+        "keyring",
+        "command"
+      ],
+      "title": "CredentialSource",
+      "type": "string"
+    },
+    "ExecutionMode": {
+      "enum": [
+        "process",
+        "shell",
+        "pty",
+        "job"
+      ],
+      "title": "ExecutionMode",
+      "type": "string"
+    },
+    "OutputPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "preserve_full_output_as_artifact": {
+          "default": false,
+          "title": "Preserve Full Output As Artifact",
+          "type": "boolean"
+        },
+        "preview_bytes": {
+          "minimum": 1,
+          "title": "Preview Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "preview_bytes"
+      ],
+      "title": "OutputPolicy",
+      "type": "object"
+    },
+    "ReadinessProbe": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "default": "process_running",
+          "enum": [
+            "process_running",
+            "output_contains"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "default": 30,
+          "exclusiveMinimum": 0,
+          "maximum": 3600,
+          "title": "Timeout Seconds",
+          "type": "number"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        }
+      },
+      "title": "ReadinessProbe",
+      "type": "object"
+    },
+    "ShellDialect": {
+      "enum": [
+        "bash"
+      ],
+      "title": "ShellDialect",
+      "type": "string"
+    },
+    "ShellOptions": {
+      "additionalProperties": false,
+      "properties": {
+        "errexit": {
+          "default": false,
+          "title": "Errexit",
+          "type": "boolean"
+        },
+        "inherit_errexit": {
+          "default": false,
+          "title": "Inherit Errexit",
+          "type": "boolean"
+        },
+        "nounset": {
+          "default": false,
+          "title": "Nounset",
+          "type": "boolean"
+        },
+        "pipefail": {
+          "default": true,
+          "title": "Pipefail",
+          "type": "boolean"
+        }
+      },
+      "title": "ShellOptions",
+      "type": "object"
+    },
+    "ShellProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "dialect": {
+          "$ref": "#/$defs/ShellDialect",
+          "default": "bash"
+        },
+        "interpreter": {
+          "title": "Interpreter",
+          "type": "string"
+        },
+        "options": {
+          "$ref": "#/$defs/ShellOptions"
+        },
+        "profile_id": {
+          "pattern": "^[a-z][a-z0-9_.-]{1,127}$",
+          "title": "Profile Id",
+          "type": "string"
+        },
+        "revision": {
+          "minLength": 1,
+          "title": "Revision",
+          "type": "string"
+        },
+        "schema_version": {
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "startup_files": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Startup Files",
+          "type": "array"
+        }
+      },
+      "required": [
+        "profile_id",
+        "revision",
+        "interpreter"
+      ],
+      "title": "ShellProfile",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Common execution envelope; mode-specific public operations constrain its fields.",
+  "properties": {
+    "args": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Args",
+      "type": "array"
+    },
+    "columns": {
+      "default": 80,
+      "maximum": 4000,
+      "minimum": 1,
+      "title": "Columns",
+      "type": "integer"
+    },
+    "credential_environment": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "$ref": "#/$defs/CredentialReference"
+          }
+        ]
+      },
+      "title": "Credential Environment",
+      "type": "object"
+    },
+    "credential_references": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/CredentialReference"
+      },
+      "title": "Credential References",
+      "type": "array"
+    },
+    "cwd": {
+      "default": ".",
+      "minLength": 1,
+      "title": "Cwd",
+      "type": "string"
+    },
+    "deadline": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Deadline"
+    },
+    "declared_effects": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Declared Effects",
+      "type": "array"
+    },
+    "declared_executables": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Declared Executables",
+      "type": "array"
+    },
+    "declared_paths": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Declared Paths",
+      "type": "array"
+    },
+    "environment": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Environment",
+      "type": "object"
+    },
+    "executable": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Executable"
+    },
+    "execution_id": {
+      "format": "uuid",
+      "title": "Execution Id",
+      "type": "string"
+    },
+    "expected_exit_codes": {
+      "default": [
+        0
+      ],
+      "items": {
+        "type": "integer"
+      },
+      "title": "Expected Exit Codes",
+      "type": "array"
+    },
+    "mode": {
+      "$ref": "#/$defs/ExecutionMode"
+    },
+    "network_destinations": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Network Destinations",
+      "type": "array"
+    },
+    "output_policy": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OutputPolicy"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "owner": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Owner"
+    },
+    "policy_fingerprint": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "minLength": 64,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Policy Fingerprint"
+    },
+    "readiness": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ReadinessProbe"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "rows": {
+      "default": 24,
+      "maximum": 1000,
+      "minimum": 1,
+      "title": "Rows",
+      "type": "integer"
+    },
+    "run_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Run Id"
+    },
+    "schema_version": {
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "script": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Script"
+    },
+    "session_profile": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Session Profile"
+    },
+    "shell_profile": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ShellProfile"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "stdin": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Stdin"
+    },
+    "task_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Task Id"
+    },
+    "timeout_seconds": {
+      "anyOf": [
+        {
+          "maximum": 86400,
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Timeout Seconds"
+    }
+  },
+  "required": [
+    "mode"
+  ],
+  "title": "ExecutionRequest",
+  "type": "object"
+}

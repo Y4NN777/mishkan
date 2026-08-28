@@ -1,0 +1,169 @@
+{
+  "$defs": {
+    "EffectSettlement": {
+      "enum": [
+        "absent",
+        "completed",
+        "uncertain"
+      ],
+      "title": "EffectSettlement",
+      "type": "string"
+    },
+    "GitEffectMode": {
+      "enum": [
+        "stage",
+        "commit",
+        "push",
+        "force_with_lease",
+        "force_push"
+      ],
+      "title": "GitEffectMode",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "after_revision": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "After Revision"
+    },
+    "before_revision": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Before Revision"
+    },
+    "changed_paths": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Changed Paths",
+      "type": "array"
+    },
+    "current_branch": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Current Branch"
+    },
+    "diff_reference": {
+      "title": "Diff Reference",
+      "type": "string"
+    },
+    "git_directory": {
+      "title": "Git Directory",
+      "type": "string"
+    },
+    "mode": {
+      "$ref": "#/$defs/GitEffectMode"
+    },
+    "remote_revision_after": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Remote Revision After"
+    },
+    "remote_revision_before": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Remote Revision Before"
+    },
+    "remote_url": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Remote Url"
+    },
+    "repository_root": {
+      "title": "Repository Root",
+      "type": "string"
+    },
+    "returncode": {
+      "title": "Returncode",
+      "type": "integer"
+    },
+    "settlement": {
+      "$ref": "#/$defs/EffectSettlement"
+    },
+    "stderr": {
+      "title": "Stderr",
+      "type": "string"
+    },
+    "stdout": {
+      "title": "Stdout",
+      "type": "string"
+    },
+    "target_revision": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Target Revision"
+    },
+    "validation": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Validation",
+      "type": "array"
+    }
+  },
+  "required": [
+    "mode",
+    "returncode",
+    "settlement",
+    "before_revision",
+    "after_revision",
+    "repository_root",
+    "git_directory",
+    "current_branch",
+    "remote_url",
+    "remote_revision_before",
+    "remote_revision_after",
+    "target_revision",
+    "validation",
+    "changed_paths",
+    "diff_reference",
+    "stdout",
+    "stderr"
+  ],
+  "title": "GitEffectResult",
+  "type": "object"
+}

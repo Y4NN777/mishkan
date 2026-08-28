@@ -972,6 +972,41 @@
       "title": "SessionConfig",
       "type": "object"
     },
+    "SessionEffectObservationConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "exclude": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Exclude",
+          "type": "array"
+        },
+        "max_entries": {
+          "minimum": 1,
+          "title": "Max Entries",
+          "type": "integer"
+        },
+        "max_file_bytes": {
+          "minimum": 1,
+          "title": "Max File Bytes",
+          "type": "integer"
+        },
+        "max_total_bytes": {
+          "minimum": 1,
+          "title": "Max Total Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_entries",
+        "max_file_bytes",
+        "max_total_bytes"
+      ],
+      "title": "SessionEffectObservationConfig",
+      "type": "object"
+    },
     "SessionProfileConfig": {
       "additionalProperties": false,
       "properties": {
@@ -983,15 +1018,57 @@
           "title": "Cancellation Signals",
           "type": "array"
         },
+        "effect_observation": {
+          "$ref": "#/$defs/SessionEffectObservationConfig"
+        },
         "grace_seconds": {
           "maximum": 300,
           "minimum": 0.05,
           "title": "Grace Seconds",
           "type": "number"
         },
+        "max_cpu_seconds": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 604800,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Cpu Seconds"
+        },
+        "max_input_bytes": {
+          "default": 1048576,
+          "minimum": 1,
+          "title": "Max Input Bytes",
+          "type": "integer"
+        },
+        "max_memory_mb": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Memory Mb"
+        },
         "max_output_bytes": {
           "minimum": 1,
           "title": "Max Output Bytes",
+          "type": "integer"
+        },
+        "preview_bytes": {
+          "default": 4096,
+          "minimum": 1,
+          "title": "Preview Bytes",
           "type": "integer"
         },
         "read_chunk_bytes": {
@@ -1019,7 +1096,8 @@
         "settle_timeout_seconds",
         "max_output_bytes",
         "read_chunk_bytes",
-        "readiness_poll_seconds"
+        "readiness_poll_seconds",
+        "effect_observation"
       ],
       "title": "SessionProfileConfig",
       "type": "object"
@@ -1324,6 +1402,13 @@
         }
       ],
       "default": null
+    },
+    "credential_bindings": {
+      "additionalProperties": {
+        "$ref": "#/$defs/CredentialReference"
+      },
+      "title": "Credential Bindings",
+      "type": "object"
     },
     "crewai": {
       "$ref": "#/$defs/CrewAIRuntimeConfig"

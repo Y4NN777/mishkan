@@ -13,13 +13,109 @@
       ],
       "title": "ChangeSetState",
       "type": "string"
+    },
+    "ChangeValidationKind": {
+      "enum": [
+        "exists",
+        "absent",
+        "digest",
+        "mode"
+      ],
+      "title": "ChangeValidationKind",
+      "type": "string"
+    },
+    "ChangeValidationResult": {
+      "additionalProperties": false,
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "expected": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected"
+        },
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/ChangeValidationKind"
+        },
+        "observed": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Observed"
+        },
+        "passed": {
+          "title": "Passed",
+          "type": "boolean"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "schema_version": {
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "validation_id": {
+          "title": "Validation Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "validation_id",
+        "kind",
+        "path",
+        "passed"
+      ],
+      "title": "ChangeValidationResult",
+      "type": "object"
     }
   },
   "additionalProperties": false,
   "properties": {
+    "atomicity": {
+      "default": "per_operation_atomic_recoverable_set",
+      "title": "Atomicity",
+      "type": "string"
+    },
     "change_set_id": {
       "title": "Change Set Id",
       "type": "string"
+    },
+    "changed_paths": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Changed Paths",
+      "type": "array"
     },
     "completed_operations": {
       "minimum": 0,
@@ -78,8 +174,24 @@
       "title": "Schema Version",
       "type": "string"
     },
+    "scope_deviations": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Scope Deviations",
+      "type": "array"
+    },
     "state": {
       "$ref": "#/$defs/ChangeSetState"
+    },
+    "validation_results": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ChangeValidationResult"
+      },
+      "title": "Validation Results",
+      "type": "array"
     }
   },
   "required": [

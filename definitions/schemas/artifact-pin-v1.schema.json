@@ -1,0 +1,32 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "artifact_reference": {
+      "pattern": "^artifact:[0-9a-f-]{36}$",
+      "title": "Artifact Reference",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "artifact_reference",
+    "created_at"
+  ],
+  "title": "ArtifactPin",
+  "type": "object"
+}
