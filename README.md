@@ -14,6 +14,61 @@ retain authority over consequential actions.
 > organization, skills, knowledge stack, scheduler, distributed workers, and operational TUI
 > remain roadmap work.
 
+## Organization model
+
+The target version 1 organization contains exactly **59 persistent professional identities**. The
+human engineer remains outside that roster as CEO. The identities keep their responsibility,
+project knowledge, demonstrated competence, and learning over time, but they do not all join every
+mission.
+
+The permanent organization has nine responsibility branches:
+
+- Product and Experience;
+- Architecture and System Design;
+- Software Engineering;
+- Data and AI Engineering;
+- Platform, Delivery, and Reliability;
+- Security and Supply Chain;
+- Independent Assurance;
+- Research and Decision Support;
+- Documentation and Organizational Learning.
+
+Five explicit pools provide reusable specialists for software engineering, quality evaluation,
+security evaluation, mission reporting, and documentation. A pool narrows professional
+responsibility; it never grants tools, authority, or automatic participation. The complete roster
+and pool membership are defined in [SRS Appendix A](docs/PROJECT/SRS.md#appendix-a--organization-version-1-roster).
+
+Each objective becomes a contextual mission rather than an invocation of a fixed workflow:
+
+```text
+Human CEO
+    │ objective, constraints, decisions, risk acceptance
+    ▼
+PM + CTO
+    │ agreed Mission Brief and confirmed crew composition
+    ▼
+Temporary Mission Crew
+    ├── one accountable Mission Lead
+    ├── only the producers and specialists the mission needs
+    ├── independent evaluators for acceptance evidence
+    └── an independent Reporter for the final account
+```
+
+The PM owns product purpose, priorities, functional acceptance, and formal crew composition. The
+CTO owns technical direction, feasibility, risk coverage, and technical readiness. If they cannot
+agree, only the dependent work pauses; independent work may continue, and an actionable escalation
+is sent to the CEO when the decision exceeds their authority.
+
+Durable Executive, Mission, Branch, and authorized Direct channels keep decisions attached to the
+work. From any supported client, the CEO can inspect the same organization state and, when needed,
+comment, answer an escalation, suspend or resume work, request reassignment, stop a mission, or
+accept an explicit risk under the configured policy.
+
+This model supports free-form objectives for existing repositories, greenfield products,
+multi-repository systems, research, incidents, modernization, platform work, and operations.
+Versioned mission templates may provide guidance, but they never impose a universal task graph,
+fixed crew, or static role-to-tool matrix.
+
 ## How the current system is structured
 
 - **`mishkand`** accepts commands, owns durable run state, and publishes events.
