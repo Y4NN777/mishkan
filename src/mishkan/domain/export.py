@@ -14,10 +14,14 @@ from mishkan.application.contracts import (
 from mishkan.artifacts.models import (
     ArtifactCollection,
     ArtifactManifest,
+    ArtifactPin,
     ArtifactReconciliationPlan,
     GarbageCollectionPlan,
     UploadSession,
     WorkingReference,
+)
+from mishkan.artifacts.models import (
+    ArtifactHold as ArtifactEvidenceHold,
 )
 from mishkan.browser.models import (
     BrowserActionRequest,
@@ -35,10 +39,12 @@ from mishkan.domain.identity import DomainRecord
 from mishkan.edits.models import ChangeSet, ChangeSetResult
 from mishkan.events.models import (
     EventEnvelope,
-    EventHold,
     EventPage,
     EventRetentionPlan,
     EventRetentionPolicy,
+)
+from mishkan.events.models import (
+    EventHold as EventEvidenceHold,
 )
 from mishkan.execution.sessions import CursorRead, SessionRecord, SessionRequest
 from mishkan.mcp.models import (
@@ -69,8 +75,10 @@ from mishkan.web.models import (
 SCHEMAS: dict[str, type[BaseModel]] = {
     "application-command-v1.schema.json": ApplicationCommand,
     "artifact-collection-v1.schema.json": ArtifactCollection,
+    "artifact-hold-v1.schema.json": ArtifactEvidenceHold,
     "artifact-gc-plan-v1.schema.json": GarbageCollectionPlan,
     "artifact-manifest-v1.schema.json": ArtifactManifest,
+    "artifact-pin-v1.schema.json": ArtifactPin,
     "artifact-reconciliation-plan-v1.schema.json": ArtifactReconciliationPlan,
     "artifact-upload-session-v1.schema.json": UploadSession,
     "artifact-working-reference-v1.schema.json": WorkingReference,
@@ -89,7 +97,7 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "domain-record-v1.schema.json": DomainRecord,
     "error-envelope-v1.schema.json": ErrorEnvelope,
     "event-envelope-v1.schema.json": EventEnvelope,
-    "event-hold-v1.schema.json": EventHold,
+    "event-hold-v1.schema.json": EventEvidenceHold,
     "event-page-v1.schema.json": EventPage,
     "event-retention-plan-v1.schema.json": EventRetentionPlan,
     "event-retention-policy-v1.schema.json": EventRetentionPolicy,

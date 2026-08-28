@@ -16,8 +16,10 @@ from sqlalchemy.orm import Session
 
 from mishkan.artifacts.models import (
     ArtifactCollection,
+    ArtifactHold,
     ArtifactLifecycle,
     ArtifactManifest,
+    ArtifactPin,
     ArtifactProvenance,
     ArtifactReconciliationAction,
     ArtifactReconciliationIssue,
@@ -78,6 +80,7 @@ class DurableArtifactService:
         retention: str = "run",
     ) -> UploadSession:
         self._validate_digest(expected_digest)
+        self._validate_provenance(provenance)
         if expected_size < 0 or expected_size > self._max_artifact_bytes:
             raise MishkanError(
                 ErrorCode.ARTIFACT,
@@ -304,18 +307,78 @@ class DurableArtifactService:
         normalized: dict[str, str] = {}
         for logical_path, reference in entries.items():
             self._validate_logical_path(logical_path)
-            self.manifest(reference)
+            member = self.manifest(reference)
+            if member.lifecycle is not ArtifactLifecycle.AVAILABLE:
+                raise MishkanError(
+                    ErrorCode.ARTIFACT,
+                    "artifact collection member is unavailable",
+                    details={"artifact": reference, "lifecycle": member.lifecycle.value},
+                )
             normalized[logical_path] = reference
-        collection = ArtifactCollection(collection_id=new_id(), entries=normalized)
+        collection = ArtifactCollection(
+            collection_id=new_id(),
+            entries=normalized,
+            ordered_paths=tuple(normalized),
+        )
         with Session(self._engine) as session, session.begin():
             session.add(
                 ArtifactCollectionRow(
                     id=str(collection.collection_id),
-                    entries_payload=json.dumps(normalized, sort_keys=True, separators=(",", ":")),
+                    entries_payload=json.dumps(normalized, separators=(",", ":")),
                     created_at=collection.created_at.isoformat(),
                 )
             )
         return collection
+
+    def collection(self, collection_id: UUID) -> ArtifactCollection:
+        with Session(self._engine) as session:
+            row = session.get(ArtifactCollectionRow, str(collection_id))
+            if row is None:
+                raise MishkanError(ErrorCode.ARTIFACT, "artifact collection does not exist")
+            entries = cast(dict[str, str], json.loads(row.entries_payload))
+            return ArtifactCollection(
+                collection_id=UUID(row.id),
+                entries=entries,
+                ordered_paths=tuple(entries),
+                created_at=datetime.fromisoformat(row.created_at),
+            )
+
+    def list_collections(
+        self, *, offset: int = 0, limit: int = 100
+    ) -> tuple[ArtifactCollection, ...]:
+        self._query_bound(offset, limit)
+        with Session(self._engine) as session:
+            rows = session.scalars(
+                select(ArtifactCollectionRow)
+                .order_by(ArtifactCollectionRow.created_at, ArtifactCollectionRow.id)
+                .offset(offset)
+                .limit(limit)
+            ).all()
+            return tuple(self.collection(UUID(row.id)) for row in rows)
+
+    def list_references(self, *, offset: int = 0, limit: int = 100) -> tuple[WorkingReference, ...]:
+        self._query_bound(offset, limit)
+        with Session(self._engine) as session:
+            rows = session.scalars(
+                select(ArtifactReferenceRow)
+                .order_by(ArtifactReferenceRow.scope, ArtifactReferenceRow.name)
+                .offset(offset)
+                .limit(limit)
+            ).all()
+            return tuple(
+                WorkingReference(
+                    scope=row.scope,
+                    name=row.name,
+                    artifact_reference=f"artifact:{row.artifact_id}",
+                    revision=row.revision,
+                    prior_artifact_reference=(
+                        f"artifact:{row.prior_artifact_id}" if row.prior_artifact_id else None
+                    ),
+                    prior_revision=row.prior_revision,
+                    updated_at=datetime.fromisoformat(row.updated_at),
+                )
+                for row in rows
+            )
 
     def update_reference(
         self,
@@ -351,10 +414,14 @@ class DurableArtifactService:
                     name=name,
                     artifact_id=str(artifact_id),
                     revision=1,
+                    prior_artifact_id=None,
+                    prior_revision=None,
                     updated_at=now.isoformat(),
                 )
                 session.add(row)
             else:
+                row.prior_artifact_id = row.artifact_id
+                row.prior_revision = row.revision
                 row.artifact_id = str(artifact_id)
                 row.revision += 1
                 row.updated_at = now.isoformat()
@@ -364,28 +431,86 @@ class DurableArtifactService:
                 name=name,
                 artifact_reference=artifact_reference,
                 revision=row.revision,
+                prior_artifact_reference=(
+                    f"artifact:{row.prior_artifact_id}" if row.prior_artifact_id else None
+                ),
+                prior_revision=row.prior_revision,
                 updated_at=now,
             )
 
-    def hold(self, reference: str, reason: str) -> None:
+    def hold(self, reference: str, reason: str) -> ArtifactHold:
         artifact_id = self._reference_id(reference)
         with Session(self._engine) as session, session.begin():
             if session.get(ArtifactRow, str(artifact_id)) is None:
                 raise MishkanError(ErrorCode.ARTIFACT, "artifact hold target does not exist")
-            session.merge(
-                ArtifactHoldRow(
-                    artifact_id=str(artifact_id), reason=reason, created_at=utc_now().isoformat()
-                )
+            existing = session.get(ArtifactHoldRow, str(artifact_id))
+            if existing is not None:
+                if existing.reason != reason:
+                    raise MishkanError(
+                        ErrorCode.REVISION_MISMATCH,
+                        "artifact already has a hold with a different reason",
+                    )
+                return self._hold_model(existing)
+            row = ArtifactHoldRow(
+                artifact_id=str(artifact_id), reason=reason, created_at=utc_now().isoformat()
             )
+            session.add(row)
+            session.flush()
+            return self._hold_model(row)
 
-    def pin(self, reference: str) -> None:
+    def release_hold(self, reference: str) -> ArtifactHold:
+        artifact_id = self._reference_id(reference)
+        with Session(self._engine) as session, session.begin():
+            row = session.get(ArtifactHoldRow, str(artifact_id))
+            if row is None:
+                raise MishkanError(ErrorCode.ARTIFACT, "artifact hold does not exist")
+            result = self._hold_model(row)
+            session.delete(row)
+            return result
+
+    def list_holds(self, *, offset: int = 0, limit: int = 100) -> tuple[ArtifactHold, ...]:
+        self._query_bound(offset, limit)
+        with Session(self._engine) as session:
+            rows = session.scalars(
+                select(ArtifactHoldRow)
+                .order_by(ArtifactHoldRow.created_at, ArtifactHoldRow.artifact_id)
+                .offset(offset)
+                .limit(limit)
+            ).all()
+            return tuple(self._hold_model(row) for row in rows)
+
+    def pin(self, reference: str) -> ArtifactPin:
         artifact_id = self._reference_id(reference)
         with Session(self._engine) as session, session.begin():
             if session.get(ArtifactRow, str(artifact_id)) is None:
                 raise MishkanError(ErrorCode.ARTIFACT, "artifact pin target does not exist")
-            session.merge(
-                ArtifactPinRow(artifact_id=str(artifact_id), created_at=utc_now().isoformat())
-            )
+            row = session.get(ArtifactPinRow, str(artifact_id))
+            if row is None:
+                row = ArtifactPinRow(artifact_id=str(artifact_id), created_at=utc_now().isoformat())
+                session.add(row)
+                session.flush()
+            return self._pin_model(row)
+
+    def release_pin(self, reference: str) -> ArtifactPin:
+        artifact_id = self._reference_id(reference)
+        with Session(self._engine) as session, session.begin():
+            row = session.get(ArtifactPinRow, str(artifact_id))
+            if row is None:
+                raise MishkanError(ErrorCode.ARTIFACT, "artifact pin does not exist")
+            result = self._pin_model(row)
+            session.delete(row)
+            return result
+
+    def list_pins(self, *, offset: int = 0, limit: int = 100) -> tuple[ArtifactPin, ...]:
+        self._query_bound(offset, limit)
+        with Session(self._engine) as session:
+            rows = session.scalars(
+                select(ArtifactPinRow)
+                .order_by(ArtifactPinRow.created_at, ArtifactPinRow.artifact_id)
+                .offset(offset)
+                .limit(limit)
+            ).all()
+            return tuple(self._pin_model(row) for row in rows)
 
     def plan_gc(self, *, watermark: datetime) -> GarbageCollectionPlan:
         with Session(self._engine) as session, session.begin():
@@ -862,6 +987,36 @@ class DurableArtifactService:
         if not value or path.is_absolute() or ".." in path.parts or "." in path.parts:
             raise MishkanError(ErrorCode.ARTIFACT, "collection logical path is unsafe")
 
+    def _validate_provenance(self, provenance: ArtifactProvenance) -> None:
+        for reference in provenance.source_artifacts:
+            source = self.manifest(reference)
+            if source.lifecycle is not ArtifactLifecycle.AVAILABLE:
+                raise MishkanError(
+                    ErrorCode.ARTIFACT,
+                    "derived artifact source is unavailable",
+                    details={"artifact": reference, "lifecycle": source.lifecycle.value},
+                )
+
+    @staticmethod
+    def _query_bound(offset: int, limit: int) -> None:
+        if offset < 0 or limit < 1 or limit > 1_000:
+            raise MishkanError(ErrorCode.OUTPUT_CONTRACT, "artifact query bound is invalid")
+
+    @staticmethod
+    def _hold_model(row: ArtifactHoldRow) -> ArtifactHold:
+        return ArtifactHold(
+            artifact_reference=f"artifact:{row.artifact_id}",
+            reason=row.reason,
+            created_at=datetime.fromisoformat(row.created_at),
+        )
+
+    @staticmethod
+    def _pin_model(row: ArtifactPinRow) -> ArtifactPin:
+        return ArtifactPin(
+            artifact_reference=f"artifact:{row.artifact_id}",
+            created_at=datetime.fromisoformat(row.created_at),
+        )
+
     @staticmethod
     def _rooted_ids(session: Session) -> set[str]:
         rooted = set(session.scalars(select(ArtifactReferenceRow.artifact_id)).all())
@@ -872,4 +1027,21 @@ class DurableArtifactService:
                 str(DurableArtifactService._reference_id(ref))
                 for ref in json.loads(payload).values()
             )
+        provenance_edges: dict[str, tuple[str, ...]] = {}
+        for row in session.scalars(select(ArtifactRow)).all():
+            try:
+                manifest = ArtifactManifest.model_validate_json(row.manifest_payload)
+            except ValidationError:
+                continue
+            provenance_edges[row.id] = tuple(
+                str(DurableArtifactService._reference_id(reference))
+                for reference in manifest.provenance.source_artifacts
+            )
+        pending = list(rooted)
+        while pending:
+            artifact_id = pending.pop()
+            for source_id in provenance_edges.get(artifact_id, ()):
+                if source_id not in rooted:
+                    rooted.add(source_id)
+                    pending.append(source_id)
         return rooted

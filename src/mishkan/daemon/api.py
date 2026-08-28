@@ -26,7 +26,16 @@ from mishkan.application.authorization import (
     AuthorizedApplicationCommand,
 )
 from mishkan.application.initialize import MishkanInitializer
-from mishkan.artifacts import ArtifactManifest, ArtifactProvenance
+from mishkan.artifacts import (
+    ArtifactCollection,
+    ArtifactManifest,
+    ArtifactPin,
+    ArtifactProvenance,
+    WorkingReference,
+)
+from mishkan.artifacts import (
+    ArtifactHold as ArtifactEvidenceHold,
+)
 from mishkan.artifacts.service import DurableArtifactService
 from mishkan.config.models import CredentialReference, McpConfig, MishkanConfig
 from mishkan.crewai.credentials import CredentialPoolResolver
@@ -35,7 +44,9 @@ from mishkan.daemon.bootstrap import DaemonPaths
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.edits import ChangeSet, ChangeSetResult, ChangeSetService
 from mishkan.events import (
-    EventHold,
+    EventHold as EventEvidenceHold,
+)
+from mishkan.events import (
     EventHoldScope,
     EventPage,
     EventRetentionPlan,
@@ -409,7 +420,7 @@ def create_app(config: MishkanConfig) -> FastAPI:
     async def event_holds(
         _principal: TokenRecord = authenticated,
         active_only: bool = False,
-    ) -> tuple[EventHold, ...]:
+    ) -> tuple[EventEvidenceHold, ...]:
         return repository.event_holds(active_only=active_only)
 
     @app.get("/v1/events/retention-policy")
@@ -544,6 +555,38 @@ def create_app(config: MishkanConfig) -> FastAPI:
             media_type=manifest.detected_media_type or manifest.declared_media_type,
             headers={"Content-Length": str(manifest.size_bytes)},
         )
+
+    @app.get("/v1/artifact-collections")
+    async def artifact_collection_list(
+        _principal: TokenRecord = authenticated,
+        offset: Annotated[int, Query(ge=0)] = 0,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
+    ) -> tuple[ArtifactCollection, ...]:
+        return artifacts.list_collections(offset=offset, limit=limit)
+
+    @app.get("/v1/artifact-references")
+    async def artifact_reference_list(
+        _principal: TokenRecord = authenticated,
+        offset: Annotated[int, Query(ge=0)] = 0,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
+    ) -> tuple[WorkingReference, ...]:
+        return artifacts.list_references(offset=offset, limit=limit)
+
+    @app.get("/v1/artifact-holds")
+    async def artifact_hold_list(
+        _principal: TokenRecord = authenticated,
+        offset: Annotated[int, Query(ge=0)] = 0,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
+    ) -> tuple[ArtifactEvidenceHold, ...]:
+        return artifacts.list_holds(offset=offset, limit=limit)
+
+    @app.get("/v1/artifact-pins")
+    async def artifact_pin_list(
+        _principal: TokenRecord = authenticated,
+        offset: Annotated[int, Query(ge=0)] = 0,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
+    ) -> tuple[ArtifactPin, ...]:
+        return artifacts.list_pins(offset=offset, limit=limit)
 
     @app.get("/v1/change-sets")
     async def change_set_list(
@@ -761,6 +804,30 @@ def _dispatch(
             expected_revision=int(payload["expected_reference_revision"]),
         )
         return "artifact.reference_updated", reference.model_dump(mode="json")
+    if command.command_type == "artifact.collection.create":
+        entries = payload["entries"]
+        if not isinstance(entries, dict) or not all(
+            isinstance(key, str) and isinstance(value, str) for key, value in entries.items()
+        ):
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT,
+                "artifact collection entries must map logical paths to artifact references",
+            )
+        normalized_entries = {str(key): str(value) for key, value in entries.items()}
+        collection = artifacts.create_collection(normalized_entries)
+        return "artifact.collection_created", collection.model_dump(mode="json")
+    if command.command_type == "artifact.hold.set" and command.target_id is not None:
+        artifact_hold = artifacts.hold(f"artifact:{command.target_id}", str(payload["reason"]))
+        return "artifact.hold_set", artifact_hold.model_dump(mode="json")
+    if command.command_type == "artifact.hold.release" and command.target_id is not None:
+        released_artifact_hold = artifacts.release_hold(f"artifact:{command.target_id}")
+        return "artifact.hold_released", released_artifact_hold.model_dump(mode="json")
+    if command.command_type == "artifact.pin.set" and command.target_id is not None:
+        pin = artifacts.pin(f"artifact:{command.target_id}")
+        return "artifact.pin_set", pin.model_dump(mode="json")
+    if command.command_type == "artifact.pin.release" and command.target_id is not None:
+        pin = artifacts.release_pin(f"artifact:{command.target_id}")
+        return "artifact.pin_released", pin.model_dump(mode="json")
     if command.command_type == "artifact.gc.plan":
         plan = artifacts.plan_gc(watermark=datetime.fromisoformat(str(payload["watermark"])))
         return "artifact.gc_planned", plan.model_dump(mode="json")
@@ -774,16 +841,16 @@ def _dispatch(
         reconciliation = artifacts.apply_reconciliation(UUID(command.target_id))
         return "artifact.reconciliation_applied", reconciliation.model_dump(mode="json")
     if command.command_type == "event.hold.create":
-        hold = repository.create_event_hold(
+        event_hold = repository.create_event_hold(
             scope=EventHoldScope(str(payload["scope"])),
             scope_id=(str(payload["scope_id"]) if payload.get("scope_id") is not None else None),
             reason=str(payload["reason"]),
             actor_id=command.actor_id,
         )
-        return "event.hold_created", hold.model_dump(mode="json")
+        return "event.hold_created", event_hold.model_dump(mode="json")
     if command.command_type == "event.hold.release" and command.target_id is not None:
-        hold = repository.release_event_hold(UUID(command.target_id))
-        return "event.hold_released", hold.model_dump(mode="json")
+        released_event_hold = repository.release_event_hold(UUID(command.target_id))
+        return "event.hold_released", released_event_hold.model_dump(mode="json")
     if command.command_type == "event.retention.plan":
         event_plan = repository.plan_event_retention(event_retention_policy)
         return "event.retention_planned", event_plan.model_dump(mode="json")

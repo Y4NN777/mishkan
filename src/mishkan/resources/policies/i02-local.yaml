@@ -1,6 +1,6 @@
 schema_version: "1.0"
 source_id: bundled.local
-revision: "7"
+revision: "8"
 adoption_authority: MISHKAN release
 priority: 0
 rules:
@@ -109,6 +109,11 @@ rules:
         - artifact.upload.chunk
         - artifact.upload.commit
         - artifact.reference.update
+        - artifact.collection.create
+        - artifact.hold.set
+        - artifact.hold.release
+        - artifact.pin.set
+        - artifact.pin.release
         - artifact.gc.plan
         - artifact.gc.apply
         - artifact.reconcile.plan
@@ -136,6 +141,8 @@ rules:
         - application.run.control
         - application.artifact.upload
         - application.artifact.reference
+        - application.artifact.collection
+        - application.artifact.retention
         - application.artifact.gc
         - application.artifact.reconcile
         - application.event.hold

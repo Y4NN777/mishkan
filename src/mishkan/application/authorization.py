@@ -85,6 +85,21 @@ COMMAND_SEMANTICS = MappingProxyType(
         "artifact.reference.update": CommandSemantics(
             "application.artifact.reference", "artifact", ("artifact.reference.update",)
         ),
+        "artifact.collection.create": CommandSemantics(
+            "application.artifact.collection", "artifact", ("artifact.collection.create",)
+        ),
+        "artifact.hold.set": CommandSemantics(
+            "application.artifact.retention", "artifact", ("artifact.hold.set",)
+        ),
+        "artifact.hold.release": CommandSemantics(
+            "application.artifact.retention", "artifact", ("artifact.hold.release",)
+        ),
+        "artifact.pin.set": CommandSemantics(
+            "application.artifact.retention", "artifact", ("artifact.pin.set",)
+        ),
+        "artifact.pin.release": CommandSemantics(
+            "application.artifact.retention", "artifact", ("artifact.pin.release",)
+        ),
         "artifact.gc.plan": CommandSemantics(
             "application.artifact.gc", "artifact", ("artifact.gc.plan",)
         ),
@@ -154,6 +169,11 @@ _COMMAND_TARGETS = MappingProxyType(
         "artifact.upload.chunk": ("artifact_upload", "uuid"),
         "artifact.upload.commit": ("artifact_upload", "uuid"),
         "artifact.reference.update": ("artifact_reference", "absent"),
+        "artifact.collection.create": ("artifact_service", "absent"),
+        "artifact.hold.set": ("artifact", "uuid"),
+        "artifact.hold.release": ("artifact", "uuid"),
+        "artifact.pin.set": ("artifact", "uuid"),
+        "artifact.pin.release": ("artifact", "uuid"),
         "artifact.gc.plan": ("artifact_service", "absent"),
         "artifact.gc.apply": ("artifact_gc_plan", "uuid"),
         "artifact.reconcile.plan": ("artifact_service", "absent"),
@@ -196,6 +216,11 @@ _COMMAND_PAYLOAD_FIELDS = MappingProxyType(
             frozenset({"scope", "name", "artifact_reference", "expected_reference_revision"}),
             frozenset(),
         ),
+        "artifact.collection.create": (frozenset({"entries"}), frozenset()),
+        "artifact.hold.set": (frozenset({"reason"}), frozenset()),
+        "artifact.hold.release": (frozenset(), frozenset()),
+        "artifact.pin.set": (frozenset(), frozenset()),
+        "artifact.pin.release": (frozenset(), frozenset()),
         "artifact.gc.plan": (frozenset({"watermark"}), frozenset()),
         "artifact.gc.apply": (frozenset(), frozenset()),
         "artifact.reconcile.plan": (frozenset(), frozenset()),

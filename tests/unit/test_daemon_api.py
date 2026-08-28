@@ -98,7 +98,7 @@ async def test_authenticated_command_and_event_query_share_durable_contract(
         "command_type": "system.checkpoint",
         "matched_rule_ids": ["local.application-commands"],
         "policy_fingerprint": event_payload["policy_fingerprint"],
-        "policy_revisions": ["bundled.local@7"],
+        "policy_revisions": ["bundled.local@8"],
         "request_schema_version": "1.0",
         "payload_fields": ["checkpoint"],
         "result_fields": ["recorded"],
@@ -333,11 +333,52 @@ async def test_artifact_upload_commands_publish_only_verified_content(tmp_path: 
         )
         artifact_id = committed.json()["payload"]["id"]
         body = await client.get(f"/v1/artifacts/{artifact_id}/content", headers=headers)
+        held = await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=ApplicationCommand(
+                command_type="artifact.hold.set",
+                actor_id="local-operator",
+                target_type="artifact",
+                target_id=artifact_id,
+                expected_revision=0,
+                payload={"reason": "acceptance evidence"},
+            ).model_dump(mode="json"),
+        )
+        collected = await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=ApplicationCommand(
+                command_type="artifact.collection.create",
+                actor_id="local-operator",
+                target_type="artifact_service",
+                payload={"entries": {"evidence/output.txt": f"artifact:{artifact_id}"}},
+            ).model_dump(mode="json"),
+        )
+        holds = await client.get("/v1/artifact-holds", headers=headers)
+        collections = await client.get("/v1/artifact-collections", headers=headers)
+        released = await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=ApplicationCommand(
+                command_type="artifact.hold.release",
+                actor_id="local-operator",
+                target_type="artifact",
+                target_id=artifact_id,
+                expected_revision=1,
+                payload={},
+            ).model_dump(mode="json"),
+        )
 
     assert opened.status_code == 200
     assert chunked.status_code == 200
     assert committed.status_code == 200
     assert body.content == content
+    assert held.status_code == 200
+    assert collected.status_code == 200
+    assert holds.json()[0]["reason"] == "acceptance evidence"
+    assert collections.json()[0]["ordered_paths"] == ["evidence/output.txt"]
+    assert released.status_code == 200
 
 
 @pytest.mark.anyio

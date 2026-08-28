@@ -593,6 +593,198 @@ def show_artifact(ctx: typer.Context, reference: Annotated[str, typer.Argument()
     _emit(manifest.model_dump(mode="json"), as_json=_state(ctx).json_output)
 
 
+def _artifact_root_effect(
+    ctx: typer.Context,
+    artifact_id: str,
+    command_type: str,
+    payload: dict[str, object],
+    expected_revision: int | None,
+) -> None:
+    from mishkan.application import ApplicationCommand
+
+    with _daemon_client(ctx) as client:
+        result = client.command(
+            ApplicationCommand(
+                command_type=command_type,
+                actor_id=client.principal_id,
+                target_type="artifact",
+                target_id=artifact_id.removeprefix("artifact:"),
+                expected_revision=expected_revision,
+                payload=payload,
+            )
+        )
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@artifact_app.command("collection-create")
+def create_artifact_collection(
+    ctx: typer.Context,
+    source: Annotated[Path, typer.Option("--file", help="YAML/JSON logical-path mapping.")],
+) -> None:
+    """Create an ordered immutable collection from artifact references."""
+    from mishkan.application import ApplicationCommand
+
+    entries = yaml.safe_load(source.read_text(encoding="utf-8"))
+    if not isinstance(entries, dict):
+        raise typer.BadParameter("collection file must contain a logical-path mapping")
+    with _daemon_client(ctx) as client:
+        result = client.command(
+            ApplicationCommand(
+                command_type="artifact.collection.create",
+                actor_id=client.principal_id,
+                target_type="artifact_service",
+                payload={"entries": entries},
+            )
+        )
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@artifact_app.command("collections")
+def list_artifact_collections(ctx: typer.Context) -> None:
+    """Inspect immutable multi-artifact collections."""
+    with _daemon_client(ctx) as client:
+        values = client.artifact_collections()
+    _emit([value.model_dump(mode="json") for value in values], as_json=_state(ctx).json_output)
+
+
+@artifact_app.command("references")
+def list_artifact_references(ctx: typer.Context) -> None:
+    """Inspect current compare-and-swap working references."""
+    with _daemon_client(ctx) as client:
+        values = client.artifact_references()
+    _emit([value.model_dump(mode="json") for value in values], as_json=_state(ctx).json_output)
+
+
+@artifact_app.command("reference-update")
+def update_artifact_reference(
+    ctx: typer.Context,
+    scope: str,
+    name: str,
+    artifact: str,
+    expected_reference_revision: Annotated[int, typer.Option(min=0)],
+) -> None:
+    """Compare-and-swap one scoped working reference."""
+    from mishkan.application import ApplicationCommand
+
+    with _daemon_client(ctx) as client:
+        result = client.command(
+            ApplicationCommand(
+                command_type="artifact.reference.update",
+                actor_id=client.principal_id,
+                target_type="artifact_reference",
+                payload={
+                    "scope": scope,
+                    "name": name,
+                    "artifact_reference": artifact,
+                    "expected_reference_revision": expected_reference_revision,
+                },
+            )
+        )
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@artifact_app.command("hold")
+def hold_artifact(
+    ctx: typer.Context,
+    artifact: str,
+    reason: Annotated[str, typer.Option()],
+    expected_revision: Annotated[int | None, typer.Option(min=0)] = None,
+) -> None:
+    """Root an artifact with an inspectable retention reason."""
+    _artifact_root_effect(ctx, artifact, "artifact.hold.set", {"reason": reason}, expected_revision)
+
+
+@artifact_app.command("hold-release")
+def release_artifact_hold(
+    ctx: typer.Context,
+    artifact: str,
+    expected_revision: Annotated[int | None, typer.Option(min=0)] = None,
+) -> None:
+    """Release an artifact hold through the governed command boundary."""
+    _artifact_root_effect(ctx, artifact, "artifact.hold.release", {}, expected_revision)
+
+
+@artifact_app.command("holds")
+def list_artifact_holds(ctx: typer.Context) -> None:
+    """Inspect current artifact holds."""
+    with _daemon_client(ctx) as client:
+        values = client.artifact_holds()
+    _emit([value.model_dump(mode="json") for value in values], as_json=_state(ctx).json_output)
+
+
+@artifact_app.command("pin")
+def pin_artifact(
+    ctx: typer.Context,
+    artifact: str,
+    expected_revision: Annotated[int | None, typer.Option(min=0)] = None,
+) -> None:
+    """Pin an artifact as a durable garbage-collection root."""
+    _artifact_root_effect(ctx, artifact, "artifact.pin.set", {}, expected_revision)
+
+
+@artifact_app.command("pin-release")
+def release_artifact_pin(
+    ctx: typer.Context,
+    artifact: str,
+    expected_revision: Annotated[int | None, typer.Option(min=0)] = None,
+) -> None:
+    """Release an artifact pin through the governed command boundary."""
+    _artifact_root_effect(ctx, artifact, "artifact.pin.release", {}, expected_revision)
+
+
+@artifact_app.command("pins")
+def list_artifact_pins(ctx: typer.Context) -> None:
+    """Inspect current artifact pins."""
+    with _daemon_client(ctx) as client:
+        values = client.artifact_pins()
+    _emit([value.model_dump(mode="json") for value in values], as_json=_state(ctx).json_output)
+
+
+@artifact_app.command("gc-plan")
+def plan_artifact_gc(
+    ctx: typer.Context,
+    watermark: Annotated[str, typer.Option(help="Aware ISO-8601 retention watermark.")],
+) -> None:
+    """Persist an inspectable reachability-based garbage-collection plan."""
+    from mishkan.application import ApplicationCommand
+
+    parsed = _event_time(watermark)
+    assert parsed is not None
+    with _daemon_client(ctx) as client:
+        result = client.command(
+            ApplicationCommand(
+                command_type="artifact.gc.plan",
+                actor_id=client.principal_id,
+                target_type="artifact_service",
+                payload={"watermark": parsed.isoformat()},
+            )
+        )
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@artifact_app.command("gc-apply")
+def apply_artifact_gc(
+    ctx: typer.Context,
+    plan_id: str,
+    expected_revision: Annotated[int | None, typer.Option(min=0)] = None,
+) -> None:
+    """Apply one stored GC plan after rechecking every current root."""
+    from mishkan.application import ApplicationCommand
+
+    with _daemon_client(ctx) as client:
+        result = client.command(
+            ApplicationCommand(
+                command_type="artifact.gc.apply",
+                actor_id=client.principal_id,
+                target_type="artifact_gc_plan",
+                target_id=plan_id,
+                expected_revision=expected_revision,
+                payload={},
+            )
+        )
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
 @artifact_app.command("reconcile-plan")
 def plan_artifact_reconciliation(ctx: typer.Context) -> None:
     """Observe inconsistencies and persist a non-mutating reconciliation plan."""

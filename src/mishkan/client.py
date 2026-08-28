@@ -13,15 +13,25 @@ from urllib.parse import quote
 import httpx
 
 from mishkan.application import ApplicationCommand, CommandResult, SnapshotEnvelope
-from mishkan.artifacts import ArtifactManifest
+from mishkan.artifacts import (
+    ArtifactCollection,
+    ArtifactManifest,
+    ArtifactPin,
+    WorkingReference,
+)
+from mishkan.artifacts import (
+    ArtifactHold as ArtifactEvidenceHold,
+)
 from mishkan.daemon.auth import TokenFile
 from mishkan.edits import ChangeSetResult
 from mishkan.events import (
     EventEnvelope,
-    EventHold,
     EventPage,
     EventRetentionPlan,
     EventRetentionPolicy,
+)
+from mishkan.events import (
+    EventHold as EventEvidenceHold,
 )
 from mishkan.execution import CursorRead, SessionRecord
 
@@ -222,14 +232,14 @@ class Mishkan:
             raise
         return count, cursor
 
-    def event_holds(self, *, active_only: bool = False) -> tuple[EventHold, ...]:
+    def event_holds(self, *, active_only: bool = False) -> tuple[EventEvidenceHold, ...]:
         response = self._client.get(
             "/v1/events/holds",
             headers=self._headers(),
             params={"active_only": active_only},
         )
         response.raise_for_status()
-        return tuple(EventHold.model_validate(item) for item in response.json())
+        return tuple(EventEvidenceHold.model_validate(item) for item in response.json())
 
     def event_retention_plans(self) -> tuple[EventRetentionPlan, ...]:
         response = self._client.get(
@@ -269,6 +279,48 @@ class Mishkan:
         ) as response:
             response.raise_for_status()
             yield from response.iter_bytes()
+
+    def artifact_collections(
+        self, *, offset: int = 0, limit: int = 100
+    ) -> tuple[ArtifactCollection, ...]:
+        response = self._client.get(
+            "/v1/artifact-collections",
+            headers=self._headers(),
+            params={"offset": offset, "limit": limit},
+        )
+        response.raise_for_status()
+        return tuple(ArtifactCollection.model_validate(item) for item in response.json())
+
+    def artifact_references(
+        self, *, offset: int = 0, limit: int = 100
+    ) -> tuple[WorkingReference, ...]:
+        response = self._client.get(
+            "/v1/artifact-references",
+            headers=self._headers(),
+            params={"offset": offset, "limit": limit},
+        )
+        response.raise_for_status()
+        return tuple(WorkingReference.model_validate(item) for item in response.json())
+
+    def artifact_holds(
+        self, *, offset: int = 0, limit: int = 100
+    ) -> tuple[ArtifactEvidenceHold, ...]:
+        response = self._client.get(
+            "/v1/artifact-holds",
+            headers=self._headers(),
+            params={"offset": offset, "limit": limit},
+        )
+        response.raise_for_status()
+        return tuple(ArtifactEvidenceHold.model_validate(item) for item in response.json())
+
+    def artifact_pins(self, *, offset: int = 0, limit: int = 100) -> tuple[ArtifactPin, ...]:
+        response = self._client.get(
+            "/v1/artifact-pins",
+            headers=self._headers(),
+            params={"offset": offset, "limit": limit},
+        )
+        response.raise_for_status()
+        return tuple(ArtifactPin.model_validate(item) for item in response.json())
 
     def change_sets(self, *, offset: int = 0, limit: int = 100) -> tuple[ChangeSetResult, ...]:
         response = self._client.get(

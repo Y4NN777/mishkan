@@ -239,6 +239,8 @@ class ArtifactReferenceRow(Base):
     name: Mapped[str] = mapped_column(String(256), primary_key=True)
     artifact_id: Mapped[str] = mapped_column(ForeignKey("artifacts.id"), nullable=False)
     revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    prior_artifact_id: Mapped[str | None] = mapped_column(String(36))
+    prior_revision: Mapped[int | None] = mapped_column(Integer)
     updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
 
 
