@@ -130,10 +130,7 @@ class BrowserSupervisor:
                 }
             )
             self._replace_session(uncertain, expected_revision=0)
-            raise MishkanError(
-                ErrorCode.BROWSER,
-                "browser session opening has an uncertain effect",
-            ) from exc
+            return uncertain
         except Exception as exc:
             failed = opening.model_copy(
                 update={
@@ -144,7 +141,7 @@ class BrowserSupervisor:
                 }
             )
             self._replace_session(failed, expected_revision=0)
-            raise MishkanError(ErrorCode.BROWSER, "browser session failed to open") from exc
+            return failed
         active = opening.model_copy(
             update={
                 "state": BrowserSessionState.ACTIVE,

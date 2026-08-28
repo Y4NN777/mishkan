@@ -13,7 +13,9 @@ from mishkan.browser.models import (
     BrowserActionState,
     BrowserDiagnosticRequest,
     BrowserObservationRequest,
+    BrowserSession,
     BrowserSessionRequest,
+    BrowserSessionState,
 )
 from mishkan.browser.service import BrowserSupervisor
 from mishkan.domain.errors import ErrorCode, MishkanError
@@ -93,6 +95,30 @@ class _BrowserToolAdapter:
         )
 
     @staticmethod
+    def _session_status(state: BrowserSessionState) -> CallStatus:
+        if state in {BrowserSessionState.ACTIVE, BrowserSessionState.CLOSED}:
+            return CallStatus.COMPLETED
+        if state is BrowserSessionState.UNCERTAIN:
+            return CallStatus.UNCERTAIN
+        return CallStatus.FAILED
+
+    @classmethod
+    def _session_result(
+        cls,
+        call: AdapterCall,
+        session: BrowserSession,
+        resource: str,
+    ) -> AdapterResult:
+        status = cls._session_status(session.state)
+        return cls._result(call, session, (resource,)).model_copy(
+            update={
+                "call_status": status,
+                "error_code": ErrorCode.BROWSER if status is not CallStatus.COMPLETED else None,
+                "reason": session.last_error or f"browser session is {session.state.value}",
+            }
+        )
+
+    @staticmethod
     def _session_resource(session_id: object) -> str:
         return f"browser:{session_id}"
 
@@ -119,7 +145,7 @@ class BrowserOpenToolAdapter(_BrowserToolAdapter):
             raise MishkanError(ErrorCode.TOOL_SCHEMA, "Browser open has undeclared credentials")
         session = self._supervisor.open(request)
         resource = self._session_resource(session.id)
-        return self._result(call, session, (resource,))
+        return self._session_result(call, session, resource)
 
 
 class BrowserObserveToolAdapter(_BrowserToolAdapter):
@@ -250,7 +276,7 @@ class BrowserCloseToolAdapter(_BrowserToolAdapter):
         except ValueError as exc:
             raise MishkanError(ErrorCode.TOOL_SCHEMA, "Browser session UUID is invalid") from exc
         result = self._supervisor.close(session_id, owner_identity=call.acting_identity)
-        return self._result(call, result, (resource,))
+        return self._session_result(call, result, resource)
 
 
 def build_browser_tool_adapters(

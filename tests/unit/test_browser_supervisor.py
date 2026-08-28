@@ -51,6 +51,8 @@ class FakeDriver:
     adapter_id = "playwright.chromium"
 
     def __init__(self) -> None:
+        self.uncertain_open = False
+        self.fail_open = False
         self.uncertain = False
         self.actions = 0
         self.closed = 0
@@ -65,6 +67,10 @@ class FakeDriver:
         initial_url: str | None,
     ) -> DriverSession:
         del profile, workspace, initial_url
+        if self.uncertain_open:
+            raise BrowserUncertainEffect("fixture lost certainty while opening")
+        if self.fail_open:
+            raise RuntimeError("fixture open failure")
         return DriverSession("handle-1", ("page-1",), "fixture-1")
 
     def observe(
@@ -254,6 +260,35 @@ def test_observation_bound_action_is_durable_idempotent_and_invalidates_revision
             owner_identity="role:Engineer",
         )
     assert stale.value.envelope.code is ErrorCode.REVISION_MISMATCH
+
+
+def test_open_failure_and_uncertainty_remain_durable_queryable_session_states(
+    tmp_path: Path,
+) -> None:
+    uncertain_driver = FakeDriver()
+    uncertain_driver.uncertain_open = True
+    uncertain_supervisor = _supervisor(tmp_path / "uncertain", uncertain_driver)
+
+    uncertain = _open(uncertain_supervisor)
+
+    assert uncertain.state is BrowserSessionState.UNCERTAIN
+    assert uncertain.uncertain_effect == "browser.session.open"
+    assert (
+        uncertain_supervisor.get(
+            uncertain.id,
+            owner_identity="role:Engineer",
+        )
+        == uncertain
+    )
+
+    failed_driver = FakeDriver()
+    failed_driver.fail_open = True
+    failed_supervisor = _supervisor(tmp_path / "failed", failed_driver)
+
+    failed = _open(failed_supervisor)
+
+    assert failed.state is BrowserSessionState.FAILED
+    assert failed_supervisor.get(failed.id, owner_identity="role:Engineer") == failed
 
 
 def test_download_result_is_committed_as_an_immutable_artifact(tmp_path: Path) -> None:
@@ -881,6 +916,13 @@ def test_browser_action_states_remain_visible_at_the_gateway_boundary() -> None:
     assert BrowserActToolAdapter._call_status(BrowserActionState.FAILED) is CallStatus.FAILED
     assert BrowserActToolAdapter._call_status(BrowserActionState.CANCELLED) is CallStatus.CANCELLED
     assert BrowserActToolAdapter._call_status(BrowserActionState.UNCERTAIN) is CallStatus.UNCERTAIN
+    assert BrowserActToolAdapter._session_status(BrowserSessionState.ACTIVE) is CallStatus.COMPLETED
+    assert BrowserActToolAdapter._session_status(BrowserSessionState.CLOSED) is CallStatus.COMPLETED
+    assert BrowserActToolAdapter._session_status(BrowserSessionState.FAILED) is CallStatus.FAILED
+    assert BrowserActToolAdapter._session_status(BrowserSessionState.LOST) is CallStatus.FAILED
+    assert (
+        BrowserActToolAdapter._session_status(BrowserSessionState.UNCERTAIN) is CallStatus.UNCERTAIN
+    )
 
 
 def test_browser_literal_secret_and_observed_effect_drift_are_refused(tmp_path: Path) -> None:
