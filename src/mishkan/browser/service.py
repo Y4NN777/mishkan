@@ -339,6 +339,7 @@ class BrowserSupervisor:
                 browser,
                 BrowserActionState.CANCELLED,
                 "browser action cancellation was observed before dispatch",
+                observation_invalidated=False,
             )
             self._complete_action(request, result)
             return result
@@ -760,6 +761,8 @@ class BrowserSupervisor:
         state: BrowserActionState,
         reason: str,
         references: tuple[str, ...] = (),
+        *,
+        observation_invalidated: bool = True,
     ) -> BrowserActionResult:
         return BrowserActionResult(
             request_id=request.idempotency_key,
@@ -768,8 +771,8 @@ class BrowserSupervisor:
             state=state,
             resolved_effect=request.resolved_effect,
             session_revision=browser.revision,
-            observation_invalidated=True,
+            observation_invalidated=observation_invalidated,
             artifact_references=references,
-            error_code=ErrorCode.BROWSER if state is BrowserActionState.UNCERTAIN else None,
+            error_code=(ErrorCode.BROWSER if state is not BrowserActionState.COMPLETED else None),
             reason=reason,
         )

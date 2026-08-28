@@ -35,6 +35,7 @@ from mishkan.browser.driver import (
     DriverSession,
 )
 from mishkan.browser.playwright import _LiveSession
+from mishkan.browser.tools import BrowserActToolAdapter
 from mishkan.config.models import BrowserConfig, BrowserProfileConfig, MishkanConfig
 from mishkan.config.presets import preset_text
 from mishkan.domain.errors import ErrorCode, MishkanError
@@ -326,6 +327,8 @@ def test_action_cancellation_is_durable_only_when_observed_before_dispatch(
     )
 
     assert result.state is BrowserActionState.CANCELLED
+    assert result.observation_invalidated is False
+    assert result.error_code == ErrorCode.BROWSER
     assert driver.actions == 0
     assert supervisor.act(request, owner_identity="role:Engineer") == result
     assert supervisor.get(browser.id, owner_identity="role:Engineer") == browser
@@ -669,6 +672,85 @@ def test_browser_open_uses_the_same_governed_gateway_as_crewai(tmp_path: Path) -
     assert closed.output is not None
     assert closed.output["state"] == BrowserSessionState.CLOSED.value
 
+    reopened = gateway().invoke(
+        context,
+        {
+            "request": request.model_dump(mode="json"),
+            "paths": ["."],
+            "network_destinations": [origin],
+            "credential_refs": [],
+            "declared_effects": ["browser.session.open"],
+        },
+        DeclaredTargets(paths=(".",), network_destinations=(origin,)),
+    )
+    assert reopened.output is not None
+    reopened_id = UUID(reopened.output["id"])
+    reopened_resource = f"browser:{reopened_id}"
+    reopened_observation = gateway().invoke(
+        context_for(
+            tmp_path,
+            "browser.observe",
+            policy_for(
+                "browser.observe",
+                Decision.ALLOW,
+                effect_class="read",
+                arguments=("browser.observe",),
+                external_resources=(reopened_resource,),
+            ),
+            (reopened_resource,),
+        ),
+        {
+            "request": BrowserObservationRequest(
+                session_id=reopened_id,
+                page_id="page-1",
+                expected_session_revision=1,
+            ).model_dump(mode="json"),
+            "session_resource": reopened_resource,
+            "credential_refs": [],
+            "declared_effects": ["browser.observe"],
+        },
+        DeclaredTargets(external_resources=(reopened_resource,)),
+    )
+    assert reopened_observation.output is not None
+    driver.uncertain = True
+    uncertain = gateway().invoke(
+        context_for(
+            tmp_path,
+            "browser.act",
+            policy_for(
+                "browser.act",
+                Decision.ALLOW,
+                effect_class="network",
+                arguments=("form.submit",),
+                external_resources=(reopened_resource,),
+                allow_network=True,
+            ),
+            (reopened_resource,),
+            network=True,
+        ),
+        {
+            "request": BrowserActionRequest(
+                session_id=reopened_id,
+                page_id="page-1",
+                observation_id=UUID(reopened_observation.output["id"]),
+                target_reference="button:save",
+                kind=BrowserActionKind.CLICK,
+                resolved_effect="form.submit",
+                expected_session_revision=1,
+            ).model_dump(mode="json"),
+            "paths": [],
+            "network_destinations": [],
+            "session_resource": reopened_resource,
+            "credential_refs": [],
+            "declared_effects": ["form.submit"],
+        },
+        DeclaredTargets(external_resources=(reopened_resource,)),
+    )
+    assert uncertain.status is CallStatus.UNCERTAIN
+    assert uncertain.error_code == ErrorCode.BROWSER
+    assert uncertain.output is not None
+    assert uncertain.output["state"] == BrowserActionState.UNCERTAIN.value
+
 
 def test_close_is_journaled_and_preserves_uncertainty_after_adapter_loss(tmp_path: Path) -> None:
     driver = FakeDriver()
@@ -791,6 +873,14 @@ def test_browser_action_credentials_are_structurally_constrained() -> None:
             resolved_effect="form.field.update",
             expected_session_revision=1,
         )
+
+
+def test_browser_action_states_remain_visible_at_the_gateway_boundary() -> None:
+    assert BrowserActToolAdapter._call_status(BrowserActionState.COMPLETED) is CallStatus.COMPLETED
+    assert BrowserActToolAdapter._call_status(BrowserActionState.REFUSED) is CallStatus.REFUSED
+    assert BrowserActToolAdapter._call_status(BrowserActionState.FAILED) is CallStatus.FAILED
+    assert BrowserActToolAdapter._call_status(BrowserActionState.CANCELLED) is CallStatus.CANCELLED
+    assert BrowserActToolAdapter._call_status(BrowserActionState.UNCERTAIN) is CallStatus.UNCERTAIN
 
 
 def test_browser_literal_secret_and_observed_effect_drift_are_refused(tmp_path: Path) -> None:

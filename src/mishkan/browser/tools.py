@@ -10,6 +10,7 @@ from pydantic import BaseModel, ValidationError
 from mishkan.browser.models import (
     BrowserActionKind,
     BrowserActionRequest,
+    BrowserActionState,
     BrowserDiagnosticRequest,
     BrowserObservationRequest,
     BrowserSessionRequest,
@@ -17,7 +18,7 @@ from mishkan.browser.models import (
 from mishkan.browser.service import BrowserSupervisor
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.tools.adapters import AdapterCall, CapabilityAdapter
-from mishkan.tools.gateway_models import AdapterResult
+from mishkan.tools.gateway_models import AdapterResult, CallStatus
 
 RequestModel = TypeVar("RequestModel", bound=BaseModel)
 
@@ -180,7 +181,28 @@ class BrowserActToolAdapter(_BrowserToolAdapter):
             credential_values=call.credentials,
             cancellation_requested=call.cancellation_requested,
         )
-        return self._result(call, result, (resource, *result.artifact_references))
+        adapter_result = self._result(
+            call,
+            result,
+            (resource, *result.artifact_references),
+        )
+        return adapter_result.model_copy(
+            update={
+                "call_status": self._call_status(result.state),
+                "error_code": result.error_code,
+                "reason": result.reason,
+            }
+        )
+
+    @staticmethod
+    def _call_status(state: BrowserActionState) -> CallStatus:
+        return {
+            BrowserActionState.COMPLETED: CallStatus.COMPLETED,
+            BrowserActionState.REFUSED: CallStatus.REFUSED,
+            BrowserActionState.FAILED: CallStatus.FAILED,
+            BrowserActionState.CANCELLED: CallStatus.CANCELLED,
+            BrowserActionState.UNCERTAIN: CallStatus.UNCERTAIN,
+        }[state]
 
     @staticmethod
     def _upload_values(request: BrowserActionRequest) -> tuple[str, ...]:
