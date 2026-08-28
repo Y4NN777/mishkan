@@ -99,7 +99,9 @@ class SessionSupervisor:
         self._processes: dict[UUID, subprocess.Popen[bytes]] = {}
         self._pty_masters: dict[UUID, int] = {}
         self._threads: dict[UUID, tuple[threading.Thread, ...]] = {}
+        self._monitors: dict[UUID, threading.Thread] = {}
         self._locks: dict[tuple[UUID, str], threading.Lock] = {}
+        self._session_locks: dict[UUID, threading.RLock] = {}
 
     def start(
         self,
@@ -236,7 +238,10 @@ class SessionSupervisor:
         self._threads[session_id] = threads
         if request.mode is SessionMode.JOB and request.readiness is not None:
             self._await_readiness(session_id, request, profile)
-        return self.status(session_id)
+        record = self.status(session_id)
+        if record.state in {SessionState.RUNNING, SessionState.READY}:
+            self._ensure_monitor(session_id)
+        return record
 
     def write(
         self,
@@ -343,6 +348,10 @@ class SessionSupervisor:
         return self._record(self._row(session_id))
 
     def cancel(self, session_id: UUID, *, cause: str = "cancelled") -> ExecutionSession:
+        with self._session_lock(session_id):
+            return self._cancel_locked(session_id, cause=cause)
+
+    def _cancel_locked(self, session_id: UUID, *, cause: str) -> ExecutionSession:
         with Session(self._engine) as session, session.begin():
             row = session.get(ExecutionSessionRow, str(session_id))
             if row is None:
@@ -365,7 +374,7 @@ class SessionSupervisor:
                 if not self._identity_matches(self._row(session_id)):
                     return self.settle(session_id)
                 time.sleep(min(0.05, profile.grace_seconds))
-        return self.settle(session_id)
+        return self._settle_locked(session_id)
 
     def status(self, session_id: UUID) -> ExecutionSession:
         row = self._row(session_id)
@@ -382,7 +391,7 @@ class SessionSupervisor:
             resource_cause = self._resource_violation(row, profile)
             if returncode is None and resource_cause is not None:
                 return self.cancel(session_id, cause=resource_cause)
-            if returncode is None and (
+            if not row.cancellation_requested and (
                 self._spool_path(row, "stdout").stat().st_size >= profile.max_output_bytes
                 or self._spool_path(row, "stderr").stat().st_size >= profile.max_output_bytes
             ):
@@ -392,7 +401,27 @@ class SessionSupervisor:
                 SessionState.FAILED.value,
             }:
                 return self.settle(session_id)
-        elif row.state in {SessionState.RUNNING.value, SessionState.READY.value}:
+        elif row.state in {
+            SessionState.RUNNING.value,
+            SessionState.READY.value,
+            SessionState.CANCELLING.value,
+        }:
+            if row.cancellation_requested:
+                return self.cancel(
+                    session_id,
+                    cause=row.termination_cause or "cancelled",
+                )
+            if not row.cancellation_requested and utc_now() >= datetime.fromisoformat(row.deadline):
+                return self.cancel(session_id, cause="timed_out")
+            profile = self._profile(row.profile)
+            resource_cause = self._resource_violation(row, profile)
+            if resource_cause is not None:
+                return self.cancel(session_id, cause=resource_cause)
+            if (
+                self._spool_path(row, "stdout").stat().st_size >= profile.max_output_bytes
+                or self._spool_path(row, "stderr").stat().st_size >= profile.max_output_bytes
+            ):
+                return self.cancel(session_id, cause="output_limit")
             if row.mode == SessionMode.PTY.value:
                 self._update_state(session_id, SessionState.LOST)
                 return self.settle(session_id)
@@ -402,7 +431,13 @@ class SessionSupervisor:
         return self._record(self._row(session_id))
 
     def settle(self, session_id: UUID) -> ExecutionSession:
+        with self._session_lock(session_id):
+            return self._settle_locked(session_id)
+
+    def _settle_locked(self, session_id: UUID) -> ExecutionSession:
         row = self._row(session_id)
+        if row.finished_at is not None:
+            return self._record(row)
         process = self._processes.get(session_id)
         if process is not None and process.poll() is None:
             return self._record(row)
@@ -483,6 +518,8 @@ class SessionSupervisor:
                 if terminal_override is not None
                 else SessionState.UNCERTAIN.value
                 if evidence_error is not None
+                else SessionState.SETTLED.value
+                if row.cancellation_requested
                 else SessionState.FAILED.value
                 if failed
                 else SessionState.SETTLED.value
@@ -516,7 +553,11 @@ class SessionSupervisor:
                     )
                 )
             ).all()
-        return tuple(self.status(UUID(identifier)) for identifier in identifiers)
+        records = tuple(self.status(UUID(identifier)) for identifier in identifiers)
+        for record in records:
+            if record.state in {SessionState.RUNNING, SessionState.READY}:
+                self._ensure_monitor(record.execution_id)
+        return records
 
     def list(self, *, offset: int = 0, limit: int = 100) -> tuple[ExecutionSession, ...]:
         if offset < 0 or limit < 1 or limit > 1_000:
@@ -641,13 +682,16 @@ class SessionSupervisor:
                     if not chunk:
                         break
                     clean = filtered.feed(chunk)
+                    remaining = profile.max_output_bytes - written
+                    clean = clean[:remaining]
                     with lock, spool.open("ab", buffering=0) as stream:
                         stream.write(clean)
                     written += len(clean)
                 tail = filtered.feed(b"", final=True)
-                if tail:
+                remaining = profile.max_output_bytes - written
+                if tail and remaining > 0:
                     with lock, spool.open("ab", buffering=0) as stream:
-                        stream.write(tail)
+                        stream.write(tail[:remaining])
             finally:
                 if close_descriptor:
                     with suppress(OSError):
@@ -658,6 +702,34 @@ class SessionSupervisor:
         )
         thread.start()
         return thread
+
+    def _ensure_monitor(self, session_id: UUID) -> None:
+        with self._session_lock(session_id):
+            existing = self._monitors.get(session_id)
+            if existing is not None and existing.is_alive():
+                return
+
+            def monitor() -> None:
+                while True:
+                    try:
+                        record = self.status(session_id)
+                    except MishkanError:
+                        return
+                    if record.state not in {SessionState.RUNNING, SessionState.READY}:
+                        return
+                    profile = self._profile(record.profile)
+                    time.sleep(profile.readiness_poll_seconds)
+
+            thread = threading.Thread(
+                target=monitor,
+                name=f"mishkan-{session_id}-monitor",
+                daemon=True,
+            )
+            self._monitors[session_id] = thread
+            thread.start()
+
+    def _session_lock(self, session_id: UUID) -> threading.RLock:
+        return self._session_locks.setdefault(session_id, threading.RLock())
 
     def _await_readiness(
         self,
@@ -700,6 +772,7 @@ class SessionSupervisor:
             process = psutil.Process(row.pid)
             return (
                 process.is_running()
+                and process.status() != psutil.STATUS_ZOMBIE
                 and abs(process.create_time() - row.process_create_time) < 0.000_001
                 and os.getpgid(row.pid) == row.process_group_id
             )

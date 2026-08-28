@@ -23,7 +23,11 @@ from mishkan.execution import (
 from mishkan.persistence import SchemaManager
 
 
-def _supervisor(tmp_path: Path) -> tuple[SessionSupervisor, DurableArtifactService, Path]:
+def _supervisor(
+    tmp_path: Path,
+    *,
+    profile_updates: dict[str, object] | None = None,
+) -> tuple[SessionSupervisor, DurableArtifactService, Path]:
     config_path = tmp_path / "config.yaml"
     config_path.write_text(preset_text("local"))
     config = (
@@ -37,6 +41,7 @@ def _supervisor(tmp_path: Path) -> tuple[SessionSupervisor, DurableArtifactServi
             "read_chunk_bytes": 2,
             "readiness_poll_seconds": 0.02,
             "grace_seconds": 0.05,
+            **(profile_updates or {}),
         }
     )
     sessions = config.sessions.model_copy(update={"profiles": {"standard": profile}})
@@ -206,4 +211,73 @@ def test_cancellation_and_recycled_pid_identity_fail_closed(tmp_path: Path) -> N
         )
     cancelled = supervisor.cancel(running.session_id)
     assert cancelled.cancellation_requested
-    assert cancelled.state in {SessionState.FAILED, SessionState.SETTLED}
+    assert cancelled.state is SessionState.SETTLED
+    assert cancelled.result is not None and cancelled.result.status == "cancelled"
+
+
+def test_unattended_session_monitor_enforces_deadline_without_status_polling(
+    tmp_path: Path,
+) -> None:
+    supervisor, _artifacts, _database = _supervisor(tmp_path)
+    request = _request(ExecutionMode.JOB, ("-c", "sleep 10")).model_copy(
+        update={"deadline": utc_now() + timedelta(milliseconds=150)}
+    )
+
+    started = supervisor.start(request)
+    time.sleep(0.8)
+    settled = supervisor.status(started.session_id)
+
+    assert settled.state is SessionState.SETTLED
+    assert settled.result is not None
+    assert settled.result.status == "timed_out"
+    assert settled.result.termination_cause == "timed_out"
+
+
+def test_unattended_session_monitor_enforces_sanitized_output_bound(tmp_path: Path) -> None:
+    supervisor, _artifacts, _database = _supervisor(
+        tmp_path,
+        profile_updates={"max_output_bytes": 64},
+    )
+    started = supervisor.start(
+        _request(
+            ExecutionMode.JOB,
+            ("-c", "printf '%04096d' 0; sleep 10"),
+        )
+    )
+    time.sleep(0.8)
+    settled = supervisor.status(started.session_id)
+
+    assert settled.state is SessionState.SETTLED
+    assert settled.result is not None
+    assert settled.result.termination_cause == "output_limit"
+    assert settled.result.truncated is True
+    assert settled.result.stdout_bytes <= 64
+
+
+def test_recovered_job_monitor_enforces_persisted_deadline_after_daemon_restart(
+    tmp_path: Path,
+) -> None:
+    supervisor, artifacts, database = _supervisor(tmp_path)
+    supervisor._ensure_monitor = lambda _session_id: None  # type: ignore[method-assign]
+    started = supervisor.start(
+        _request(ExecutionMode.JOB, ("-c", "sleep 10")).model_copy(
+            update={"deadline": utc_now() + timedelta(milliseconds=150)}
+        )
+    )
+    config = ConfigLoader().load([tmp_path / "config.yaml"]).value
+    assert config.sessions is not None
+    replacement = SessionSupervisor(
+        database,
+        tmp_path,
+        tmp_path / config.sessions.spool_root,
+        config.sessions,
+        artifacts,
+    )
+
+    recovered = replacement.reconcile_all()
+    assert recovered[0].state is SessionState.RUNNING
+    time.sleep(0.8)
+    settled = replacement.status(started.session_id)
+
+    assert settled.state is SessionState.SETTLED
+    assert settled.result is not None and settled.result.status == "timed_out"
