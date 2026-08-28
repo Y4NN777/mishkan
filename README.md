@@ -2,21 +2,20 @@
 
 [![CI](https://github.com/Y4NN777/mishkan/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Y4NN777/mishkan/actions/workflows/ci.yml)
 
-MISHKAN is a local-first control plane for governed CrewAI software-engineering runs. Give it a
-repository and an objective; CrewAI coordinates the work while MISHKAN authorizes tool effects,
-persists evidence, and makes interrupted work recoverable.
+MISHKAN is a local-first, persistent, and inspectable AI software-engineering organization. It
+accepts engineering objectives, organizes the work, preserves context, and returns reviewable
+results while the engineer retains control over consequential actions.
 
 > **Pre-release:** MISHKAN is under active development and currently installs from source. The
-> implemented product is a local, single-daemon system for Linux and macOS. The organization,
-> skills, knowledge stack, scheduler, distributed workers, and operational TUI remain roadmap work.
+> implemented product is a local, single-daemon system for Linux and macOS. The full persistent
+> organization, skills, knowledge stack, scheduler, distributed workers, and operational TUI
+> remain roadmap work.
 
-## What MISHKAN does
+## How the current system is structured
 
-An agentic coding run mixes two different kinds of work: model-driven decisions and effects on a
-real system. MISHKAN keeps those responsibilities separate.
-
-- **CrewAI 1.x** plans and coordinates agents and tasks.
 - **`mishkand`** accepts commands, owns durable run state, and publishes events.
+- **Agent coordination** currently uses CrewAI 1.x, a Python multi-agent automation framework. It
+  supplies agents, tasks, crews, and flows; it does not own MISHKAN policy or application state.
 - **Public configuration and policy** decide which capability may act on which target and with
   which effect.
 - **The capability gateway** executes approved file, shell, Git, browser, Web, and MCP operations
@@ -24,17 +23,21 @@ real system. MISHKAN keeps those responsibilities separate.
 - **Artifacts and recovery journals** preserve large outputs and reconcile interrupted effects
   without silently replaying uncertain work.
 
-Operational CLI, Python, HTTP/SSE, and MCP clients all enter through the same daemon authority:
+Operational CLI, Python, HTTP/SSE, and MCP clients all enter through the same MISHKAN authority:
 
 ```text
 CLI · Python SDK · HTTP/SSE · MCP bridge
                     │
                     ▼
                 mishkand
-       ┌────────────┼────────────┐
-       ▼            ▼            ▼
-  CrewAI flow   Policy and    Durable state,
-               capabilities  events and artifacts
+       ┌────────────┼──────────────┐
+       ▼            ▼              ▼
+ Objective/run  Policy and      Events, artifacts,
+   lifecycle    capabilities    and recovery state
+       │
+       ▼
+ Agent coordination
+ (CrewAI framework)
 ```
 
 ## Available today
@@ -126,8 +129,8 @@ uv run mishkan --config .mishkan/config.yaml run list
 uv run mishkan --config .mishkan/config.yaml events tail --after 0
 ```
 
-`init` submits work to the daemon; it does not bypass policy or run a second agent runtime. The
-repository passed with `--repository` must match the workspace configured for that daemon instance.
+`init` submits work to the daemon. The repository passed with `--repository` must match the
+workspace configured for that daemon instance.
 
 ## Interfaces
 
