@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import sqlite3
+from datetime import timedelta
 from pathlib import Path
 from uuid import UUID
 
@@ -34,6 +35,7 @@ from mishkan.browser.driver import (
 from mishkan.config.models import BrowserConfig, BrowserProfileConfig, MishkanConfig
 from mishkan.config.presets import preset_text
 from mishkan.domain.errors import ErrorCode, MishkanError
+from mishkan.domain.time import utc_now
 from mishkan.persistence import SchemaManager
 from mishkan.policy import Decision, PolicyAuthority
 from mishkan.tools.gateway import CapabilityGateway, MappingCredentialResolver, MemoryEvidenceSink
@@ -290,6 +292,7 @@ def test_credential_is_resolved_only_for_dispatch_and_never_reaches_action_journ
             target_reference="textbox:password",
             kind=BrowserActionKind.FILL,
             credential_reference="project.login",
+            credential_origin="https://example.com",
             resolved_effect="form.field.update",
             expected_session_revision=browser.revision,
         ),
@@ -304,6 +307,82 @@ def test_credential_is_resolved_only_for_dispatch_and_never_reaches_action_journ
         payload = connection.execute("SELECT payload FROM browser_actions").fetchone()[0]
     assert secret not in payload
     assert "project.login" in payload
+
+
+def test_coordinate_fallback_is_bound_to_the_source_observation_screenshot(
+    tmp_path: Path,
+) -> None:
+    driver = FakeDriver()
+    supervisor = _supervisor(tmp_path, driver)
+    browser = _open(supervisor)
+    observation = supervisor.observe(
+        BrowserObservationRequest(
+            session_id=browser.id,
+            page_id="page-1",
+            expected_session_revision=browser.revision,
+            include_screenshot=True,
+        ),
+        owner_identity="role:Engineer",
+    )
+    assert observation.screenshot_artifact_reference is not None
+
+    completed = supervisor.act(
+        BrowserActionRequest(
+            session_id=browser.id,
+            page_id="page-1",
+            observation_id=observation.id,
+            kind=BrowserActionKind.COORDINATE_CLICK,
+            coordinates=(10, 20),
+            visual_evidence_artifact_reference=observation.screenshot_artifact_reference,
+            resolved_effect="ui.interaction",
+            expected_session_revision=browser.revision,
+        ),
+        owner_identity="role:Engineer",
+    )
+
+    assert completed.state is BrowserActionState.COMPLETED
+    assert driver.actions == 1
+    artifacts = DurableArtifactService(
+        tmp_path / ".mishkan" / "mishkan.db",
+        tmp_path / ".mishkan" / "artifacts",
+        max_artifact_bytes=2_000_000,
+        max_chunk_bytes=64_000,
+    )
+    collection = artifacts.plan_gc(watermark=utc_now() + timedelta(seconds=1))
+    assert observation.tree_artifact_reference not in collection.candidates
+    assert observation.screenshot_artifact_reference not in collection.candidates
+
+
+def test_browser_credential_is_refused_on_a_different_observed_origin(tmp_path: Path) -> None:
+    supervisor = _supervisor(tmp_path, FakeDriver())
+    browser = _open(supervisor)
+    observation = supervisor.observe(
+        BrowserObservationRequest(
+            session_id=browser.id,
+            page_id="page-1",
+            expected_session_revision=browser.revision,
+        ),
+        owner_identity="role:Engineer",
+    )
+
+    with pytest.raises(MishkanError) as refused:
+        supervisor.act(
+            BrowserActionRequest(
+                session_id=browser.id,
+                page_id="page-1",
+                observation_id=observation.id,
+                target_reference="textbox:password",
+                kind=BrowserActionKind.FILL,
+                credential_reference="project.login",
+                credential_origin="https://other.example",
+                resolved_effect="form.field.update",
+                expected_session_revision=browser.revision,
+            ),
+            owner_identity="role:Engineer",
+            credential_values={"project.login": "credential-value-123"},
+        )
+
+    assert refused.value.envelope.code is ErrorCode.AUTHORITY_NOT_GRANTED
 
 
 def test_browser_open_uses_the_same_governed_gateway_as_crewai(tmp_path: Path) -> None:
@@ -416,6 +495,7 @@ def test_browser_open_uses_the_same_governed_gateway_as_crewai(tmp_path: Path) -
                 target_reference="textbox:password",
                 kind=BrowserActionKind.FILL,
                 credential_reference="project.login",
+                credential_origin="https://example.com",
                 resolved_effect="form.field.update",
                 expected_session_revision=1,
             ).model_dump(mode="json"),

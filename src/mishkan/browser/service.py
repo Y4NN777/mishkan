@@ -200,6 +200,7 @@ class BrowserSupervisor:
             target.model_copy(update={"name": self._inspector.inspect(target.name)})
             for target in observed.targets
         )
+        clean_title = self._inspector.inspect(observed.title)
         tree = self._artifact(browser, "browser.tree", "text/yaml", clean_tree)
         screenshot = (
             self._artifact(browser, "browser.screenshot", "image/png", observed.screenshot)
@@ -212,7 +213,7 @@ class BrowserSupervisor:
             page_id=request.page_id,
             session_revision=browser.revision,
             url=AnyHttpUrl(observed.url),
-            title=observed.title,
+            title=clean_title,
             targets=clean_targets,
             tree_artifact_reference=tree,
             screenshot_artifact_reference=screenshot,
@@ -256,6 +257,18 @@ class BrowserSupervisor:
         ):
             raise MishkanError(ErrorCode.BROWSER, "browser action references a stale observation")
         target = self._target(observation.targets, request.target_reference)
+        if request.kind.value == "coordinate_click":
+            if (
+                observation.screenshot_artifact_reference is None
+                or request.visual_evidence_artifact_reference
+                != observation.screenshot_artifact_reference
+            ):
+                raise MishkanError(
+                    ErrorCode.BROWSER,
+                    "browser coordinate action requires its source observation screenshot",
+                )
+            assert request.visual_evidence_artifact_reference is not None
+            self._artifacts.manifest(request.visual_evidence_artifact_reference)
         if (
             target is not None
             and target.candidate_effects
@@ -273,6 +286,16 @@ class BrowserSupervisor:
         self._require_safe_literal(request.value)
         dispatched = request
         if request.credential_reference is not None:
+            assert request.credential_origin is not None
+            if self._origin(str(observation.url)) != self._origin(str(request.credential_origin)):
+                raise MishkanError(
+                    ErrorCode.AUTHORITY_NOT_GRANTED,
+                    "browser credential origin differs from the observed page origin",
+                )
+            self._require_origin(
+                self._config.profiles[browser.profile_id].allowed_origins,
+                str(request.credential_origin),
+            )
             resolved = dict(credential_values or {})
             if set(resolved) != {request.credential_reference}:
                 raise MishkanError(
@@ -358,7 +381,7 @@ class BrowserSupervisor:
         observed = driver.diagnostics(
             handle,
             request.page_id,
-            request.channels,
+            tuple(channel.value for channel in request.channels),
             request.cursor,
             limit,
         )
@@ -513,6 +536,16 @@ class BrowserSupervisor:
 
     @staticmethod
     def _require_origin(allowed: tuple[str, ...], raw_url: str) -> None:
+        origin = BrowserSupervisor._origin(raw_url)
+        if not any(fnmatchcase(origin, pattern) for pattern in allowed):
+            raise MishkanError(
+                ErrorCode.AUTHORITY_NOT_GRANTED,
+                "browser origin is outside its configured profile",
+                details={"origin": origin},
+            )
+
+    @staticmethod
+    def _origin(raw_url: str) -> str:
         url = httpx.URL(raw_url)
         if url.scheme not in {"http", "https"} or url.host is None or url.userinfo:
             raise MishkanError(
@@ -522,12 +555,7 @@ class BrowserSupervisor:
         port = url.port or (443 if url.scheme == "https" else 80)
         default = (url.scheme == "https" and port == 443) or (url.scheme == "http" and port == 80)
         origin = f"{url.scheme}://{url.host}" if default else f"{url.scheme}://{url.host}:{port}"
-        if not any(fnmatchcase(origin, pattern) for pattern in allowed):
-            raise MishkanError(
-                ErrorCode.AUTHORITY_NOT_GRANTED,
-                "browser origin is outside its configured profile",
-                details={"origin": origin},
-            )
+        return origin
 
     @staticmethod
     def _require_owner(browser: BrowserSession, owner: str) -> None:

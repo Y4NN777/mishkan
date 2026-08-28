@@ -21,6 +21,7 @@ from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.time import utc_now
 from mishkan.mcp import (
     McpCallRequest,
+    McpCallResult,
     McpCallState,
     McpClientCallOutcome,
     McpContractFactory,
@@ -361,12 +362,20 @@ async def test_connect_invoke_progress_and_exact_replay_are_durable(tmp_path: Pa
     client = FakeClient(_snapshot(primitive))
     service, repository = _service(tmp_path, client)
 
-    connected = await service.connect("graph", principal="role:Engineer", credentials={})
+    connected = await service.connect(
+        "graph",
+        principal="role:Engineer",
+        policy_fingerprint="policy:test-connect",
+        credentials={},
+    )
     request = _request(primitive)
     result = await service.invoke(request, credentials={})
     replay = await service.invoke(request, credentials={})
 
     assert connected.state is McpSessionState.READY
+    assert connected.server_identity.startswith("stdio:fixture-mcp#sha256:")
+    assert connected.credential_references == ()
+    assert connected.policy_fingerprint == "policy:test-connect"
     assert connected.revision == 2
     assert result.state is McpCallState.COMPLETED
     assert replay == result
@@ -481,6 +490,53 @@ def test_dynamic_contract_and_common_adapter_preserve_exact_policy_targets(
     assert contract.target_scopes == ("external_resource", "executable")
     assert result.call_status is CallStatus.COMPLETED
     assert result.external_references == (external,)
+
+
+def test_lost_non_idempotent_mcp_call_is_never_marked_retryable(tmp_path: Path) -> None:
+    primitive = _primitive(McpEffectDisposition.NON_IDEMPOTENT)
+    request = _request(primitive)
+    external = f"mcp:{request.connection_id}:{request.primitive_name}"
+    contract = McpContractFactory(_config()).build("graph", primitive)
+
+    class LostRunner:
+        def invoke(self, *_args: object, **_kwargs: object) -> McpCallResult:
+            return McpCallResult(
+                request_id=request.id,
+                connection_id=request.connection_id,
+                primitive_name=request.primitive_name,
+                state=McpCallState.LOST,
+                schema_hash=request.expected_schema_hash,
+                reason="transport lost",
+            )
+
+    adapter = McpPrimitiveToolAdapter(_config(), LostRunner(), {})  # type: ignore[arg-type]
+    result = adapter.invoke(
+        AdapterCall(
+            arguments={
+                "request": request.model_dump(mode="json"),
+                "executables": ["fixture-mcp"],
+                "network_destinations": [],
+                "external_resources": [external],
+                "credential_refs": [],
+            },
+            targets=ResolvedTargets(
+                executables=("fixture-mcp",),
+                external_resources=(external,),
+            ),
+            credentials={},
+            execution_id="call-lost",
+            resources=ResourceRequest(timeout_seconds=30),
+            isolation_profile=None,
+            cancellation_requested=lambda: False,
+            run_id=request.run_id,
+            task_attempt_id=request.task_attempt_id,
+            acting_identity=request.caller_identity,
+            capability=contract.tool_id,
+        )
+    )
+
+    assert result.call_status is CallStatus.FAILED
+    assert result.retryable is False
 
 
 def test_discovered_mcp_contract_enters_registry_with_runtime_provenance(tmp_path: Path) -> None:

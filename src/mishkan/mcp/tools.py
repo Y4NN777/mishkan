@@ -8,7 +8,7 @@ from pydantic import ValidationError
 
 from mishkan.config.models import McpConfig, McpTransport
 from mishkan.domain.errors import ErrorCode, MishkanError
-from mishkan.mcp.models import McpCallRequest, McpCallState
+from mishkan.mcp.models import McpCallRequest, McpCallState, McpEffectDisposition
 from mishkan.mcp.runner import McpServiceRunner
 from mishkan.tools.adapters import AdapterCall, CapabilityAdapter
 from mishkan.tools.gateway_models import AdapterResult, CallStatus
@@ -98,7 +98,11 @@ class McpPrimitiveToolAdapter:
                 "schema_hash": result.schema_hash,
             },
             call_status=status,
-            retryable=result.state is McpCallState.LOST,
+            retryable=(
+                result.state is McpCallState.LOST
+                and request.effect_disposition
+                in {McpEffectDisposition.READ_ONLY, McpEffectDisposition.IDEMPOTENT}
+            ),
             error_code=result.error_code,
             reason=result.reason,
         )

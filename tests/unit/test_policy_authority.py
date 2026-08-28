@@ -212,9 +212,7 @@ def test_bundled_policy_is_loaded_through_a_public_package_uri(tmp_path: Path) -
     )
 
     assert policy.documents[0].source_id == "bundled.local"
-    assert policy.source_uris == (
-        "package://mishkan.resources.policies/local-control-plane.yaml",
-    )
+    assert policy.source_uris == ("package://mishkan.resources.policies/local-control-plane.yaml",)
 
 
 @pytest.mark.parametrize(

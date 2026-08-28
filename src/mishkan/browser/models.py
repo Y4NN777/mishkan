@@ -30,6 +30,7 @@ class BrowserSessionState(StrEnum):
 
 class BrowserActionKind(StrEnum):
     CLICK = "click"
+    COORDINATE_CLICK = "coordinate_click"
     FILL = "fill"
     PRESS = "press"
     SELECT = "select"
@@ -45,6 +46,14 @@ class BrowserActionState(StrEnum):
     FAILED = "failed"
     CANCELLED = "cancelled"
     UNCERTAIN = "uncertain"
+
+
+class BrowserDiagnosticChannel(StrEnum):
+    CONSOLE = "console"
+    NETWORK = "network"
+    PERFORMANCE = "performance"
+    STORAGE = "storage"
+    SERVICE_WORKER = "service_worker"
 
 
 class BrowserSessionRequest(BrowserModel):
@@ -142,19 +151,42 @@ class BrowserActionRequest(BrowserModel):
     kind: BrowserActionKind
     value: Any = None
     credential_reference: str | None = None
+    credential_origin: AnyHttpUrl | None = None
+    coordinates: tuple[int, int] | None = None
+    visual_evidence_artifact_reference: str | None = Field(
+        default=None,
+        pattern=r"^artifact:[0-9a-f-]{36}$",
+    )
     resolved_effect: str = Field(min_length=1)
     expected_session_revision: int = Field(ge=0)
     idempotency_key: UUID = Field(default_factory=new_id)
 
     @model_validator(mode="after")
     def target_requirement_matches_action(self) -> BrowserActionRequest:
-        if self.kind is not BrowserActionKind.NAVIGATE and self.target_reference is None:
+        targetless = {BrowserActionKind.NAVIGATE, BrowserActionKind.COORDINATE_CLICK}
+        if self.kind not in targetless and self.target_reference is None:
             raise ValueError("browser element action requires an observation target")
+        if self.kind in targetless and self.target_reference is not None:
+            raise ValueError("browser targetless action must not contain an element target")
+        coordinate_evidence = (
+            self.coordinates is not None or self.visual_evidence_artifact_reference is not None
+        )
+        if self.kind is BrowserActionKind.COORDINATE_CLICK:
+            if self.coordinates is None or self.visual_evidence_artifact_reference is None:
+                raise ValueError(
+                    "browser coordinate click requires coordinates and visual evidence"
+                )
+            if any(value < 0 for value in self.coordinates):
+                raise ValueError("browser coordinates must be non-negative")
+        elif coordinate_evidence:
+            raise ValueError("browser visual fallback evidence belongs only to coordinate click")
         if self.credential_reference is not None:
             if self.kind is not BrowserActionKind.FILL:
                 raise ValueError("browser credential references are accepted only for fill actions")
             if self.value is not None:
                 raise ValueError("browser fill cannot contain a value and credential reference")
+        if (self.credential_reference is None) != (self.credential_origin is None):
+            raise ValueError("browser credential reference requires its exact authorized origin")
         return self
 
 
@@ -183,9 +215,19 @@ class BrowserDiagnosticRequest(BrowserModel):
     schema_version: str = "1.0"
     session_id: UUID
     page_id: str = Field(min_length=1)
-    channels: tuple[str, ...] = Field(min_length=1)
+    channels: tuple[BrowserDiagnosticChannel, ...] = Field(min_length=1)
     cursor: int = Field(default=0, ge=0)
     limit: int = Field(default=100, ge=1, le=1_000_000)
+
+    @field_validator("channels")
+    @classmethod
+    def channels_are_unique(
+        cls,
+        value: tuple[BrowserDiagnosticChannel, ...],
+    ) -> tuple[BrowserDiagnosticChannel, ...]:
+        if len(value) != len(set(value)):
+            raise ValueError("browser diagnostic channels must be unique")
+        return value
 
 
 class BrowserDiagnosticResult(BrowserModel):

@@ -148,6 +148,8 @@ class HttpRequest(WebModel):
             raise ValueError(
                 "web credential references require an exact origin and injection header"
             )
+        if len(self.credential_refs) > 1:
+            raise ValueError("one HTTP injection header accepts exactly one credential reference")
         return self
 
 

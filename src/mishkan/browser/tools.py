@@ -161,7 +161,12 @@ class BrowserActToolAdapter(_BrowserToolAdapter):
         )
         if paths != expected_paths:
             raise MishkanError(ErrorCode.TOOL_SCHEMA, "Browser upload paths differ")
-        self._verify_targets(call, paths=paths, network=network, external=(resource,))
+        external = tuple(
+            item
+            for item in (resource, request.visual_evidence_artifact_reference)
+            if item is not None
+        )
+        self._verify_targets(call, paths=paths, network=network, external=external)
         self._verify_effects(call, (request.resolved_effect,))
         credential_refs = self._string_list(call, "credential_refs")
         expected_refs = (

@@ -465,6 +465,22 @@ def test_stateful_http_request_is_distinct_from_fetch(tmp_path: Path) -> None:
     assert transport.calls[0][0] == "POST"
 
 
+def test_one_http_header_cannot_ambiguously_inject_multiple_credentials() -> None:
+    with pytest.raises(ValueError, match="exactly one credential reference"):
+        HttpRequest(
+            method="GET",
+            url=AnyHttpUrl("https://example.com/private"),
+            network_profile="public-read",
+            credential_refs=(
+                CredentialReference(source=CredentialSource.ENV, locator="TOKEN_A"),
+                CredentialReference(source=CredentialSource.ENV, locator="TOKEN_B"),
+            ),
+            credential_origin="https://example.com",
+            credential_header="Authorization",
+            redirect_policy=RedirectPolicy.NONE,
+        )
+
+
 def test_fetch_runs_through_the_same_governed_gateway_used_by_crewai(tmp_path: Path) -> None:
     transport = RecordingTransport([_exchange(b"governed Web evidence")])
     config = _web_config()

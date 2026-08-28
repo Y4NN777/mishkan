@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, Protocol, cast
 from uuid import UUID
 
+import httpx
 from jsonschema import Draft202012Validator  # type: ignore[import-untyped]
 from jsonschema.exceptions import SchemaError, ValidationError  # type: ignore[import-untyped]
 from mcp.shared.session import ProgressFnT
@@ -99,6 +101,7 @@ class McpService:
         connection_id: str,
         *,
         principal: str,
+        policy_fingerprint: str = "direct:unbound",
         credentials: Mapping[str, str],
     ) -> McpConnectionRecord:
         configured = self._configured(connection_id)
@@ -114,7 +117,12 @@ class McpService:
                 trust=configured.trust,
                 exposure_profile=configured.exposure_profile,
                 remote_tasks_enabled=configured.remote_tasks_enabled,
+                server_identity=self._server_identity(configured),
+                credential_references=tuple(
+                    reference.locator for reference in configured.credential_refs
+                ),
                 credential_principal=principal,
+                policy_fingerprint=policy_fingerprint,
                 state=McpSessionState.STARTING,
                 revision=0,
                 health="starting",
@@ -130,6 +138,7 @@ class McpService:
                     "state": McpSessionState.RECONNECTING,
                     "revision": current.revision + 1,
                     "credential_principal": principal,
+                    "policy_fingerprint": policy_fingerprint,
                     "health": "connecting",
                     "last_error": None,
                     "updated_at": utc_now(),
@@ -479,11 +488,28 @@ class McpService:
             or record.trust != configured.trust
             or record.exposure_profile != configured.exposure_profile
             or record.remote_tasks_enabled != configured.remote_tasks_enabled
+            or record.server_identity != McpService._server_identity(configured)
+            or record.credential_references
+            != tuple(reference.locator for reference in configured.credential_refs)
         ):
             raise MishkanError(
                 ErrorCode.TOOL_DRIFT,
                 "MCP connection configuration changed after binding",
             )
+
+    @staticmethod
+    def _server_identity(configured: McpConnectionConfig) -> str:
+        if configured.command is not None:
+            arguments = json.dumps(configured.arguments, separators=(",", ":")).encode()
+            return f"stdio:{configured.command}#sha256:{hashlib.sha256(arguments).hexdigest()}"
+        assert configured.endpoint is not None
+        endpoint = httpx.URL(str(configured.endpoint))
+        port = endpoint.port or (443 if endpoint.scheme == "https" else 80)
+        default = (endpoint.scheme == "https" and port == 443) or (
+            endpoint.scheme == "http" and port == 80
+        )
+        authority = endpoint.host if default else f"{endpoint.host}:{port}"
+        return f"http:{endpoint.scheme}://{authority}{endpoint.path}"
 
     def _mark_connection_failure(self, connection_id: str, error: Exception) -> None:
         current = self._repository.get_connection(connection_id)

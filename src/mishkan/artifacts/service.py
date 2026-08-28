@@ -46,10 +46,14 @@ from mishkan.persistence.sqlite import (
     ArtifactReferenceRow,
     ArtifactRow,
     ArtifactUploadRow,
+    BrowserActionRow,
+    BrowserObservationRow,
     ChangeOperationRow,
     ChangeSetRow,
     ExecutionSessionRow,
     LocalRunRepository,
+    McpCallRow,
+    McpProgressRow,
     ResultRow,
 )
 
@@ -1098,6 +1102,16 @@ class DurableArtifactService:
                 for ref in json.loads(payload).values()
             )
         for payload in session.scalars(select(ResultRow.payload)).all():
+            rooted.update(DurableArtifactService._artifact_ids_in_payload(payload))
+        for payload in session.scalars(select(BrowserObservationRow.payload)).all():
+            rooted.update(DurableArtifactService._artifact_ids_in_payload(payload))
+        for payload in session.scalars(select(BrowserActionRow.payload)).all():
+            rooted.update(DurableArtifactService._artifact_ids_in_payload(payload))
+        for row in session.scalars(select(McpCallRow)).all():
+            rooted.update(DurableArtifactService._artifact_ids_in_payload(row.request_payload))
+            if row.result_payload is not None:
+                rooted.update(DurableArtifactService._artifact_ids_in_payload(row.result_payload))
+        for payload in session.scalars(select(McpProgressRow.payload)).all():
             rooted.update(DurableArtifactService._artifact_ids_in_payload(payload))
         for execution_row in session.scalars(select(ExecutionSessionRow)).all():
             for reference in (

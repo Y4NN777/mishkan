@@ -324,6 +324,11 @@ class PlaywrightChromiumDriver:
                 raise MishkanError(ErrorCode.BROWSER, "navigation requires a URL string")
             page.goto(value, wait_until="domcontentloaded")
             return
+        if request.kind is BrowserActionKind.COORDINATE_CLICK:
+            if request.coordinates is None:
+                raise MishkanError(ErrorCode.BROWSER, "coordinate click has no coordinates")
+            page.mouse.click(*request.coordinates)
+            return
         if locator is None:
             raise MishkanError(ErrorCode.BROWSER, "browser action requires a live target")
         if request.kind is BrowserActionKind.CLICK:

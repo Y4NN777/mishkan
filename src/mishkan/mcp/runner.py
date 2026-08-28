@@ -27,11 +27,17 @@ class McpServiceRunner:
         connection_id: str,
         *,
         principal: str,
+        policy_fingerprint: str = "direct:unbound",
         credentials: Mapping[str, str],
     ) -> McpConnectionRecord:
         future = self._executor.submit(
             asyncio.run,
-            self._service.connect(connection_id, principal=principal, credentials=credentials),
+            self._service.connect(
+                connection_id,
+                principal=principal,
+                policy_fingerprint=policy_fingerprint,
+                credentials=credentials,
+            ),
         )
         return future.result()
 

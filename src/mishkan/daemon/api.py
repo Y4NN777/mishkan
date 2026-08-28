@@ -953,6 +953,7 @@ def _dispatch(
         mcp_record = mcp_runner.connect(
             command.target_id,
             principal=command.actor_id,
+            policy_fingerprint=authorized.decision.policy_fingerprint,
             credentials=resolved_credentials,
         )
         return "mcp.connection_ready", mcp_record.model_dump(mode="json")
