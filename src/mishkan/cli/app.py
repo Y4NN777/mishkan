@@ -429,6 +429,130 @@ def export_events(
     )
 
 
+@events_app.command("holds")
+def list_event_holds(
+    ctx: typer.Context,
+    active_only: Annotated[bool, typer.Option("--active")] = False,
+) -> None:
+    """Inspect durable evidence holds."""
+    with _daemon_client(ctx) as client:
+        holds = client.event_holds(active_only=active_only)
+    _emit(
+        [hold.model_dump(mode="json") for hold in holds],
+        as_json=_state(ctx).json_output,
+    )
+
+
+@events_app.command("hold")
+def create_event_hold(
+    ctx: typer.Context,
+    scope: Annotated[str, typer.Option(help="One of: all, run, event.")],
+    reason: Annotated[str, typer.Option(help="Inspectable reason for preserving evidence.")],
+    scope_id: Annotated[str | None, typer.Option(help="Run ID or event UUID.")] = None,
+) -> None:
+    """Create a policy-authorized hold on all, run, or event evidence."""
+    from mishkan.application import ApplicationCommand
+
+    payload: dict[str, object] = {"scope": scope, "reason": reason}
+    if scope_id is not None:
+        payload["scope_id"] = scope_id
+    with _daemon_client(ctx) as client:
+        result = client.command(
+            ApplicationCommand(
+                command_type="event.hold.create",
+                actor_id=client.principal_id,
+                target_type="event_store",
+                payload=payload,
+            )
+        )
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@events_app.command("hold-release")
+def release_event_hold(
+    ctx: typer.Context,
+    hold_id: Annotated[str, typer.Argument()],
+    expected_revision: Annotated[int | None, typer.Option(min=0)] = None,
+) -> None:
+    """Release one hold without erasing its audit record."""
+    from mishkan.application import ApplicationCommand
+
+    with _daemon_client(ctx) as client:
+        result = client.command(
+            ApplicationCommand(
+                command_type="event.hold.release",
+                actor_id=client.principal_id,
+                target_type="event_hold",
+                target_id=hold_id,
+                expected_revision=expected_revision,
+                payload={},
+            )
+        )
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@events_app.command("retention-plans")
+def list_event_retention_plans(ctx: typer.Context) -> None:
+    """Inspect immutable retention policy snapshots and their settlements."""
+    with _daemon_client(ctx) as client:
+        plans = client.event_retention_plans()
+    _emit(
+        [plan.model_dump(mode="json") for plan in plans],
+        as_json=_state(ctx).json_output,
+    )
+
+
+@events_app.command("retention-policy")
+def show_event_retention_policy(ctx: typer.Context) -> None:
+    """Show the exact versioned policy that a new retention plan will snapshot."""
+    with _daemon_client(ctx) as client:
+        policy = client.event_retention_policy()
+    _emit(
+        {**policy.model_dump(mode="json"), "fingerprint": policy.fingerprint},
+        as_json=_state(ctx).json_output,
+    )
+
+
+@events_app.command("retention-plan")
+def plan_event_retention(ctx: typer.Context) -> None:
+    """Persist a bounded retention plan without removing evidence."""
+    from mishkan.application import ApplicationCommand
+
+    with _daemon_client(ctx) as client:
+        result = client.command(
+            ApplicationCommand(
+                command_type="event.retention.plan",
+                actor_id=client.principal_id,
+                target_type="event_store",
+                payload={},
+            )
+        )
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@events_app.command("retention-apply")
+def apply_event_retention(
+    ctx: typer.Context,
+    plan_id: Annotated[str, typer.Argument()],
+    expected_revision: Annotated[int | None, typer.Option(min=0)] = None,
+) -> None:
+    """Apply one plan after rechecking active holds and incomplete runs."""
+    from mishkan.application import ApplicationCommand
+
+    with _daemon_client(ctx) as client:
+        result = client.command(
+            ApplicationCommand(
+                command_type="event.retention.apply",
+                actor_id=client.principal_id,
+                target_type="event_retention_plan",
+                target_id=plan_id,
+                expected_revision=expected_revision,
+                payload={},
+            )
+        )
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
 @change_app.command("list")
 def list_change_sets(
     ctx: typer.Context,

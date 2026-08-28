@@ -34,7 +34,13 @@ from mishkan.daemon.auth import TokenFile, TokenRecord
 from mishkan.daemon.bootstrap import DaemonPaths
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.edits import ChangeSet, ChangeSetResult, ChangeSetService
-from mishkan.events import EventPage
+from mishkan.events import (
+    EventHold,
+    EventHoldScope,
+    EventPage,
+    EventRetentionPlan,
+    EventRetentionPolicy,
+)
 from mishkan.execution import CursorRead, SessionRecord, SessionRequest, SessionSupervisor
 from mishkan.mcp import (
     McpContractFactory,
@@ -75,8 +81,10 @@ def create_app(config: MishkanConfig) -> FastAPI:
     security = HTTPBearer(auto_error=False)
     security_dependency = Depends(security)
     daemon = config.daemon
+    persistence = config.persistence
     artifact_config = config.artifacts
     assert daemon is not None
+    assert persistence is not None
     assert artifact_config is not None
     artifacts = DurableArtifactService(
         paths.database,
@@ -256,6 +264,11 @@ def create_app(config: MishkanConfig) -> FastAPI:
                 event_type, result_payload = _dispatch(
                     command,
                     authorized,
+                    repository,
+                    EventRetentionPolicy(
+                        max_age_days=persistence.event_retention_days,
+                        batch_size=daemon.event_page_limit,
+                    ),
                     artifacts,
                     changes,
                     supervisor,
@@ -391,6 +404,28 @@ def create_app(config: MishkanConfig) -> FastAPI:
             occurred_before=occurred_before,
             security_relevant=security_relevant,
         )
+
+    @app.get("/v1/events/holds")
+    async def event_holds(
+        _principal: TokenRecord = authenticated,
+        active_only: bool = False,
+    ) -> tuple[EventHold, ...]:
+        return repository.event_holds(active_only=active_only)
+
+    @app.get("/v1/events/retention-policy")
+    async def event_retention_policy_query(
+        _principal: TokenRecord = authenticated,
+    ) -> EventRetentionPolicy:
+        return EventRetentionPolicy(
+            max_age_days=persistence.event_retention_days,
+            batch_size=daemon.event_page_limit,
+        )
+
+    @app.get("/v1/events/retention-plans")
+    async def event_retention_plans(
+        _principal: TokenRecord = authenticated,
+    ) -> tuple[EventRetentionPlan, ...]:
+        return repository.event_retention_plans()
 
     @app.get("/v1/events/stream")
     async def event_stream(
@@ -681,6 +716,8 @@ def _authorization_projection(
 def _dispatch(
     command: ApplicationCommand,
     authorized: AuthorizedApplicationCommand,
+    repository: SQLiteApplicationRepository,
+    event_retention_policy: EventRetentionPolicy,
     artifacts: DurableArtifactService,
     changes: ChangeSetService,
     supervisor: SessionSupervisor,
@@ -736,6 +773,23 @@ def _dispatch(
     if command.command_type == "artifact.reconcile.apply" and command.target_id is not None:
         reconciliation = artifacts.apply_reconciliation(UUID(command.target_id))
         return "artifact.reconciliation_applied", reconciliation.model_dump(mode="json")
+    if command.command_type == "event.hold.create":
+        hold = repository.create_event_hold(
+            scope=EventHoldScope(str(payload["scope"])),
+            scope_id=(str(payload["scope_id"]) if payload.get("scope_id") is not None else None),
+            reason=str(payload["reason"]),
+            actor_id=command.actor_id,
+        )
+        return "event.hold_created", hold.model_dump(mode="json")
+    if command.command_type == "event.hold.release" and command.target_id is not None:
+        hold = repository.release_event_hold(UUID(command.target_id))
+        return "event.hold_released", hold.model_dump(mode="json")
+    if command.command_type == "event.retention.plan":
+        event_plan = repository.plan_event_retention(event_retention_policy)
+        return "event.retention_planned", event_plan.model_dump(mode="json")
+    if command.command_type == "event.retention.apply" and command.target_id is not None:
+        applied_event_plan = repository.apply_event_retention(UUID(command.target_id))
+        return "event.retention_applied", applied_event_plan.model_dump(mode="json")
     if command.command_type == "change.plan":
         result = changes.plan(ChangeSet.model_validate(payload["change_set"]))
         return "change_set.planned", result.model_dump(mode="json")

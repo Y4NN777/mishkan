@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from time import perf_counter
 
@@ -9,6 +9,8 @@ from sqlalchemy import create_engine, text
 
 from mishkan.application import ApplicationCommand, CommandStatus
 from mishkan.domain.errors import ErrorCode, MishkanError
+from mishkan.domain.time import utc_now
+from mishkan.events import EventHoldScope, EventRetentionPlanState, EventRetentionPolicy
 from mishkan.persistence import SchemaManager, SQLiteApplicationRepository
 
 
@@ -98,6 +100,87 @@ def test_event_dimensions_filter_without_inspecting_payload_json(tmp_path: Path)
 
     with pytest.raises(MishkanError, match="timezone offset"):
         repository.events(occurred_after=datetime(2026, 8, 27))
+
+
+def test_retention_rechecks_holds_and_protects_incomplete_runs(tmp_path: Path) -> None:
+    database = tmp_path / "mishkan.db"
+    SchemaManager(database).initialize()
+    repository = SQLiteApplicationRepository(database)
+    old = (utc_now() - timedelta(days=45)).isoformat()
+    with create_engine(f"sqlite:///{database}").begin() as connection:
+        for run_id, status in (("run-complete", "completed"), ("run-active", "running")):
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO runs (
+                        id, resume_key, repository_id, repository_revision,
+                        discovery_fingerprint, objective, outcome_id, status, revision,
+                        cancellation_requested, created_at, updated_at
+                    ) VALUES (
+                        :id, :resume_key, 'repo', 'rev', :fingerprint, 'objective',
+                        'outcome', :status, 0, 0, :created_at, :updated_at
+                    )
+                    """
+                ),
+                {
+                    "id": run_id,
+                    "resume_key": f"resume-{run_id}",
+                    "fingerprint": ("a" if status == "completed" else "b") * 64,
+                    "status": status,
+                    "created_at": old,
+                    "updated_at": old,
+                },
+            )
+
+    for target_type, target_id in (
+        ("run", "run-complete"),
+        ("run", "run-active"),
+        ("system", "local-instance"),
+    ):
+        repository.accept(
+            ApplicationCommand(
+                command_type="system.checkpoint",
+                actor_id="operator",
+                target_type=target_type,
+                target_id=target_id,
+                payload={},
+            ),
+            target_id=target_id,
+            event_type="system.checkpoint_recorded",
+        )
+    with create_engine(f"sqlite:///{database}").begin() as connection:
+        connection.execute(text("UPDATE event_outbox SET occurred_at = :old"), {"old": old})
+
+    events = repository.events().events
+    complete_event = next(event for event in events if event.run_id == "run-complete")
+    active_event = next(event for event in events if event.run_id == "run-active")
+    standalone_event = next(event for event in events if event.entity_type == "system")
+    policy = EventRetentionPolicy(max_age_days=30, batch_size=100)
+    plan = repository.plan_event_retention(policy)
+
+    assert plan.policy_fingerprint == policy.fingerprint
+    assert active_event.event_id not in plan.candidate_event_ids
+    assert complete_event.event_id in plan.candidate_event_ids
+    assert standalone_event.event_id in plan.candidate_event_ids
+
+    hold = repository.create_event_hold(
+        scope=EventHoldScope.EVENT,
+        scope_id=str(complete_event.event_id),
+        reason="retain acceptance evidence",
+        actor_id="operator",
+    )
+    applied = repository.apply_event_retention(plan.plan_id)
+
+    assert applied.state is EventRetentionPlanState.APPLIED
+    assert applied.deleted_count == 1
+    remaining = {event.event_id for event in repository.events().events}
+    assert remaining == {complete_event.event_id, active_event.event_id}
+    assert repository.apply_event_retention(plan.plan_id) == applied
+    assert repository.event_holds(active_only=True) == (hold,)
+
+    repository.release_event_hold(hold.hold_id)
+    followup = repository.plan_event_retention(policy)
+    assert followup.candidate_event_ids == (complete_event.event_id,)
 
 
 def test_exact_command_retry_returns_original_result(tmp_path: Path) -> None:

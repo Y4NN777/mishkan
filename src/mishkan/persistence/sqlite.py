@@ -159,6 +159,32 @@ class CommandRow(Base):
     completed_at: Mapped[str] = mapped_column(String(40), nullable=False)
 
 
+class EventHoldRow(Base):
+    __tablename__ = "event_holds"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    scope: Mapped[str] = mapped_column(String(16), nullable=False)
+    scope_id: Mapped[str | None] = mapped_column(String(256))
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    actor_id: Mapped[str] = mapped_column(String(256), nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+    released_at: Mapped[str | None] = mapped_column(String(40))
+
+
+class EventRetentionPlanRow(Base):
+    __tablename__ = "event_retention_plans"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    policy_payload: Mapped[str] = mapped_column(Text, nullable=False)
+    policy_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    cutoff: Mapped[str] = mapped_column(String(40), nullable=False)
+    candidates_payload: Mapped[str] = mapped_column(Text, nullable=False)
+    state: Mapped[str] = mapped_column(String(16), nullable=False)
+    deleted_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+    applied_at: Mapped[str | None] = mapped_column(String(40))
+
+
 class AggregateRevisionRow(Base):
     __tablename__ = "aggregate_revisions"
 

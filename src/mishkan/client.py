@@ -16,7 +16,13 @@ from mishkan.application import ApplicationCommand, CommandResult, SnapshotEnvel
 from mishkan.artifacts import ArtifactManifest
 from mishkan.daemon.auth import TokenFile
 from mishkan.edits import ChangeSetResult
-from mishkan.events import EventEnvelope, EventPage
+from mishkan.events import (
+    EventEnvelope,
+    EventHold,
+    EventPage,
+    EventRetentionPlan,
+    EventRetentionPolicy,
+)
 from mishkan.execution import CursorRead, SessionRecord
 
 
@@ -215,6 +221,31 @@ class Mishkan:
             Path(temporary_name).unlink(missing_ok=True)
             raise
         return count, cursor
+
+    def event_holds(self, *, active_only: bool = False) -> tuple[EventHold, ...]:
+        response = self._client.get(
+            "/v1/events/holds",
+            headers=self._headers(),
+            params={"active_only": active_only},
+        )
+        response.raise_for_status()
+        return tuple(EventHold.model_validate(item) for item in response.json())
+
+    def event_retention_plans(self) -> tuple[EventRetentionPlan, ...]:
+        response = self._client.get(
+            "/v1/events/retention-plans",
+            headers=self._headers(),
+        )
+        response.raise_for_status()
+        return tuple(EventRetentionPlan.model_validate(item) for item in response.json())
+
+    def event_retention_policy(self) -> EventRetentionPolicy:
+        response = self._client.get(
+            "/v1/events/retention-policy",
+            headers=self._headers(),
+        )
+        response.raise_for_status()
+        return EventRetentionPolicy.model_validate(response.json())
 
     def artifacts(self, *, offset: int = 0, limit: int = 100) -> tuple[ArtifactManifest, ...]:
         response = self._client.get(

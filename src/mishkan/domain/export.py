@@ -33,7 +33,13 @@ from mishkan.config.models import MishkanConfig
 from mishkan.domain.errors import ErrorEnvelope
 from mishkan.domain.identity import DomainRecord
 from mishkan.edits.models import ChangeSet, ChangeSetResult
-from mishkan.events.models import EventEnvelope, EventPage
+from mishkan.events.models import (
+    EventEnvelope,
+    EventHold,
+    EventPage,
+    EventRetentionPlan,
+    EventRetentionPolicy,
+)
 from mishkan.execution.sessions import CursorRead, SessionRecord, SessionRequest
 from mishkan.mcp.models import (
     McpCallRequest,
@@ -83,7 +89,10 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "domain-record-v1.schema.json": DomainRecord,
     "error-envelope-v1.schema.json": ErrorEnvelope,
     "event-envelope-v1.schema.json": EventEnvelope,
+    "event-hold-v1.schema.json": EventHold,
     "event-page-v1.schema.json": EventPage,
+    "event-retention-plan-v1.schema.json": EventRetentionPlan,
+    "event-retention-policy-v1.schema.json": EventRetentionPolicy,
     "mcp-call-request-v1.schema.json": McpCallRequest,
     "mcp-call-result-v1.schema.json": McpCallResult,
     "mcp-connection-v1.schema.json": McpConnectionRecord,

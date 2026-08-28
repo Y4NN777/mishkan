@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -22,16 +22,27 @@ from mishkan.application import (
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.identity import new_id
 from mishkan.domain.time import utc_now
-from mishkan.events import EventEnvelope, EventPage
+from mishkan.events import (
+    EventEnvelope,
+    EventHold,
+    EventHoldScope,
+    EventPage,
+    EventRetentionPlan,
+    EventRetentionPlanState,
+    EventRetentionPolicy,
+)
 from mishkan.persistence.migration import SchemaManager
 from mishkan.persistence.sqlite import (
     AggregateRevisionRow,
     CommandRow,
+    EventHoldRow,
+    EventRetentionPlanRow,
     LocalRunRepository,
     OutboxRow,
     RunRow,
     TaskRow,
 )
+from mishkan.runtime import RunState
 
 
 class SQLiteApplicationRepository:
@@ -417,6 +428,148 @@ class SQLiteApplicationRepository:
                 events=events,
             )
 
+    def create_event_hold(
+        self,
+        *,
+        scope: EventHoldScope,
+        scope_id: str | None,
+        reason: str,
+        actor_id: str,
+    ) -> EventHold:
+        """Create an explicit evidence hold after proving a targeted entity exists."""
+        candidate = EventHold(
+            hold_id=new_id(),
+            scope=scope,
+            scope_id=scope_id,
+            reason=reason,
+            actor_id=actor_id,
+            created_at=utc_now(),
+        )
+        with Session(self._engine) as session, session.begin():
+            if scope is EventHoldScope.RUN and session.get(RunRow, scope_id) is None:
+                raise MishkanError(ErrorCode.OUTPUT_CONTRACT, "event hold run does not exist")
+            if scope is EventHoldScope.EVENT:
+                observed = session.scalar(select(OutboxRow.id).where(OutboxRow.id == scope_id))
+                if observed is None:
+                    raise MishkanError(ErrorCode.OUTPUT_CONTRACT, "event hold event does not exist")
+            session.add(
+                EventHoldRow(
+                    id=str(candidate.hold_id),
+                    scope=candidate.scope.value,
+                    scope_id=candidate.scope_id,
+                    reason=candidate.reason,
+                    actor_id=candidate.actor_id,
+                    created_at=candidate.created_at.isoformat(),
+                    released_at=None,
+                )
+            )
+        return candidate
+
+    def release_event_hold(self, hold_id: UUID) -> EventHold:
+        """Release a hold idempotently while retaining its audit record."""
+        with Session(self._engine) as session, session.begin():
+            row = session.get(EventHoldRow, str(hold_id))
+            if row is None:
+                raise MishkanError(ErrorCode.OUTPUT_CONTRACT, "event hold does not exist")
+            if row.released_at is None:
+                row.released_at = utc_now().isoformat()
+            session.flush()
+            return self._hold(row)
+
+    def event_holds(self, *, active_only: bool = False) -> tuple[EventHold, ...]:
+        with Session(self._engine) as session:
+            statement = select(EventHoldRow)
+            if active_only:
+                statement = statement.where(EventHoldRow.released_at.is_(None))
+            rows = session.scalars(statement.order_by(EventHoldRow.created_at)).all()
+            return tuple(self._hold(row) for row in rows)
+
+    def plan_event_retention(self, policy: EventRetentionPolicy) -> EventRetentionPlan:
+        """Persist a bounded candidate set without deleting any evidence."""
+        now = utc_now()
+        cutoff = now - timedelta(days=policy.max_age_days)
+        with Session(self._engine) as session, session.begin():
+            candidates = self._eligible_retention_rows(session, cutoff, policy.batch_size)
+            plan = EventRetentionPlan(
+                plan_id=new_id(),
+                policy=policy,
+                policy_fingerprint=policy.fingerprint,
+                cutoff=cutoff,
+                candidate_event_ids=tuple(UUID(row.id) for row in candidates),
+                candidate_cursors=tuple(row.cursor for row in candidates),
+                state=EventRetentionPlanState.PLANNED,
+                deleted_count=0,
+                created_at=now,
+            )
+            session.add(
+                EventRetentionPlanRow(
+                    id=str(plan.plan_id),
+                    policy_payload=policy.model_dump_json(),
+                    policy_fingerprint=plan.policy_fingerprint,
+                    cutoff=cutoff.isoformat(),
+                    candidates_payload=json.dumps(
+                        [
+                            {"event_id": str(event_id), "cursor": cursor}
+                            for event_id, cursor in zip(
+                                plan.candidate_event_ids,
+                                plan.candidate_cursors,
+                                strict=True,
+                            )
+                        ],
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                    state=plan.state.value,
+                    deleted_count=0,
+                    created_at=now.isoformat(),
+                    applied_at=None,
+                )
+            )
+        return plan
+
+    def apply_event_retention(self, plan_id: UUID) -> EventRetentionPlan:
+        """Apply a stored plan after rechecking current runs and active holds."""
+        with Session(self._engine) as session, session.begin():
+            row = session.get(EventRetentionPlanRow, str(plan_id))
+            if row is None:
+                raise MishkanError(ErrorCode.OUTPUT_CONTRACT, "event retention plan does not exist")
+            if row.state == EventRetentionPlanState.APPLIED.value:
+                return self._retention_plan(row)
+            policy = EventRetentionPolicy.model_validate_json(row.policy_payload)
+            if policy.fingerprint != row.policy_fingerprint:
+                raise MishkanError(
+                    ErrorCode.OUTPUT_CONTRACT,
+                    "stored event retention policy fingerprint is invalid",
+                )
+            candidate_ids = {
+                str(candidate["event_id"]) for candidate in json.loads(row.candidates_payload)
+            }
+            eligible = {
+                candidate.id
+                for candidate in self._eligible_retention_rows(
+                    session,
+                    datetime.fromisoformat(row.cutoff),
+                    policy.batch_size,
+                    candidate_ids=candidate_ids,
+                )
+            }
+            for event_id in eligible:
+                event_row = session.scalar(select(OutboxRow).where(OutboxRow.id == event_id))
+                if event_row is not None:
+                    session.delete(event_row)
+            row.state = EventRetentionPlanState.APPLIED.value
+            row.deleted_count = len(eligible)
+            row.applied_at = utc_now().isoformat()
+            session.flush()
+            return self._retention_plan(row)
+
+    def event_retention_plans(self) -> tuple[EventRetentionPlan, ...]:
+        with Session(self._engine) as session:
+            rows = session.scalars(
+                select(EventRetentionPlanRow).order_by(EventRetentionPlanRow.created_at)
+            ).all()
+            return tuple(self._retention_plan(row) for row in rows)
+
     def snapshot(self, *, limit: int = 1_000) -> SnapshotEnvelope:
         self._query_bound(0, limit)
         with Session(self._engine) as session, session.begin():
@@ -552,6 +705,70 @@ class SQLiteApplicationRepository:
             sensitivity=row.sensitivity,
             payload=json.loads(row.payload),
         )
+
+    @staticmethod
+    def _hold(row: EventHoldRow) -> EventHold:
+        return EventHold(
+            hold_id=UUID(row.id),
+            scope=EventHoldScope(row.scope),
+            scope_id=row.scope_id,
+            reason=row.reason,
+            actor_id=row.actor_id,
+            created_at=datetime.fromisoformat(row.created_at),
+            released_at=(datetime.fromisoformat(row.released_at) if row.released_at else None),
+        )
+
+    @staticmethod
+    def _retention_plan(row: EventRetentionPlanRow) -> EventRetentionPlan:
+        candidates = json.loads(row.candidates_payload)
+        return EventRetentionPlan(
+            plan_id=UUID(row.id),
+            policy=EventRetentionPolicy.model_validate_json(row.policy_payload),
+            policy_fingerprint=row.policy_fingerprint,
+            cutoff=datetime.fromisoformat(row.cutoff),
+            candidate_event_ids=tuple(UUID(value["event_id"]) for value in candidates),
+            candidate_cursors=tuple(int(value["cursor"]) for value in candidates),
+            state=EventRetentionPlanState(row.state),
+            deleted_count=row.deleted_count,
+            created_at=datetime.fromisoformat(row.created_at),
+            applied_at=(datetime.fromisoformat(row.applied_at) if row.applied_at else None),
+        )
+
+    @staticmethod
+    def _eligible_retention_rows(
+        session: Session,
+        cutoff: datetime,
+        limit: int,
+        *,
+        candidate_ids: set[str] | None = None,
+    ) -> list[OutboxRow]:
+        active_holds = session.scalars(
+            select(EventHoldRow).where(EventHoldRow.released_at.is_(None))
+        ).all()
+        if any(row.scope == EventHoldScope.ALL.value for row in active_holds):
+            return []
+        held_runs = {row.scope_id for row in active_holds if row.scope == EventHoldScope.RUN.value}
+        held_events = {
+            row.scope_id for row in active_holds if row.scope == EventHoldScope.EVENT.value
+        }
+        terminal = {RunState.COMPLETED.value, RunState.FAILED.value, RunState.CANCELLED.value}
+        incomplete_runs = set(
+            session.scalars(select(RunRow.id).where(RunRow.status.not_in(terminal))).all()
+        )
+        statement = select(OutboxRow).where(OutboxRow.occurred_at < cutoff.isoformat())
+        if candidate_ids is not None:
+            if not candidate_ids:
+                return []
+            statement = statement.where(OutboxRow.id.in_(candidate_ids))
+        protected_runs = incomplete_runs | {value for value in held_runs if value is not None}
+        if protected_runs:
+            statement = statement.where(
+                (OutboxRow.run_id.is_(None)) | (OutboxRow.run_id.not_in(protected_runs))
+            )
+        protected_events = {value for value in held_events if value is not None}
+        if protected_events:
+            statement = statement.where(OutboxRow.id.not_in(protected_events))
+        return list(session.scalars(statement.order_by(OutboxRow.cursor).limit(limit)).all())
 
     @staticmethod
     def _normalized_time(value: datetime) -> str:

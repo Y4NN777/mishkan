@@ -97,6 +97,18 @@ COMMAND_SEMANTICS = MappingProxyType(
         "artifact.reconcile.apply": CommandSemantics(
             "application.artifact.reconcile", "artifact", ("artifact.reconcile.apply",)
         ),
+        "event.hold.create": CommandSemantics(
+            "application.event.hold", "control", ("event.hold.create",)
+        ),
+        "event.hold.release": CommandSemantics(
+            "application.event.hold", "control", ("event.hold.release",)
+        ),
+        "event.retention.plan": CommandSemantics(
+            "application.event.retention", "control", ("event.retention.plan",)
+        ),
+        "event.retention.apply": CommandSemantics(
+            "application.event.retention", "control", ("event.retention.apply",)
+        ),
         "change.plan": CommandSemantics("application.change.plan", "filesystem", ("change.plan",)),
         "change.apply": CommandSemantics(
             "application.change.apply", "filesystem", ("change.apply",)
@@ -146,6 +158,10 @@ _COMMAND_TARGETS = MappingProxyType(
         "artifact.gc.apply": ("artifact_gc_plan", "uuid"),
         "artifact.reconcile.plan": ("artifact_service", "absent"),
         "artifact.reconcile.apply": ("artifact_reconciliation_plan", "uuid"),
+        "event.hold.create": ("event_store", "absent"),
+        "event.hold.release": ("event_hold", "uuid"),
+        "event.retention.plan": ("event_store", "absent"),
+        "event.retention.apply": ("event_retention_plan", "uuid"),
         "change.plan": ("change_set", "uuid"),
         "change.apply": ("change_set", "uuid"),
         "change.reconcile": ("change_set", "uuid"),
@@ -184,6 +200,13 @@ _COMMAND_PAYLOAD_FIELDS = MappingProxyType(
         "artifact.gc.apply": (frozenset(), frozenset()),
         "artifact.reconcile.plan": (frozenset(), frozenset()),
         "artifact.reconcile.apply": (frozenset(), frozenset()),
+        "event.hold.create": (
+            frozenset({"scope", "reason"}),
+            frozenset({"scope_id"}),
+        ),
+        "event.hold.release": (frozenset(), frozenset()),
+        "event.retention.plan": (frozenset(), frozenset()),
+        "event.retention.apply": (frozenset(), frozenset()),
         "change.plan": (frozenset({"change_set"}), frozenset()),
         "change.apply": (frozenset(), frozenset()),
         "change.reconcile": (frozenset(), frozenset()),

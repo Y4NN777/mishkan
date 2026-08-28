@@ -98,13 +98,40 @@ async def test_authenticated_command_and_event_query_share_durable_contract(
         "command_type": "system.checkpoint",
         "matched_rule_ids": ["local.application-commands"],
         "policy_fingerprint": event_payload["policy_fingerprint"],
-        "policy_revisions": ["bundled.local@6"],
+        "policy_revisions": ["bundled.local@7"],
         "request_schema_version": "1.0",
         "payload_fields": ["checkpoint"],
         "result_fields": ["recorded"],
     }
     assert len(event_payload["authorization_request_fingerprint"]) == 64
     assert len(event_payload["policy_fingerprint"]) == 64
+
+
+@pytest.mark.anyio
+async def test_event_retention_is_explicit_authorized_and_inspectable(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    paths = DaemonBootstrap().setup(config)
+    token_record = TokenFile(paths.token_file).read()
+    headers = {"Authorization": f"Bearer {token_record.token}"}
+    command = ApplicationCommand(
+        command_type="event.retention.plan",
+        actor_id=token_record.principal_id,
+        target_type="event_store",
+        payload={},
+    )
+
+    transport = httpx.ASGITransport(app=create_app(config))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        planned = await client.post(
+            "/v1/commands", headers=headers, json=command.model_dump(mode="json")
+        )
+        inspected = await client.get("/v1/events/retention-plans", headers=headers)
+
+    assert planned.status_code == 200
+    assert planned.json()["payload"]["state"] == "planned"
+    assert planned.json()["payload"]["policy"]["max_age_days"] == 30
+    assert inspected.status_code == 200
+    assert inspected.json() == [planned.json()["payload"]]
 
 
 @pytest.mark.anyio
