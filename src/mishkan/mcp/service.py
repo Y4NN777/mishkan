@@ -187,6 +187,18 @@ class McpService:
         credentials: Mapping[str, str],
     ) -> McpCallResult:
         configured, primitive = self._validate_call(request)
+        serialized_request = json.dumps(
+            request.model_dump(mode="json"),
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        if self._inspector.inspect(serialized_request, tuple(credentials.values())) != (
+            serialized_request
+        ):
+            raise MishkanError(
+                ErrorCode.SECRET_CONTENT,
+                "MCP request requires redaction and cannot be dispatched faithfully",
+            )
         reservation = self._repository.reserve_call(request)
         if not reservation.created:
             if reservation.existing_result is not None:

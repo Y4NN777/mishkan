@@ -140,6 +140,7 @@ def create_app(config: MishkanConfig) -> FastAPI:
         session_config,
         artifacts,
         busy_timeout_ms=persistence.busy_timeout_ms,
+        content_inspector=content_inspector,
     )
     supervisor.reconcile_all()
     command_lock = asyncio.Lock()

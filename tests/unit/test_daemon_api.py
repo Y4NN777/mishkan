@@ -791,6 +791,58 @@ async def test_session_credentials_are_references_resolved_after_policy_and_neve
     assert secret not in str(events.json())
 
 
+@pytest.mark.anyio
+@pytest.mark.secrets
+async def test_secret_like_session_request_is_blocked_before_process_and_persistence(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    paths = DaemonBootstrap().setup(config)
+    token = TokenFile(paths.token_file).read().token
+    headers = {"Authorization": f"Bearer {token}"}
+    request = {
+        "mode": "job",
+        "owner": "local-operator",
+        "run_id": "run-secret-request",
+        "task_id": "task-secret-request",
+        "cwd": ".",
+        "executable": "/bin/sh",
+        "args": ["-c", "printf api_key=must-not-persist"],
+        "environment": {},
+        "credential_environment": {},
+        "credential_references": [],
+        "session_profile": "standard",
+        "deadline": (utc_now() + timedelta(minutes=1)).isoformat(),
+        "policy_fingerprint": "f" * 64,
+    }
+    command = ApplicationCommand(
+        command_type="session.start",
+        actor_id="local-operator",
+        target_type="session_service",
+        payload={"request": request},
+    )
+    transport = httpx.ASGITransport(app=create_app(config))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        refused = await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=command.model_dump(mode="json"),
+        )
+        replayed = await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=command.model_dump(mode="json"),
+        )
+        sessions = await client.get("/v1/sessions", headers=headers)
+
+    assert refused.status_code == 200
+    assert refused.json()["status"] == "refused"
+    assert refused.json()["error"]["code"] == ErrorCode.SECRET_CONTENT
+    assert replayed.json() == refused.json()
+    assert sessions.json() == []
+    assert not any(paths.sessions.iterdir())
+
+
 def test_token_rotation_invalidates_previous_credential(tmp_path: Path) -> None:
     config = _config(tmp_path)
     paths = DaemonBootstrap().setup(config)

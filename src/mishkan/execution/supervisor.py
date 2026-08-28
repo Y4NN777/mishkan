@@ -19,7 +19,7 @@ from collections.abc import Mapping
 from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Protocol
 from uuid import UUID
 
 import psutil  # type: ignore[import-untyped]
@@ -70,6 +70,10 @@ class _SecretFilter:
         return emit
 
 
+class SessionContentInspector(Protocol):
+    def inspect(self, content: str, resolved_secrets: tuple[str, ...] = ()) -> str: ...
+
+
 class SessionSupervisor:
     def __init__(
         self,
@@ -80,6 +84,7 @@ class SessionSupervisor:
         artifacts: DurableArtifactService,
         *,
         busy_timeout_ms: int = 5_000,
+        content_inspector: SessionContentInspector | None = None,
     ) -> None:
         SchemaManager(database).require_current()
         self._workspace = workspace.resolve(strict=True)
@@ -89,6 +94,7 @@ class SessionSupervisor:
         self._spool_root.mkdir(parents=True, exist_ok=True)
         self._config = config
         self._artifacts = artifacts
+        self._content_inspector = content_inspector
         self._engine = create_local_engine(database, busy_timeout_ms=busy_timeout_ms)
         self._processes: dict[UUID, subprocess.Popen[bytes]] = {}
         self._pty_masters: dict[UUID, int] = {}
@@ -116,13 +122,6 @@ class SessionSupervisor:
             raise MishkanError(
                 ErrorCode.EXECUTION, "session executable must be an existing absolute file"
             )
-        session_id = request.execution_id
-        directory = self._spool_root / str(session_id)
-        directory.mkdir(mode=0o700)
-        stdout_spool = directory / "stdout.spool"
-        stderr_spool = directory / "stderr.spool"
-        stdout_spool.touch(mode=0o600)
-        stderr_spool.touch(mode=0o600)
         resolved = dict(credential_values or {})
         environment_references = {
             name: reference
@@ -148,12 +147,29 @@ class SessionSupervisor:
             }
         )
         secret_values = tuple(resolved.values())
+        serialized_request = request.model_dump_json()
+        if (
+            self._content_inspector is not None
+            and self._content_inspector.inspect(serialized_request, secret_values)
+            != serialized_request
+        ):
+            raise MishkanError(
+                ErrorCode.SECRET_CONTENT,
+                "session request requires redaction and cannot be executed faithfully",
+            )
         sanitized_request = request.model_copy(
             update={
                 "environment": {name: "[PRESENT]" for name in request.environment},
                 "credential_environment": request.credential_environment,
             }
         )
+        session_id = request.execution_id
+        directory = self._spool_root / str(session_id)
+        directory.mkdir(mode=0o700)
+        stdout_spool = directory / "stdout.spool"
+        stderr_spool = directory / "stderr.spool"
+        stdout_spool.touch(mode=0o600)
+        stderr_spool.touch(mode=0o600)
         before_state = self._declared_path_state(request)
         if request.mode is SessionMode.PTY:
             process, threads = self._start_pty(

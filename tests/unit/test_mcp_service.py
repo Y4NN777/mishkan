@@ -389,6 +389,29 @@ async def test_connect_invoke_progress_and_exact_replay_are_durable(tmp_path: Pa
 
 
 @pytest.mark.anyio
+@pytest.mark.secrets
+async def test_secret_like_mcp_request_is_blocked_before_reservation(tmp_path: Path) -> None:
+    primitive = _primitive()
+    client = FakeClient(_snapshot(primitive))
+    service, repository = _service(tmp_path, client)
+    await service.connect(
+        "graph",
+        principal="role:Engineer",
+        policy_fingerprint="policy:test",
+        credentials={},
+    )
+    request = _request(primitive).model_copy(
+        update={"arguments": {"path": "api_key=must-not-persist"}}
+    )
+
+    with pytest.raises(MishkanError) as caught:
+        await service.invoke(request, credentials={"test.credential": "must-not-persist"})
+
+    assert caught.value.envelope.code is ErrorCode.SECRET_CONTENT
+    assert repository.list_calls() == ()
+
+
+@pytest.mark.anyio
 async def test_reconnect_schema_drift_preserves_bound_primitives_and_degrades(
     tmp_path: Path,
 ) -> None:
