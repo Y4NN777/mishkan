@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from importlib.resources import files
 from pathlib import Path
 
 import pytest
@@ -335,6 +336,66 @@ toolsets:
 
     assert caught.value.envelope.code is ErrorCode.TOOL_CONTRACT
     assert "cycle" in caught.value.envelope.message
+
+
+def test_toolset_availability_and_health_are_public_binding_conditions(
+    tmp_path: Path,
+) -> None:
+    index = tmp_path / "availability.yaml"
+    index.write_text(
+        """schema_version: '1.0'
+source_id: project
+source_kind: project
+revision: '1'
+adoption_authority: Engineer
+tools:
+  - tool_id: repository.read_file
+    version: 1.0.0
+    summary: One runnable read tool.
+    effect_class: read
+    source_id: project
+    source_kind: project
+    contract_uri: project:contract.yaml
+toolsets:
+  - toolset_id: project.healthy_reads
+    version: 1.0.0
+    summary: Reads requiring an observed healthy index.
+    tools: [repository.read_file]
+    availability:
+      services: [project-index]
+      health_checks: [project-index-ready]
+""",
+        encoding="utf-8",
+    )
+    contract = files("mishkan.resources.tools.contracts").joinpath("read-file.yaml")
+    (tmp_path / "contract.yaml").write_text(
+        contract.read_text(encoding="utf-8").replace(
+            "source_id: bundled.core", "source_id: project"
+        ),
+        encoding="utf-8",
+    )
+    unavailable = ToolCatalog(
+        (str(index),),
+        tmp_path,
+        available_services=frozenset({"project-index"}),
+        available_adapters=frozenset({READ_ADAPTER}),
+    )
+
+    with pytest.raises(MishkanError) as caught:
+        unavailable.snapshot(("project.healthy_reads",))
+
+    assert caught.value.envelope.code is ErrorCode.TOOL_UNAVAILABLE
+    assert caught.value.envelope.details["missing_conditions"] == ("health:project-index-ready",)
+    available = ToolCatalog(
+        (str(index),),
+        tmp_path,
+        available_services=frozenset({"project-index"}),
+        healthy_checks=frozenset({"project-index-ready"}),
+        available_adapters=frozenset({READ_ADAPTER}),
+    )
+    assert available.snapshot(("project.healthy_reads",)).tools[0].tool_id == (
+        "repository.read_file"
+    )
 
 
 def test_metadata_contract_drift_blocks_binding(tmp_path: Path) -> None:

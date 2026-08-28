@@ -79,6 +79,7 @@ class AvailabilityConditions(ToolModel):
     runtimes: tuple[str, ...] = ("*",)
     credential_refs: tuple[str, ...] = ()
     services: tuple[str, ...] = ()
+    health_checks: tuple[str, ...] = ()
     dependencies: tuple[str, ...] = ()
     min_memory_mb: int | None = Field(default=None, ge=1)
 
@@ -137,6 +138,10 @@ class ToolContract(ToolModel):
     @property
     def provenance_fingerprint(self) -> str:
         payload = self.model_dump(mode="json", exclude={"provenance_fingerprint"})
+        availability = payload.get("availability")
+        if isinstance(availability, dict) and not availability.get("health_checks"):
+            # Preserve fingerprints produced before the optional health dimension existed.
+            availability.pop("health_checks", None)
         return hashlib.sha256(
             json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
         ).hexdigest()
@@ -165,6 +170,7 @@ class ToolsetDefinition(ToolModel):
     toolsets: tuple[str, ...] = ()
     exclude_tools: tuple[str, ...] = ()
     max_depth: int = Field(default=8, ge=1, le=64)
+    availability: AvailabilityConditions = Field(default_factory=AvailabilityConditions)
 
 
 class ToolSourceIndex(ToolModel):

@@ -16,6 +16,7 @@ from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.schema import SchemaRegistry
 from mishkan.domain.sources import resolve_source_path
 from mishkan.tools.models import (
+    AvailabilityConditions,
     AvailabilityResult,
     AvailabilityState,
     RegistryLifecycleProjection,
@@ -36,6 +37,7 @@ class ToolCatalog:
         *,
         runtime: str = "python",
         available_services: frozenset[str] = frozenset(),
+        healthy_checks: frozenset[str] = frozenset(),
         available_dependencies: frozenset[str] = frozenset(),
         available_credentials: frozenset[str] = frozenset(),
         available_adapters: frozenset[str] = frozenset(),
@@ -52,6 +54,7 @@ class ToolCatalog:
         self._project_root = project_root.resolve()
         self._runtime = runtime
         self._services = available_services
+        self._healthy_checks = healthy_checks
         self._dependencies = available_dependencies
         self._credentials = available_credentials
         self._lifecycle = lifecycle
@@ -135,7 +138,14 @@ class ToolCatalog:
         )
 
     def availability(self, metadata: ToolMetadata) -> AvailabilityResult:
-        conditions = metadata.availability
+        missing = self._missing_conditions(metadata.availability)
+        return AvailabilityResult(
+            tool_id=metadata.tool_id,
+            state=AvailabilityState.UNAVAILABLE if missing else AvailabilityState.AVAILABLE,
+            missing_conditions=missing,
+        )
+
+    def _missing_conditions(self, conditions: AvailabilityConditions) -> tuple[str, ...]:
         missing: list[str] = []
         system = platform.system().lower()
         if "*" not in conditions.platforms and system not in conditions.platforms:
@@ -151,6 +161,11 @@ class ToolCatalog:
             f"service:{item}" for item in conditions.services if item not in self._services
         )
         missing.extend(
+            f"health:{item}"
+            for item in conditions.health_checks
+            if item not in self._healthy_checks
+        )
+        missing.extend(
             f"dependency:{item}"
             for item in conditions.dependencies
             if item not in self._dependencies
@@ -159,11 +174,7 @@ class ToolCatalog:
             self._memory_mb is None or self._memory_mb < conditions.min_memory_mb
         ):
             missing.append(f"memory_mb:{conditions.min_memory_mb}")
-        return AvailabilityResult(
-            tool_id=metadata.tool_id,
-            state=AvailabilityState.UNAVAILABLE if missing else AvailabilityState.AVAILABLE,
-            missing_conditions=tuple(sorted(missing)),
-        )
+        return tuple(sorted(missing))
 
     def snapshot(self, requested: tuple[str, ...]) -> RegistrySnapshot:
         tool_ids = self._resolve_requested(requested)
@@ -298,6 +309,13 @@ class ToolCatalog:
                 ErrorCode.TOOL_CONTRACT,
                 "toolset resolution cycle detected",
                 details={"toolset_id": toolset_id, "stack": sorted(stack)},
+            )
+        missing = self._missing_conditions(toolset.availability)
+        if missing:
+            raise MishkanError(
+                ErrorCode.TOOL_UNAVAILABLE,
+                "requested toolset is unavailable",
+                details={"toolset_id": toolset_id, "missing_conditions": missing},
             )
         if depth >= toolset.max_depth:
             raise MishkanError(
