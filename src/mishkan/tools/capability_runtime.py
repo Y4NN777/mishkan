@@ -67,7 +67,8 @@ def build_capability_runtime(
     """Build configured adapters without performing network or browser effects."""
     web_config = config.web
     browser_config = config.browser
-    if web_config is None or browser_config is None:
+    persistence = config.persistence
+    if web_config is None or browser_config is None or persistence is None:
         raise MishkanError(ErrorCode.CONFIGURATION, "capability configuration is incomplete")
 
     transport = HttpxWebTransport()
@@ -92,7 +93,7 @@ def build_capability_runtime(
         search_adapters=search_adapters,
         extraction_adapters=extraction_adapters,
         transport=transport,
-        cache=SQLiteWebCache(database),
+        cache=SQLiteWebCache(database, busy_timeout_ms=persistence.busy_timeout_ms),
     )
     adapters = build_web_tool_adapters(web_config, web_service)
     git_available = shutil.which("git") is not None
@@ -111,6 +112,7 @@ def build_capability_runtime(
             artifacts,
             {browser.adapter_id: browser},
             inspector,
+            busy_timeout_ms=persistence.busy_timeout_ms,
         )
         # Reconcile handles lost by a prior daemon/runtime interruption before
         # exposing any Browser adapter to a new CrewAI run.

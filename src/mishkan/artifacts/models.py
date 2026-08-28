@@ -190,6 +190,7 @@ class ArtifactReconciliationAction(StrEnum):
     DELETE_ORPHAN_BLOB = "delete_orphan_blob"
     DELETE_INVALID_REFERENCE = "delete_invalid_reference"
     DELETE_INCOMPLETE_COLLECTION = "delete_incomplete_collection"
+    ABORT_EXPIRED_UPLOAD = "abort_expired_upload"
 
 
 class ArtifactReconciliationIssue(ArtifactModel):
@@ -199,6 +200,7 @@ class ArtifactReconciliationIssue(ArtifactModel):
     scope: str | None = None
     name: str | None = None
     collection_id: UUID | None = None
+    upload_id: UUID | None = None
 
 
 class ArtifactReconciliationPlan(ArtifactModel):

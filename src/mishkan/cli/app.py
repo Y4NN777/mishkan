@@ -294,7 +294,9 @@ def database_upgrade(ctx: typer.Context) -> None:
         paths = DaemonPaths.from_config(effective.value)
         observed = SchemaManager(paths.database).upgrade()
         artifact_config = effective.value.artifacts
+        persistence_config = effective.value.persistence
         assert artifact_config is not None
+        assert persistence_config is not None
         from mishkan.artifacts.service import DurableArtifactService
 
         imported_artifacts = DurableArtifactService(
@@ -302,6 +304,8 @@ def database_upgrade(ctx: typer.Context) -> None:
             paths.artifacts,
             max_artifact_bytes=artifact_config.max_artifact_bytes,
             max_chunk_bytes=artifact_config.chunk_bytes,
+            busy_timeout_ms=persistence_config.busy_timeout_ms,
+            staging_ttl_seconds=artifact_config.staging_ttl_seconds,
         ).import_legacy_manifests()
     except MishkanError as error:
         _emit_error(error, as_json=state.json_output)

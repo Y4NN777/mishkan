@@ -90,23 +90,36 @@ def create_app(config: MishkanConfig) -> FastAPI:
     SchemaManager(paths.database).require_current()
     token_file = TokenFile(paths.token_file)
     token_file.read()
-    repository = SQLiteApplicationRepository(paths.database)
-    run_repository = LocalRunRepository(paths.database)
+    persistence = config.persistence
+    assert persistence is not None
+    repository = SQLiteApplicationRepository(
+        paths.database,
+        busy_timeout_ms=persistence.busy_timeout_ms,
+    )
+    run_repository = LocalRunRepository(
+        paths.database,
+        busy_timeout_ms=persistence.busy_timeout_ms,
+    )
     security = HTTPBearer(auto_error=False)
     security_dependency = Depends(security)
     daemon = config.daemon
-    persistence = config.persistence
     artifact_config = config.artifacts
     assert daemon is not None
-    assert persistence is not None
     assert artifact_config is not None
     artifacts = DurableArtifactService(
         paths.database,
         paths.artifacts,
         max_artifact_bytes=artifact_config.max_artifact_bytes,
         max_chunk_bytes=artifact_config.chunk_bytes,
+        busy_timeout_ms=persistence.busy_timeout_ms,
+        staging_ttl_seconds=artifact_config.staging_ttl_seconds,
     )
-    changes = ChangeSetService(paths.database, paths.workspace, artifacts)
+    changes = ChangeSetService(
+        paths.database,
+        paths.workspace,
+        artifacts,
+        busy_timeout_ms=persistence.busy_timeout_ms,
+    )
     git_effects = GovernedGitService(artifacts)
     session_config = config.sessions
     assert session_config is not None
@@ -116,6 +129,7 @@ def create_app(config: MishkanConfig) -> FastAPI:
         paths.sessions,
         session_config,
         artifacts,
+        busy_timeout_ms=persistence.busy_timeout_ms,
     )
     supervisor.reconcile_all()
     command_lock = asyncio.Lock()
@@ -132,7 +146,10 @@ def create_app(config: MishkanConfig) -> FastAPI:
                 ErrorCode.CONFIGURATION,
                 "daemon MCP mediation requires Web and inspection configuration",
             )
-        mcp_repository = McpRepository(paths.database)
+        mcp_repository = McpRepository(
+            paths.database,
+            busy_timeout_ms=persistence.busy_timeout_ms,
+        )
         mcp_service = McpService(
             paths.workspace,
             mcp_config,

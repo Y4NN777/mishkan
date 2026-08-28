@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import sqlite3
 from datetime import timedelta
 from pathlib import Path
 
@@ -12,6 +13,7 @@ from mishkan.artifacts import (
     ArtifactLifecycle,
     ArtifactProvenance,
     ArtifactReconciliationAction,
+    ArtifactReconciliationIssue,
 )
 from mishkan.artifacts.service import DurableArtifactService
 from mishkan.domain.errors import ErrorCode, MishkanError
@@ -271,3 +273,45 @@ def test_reconciliation_plan_repairs_metadata_and_orphans_only_after_apply(
     assert service.manifest(reference).lifecycle is ArtifactLifecycle.MISSING
     assert service.apply_reconciliation(plan.plan_id) == applied
     assert service.plan_reconciliation().issues == ()
+
+
+def test_expired_staging_upload_requires_reconciliation_plan_then_apply(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "mishkan.db"
+    SchemaManager(database).initialize()
+    service = DurableArtifactService(
+        database,
+        tmp_path / "artifacts",
+        max_artifact_bytes=1_024,
+        max_chunk_bytes=64,
+        staging_ttl_seconds=60,
+    )
+    upload = service.open_upload(
+        expected_size=1,
+        expected_digest="sha256:" + hashlib.sha256(b"x").hexdigest(),
+        media_type="text/plain",
+        provenance=_provenance(),
+    )
+    staged = tmp_path / "artifacts" / "staging" / f"{upload.upload_id}.upload"
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "UPDATE artifact_uploads SET updated_at = ? WHERE id = ?",
+            ((utc_now() - timedelta(minutes=2)).isoformat(), str(upload.upload_id)),
+        )
+
+    plan = service.plan_reconciliation()
+
+    assert plan.issues == (
+        ArtifactReconciliationIssue(
+            action=ArtifactReconciliationAction.ABORT_EXPIRED_UPLOAD,
+            upload_id=upload.upload_id,
+        ),
+    )
+    assert service.upload(upload.upload_id).lifecycle == "staging"
+    assert staged.exists()
+
+    service.apply_reconciliation(plan.plan_id)
+
+    assert service.upload(upload.upload_id).lifecycle == "aborted"
+    assert not staged.exists()

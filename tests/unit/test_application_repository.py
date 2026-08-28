@@ -12,12 +12,24 @@ from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.time import utc_now
 from mishkan.events import EventHoldScope, EventRetentionPlanState, EventRetentionPolicy
 from mishkan.persistence import SchemaManager, SQLiteApplicationRepository
+from mishkan.persistence.sqlite import create_local_engine
 
 
 def _repository(tmp_path: Path) -> SQLiteApplicationRepository:
     database = tmp_path / "mishkan.db"
     SchemaManager(database).initialize()
     return SQLiteApplicationRepository(database)
+
+
+def test_sqlite_busy_timeout_uses_the_public_runtime_value(tmp_path: Path) -> None:
+    database = tmp_path / "configured.db"
+    engine = create_local_engine(database, busy_timeout_ms=1_234)
+    try:
+        with engine.connect() as connection:
+            assert connection.execute(text("PRAGMA busy_timeout")).scalar_one() == 1_234
+            assert connection.execute(text("PRAGMA journal_mode")).scalar_one().lower() == "wal"
+    finally:
+        engine.dispose()
 
 
 def test_command_event_and_revision_are_committed_atomically(tmp_path: Path) -> None:

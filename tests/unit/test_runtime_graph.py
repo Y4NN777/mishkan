@@ -133,6 +133,32 @@ def test_duplicate_completion_has_no_duplicate_event_and_cancellation_is_monoton
         repository.claim_task(run_id, "dependent-task")
 
 
+def test_active_run_cancellation_is_signalled_then_durably_settled(tmp_path: Path) -> None:
+    repository, run_id = _repository(tmp_path)
+    repository.claim_task(run_id, "root-task")
+
+    repository.cancel_run(run_id)
+
+    assert repository.requested(run_id, "root-task:1") is True
+    assert repository.run_state(run_id) == RunState.CANCELLING.value
+    assert repository.task_states(run_id) == {
+        "root-task": TaskState.EXECUTING.value,
+        "dependent-task": TaskState.CANCELLED.value,
+    }
+    settled = repository.settle_cancellation(run_id)
+
+    assert settled.run_id == run_id
+    assert repository.run_state(run_id) == RunState.CANCELLED.value
+    assert repository.task_states(run_id) == {
+        "root-task": TaskState.CANCELLED.value,
+        "dependent-task": TaskState.CANCELLED.value,
+    }
+    event_types = [event["event_type"] for event in repository.outbox_events()]
+    assert "task.cancellation_requested" in event_types
+    assert event_types[-2:] == ["task.cancelled", "run.cancelled"]
+    assert repository.settle_cancellation(run_id).resumed is True
+
+
 def test_interrupted_task_requires_effect_reconciliation_before_retry(tmp_path: Path) -> None:
     repository, run_id = _repository(tmp_path)
     repository.claim_task(run_id, "root-task")

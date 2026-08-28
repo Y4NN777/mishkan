@@ -5,13 +5,13 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path, PurePosixPath
 from typing import Literal, cast
 from uuid import UUID
 
 from pydantic import ValidationError
-from sqlalchemy import create_engine, delete, event, select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from mishkan.artifacts.models import (
@@ -51,10 +51,10 @@ from mishkan.persistence.sqlite import (
     ChangeOperationRow,
     ChangeSetRow,
     ExecutionSessionRow,
-    LocalRunRepository,
     McpCallRow,
     McpProgressRow,
     ResultRow,
+    create_local_engine,
 )
 
 
@@ -68,6 +68,8 @@ class DurableArtifactService:
         *,
         max_artifact_bytes: int,
         max_chunk_bytes: int,
+        busy_timeout_ms: int = 5_000,
+        staging_ttl_seconds: int | None = None,
     ) -> None:
         SchemaManager(database).require_current()
         self._root = root.resolve()
@@ -76,10 +78,10 @@ class DurableArtifactService:
         self._legacy_manifests = self._root / "manifests"
         self._max_artifact_bytes = max_artifact_bytes
         self._max_chunk_bytes = max_chunk_bytes
+        self._staging_ttl_seconds = staging_ttl_seconds
         for directory in (self._blobs, self._staging):
             directory.mkdir(parents=True, exist_ok=True)
-        self._engine = create_engine(f"sqlite:///{database.resolve()}")
-        event.listen(self._engine, "connect", LocalRunRepository._configure_connection)
+        self._engine = create_local_engine(database, busy_timeout_ms=busy_timeout_ms)
 
     @property
     def max_artifact_bytes(self) -> int:
@@ -638,7 +640,23 @@ class DurableArtifactService:
 
     def plan_reconciliation(self) -> ArtifactReconciliationPlan:
         issues: list[ArtifactReconciliationIssue] = []
+        planned_at = utc_now()
         with Session(self._engine) as session, session.begin():
+            if self._staging_ttl_seconds is not None:
+                cutoff = planned_at - timedelta(seconds=self._staging_ttl_seconds)
+                expired_uploads = session.scalars(
+                    select(ArtifactUploadRow).where(
+                        ArtifactUploadRow.state.in_(("staging", "aborted")),
+                        ArtifactUploadRow.updated_at < cutoff.isoformat(),
+                    )
+                ).all()
+                for upload in expired_uploads:
+                    issues.append(
+                        ArtifactReconciliationIssue(
+                            action=ArtifactReconciliationAction.ABORT_EXPIRED_UPLOAD,
+                            upload_id=UUID(upload.id),
+                        )
+                    )
             all_rows = session.scalars(
                 select(ArtifactRow).where(
                     ArtifactRow.lifecycle.not_in(
@@ -715,7 +733,11 @@ class DurableArtifactService:
                         )
                     )
             ordered = tuple(sorted(issues, key=lambda item: item.model_dump_json()))
-            plan = ArtifactReconciliationPlan(plan_id=new_id(), issues=ordered)
+            plan = ArtifactReconciliationPlan(
+                plan_id=new_id(),
+                issues=ordered,
+                created_at=planned_at,
+            )
             session.add(
                 ArtifactReconciliationPlanRow(
                     id=str(plan.plan_id),
@@ -743,6 +765,7 @@ class DurableArtifactService:
             ):
                 self._safe_blob(issue.storage_ref).unlink(missing_ok=True)
 
+        expired_staging: list[Path] = []
         with Session(self._engine) as session, session.begin():
             row = session.get(ArtifactReconciliationPlanRow, str(plan_id))
             if row is None:
@@ -780,6 +803,18 @@ class DurableArtifactService:
                             ArtifactCollectionRow.id == str(issue.collection_id)
                         )
                     )
+                elif issue.action is ArtifactReconciliationAction.ABORT_EXPIRED_UPLOAD:
+                    assert issue.upload_id is not None
+                    upload = session.get(ArtifactUploadRow, str(issue.upload_id))
+                    assert upload is not None
+                    upload.state = "aborted"
+                    expired_staging.append(self._staging_path(upload))
+        for staging_path in expired_staging:
+            staging_path.unlink(missing_ok=True)
+        with Session(self._engine) as session, session.begin():
+            row = session.get(ArtifactReconciliationPlanRow, str(plan_id))
+            if row is None:
+                raise MishkanError(ErrorCode.ARTIFACT, "artifact reconciliation plan is absent")
             row.applied_at = utc_now().isoformat()
         return plan.model_copy(update={"applied": True})
 
@@ -867,6 +902,21 @@ class DurableArtifactService:
                 ):
                     raise MishkanError(
                         ErrorCode.REVISION_MISMATCH, "collection was repaired after planning"
+                    )
+            elif issue.action is ArtifactReconciliationAction.ABORT_EXPIRED_UPLOAD:
+                if issue.upload_id is None or self._staging_ttl_seconds is None:
+                    raise MishkanError(ErrorCode.ARTIFACT, "expired upload issue is incomplete")
+                upload = session.get(ArtifactUploadRow, str(issue.upload_id))
+                if upload is None or upload.state not in {"staging", "aborted"}:
+                    raise MishkanError(
+                        ErrorCode.REVISION_MISMATCH,
+                        "artifact upload changed after expiration planning",
+                    )
+                cutoff = plan.created_at - timedelta(seconds=self._staging_ttl_seconds)
+                if datetime.fromisoformat(upload.updated_at) >= cutoff:
+                    raise MishkanError(
+                        ErrorCode.REVISION_MISMATCH,
+                        "artifact upload was refreshed after expiration planning",
                     )
 
     def _collection_is_incomplete(

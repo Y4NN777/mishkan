@@ -53,7 +53,11 @@ class MishkanInitializer:
         organization, outcome = load_initialization_definitions()
         database = discovery.binding.root / ".mishkan" / "mishkan.db"
         SchemaManager(database).initialize_if_empty()
-        state_repository = LocalRunRepository(database)
+        persistence_config = config.persistence
+        busy_timeout_ms = (
+            persistence_config.busy_timeout_ms if persistence_config is not None else 5_000
+        )
+        state_repository = LocalRunRepository(database, busy_timeout_ms=busy_timeout_ms)
         native_environment = discover_native_environment()
         policy = PolicyLoader().load(config.policy_sources, discovery.binding.root)
         inspection_source = config.inspection_profile
@@ -76,6 +80,8 @@ class MishkanInitializer:
                 discovery.binding.root / artifact_config.root,
                 max_artifact_bytes=artifact_config.max_artifact_bytes,
                 max_chunk_bytes=artifact_config.chunk_bytes,
+                busy_timeout_ms=busy_timeout_ms,
+                staging_ttl_seconds=artifact_config.staging_ttl_seconds,
             )
             runtime = build_capability_runtime(
                 config,
@@ -133,6 +139,7 @@ class MishkanInitializer:
             inspector,
             adapters,
             state_repository,
+            cancellation=state_repository,
             artifact_store=artifact_store,
         )
         snapshot = state_repository.start_or_resume(discovery, objective, outcome.outcome_id)

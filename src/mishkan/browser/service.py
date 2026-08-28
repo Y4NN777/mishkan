@@ -11,7 +11,7 @@ from uuid import UUID
 
 import httpx
 from pydantic import AnyHttpUrl, ValidationError
-from sqlalchemy import create_engine, event, select
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -39,7 +39,7 @@ from mishkan.persistence.sqlite import (
     BrowserActionRow,
     BrowserObservationRow,
     BrowserSessionRow,
-    LocalRunRepository,
+    create_local_engine,
 )
 from mishkan.tools.inspection import ContentInspector
 
@@ -53,6 +53,8 @@ class BrowserSupervisor:
         artifacts: DurableArtifactService,
         drivers: dict[str, BrowserDriver],
         inspector: ContentInspector,
+        *,
+        busy_timeout_ms: int = 5_000,
     ) -> None:
         SchemaManager(database).require_current()
         self._workspace = workspace.resolve()
@@ -61,8 +63,7 @@ class BrowserSupervisor:
         self._drivers = dict(drivers)
         self._inspector = inspector
         self._handles: dict[UUID, tuple[BrowserDriver, str]] = {}
-        self._engine = create_engine(f"sqlite:///{database.resolve()}")
-        event.listen(self._engine, "connect", LocalRunRepository._configure_connection)
+        self._engine = create_local_engine(database, busy_timeout_ms=busy_timeout_ms)
 
     def open(self, request: BrowserSessionRequest) -> BrowserSession:
         try:

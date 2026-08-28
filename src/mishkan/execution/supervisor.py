@@ -23,7 +23,7 @@ from typing import Literal
 from uuid import UUID
 
 import psutil  # type: ignore[import-untyped]
-from sqlalchemy import create_engine, event, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from mishkan.artifacts import ArtifactProvenance
@@ -40,7 +40,7 @@ from mishkan.execution.sessions import (
     SessionState,
 )
 from mishkan.persistence.migration import SchemaManager
-from mishkan.persistence.sqlite import ExecutionSessionRow, LocalRunRepository
+from mishkan.persistence.sqlite import ExecutionSessionRow, create_local_engine
 from mishkan.tools.execution import ExecutionResult, ExecutionStatus
 
 
@@ -78,6 +78,8 @@ class SessionSupervisor:
         spool_root: Path,
         config: SessionConfig,
         artifacts: DurableArtifactService,
+        *,
+        busy_timeout_ms: int = 5_000,
     ) -> None:
         SchemaManager(database).require_current()
         self._workspace = workspace.resolve(strict=True)
@@ -87,8 +89,7 @@ class SessionSupervisor:
         self._spool_root.mkdir(parents=True, exist_ok=True)
         self._config = config
         self._artifacts = artifacts
-        self._engine = create_engine(f"sqlite:///{database.resolve()}")
-        event.listen(self._engine, "connect", LocalRunRepository._configure_connection)
+        self._engine = create_local_engine(database, busy_timeout_ms=busy_timeout_ms)
         self._processes: dict[UUID, subprocess.Popen[bytes]] = {}
         self._pty_masters: dict[UUID, int] = {}
         self._threads: dict[UUID, tuple[threading.Thread, ...]] = {}

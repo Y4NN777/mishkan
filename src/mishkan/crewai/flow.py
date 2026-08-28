@@ -106,6 +106,15 @@ class CrewAIInitializationFlow(Flow[InitializationFlowState]):
 
     @listen(establish_plan)
     def execute_plan(self, plan: AcceptedPlan) -> InitializationReport:
+        try:
+            return self._execute_plan(plan)
+        except Exception:
+            if self._repository.requested(self.state.run_id, "flow"):
+                self._repository.settle_cancellation(self.state.run_id)
+            raise
+
+    def _execute_plan(self, plan: AcceptedPlan) -> InitializationReport:
+        self._require_not_cancelled()
         if self.state.resumed:
             self._repository.recover_interrupted(self.state.run_id)
         self._repository.start_run(self.state.run_id)
@@ -118,6 +127,7 @@ class CrewAIInitializationFlow(Flow[InitializationFlowState]):
                 if task.task_id in pending and set(task.depends_on).issubset(completed)
             ]
             for task in ready:
+                self._require_not_cancelled()
                 self._repository.claim_task(self.state.run_id, task.task_id)
                 task_evidence = self._coordinator.execute_task_evidence(
                     self.state.run_id,
@@ -125,12 +135,14 @@ class CrewAIInitializationFlow(Flow[InitializationFlowState]):
                     self.state.discovery,
                     task,
                 )
+                self._require_not_cancelled()
                 review_evidence = self._coordinator.execute_review_evidence(
                     self.state.run_id,
                     plan,
                     self.state.discovery,
                     task,
                 )
+                self._require_not_cancelled()
                 accepted_review: ReviewDecision | None = None
                 last_review: ReviewDecision | None = None
                 verified: InitializationResult | None = None
@@ -147,6 +159,7 @@ class CrewAIInitializationFlow(Flow[InitializationFlowState]):
                         task_evidence,
                         last_review,
                     )
+                    self._require_not_cancelled()
                     verified = self._result_validator.verify(
                         proposed,
                         task,
@@ -163,6 +176,7 @@ class CrewAIInitializationFlow(Flow[InitializationFlowState]):
                             review_evidence,
                             review_contract_feedback,
                         )
+                        self._require_not_cancelled()
                         last_review = proposed_review
                         if proposed_review.verdict != "accepted":
                             self._repository.record_rejected_review(
@@ -228,4 +242,14 @@ class CrewAIInitializationFlow(Flow[InitializationFlowState]):
             completed_task_ids=tuple(result.task_id for result in self.state.accepted_results),
             results=tuple(self.state.accepted_results),
             reviews=tuple(self.state.accepted_reviews),
+        )
+
+    def _require_not_cancelled(self) -> None:
+        if not self._repository.requested(self.state.run_id, "flow"):
+            return
+        self._repository.settle_cancellation(self.state.run_id)
+        raise MishkanError(
+            ErrorCode.RUN_INTERRUPTED,
+            "run cancellation stopped the active CrewAI flow at a deterministic boundary",
+            details={"run_id": self.state.run_id, "cancelled": True},
         )

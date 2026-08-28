@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import create_engine, event, func, select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -37,10 +37,10 @@ from mishkan.persistence.sqlite import (
     CommandRow,
     EventHoldRow,
     EventRetentionPlanRow,
-    LocalRunRepository,
     OutboxRow,
     RunRow,
     TaskRow,
+    create_local_engine,
 )
 from mishkan.runtime import RunState
 
@@ -48,10 +48,12 @@ from mishkan.runtime import RunState
 class SQLiteApplicationRepository:
     """Own command idempotence, optimistic revisions, and the durable event cursor."""
 
-    def __init__(self, database_path: Path) -> None:
+    def __init__(self, database_path: Path, *, busy_timeout_ms: int = 5_000) -> None:
         SchemaManager(database_path).require_current()
-        self._engine = create_engine(f"sqlite:///{database_path}")
-        event.listen(self._engine, "connect", LocalRunRepository._configure_connection)
+        self._engine = create_local_engine(
+            database_path,
+            busy_timeout_ms=busy_timeout_ms,
+        )
 
     def refuse(
         self,

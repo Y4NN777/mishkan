@@ -21,6 +21,7 @@ from sqlalchemy import (
     event,
     select,
 )
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship
 
 from mishkan.domain.errors import ErrorCode, MishkanError
@@ -30,6 +31,32 @@ from mishkan.planning.models import AcceptedPlan, InitializationResult, PlanTask
 from mishkan.repository.models import DiscoverySnapshot
 from mishkan.runtime import RunState, TaskReviewRejection, TaskState
 from mishkan.tools.gateway_models import AuditEvent
+
+DEFAULT_BUSY_TIMEOUT_MS = 5_000
+
+
+def create_local_engine(
+    database_path: Path,
+    *,
+    busy_timeout_ms: int = DEFAULT_BUSY_TIMEOUT_MS,
+) -> Engine:
+    """Create one WAL SQLite engine from the effective public lock-wait setting."""
+    if busy_timeout_ms < 1:
+        raise MishkanError(ErrorCode.CONFIGURATION, "SQLite busy timeout must be positive")
+    engine = create_engine(
+        f"sqlite:///{database_path.resolve()}",
+        connect_args={"timeout": busy_timeout_ms / 1_000},
+    )
+
+    def configure(dbapi_connection: Any, _connection_record: Any) -> None:
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.execute(f"PRAGMA busy_timeout={busy_timeout_ms}")
+        cursor.close()
+
+    event.listen(engine, "connect", configure)
+    return engine
 
 
 class Base(DeclarativeBase):
@@ -460,20 +487,19 @@ class RunSnapshot:
 
 
 class LocalRunRepository:
-    def __init__(self, database_path: Path) -> None:
+    def __init__(
+        self,
+        database_path: Path,
+        *,
+        busy_timeout_ms: int = DEFAULT_BUSY_TIMEOUT_MS,
+    ) -> None:
         from mishkan.persistence.migration import SchemaManager
 
         SchemaManager(database_path).require_current()
-        self._engine = create_engine(f"sqlite:///{database_path}")
-        event.listen(self._engine, "connect", self._configure_connection)
-
-    @staticmethod
-    def _configure_connection(dbapi_connection: Any, _connection_record: Any) -> None:
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA journal_mode=WAL")
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.execute("PRAGMA busy_timeout=5000")
-        cursor.close()
+        self._engine = create_local_engine(
+            database_path,
+            busy_timeout_ms=busy_timeout_ms,
+        )
 
     def start_or_resume(
         self,
@@ -741,12 +767,61 @@ class LocalRunRepository:
                     task.status = TaskState.CANCELLED.value
                     task.revision += 1
                     task.updated_at = now
+                elif task.status in {TaskState.EXECUTING.value, TaskState.VALIDATING.value}:
+                    self._add_event(
+                        session,
+                        run_id,
+                        "task.cancellation_requested",
+                        {"task_id": task.task_key},
+                    )
             if not any(
                 task.status in {TaskState.EXECUTING.value, TaskState.VALIDATING.value}
                 for task in tasks
             ):
                 run.status = RunState.CANCELLED.value
             self._add_event(session, run_id, "run.cancellation_requested", {})
+            return self._snapshot(session, run, resumed=False)
+
+    def requested(self, run_id: str, task_attempt_id: str) -> bool:
+        """Expose the durable run signal through the Gateway cancellation protocol."""
+        del task_attempt_id
+        with Session(self._engine) as session:
+            run = session.get(RunRow, run_id)
+            return run is not None and run.cancellation_requested
+
+    def settle_cancellation(self, run_id: str) -> RunSnapshot:
+        """Settle active tasks only after their local execution boundary has returned."""
+        with Session(self._engine) as session, session.begin():
+            run = self._require_run(session, run_id)
+            if not run.cancellation_requested:
+                raise MishkanError(
+                    ErrorCode.REVISION_MISMATCH,
+                    "run cancellation has not been requested",
+                )
+            if run.status == RunState.CANCELLED.value:
+                return self._snapshot(session, run, resumed=True)
+            now = utc_now().isoformat()
+            tasks = session.scalars(select(TaskRow).where(TaskRow.run_id == run_id)).all()
+            for task in tasks:
+                if task.status in {
+                    TaskState.PENDING.value,
+                    TaskState.ELIGIBLE.value,
+                    TaskState.EXECUTING.value,
+                    TaskState.VALIDATING.value,
+                }:
+                    task.status = TaskState.CANCELLED.value
+                    task.revision += 1
+                    task.updated_at = now
+                    self._add_event(
+                        session,
+                        run_id,
+                        "task.cancelled",
+                        {"task_id": task.task_key},
+                    )
+            run.status = RunState.CANCELLED.value
+            run.revision += 1
+            run.updated_at = now
+            self._add_event(session, run_id, "run.cancelled", {})
             return self._snapshot(session, run, resumed=False)
 
     def recover_interrupted(

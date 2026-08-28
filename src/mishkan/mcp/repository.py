@@ -10,7 +10,7 @@ from typing import ClassVar
 from uuid import UUID
 
 from pydantic import ValidationError
-from sqlalchemy import create_engine, delete, event, func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from mishkan.domain.errors import ErrorCode, MishkanError
@@ -28,11 +28,11 @@ from mishkan.mcp.models import (
 )
 from mishkan.persistence.migration import SchemaManager
 from mishkan.persistence.sqlite import (
-    LocalRunRepository,
     McpCallRow,
     McpConnectionRow,
     McpPrimitiveRow,
     McpProgressRow,
+    create_local_engine,
 )
 
 
@@ -98,10 +98,9 @@ class McpRepository:
         }
     )
 
-    def __init__(self, database: Path) -> None:
+    def __init__(self, database: Path, *, busy_timeout_ms: int = 5_000) -> None:
         SchemaManager(database).require_current()
-        self._engine = create_engine(f"sqlite:///{database.resolve()}")
-        event.listen(self._engine, "connect", LocalRunRepository._configure_connection)
+        self._engine = create_local_engine(database, busy_timeout_ms=busy_timeout_ms)
 
     def create_connection(self, record: McpConnectionRecord) -> McpConnectionRecord:
         with Session(self._engine) as session, session.begin():

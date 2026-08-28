@@ -16,7 +16,7 @@ from collections.abc import Callable
 from pathlib import Path
 from uuid import UUID
 
-from sqlalchemy import create_engine, event, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from mishkan.artifacts import ArtifactProvenance
@@ -35,7 +35,7 @@ from mishkan.edits.models import (
     PreconditionKind,
 )
 from mishkan.persistence.migration import SchemaManager
-from mishkan.persistence.sqlite import ChangeOperationRow, ChangeSetRow, LocalRunRepository
+from mishkan.persistence.sqlite import ChangeOperationRow, ChangeSetRow, create_local_engine
 
 
 class ChangeSetService:
@@ -46,13 +46,13 @@ class ChangeSetService:
         artifacts: DurableArtifactService,
         *,
         after_effect_hook: Callable[[int], None] | None = None,
+        busy_timeout_ms: int = 5_000,
     ) -> None:
         SchemaManager(database).require_current()
         self._workspace = workspace.resolve(strict=True)
         self._artifacts = artifacts
         self._after_effect_hook = after_effect_hook or (lambda _position: None)
-        self._engine = create_engine(f"sqlite:///{database.resolve()}")
-        event.listen(self._engine, "connect", LocalRunRepository._configure_connection)
+        self._engine = create_local_engine(database, busy_timeout_ms=busy_timeout_ms)
 
     def plan(self, change_set: ChangeSet) -> ChangeSetResult:
         self._validate_scope(change_set)
