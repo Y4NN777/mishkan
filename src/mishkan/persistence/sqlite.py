@@ -641,6 +641,15 @@ class EnvironmentVerificationRow(Base):
     recorded_at: Mapped[str] = mapped_column(String(40), nullable=False)
 
 
+class EnvironmentInvalidationRow(Base):
+    __tablename__ = "environment_invalidations"
+
+    invalidation_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    binding_id: Mapped[str] = mapped_column(String(36), unique=True, nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    recorded_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
 @dataclass(frozen=True, slots=True)
 class RunSnapshot:
     run_id: str

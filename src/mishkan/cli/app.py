@@ -1960,6 +1960,95 @@ def show_environment_descriptor_set(
     _emit(descriptor_set.model_dump(mode="json"), as_json=_state(ctx).json_output)
 
 
+@environment_app.command("settle-attempt")
+def settle_environment_attempt(
+    ctx: typer.Context,
+    plan_file: Annotated[
+        Path,
+        typer.Option("--plan", help="JSON EnvironmentOperationPlan returned by mishkand."),
+    ],
+    session_id: Annotated[str, typer.Option(help="Settled managed-job UUID.")],
+) -> None:
+    """Derive durable attempt evidence from an exact plan and terminal session."""
+    from mishkan.environment import EnvironmentOperationPlan
+
+    try:
+        plan = EnvironmentOperationPlan.model_validate_json(plan_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter("--plan must contain a valid EnvironmentOperationPlan") from exc
+    with _daemon_client(ctx) as client:
+        attempt = client.settle_environment_attempt(plan, session_id)
+    _emit(attempt.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@environment_app.command("verify")
+def verify_environment(
+    ctx: typer.Context,
+    request_file: Annotated[
+        Path,
+        typer.Option("--request", help="JSON EnvironmentVerificationRequest."),
+    ],
+) -> None:
+    """Derive location-bound verification from durable execution attempts."""
+    from mishkan.environment import EnvironmentVerificationRequest
+
+    try:
+        request = EnvironmentVerificationRequest.model_validate_json(
+            request_file.read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter(
+            "--request must contain a valid EnvironmentVerificationRequest"
+        ) from exc
+    with _daemon_client(ctx) as client:
+        verification = client.verify_environment(request)
+    _emit(verification.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@environment_app.command("invalidate")
+def invalidate_environment(
+    ctx: typer.Context,
+    invalidation_file: Annotated[
+        Path,
+        typer.Option("--request", help="JSON EnvironmentInvalidation."),
+    ],
+) -> None:
+    """Invalidate only one binding and its exact dependent task set."""
+    from mishkan.environment import EnvironmentInvalidation
+
+    try:
+        invalidation = EnvironmentInvalidation.model_validate_json(
+            invalidation_file.read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter("--request must contain a valid EnvironmentInvalidation") from exc
+    with _daemon_client(ctx) as client:
+        recorded = client.invalidate_environment(invalidation)
+    _emit(recorded.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@environment_app.command("attempt")
+def show_environment_attempt(
+    ctx: typer.Context,
+    attempt_id: Annotated[str, typer.Argument(help="Environment attempt UUID.")],
+) -> None:
+    """Show one durable environment attempt."""
+    with _daemon_client(ctx) as client:
+        attempt = client.environment_attempt(attempt_id)
+    _emit(attempt.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@environment_app.command("verification")
+def show_environment_verification(
+    ctx: typer.Context,
+    verification_id: Annotated[str, typer.Argument(help="Environment verification UUID.")],
+) -> None:
+    """Show one location-bound environment verification."""
+    with _daemon_client(ctx) as client:
+        verification = client.environment_verification(verification_id)
+    _emit(verification.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
 @mcp_app.command("connect")
 def connect_mcp(
     ctx: typer.Context,

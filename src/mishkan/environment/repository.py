@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Protocol, TypeVar
 
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from mishkan.artifacts import ArtifactLifecycle, ArtifactManifest
@@ -19,6 +20,7 @@ from mishkan.environment.models import (
     EnvironmentBinding,
     EnvironmentBindingState,
     EnvironmentDescriptorSet,
+    EnvironmentInvalidation,
     EnvironmentObservation,
     EnvironmentVerification,
 )
@@ -27,6 +29,7 @@ from mishkan.persistence.sqlite import (
     EnvironmentAttemptRow,
     EnvironmentBindingRow,
     EnvironmentDescriptorSetRow,
+    EnvironmentInvalidationRow,
     EnvironmentObservationRow,
     EnvironmentVerificationRow,
     OutboxRow,
@@ -141,7 +144,92 @@ class SQLiteEnvironmentRepository:
             row = session.get(EnvironmentBindingRow, binding_id)
             if row is None:
                 raise MishkanError(ErrorCode.ENGINEERING, "environment binding does not exist")
-            return EnvironmentBinding.model_validate_json(row.payload)
+            binding = EnvironmentBinding.model_validate_json(row.payload)
+            invalidation = session.scalar(
+                select(EnvironmentInvalidationRow).where(
+                    EnvironmentInvalidationRow.binding_id == binding_id
+                )
+            )
+            if invalidation is None:
+                return binding
+            record = EnvironmentInvalidation.model_validate_json(invalidation.payload)
+            return binding.model_copy(
+                update={
+                    "revision": binding.revision + 1,
+                    "state": EnvironmentBindingState.STALE,
+                    "selected_engine_ids": (),
+                    "selected_adapter_ids": (),
+                    "selected_descriptors": (),
+                    "missing_conditions": (f"invalidation:{record.cause.value}",),
+                    "reason": record.reason,
+                }
+            )
+
+    def invalidate(self, record: EnvironmentInvalidation) -> EnvironmentInvalidation:
+        payload = self._json(record)
+        with Session(self._engine) as session, session.begin():
+            row = session.get(EnvironmentBindingRow, str(record.binding_id))
+            if row is None:
+                raise MishkanError(ErrorCode.ENGINEERING, "environment binding does not exist")
+            binding = EnvironmentBinding.model_validate_json(row.payload)
+            if binding.revision != record.expected_binding_revision:
+                raise MishkanError(
+                    ErrorCode.REVISION_MISMATCH,
+                    "environment binding revision changed before invalidation",
+                )
+            if binding.request.owner_identity != record.owner_identity:
+                raise MishkanError(
+                    ErrorCode.AUTHORITY_NOT_GRANTED,
+                    "environment invalidation owner differs from the binding owner",
+                )
+            if set(record.affected_task_ids) != set(binding.request.affected_task_ids):
+                raise MishkanError(
+                    ErrorCode.OUTPUT_CONTRACT,
+                    "environment invalidation must identify exactly the dependent tasks",
+                )
+            observation = session.get(
+                EnvironmentObservationRow,
+                str(binding.request.observation_id),
+            )
+            if observation is None:
+                raise MishkanError(ErrorCode.ENGINEERING, "binding observation does not exist")
+            if (
+                record.cause.value == "context"
+                and record.observed_context_fingerprint == observation.fingerprint
+            ):
+                raise MishkanError(
+                    ErrorCode.OUTPUT_CONTRACT,
+                    "context invalidation requires evidence of a changed context",
+                )
+            existing = session.scalar(
+                select(EnvironmentInvalidationRow).where(
+                    EnvironmentInvalidationRow.binding_id == str(record.binding_id)
+                )
+            )
+            if existing is not None:
+                return self._idempotent(existing.payload, payload, record)
+            session.add(
+                EnvironmentInvalidationRow(
+                    invalidation_id=str(record.invalidation_id),
+                    binding_id=str(record.binding_id),
+                    payload=payload,
+                    recorded_at=record.invalidated_at.isoformat(),
+                )
+            )
+            self._event(
+                session,
+                aggregate_id=str(record.binding_id),
+                context_id=binding.request.context_id,
+                event_type="environment.binding_invalidated",
+                payload={
+                    "binding_id": str(record.binding_id),
+                    "invalidation_id": str(record.invalidation_id),
+                    "cause": record.cause.value,
+                    "affected_task_ids": list(record.affected_task_ids),
+                    "policy_fingerprint": record.policy_fingerprint,
+                },
+            )
+        return record
 
     def record_descriptor_set(self, record: EnvironmentDescriptorSet) -> EnvironmentDescriptorSet:
         for member in record.members:
@@ -245,6 +333,16 @@ class SQLiteEnvironmentRepository:
                 raise MishkanError(
                     ErrorCode.ENGINEERING,
                     "environment evidence requires a compatible binding",
+                )
+            invalidation = session.scalar(
+                select(EnvironmentInvalidationRow).where(
+                    EnvironmentInvalidationRow.binding_id == binding_id
+                )
+            )
+            if invalidation is not None:
+                raise MishkanError(
+                    ErrorCode.ENGINEERING,
+                    "environment evidence cannot be recorded after binding invalidation",
                 )
             existing = session.get(row_type, identity)
             if existing is not None:

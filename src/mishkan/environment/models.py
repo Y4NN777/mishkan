@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from mishkan.config.models import CredentialReference
 from mishkan.domain.identity import new_id
 from mishkan.domain.time import require_aware, utc_now
-from mishkan.tools.execution import ExecutionRequest
+from mishkan.tools.execution import EffectSettlement, ExecutionRequest, ExecutionStatus
 
 
 class EnvironmentModel(BaseModel):
@@ -249,9 +249,19 @@ class EnvironmentAttempt(EnvironmentModel):
     schema_version: Literal["1.0"] = "1.0"
     attempt_id: UUID = Field(default_factory=new_id)
     binding_id: UUID
-    operation: str = Field(min_length=1, max_length=128)
+    operation_plan_fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
+    operation: EnvironmentOperation
+    adapter_id: str = Field(pattern=r"^[a-z][a-z0-9_.-]{1,255}$")
+    engine_id: str = Field(min_length=1, max_length=128)
+    engine_version: str | None = Field(default=None, min_length=1, max_length=512)
+    execution_location: str = Field(min_length=1, max_length=512)
     effect_call_ids: tuple[str, ...] = Field(min_length=1)
     artifact_references: tuple[str, ...]
+    execution_status: ExecutionStatus
+    effect_settlement: EffectSettlement
+    declared_effects: tuple[str, ...]
+    observed_effects: tuple[str, ...]
+    exit_code: int | None = None
     settlement: EnvironmentSettlement
     started_at: datetime
     completed_at: datetime
@@ -261,6 +271,25 @@ class EnvironmentAttempt(EnvironmentModel):
     @classmethod
     def attempt_time_is_unambiguous(cls, value: datetime) -> datetime:
         return require_aware(value)
+
+    @model_validator(mode="after")
+    def attempt_evidence_is_consistent(self) -> EnvironmentAttempt:
+        if self.completed_at < self.started_at:
+            raise ValueError("environment attempt cannot complete before it starts")
+        if len(self.effect_call_ids) != len(set(self.effect_call_ids)):
+            raise ValueError("environment attempt effect call identities must be unique")
+        if len(self.artifact_references) != len(set(self.artifact_references)):
+            raise ValueError("environment attempt artifact references must be unique")
+        if self.settlement is EnvironmentSettlement.VERIFIED and (
+            self.execution_status is not ExecutionStatus.COMPLETED
+            or self.effect_settlement
+            not in {
+                EffectSettlement.ABSENT,
+                EffectSettlement.COMPLETED,
+            }
+        ):
+            raise ValueError("verified environment attempt requires verified completion")
+        return self
 
 
 class EnvironmentVerification(EnvironmentModel):
@@ -272,6 +301,7 @@ class EnvironmentVerification(EnvironmentModel):
     engine_id: str = Field(min_length=1, max_length=128)
     engine_version: str | None = Field(default=None, min_length=1, max_length=512)
     checks: dict[str, AvailabilityState] = Field(min_length=1)
+    attempt_ids: tuple[UUID, ...] = Field(min_length=1)
     artifact_references: tuple[str, ...]
     settlement: EnvironmentSettlement
     limitations: tuple[str, ...]
@@ -281,6 +311,25 @@ class EnvironmentVerification(EnvironmentModel):
     @classmethod
     def verification_time_is_unambiguous(cls, value: datetime) -> datetime:
         return require_aware(value)
+
+    @model_validator(mode="after")
+    def verification_evidence_is_consistent(self) -> EnvironmentVerification:
+        if len(self.attempt_ids) != len(set(self.attempt_ids)):
+            raise ValueError("environment verification attempt identities must be unique")
+        if len(self.artifact_references) != len(set(self.artifact_references)):
+            raise ValueError("environment verification artifact references must be unique")
+        all_true = all(state is AvailabilityState.TRUE for state in self.checks.values())
+        any_false = any(state is AvailabilityState.FALSE for state in self.checks.values())
+        expected = (
+            EnvironmentSettlement.VERIFIED
+            if all_true
+            else EnvironmentSettlement.FAILED
+            if any_false
+            else EnvironmentSettlement.UNCERTAIN
+        )
+        if self.settlement is not expected:
+            raise ValueError("environment verification settlement contradicts its checks")
+        return self
 
 
 class EnvironmentOperationRequest(EnvironmentModel):
@@ -362,6 +411,13 @@ class EnvironmentOperationPlan(EnvironmentModel):
     def operation_plan_time_is_unambiguous(cls, value: datetime) -> datetime:
         return require_aware(value)
 
+    @property
+    def fingerprint(self) -> str:
+        payload = self.model_dump(mode="json", exclude={"planned_at"})
+        return hashlib.sha256(
+            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+
 
 class DescriptorValidationResult(EnvironmentModel):
     schema_version: Literal["1.0"] = "1.0"
@@ -376,4 +432,56 @@ class DescriptorValidationResult(EnvironmentModel):
     @field_validator("validated_at")
     @classmethod
     def descriptor_validation_time_is_unambiguous(cls, value: datetime) -> datetime:
+        return require_aware(value)
+
+
+class EnvironmentVerificationRequest(EnvironmentModel):
+    schema_version: Literal["1.0"] = "1.0"
+    verification_id: UUID = Field(default_factory=new_id)
+    binding_id: UUID
+    owner_identity: str = Field(min_length=1, max_length=256)
+    context_fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
+    engine_id: str = Field(min_length=1, max_length=128)
+    check_attempt_ids: dict[str, tuple[UUID, ...]] = Field(min_length=1, max_length=64)
+    limitations: tuple[str, ...] = ()
+
+    @field_validator("check_attempt_ids")
+    @classmethod
+    def verification_checks_reference_attempts(
+        cls,
+        value: dict[str, tuple[UUID, ...]],
+    ) -> dict[str, tuple[UUID, ...]]:
+        if any(
+            not name or not attempts or len(attempts) != len(set(attempts))
+            for name, attempts in value.items()
+        ):
+            raise ValueError("verification checks require unique attempt identities")
+        return value
+
+
+class EnvironmentInvalidationCause(StrEnum):
+    CONTEXT = "context"
+    REPOSITORY = "repository"
+    PLATFORM = "platform"
+    ENGINE = "engine"
+    POLICY = "policy"
+    MISSION_SCOPE = "mission_scope"
+
+
+class EnvironmentInvalidation(EnvironmentModel):
+    schema_version: Literal["1.0"] = "1.0"
+    invalidation_id: UUID = Field(default_factory=new_id)
+    binding_id: UUID
+    expected_binding_revision: int = Field(ge=1)
+    owner_identity: str = Field(min_length=1, max_length=256)
+    cause: EnvironmentInvalidationCause
+    observed_context_fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
+    affected_task_ids: tuple[str, ...] = Field(min_length=1)
+    policy_fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
+    reason: str = Field(min_length=1, max_length=4_096)
+    invalidated_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("invalidated_at")
+    @classmethod
+    def invalidation_time_is_unambiguous(cls, value: datetime) -> datetime:
         return require_aware(value)

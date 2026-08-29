@@ -53,14 +53,18 @@ from mishkan.edits import ChangeSet, ChangeSetResult, ChangeSetService
 from mishkan.edits.git import GovernedGitService
 from mishkan.environment import (
     DescriptorValidationResult,
+    EnvironmentAttempt,
     EnvironmentBinding,
     EnvironmentDescriptorSet,
     EnvironmentDescriptorValidator,
+    EnvironmentEvidenceService,
+    EnvironmentInvalidation,
     EnvironmentObservation,
     EnvironmentObserver,
     EnvironmentOperationPlan,
     EnvironmentOperationPlanner,
     EnvironmentResolver,
+    EnvironmentVerification,
     load_environment_profile,
 )
 from mishkan.environment.repository import SQLiteEnvironmentRepository
@@ -250,6 +254,7 @@ def create_app(
     environment_resolver: EnvironmentResolver | None = None
     environment_descriptor_validator: EnvironmentDescriptorValidator | None = None
     environment_operation_planner: EnvironmentOperationPlanner | None = None
+    environment_evidence_service: EnvironmentEvidenceService | None = None
     if config.engineering_profile is not None:
         environment_profile = load_environment_profile(
             config.engineering_profile,
@@ -273,6 +278,10 @@ def create_app(
             environment_profile,
             environment_repository,
             artifacts,
+        )
+        environment_evidence_service = EnvironmentEvidenceService(
+            environment_profile,
+            environment_repository,
         )
     skill_lifecycle: SQLiteSkillLifecycleRepository | None = None
     skill_usage: SQLiteSkillUsageRepository | None = None
@@ -630,6 +639,7 @@ def create_app(
                                 environment_resolver,
                                 environment_descriptor_validator,
                                 environment_operation_planner,
+                                environment_evidence_service,
                             )
                         except MishkanError as error:
                             return repository.fail_reserved(
@@ -1177,6 +1187,33 @@ def create_app(
             str(descriptor_set_id),
         )
 
+    @app.get("/v1/environment/attempts/{attempt_id}")
+    async def environment_attempt_get(
+        attempt_id: UUID,
+        _principal: TokenRecord = authenticated,
+    ) -> EnvironmentAttempt:
+        if environment_repository is None:
+            raise MishkanError(
+                ErrorCode.REQUIRED_DEPENDENCY,
+                "Environment capability is not configured",
+            )
+        return await _thread_call(environment_repository.attempt, str(attempt_id))
+
+    @app.get("/v1/environment/verifications/{verification_id}")
+    async def environment_verification_get(
+        verification_id: UUID,
+        _principal: TokenRecord = authenticated,
+    ) -> EnvironmentVerification:
+        if environment_repository is None:
+            raise MishkanError(
+                ErrorCode.REQUIRED_DEPENDENCY,
+                "Environment capability is not configured",
+            )
+        return await _thread_call(
+            environment_repository.verification,
+            str(verification_id),
+        )
+
     @app.get("/v1/mcp/connections")
     async def mcp_connection_list(
         _principal: TokenRecord = authenticated,
@@ -1304,6 +1341,7 @@ def _dispatch(
     environment_resolver: EnvironmentResolver | None,
     environment_descriptor_validator: EnvironmentDescriptorValidator | None,
     environment_operation_planner: EnvironmentOperationPlanner | None,
+    environment_evidence_service: EnvironmentEvidenceService | None,
 ) -> tuple[str, dict[str, object]]:
     payload = command.payload
     if command.command_type == "system.checkpoint" and command.target_type == "system":
@@ -1708,6 +1746,40 @@ def _dispatch(
             operation_request
         )
         return "environment.operation_planned", operation_plan.model_dump(mode="json")
+    if command.command_type == "environment.attempt.settle":
+        attempt_operation_plan = authorized.environment_operation_plan
+        if attempt_operation_plan is None or environment_evidence_service is None:
+            raise MishkanError(
+                ErrorCode.REQUIRED_DEPENDENCY,
+                "Environment attempt settlement is not configured",
+            )
+        session = supervisor.status(UUID(str(payload["session_id"])))
+        attempt = environment_evidence_service.settle_attempt(attempt_operation_plan, session)
+        return f"environment.attempt_{attempt.settlement.value}", attempt.model_dump(mode="json")
+    if command.command_type == "environment.verification.record":
+        verification_request = authorized.environment_verification
+        if verification_request is None or environment_evidence_service is None:
+            raise MishkanError(
+                ErrorCode.REQUIRED_DEPENDENCY,
+                "Environment verification is not configured",
+            )
+        verification = environment_evidence_service.verify(verification_request)
+        return (
+            f"environment.verification_{verification.settlement.value}",
+            verification.model_dump(mode="json"),
+        )
+    if command.command_type == "environment.binding.invalidate":
+        invalidation = authorized.environment_invalidation
+        if invalidation is None or environment_repository is None:
+            raise MishkanError(
+                ErrorCode.REQUIRED_DEPENDENCY,
+                "Environment invalidation is not configured",
+            )
+        effective_invalidation: EnvironmentInvalidation = invalidation.model_copy(
+            update={"policy_fingerprint": authorized.decision.policy_fingerprint}
+        )
+        recorded_invalidation = environment_repository.invalidate(effective_invalidation)
+        return "environment.binding_invalidated", recorded_invalidation.model_dump(mode="json")
     raise MishkanError(
         ErrorCode.OUTPUT_CONTRACT,
         "application command type has no registered handler",

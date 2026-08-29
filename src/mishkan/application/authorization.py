@@ -33,8 +33,11 @@ from mishkan.edits.git import GitEffectMode, GitEffectRequest
 from mishkan.environment import (
     EnvironmentBindingRequest,
     EnvironmentDescriptorSet,
+    EnvironmentInvalidation,
     EnvironmentObservationRequest,
+    EnvironmentOperationPlan,
     EnvironmentOperationRequest,
+    EnvironmentVerificationRequest,
 )
 from mishkan.execution import ExecutionRequest, ExecutionSession
 from mishkan.policy import (
@@ -228,6 +231,17 @@ COMMAND_SEMANTICS = MappingProxyType(
         "environment.operation.plan": CommandSemantics(
             "application.environment.operation", "control", ("environment.operation.plan",)
         ),
+        "environment.attempt.settle": CommandSemantics(
+            "application.environment.attempt", "control", ("environment.attempt.settle",)
+        ),
+        "environment.verification.record": CommandSemantics(
+            "application.environment.verification",
+            "control",
+            ("environment.verification.record",),
+        ),
+        "environment.binding.invalidate": CommandSemantics(
+            "application.environment.invalidate", "control", ("environment.binding.invalidate",)
+        ),
         **{
             f"registry.entry.{action.value}": CommandSemantics(
                 "application.registry.lifecycle",
@@ -291,6 +305,9 @@ _COMMAND_TARGETS = MappingProxyType(
         "environment.resolve": ("environment_binding_request", "uuid"),
         "environment.descriptor.validate": ("environment_descriptor_set", "uuid"),
         "environment.operation.plan": ("environment_operation", "uuid"),
+        "environment.attempt.settle": ("environment_operation", "uuid"),
+        "environment.verification.record": ("environment_verification", "uuid"),
+        "environment.binding.invalidate": ("environment_binding", "uuid"),
         **{
             f"registry.entry.{action.value}": ("registry_entry", "required")
             for action in RegistryLifecycleAction
@@ -377,6 +394,12 @@ _COMMAND_PAYLOAD_FIELDS = MappingProxyType(
         "environment.resolve": (frozenset({"request"}), frozenset()),
         "environment.descriptor.validate": (frozenset({"descriptor_set"}), frozenset()),
         "environment.operation.plan": (frozenset({"request"}), frozenset()),
+        "environment.attempt.settle": (
+            frozenset({"operation_plan", "session_id"}),
+            frozenset(),
+        ),
+        "environment.verification.record": (frozenset({"request"}), frozenset()),
+        "environment.binding.invalidate": (frozenset({"invalidation"}), frozenset()),
         "registry.entry.add": (frozenset({"entry_kind", "definition"}), frozenset()),
         "registry.entry.enable": (frozenset({"entry_kind"}), frozenset()),
         "registry.entry.disable": (frozenset({"entry_kind"}), frozenset()),
@@ -407,6 +430,9 @@ class AuthorizedApplicationCommand:
     environment_binding: EnvironmentBindingRequest | None = None
     environment_descriptor_set: EnvironmentDescriptorSet | None = None
     environment_operation: EnvironmentOperationRequest | None = None
+    environment_operation_plan: EnvironmentOperationPlan | None = None
+    environment_verification: EnvironmentVerificationRequest | None = None
+    environment_invalidation: EnvironmentInvalidation | None = None
 
 
 class ApplicationCommandAuthority:
@@ -467,6 +493,9 @@ class ApplicationCommandAuthority:
         environment_binding: EnvironmentBindingRequest | None = None
         environment_descriptor_set: EnvironmentDescriptorSet | None = None
         environment_operation: EnvironmentOperationRequest | None = None
+        environment_operation_plan: EnvironmentOperationPlan | None = None
+        environment_verification: EnvironmentVerificationRequest | None = None
+        environment_invalidation: EnvironmentInvalidation | None = None
 
         try:
             if normalized.command_type == "run.initialize":
@@ -797,6 +826,58 @@ class ApplicationCommandAuthority:
                     f"environment-adapter:{environment_operation.adapter_id}",
                     f"environment-operation:{environment_operation.operation.value}",
                 )
+            elif normalized.command_type == "environment.attempt.settle":
+                environment_operation_plan = EnvironmentOperationPlan.model_validate(
+                    normalized.payload["operation_plan"]
+                )
+                session_id = UUID(str(normalized.payload["session_id"]))
+                if normalized.target_id != str(environment_operation_plan.request.operation_id):
+                    raise ValueError("environment attempt target differs from its operation")
+                if session_id != environment_operation_plan.execution.execution_id:
+                    raise ValueError("environment attempt session differs from its operation")
+                if environment_operation_plan.request.owner_identity != normalized.actor_id:
+                    raise MishkanError(
+                        ErrorCode.AUTHORITY_NOT_GRANTED,
+                        "environment attempt owner must match the authenticated actor",
+                    )
+                external_resources = (
+                    f"environment-binding:{environment_operation_plan.request.binding_id}",
+                    f"session:{session_id}",
+                )
+            elif normalized.command_type == "environment.verification.record":
+                environment_verification = EnvironmentVerificationRequest.model_validate(
+                    normalized.payload["request"]
+                )
+                if normalized.target_id != str(environment_verification.verification_id):
+                    raise ValueError("environment verification target differs from its request")
+                if environment_verification.owner_identity != normalized.actor_id:
+                    raise MishkanError(
+                        ErrorCode.AUTHORITY_NOT_GRANTED,
+                        "environment verification owner must match the authenticated actor",
+                    )
+                external_resources = (
+                    f"environment-binding:{environment_verification.binding_id}",
+                    *(
+                        f"environment-attempt:{attempt_id}"
+                        for values in environment_verification.check_attempt_ids.values()
+                        for attempt_id in values
+                    ),
+                )
+            elif normalized.command_type == "environment.binding.invalidate":
+                environment_invalidation = EnvironmentInvalidation.model_validate(
+                    normalized.payload["invalidation"]
+                )
+                if normalized.target_id != str(environment_invalidation.binding_id):
+                    raise ValueError("environment invalidation target differs from its binding")
+                if environment_invalidation.owner_identity != normalized.actor_id:
+                    raise MishkanError(
+                        ErrorCode.AUTHORITY_NOT_GRANTED,
+                        "environment invalidation owner must match the authenticated actor",
+                    )
+                external_resources = (
+                    f"environment-binding:{environment_invalidation.binding_id}",
+                    *(f"task:{task_id}" for task_id in environment_invalidation.affected_task_ids),
+                )
             elif normalized.target_id is not None:
                 external_resources = (f"{normalized.target_type}:{normalized.target_id}",)
         except (KeyError, TypeError, ValueError, ValidationError) as exc:
@@ -847,6 +928,9 @@ class ApplicationCommandAuthority:
             environment_binding=environment_binding,
             environment_descriptor_set=environment_descriptor_set,
             environment_operation=environment_operation,
+            environment_operation_plan=environment_operation_plan,
+            environment_verification=environment_verification,
+            environment_invalidation=environment_invalidation,
         )
 
     @staticmethod

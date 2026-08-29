@@ -10,10 +10,13 @@ from sqlalchemy import create_engine, text
 from mishkan.artifacts import ArtifactProvenance
 from mishkan.artifacts.service import DurableArtifactService
 from mishkan.domain.errors import ErrorCode, MishkanError
+from mishkan.domain.identity import new_id
 from mishkan.environment import (
     EnvironmentBindingRequest,
     EnvironmentDescriptorMember,
     EnvironmentDescriptorSet,
+    EnvironmentInvalidation,
+    EnvironmentInvalidationCause,
     EnvironmentObservationRequest,
     EnvironmentOutcome,
     EnvironmentResolver,
@@ -156,3 +159,47 @@ def test_binding_rejects_stale_observation_and_missing_artifact(tmp_path: Path) 
     with pytest.raises(MishkanError) as missing_error:
         repository.record_descriptor_set(missing)
     assert missing_error.value.envelope.code is ErrorCode.ARTIFACT
+
+
+def test_invalidation_is_evidence_based_and_closes_the_binding(tmp_path: Path) -> None:
+    _, artifacts, repository, observation, binding = _records(tmp_path)
+    reference = _upload(artifacts, b'{"image":"example@sha256:abc"}')
+    descriptor_set = EnvironmentDescriptorSet(
+        binding_id=binding.binding_id,
+        context_fingerprint=observation.fingerprint,
+        target_platform=observation.platform,
+        target_architecture=observation.architecture,
+        members=(
+            EnvironmentDescriptorMember(
+                format="devcontainer",
+                logical_path=".devcontainer/devcontainer.json",
+                artifact_reference=reference,
+            ),
+        ),
+    )
+
+    unchanged = EnvironmentInvalidation(
+        binding_id=binding.binding_id,
+        expected_binding_revision=binding.revision,
+        owner_identity=binding.request.owner_identity,
+        cause=EnvironmentInvalidationCause.CONTEXT,
+        observed_context_fingerprint=observation.fingerprint,
+        affected_task_ids=binding.request.affected_task_ids,
+        policy_fingerprint=binding.request.policy_fingerprint,
+        reason="A caller claimed the unchanged context was stale.",
+    )
+    with pytest.raises(MishkanError) as unchanged_error:
+        repository.invalidate(unchanged)
+    assert unchanged_error.value.envelope.code is ErrorCode.OUTPUT_CONTRACT
+
+    invalidation = unchanged.model_copy(
+        update={
+            "invalidation_id": new_id(),
+            "observed_context_fingerprint": "c" * 64,
+            "reason": "The observed execution context changed.",
+        }
+    )
+    assert repository.invalidate(invalidation) == invalidation
+    assert repository.binding(str(binding.binding_id)).state.value == "stale"
+    with pytest.raises(MishkanError, match="after binding invalidation"):
+        repository.record_descriptor_set(descriptor_set)

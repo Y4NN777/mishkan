@@ -24,12 +24,17 @@ from mishkan.environment import (
     EnvironmentBindingState,
     EnvironmentDescriptorMember,
     EnvironmentDescriptorSet,
+    EnvironmentInvalidation,
+    EnvironmentInvalidationCause,
     EnvironmentObservation,
     EnvironmentObservationRequest,
     EnvironmentOperation,
     EnvironmentOperationPlan,
     EnvironmentOperationRequest,
     EnvironmentOutcome,
+    EnvironmentSettlement,
+    EnvironmentVerification,
+    EnvironmentVerificationRequest,
 )
 
 
@@ -211,7 +216,7 @@ async def test_descriptor_validation_and_operation_plan_feed_the_job_supervisor(
             required_engine_ids=("podman",),
             authorized_engine_ids=("podman",),
             affected_task_ids=("task:image",),
-            verification_checks=("build", "cleanup"),
+            verification_checks=("build",),
             policy_fingerprint="0" * 64,
             rationale="Use the observed fake Podman adapter in this transport test.",
         )
@@ -321,9 +326,147 @@ async def test_descriptor_validation_and_operation_plan_feed_the_job_supervisor(
                 payload={"request": plan.execution.model_dump(mode="json")},
             ).model_dump(mode="json"),
         )
+        assert start_response.status_code == 200
+        assert start_response.json()["status"] == "accepted", json.dumps(
+            start_response.json().get("error"), indent=2
+        )
+        session_id = start_response.json()["payload"]["execution_id"]
+        build_session = await _wait_for_session(client, headers, session_id)
+        assert build_session["state"] == "uncertain"
+        build_attempt_response = await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=ApplicationCommand(
+                command_type="environment.attempt.settle",
+                actor_id=token.principal_id,
+                target_type="environment_operation",
+                target_id=str(plan.request.operation_id),
+                payload={
+                    "operation_plan": plan.model_dump(mode="json"),
+                    "session_id": session_id,
+                },
+            ).model_dump(mode="json"),
+        )
+        assert build_attempt_response.json()["payload"]["settlement"] == "uncertain"
+        build_attempt_id = build_attempt_response.json()["payload"]["attempt_id"]
 
-    assert start_response.status_code == 200
-    assert start_response.json()["status"] == "accepted", json.dumps(
-        start_response.json().get("error"), indent=2
-    )
-    assert start_response.json()["payload"]["mode"] == "job"
+        probe_request = EnvironmentOperationRequest(
+            binding_id=binding.binding_id,
+            adapter_id="podman.cli",
+            operation=EnvironmentOperation.READINESS,
+            parameters={"resource": "example.test/app:abc123"},
+            owner_identity=token.principal_id,
+            run_id="run:test",
+            task_id="task:image",
+            session_profile="standard",
+            deadline=utc_now() + timedelta(minutes=5),
+            timeout_seconds=60,
+        )
+        probe_plan_response = await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=ApplicationCommand(
+                command_type="environment.operation.plan",
+                actor_id=token.principal_id,
+                target_type="environment_operation",
+                target_id=str(probe_request.operation_id),
+                payload={"request": probe_request.model_dump(mode="json")},
+            ).model_dump(mode="json"),
+        )
+        probe_plan = EnvironmentOperationPlan.model_validate(probe_plan_response.json()["payload"])
+        probe_start_response = await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=ApplicationCommand(
+                command_type="session.start",
+                actor_id=token.principal_id,
+                target_type="session_service",
+                payload={"request": probe_plan.execution.model_dump(mode="json")},
+            ).model_dump(mode="json"),
+        )
+        probe_session_id = probe_start_response.json()["payload"]["execution_id"]
+        probe_session = await _wait_for_session(client, headers, probe_session_id)
+        assert probe_session["state"] == "settled"
+        probe_attempt_response = await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=ApplicationCommand(
+                command_type="environment.attempt.settle",
+                actor_id=token.principal_id,
+                target_type="environment_operation",
+                target_id=str(probe_plan.request.operation_id),
+                payload={
+                    "operation_plan": probe_plan.model_dump(mode="json"),
+                    "session_id": probe_session_id,
+                },
+            ).model_dump(mode="json"),
+        )
+        assert probe_attempt_response.json()["payload"]["settlement"] == "verified"
+        probe_attempt_id = probe_attempt_response.json()["payload"]["attempt_id"]
+
+        verification_request = EnvironmentVerificationRequest(
+            binding_id=binding.binding_id,
+            owner_identity=token.principal_id,
+            context_fingerprint=observation.fingerprint,
+            engine_id="podman",
+            check_attempt_ids={"build": (build_attempt_id, probe_attempt_id)},
+        )
+        verification_response = await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=ApplicationCommand(
+                command_type="environment.verification.record",
+                actor_id=token.principal_id,
+                target_type="environment_verification",
+                target_id=str(verification_request.verification_id),
+                payload={"request": verification_request.model_dump(mode="json")},
+            ).model_dump(mode="json"),
+        )
+        verification = EnvironmentVerification.model_validate(
+            verification_response.json()["payload"]
+        )
+        assert verification.settlement is EnvironmentSettlement.VERIFIED
+
+        invalidation = EnvironmentInvalidation(
+            binding_id=binding.binding_id,
+            expected_binding_revision=binding.revision,
+            owner_identity=token.principal_id,
+            cause=EnvironmentInvalidationCause.CONTEXT,
+            observed_context_fingerprint="c" * 64,
+            affected_task_ids=binding.request.affected_task_ids,
+            policy_fingerprint="0" * 64,
+            reason="The execution context changed after verification.",
+        )
+        invalidation_response = await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=ApplicationCommand(
+                command_type="environment.binding.invalidate",
+                actor_id=token.principal_id,
+                target_type="environment_binding",
+                target_id=str(binding.binding_id),
+                payload={"invalidation": invalidation.model_dump(mode="json")},
+            ).model_dump(mode="json"),
+        )
+        assert invalidation_response.json()["status"] == "accepted"
+        stale_response = await client.get(
+            f"/v1/environment/bindings/{binding.binding_id}",
+            headers=headers,
+        )
+        assert stale_response.json()["state"] == "stale"
+
+
+async def _wait_for_session(
+    client: httpx.AsyncClient,
+    headers: dict[str, str],
+    session_id: str,
+) -> dict[str, object]:
+    import asyncio
+
+    for _ in range(100):
+        response = await client.get(f"/v1/sessions/{session_id}", headers=headers)
+        payload = dict(response.json())
+        if payload.get("state") in {"settled", "failed", "lost", "uncertain"}:
+            return payload
+        await asyncio.sleep(0.02)
+    raise AssertionError("environment operation did not settle")

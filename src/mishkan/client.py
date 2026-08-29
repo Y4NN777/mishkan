@@ -30,13 +30,17 @@ from mishkan.daemon.auth import TokenFile
 from mishkan.edits import ChangeSetResult
 from mishkan.environment import (
     DescriptorValidationResult,
+    EnvironmentAttempt,
     EnvironmentBinding,
     EnvironmentBindingRequest,
     EnvironmentDescriptorSet,
+    EnvironmentInvalidation,
     EnvironmentObservation,
     EnvironmentObservationRequest,
     EnvironmentOperationPlan,
     EnvironmentOperationRequest,
+    EnvironmentVerification,
+    EnvironmentVerificationRequest,
 )
 from mishkan.events import (
     EventEnvelope,
@@ -680,6 +684,73 @@ class Mishkan:
         )
         response.raise_for_status()
         return EnvironmentDescriptorSet.model_validate(response.json())
+
+    def settle_environment_attempt(
+        self,
+        plan: EnvironmentOperationPlan,
+        session_id: str,
+    ) -> EnvironmentAttempt:
+        result = self.command(
+            ApplicationCommand(
+                command_type="environment.attempt.settle",
+                actor_id=self.principal_id,
+                target_type="environment_operation",
+                target_id=str(plan.request.operation_id),
+                payload={
+                    "operation_plan": plan.model_dump(mode="json"),
+                    "session_id": session_id,
+                },
+            )
+        )
+        return EnvironmentAttempt.model_validate(result.payload)
+
+    def verify_environment(
+        self,
+        request: EnvironmentVerificationRequest,
+    ) -> EnvironmentVerification:
+        result = self.command(
+            ApplicationCommand(
+                command_type="environment.verification.record",
+                actor_id=self.principal_id,
+                target_type="environment_verification",
+                target_id=str(request.verification_id),
+                payload={"request": request.model_dump(mode="json")},
+            )
+        )
+        return EnvironmentVerification.model_validate(result.payload)
+
+    def invalidate_environment(
+        self,
+        invalidation: EnvironmentInvalidation,
+    ) -> EnvironmentInvalidation:
+        result = self.command(
+            ApplicationCommand(
+                command_type="environment.binding.invalidate",
+                actor_id=self.principal_id,
+                target_type="environment_binding",
+                target_id=str(invalidation.binding_id),
+                payload={"invalidation": invalidation.model_dump(mode="json")},
+            )
+        )
+        return EnvironmentInvalidation.model_validate(result.payload)
+
+    def environment_attempt(self, attempt_id: str) -> EnvironmentAttempt:
+        identity = quote(attempt_id, safe="")
+        response = self._client.get(
+            f"/v1/environment/attempts/{identity}",
+            headers=self._headers(),
+        )
+        response.raise_for_status()
+        return EnvironmentAttempt.model_validate(response.json())
+
+    def environment_verification(self, verification_id: str) -> EnvironmentVerification:
+        identity = quote(verification_id, safe="")
+        response = self._client.get(
+            f"/v1/environment/verifications/{identity}",
+            headers=self._headers(),
+        )
+        response.raise_for_status()
+        return EnvironmentVerification.model_validate(response.json())
 
     def mcp_connections(
         self,
