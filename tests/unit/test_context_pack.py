@@ -8,6 +8,7 @@ from mishkan.artifacts.models import ArtifactManifest, ArtifactProvenance
 from mishkan.artifacts.store import FilesystemArtifactStore
 from mishkan.context import ContextPackEntry, ContextPackManifest, ContextPackMaterializer
 from mishkan.domain.errors import ErrorCode, MishkanError
+from mishkan.skills.models import SkillLoadEvidence, SkillUseOutcome
 
 
 def _provenance() -> ArtifactProvenance:
@@ -150,6 +151,29 @@ def test_context_manifest_requires_order_unique_paths_bounds_and_contracts(tmp_p
     )
     with pytest.raises(ValidationError, match="exact output contract"):
         ContextPackManifest(**{**manifest.model_dump(), "entries": optional_output})
+
+
+def test_context_manifest_binds_loaded_skill_evidence_to_exact_content(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    manifest = _manifest(store)
+    instruction = manifest.entries[1]
+    load = SkillLoadEvidence(
+        task_id=manifest.task_id,
+        task_class="software.review",
+        consuming_identity=manifest.agent_identity,
+        skill_name="code-review",
+        skill_version="1.0.0",
+        package_fingerprint=f"sha256:{'f' * 64}",
+        outcome=SkillUseOutcome.HIT,
+        reason="skill is eligible",
+        instruction_fingerprint=instruction.digest,
+    )
+    bound = ContextPackManifest(**{**manifest.model_dump(), "skill_loads": (load,)})
+    assert bound.skill_loads == (load,)
+
+    missing = load.model_copy(update={"instruction_fingerprint": f"sha256:{'0' * 64}"})
+    with pytest.raises(ValidationError, match="every loaded skill content item"):
+        ContextPackManifest(**{**manifest.model_dump(), "skill_loads": (missing,)})
 
 
 def test_context_pack_materializes_reproducibly_and_detects_edits(tmp_path: Path) -> None:

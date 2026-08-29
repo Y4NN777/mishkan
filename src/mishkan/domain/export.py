@@ -58,6 +58,12 @@ from mishkan.mcp.models import (
     McpProgressEvent,
 )
 from mishkan.runtime import TaskReviewRejection
+from mishkan.skills.models import (
+    SkillLoadEvidence,
+    SkillMetadata,
+    SkillSelection,
+    SkillSourceDefinition,
+)
 from mishkan.tools.execution import ExecutionRequest, ExecutionResult
 from mishkan.web.models import (
     CitationEvidence,
@@ -117,6 +123,10 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "mcp-primitive-v1.schema.json": McpPrimitiveDescriptor,
     "mcp-progress-v1.schema.json": McpProgressEvent,
     "run-initialization-request-v1.schema.json": RunInitializationRequest,
+    "skill-load-evidence-v1.schema.json": SkillLoadEvidence,
+    "skill-metadata-v1.schema.json": SkillMetadata,
+    "skill-selection-v1.schema.json": SkillSelection,
+    "skill-source-v1.schema.json": SkillSourceDefinition,
     "web-citation-evidence-v1.schema.json": CitationEvidence,
     "web-crawl-request-v1.schema.json": CrawlRequest,
     "web-crawl-result-v1.schema.json": CrawlResult,

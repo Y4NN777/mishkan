@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from mishkan.domain.identity import new_id
 from mishkan.domain.time import require_aware, utc_now
+from mishkan.skills.models import SkillLoadEvidence, SkillUseOutcome
 
 _DIGEST_PATTERN = r"^sha256:[a-f0-9]{64}$"
 _ARTIFACT_PATTERN = r"^artifact:[0-9a-f-]{36}$"
@@ -76,6 +77,7 @@ class ContextPackManifest(ContextModel):
     max_entry_bytes: int = Field(ge=1, le=1_073_741_824)
     max_total_bytes: int = Field(ge=1, le=4_294_967_296)
     entries: tuple[ContextPackEntry, ...] = Field(min_length=1)
+    skill_loads: tuple[SkillLoadEvidence, ...] = ()
 
     @field_validator("created_at")
     @classmethod
@@ -115,6 +117,24 @@ class ContextPackManifest(ContextModel):
             self.verification_contract_digest,
         ) not in required_identities:
             raise ValueError("context pack must materialize its exact verification contract")
+        digests = {entry.digest for entry in self.entries}
+        skill_names: set[str] = set()
+        for load in self.skill_loads:
+            if load.task_id != self.task_id or load.consuming_identity != self.agent_identity:
+                raise ValueError(
+                    "context skill evidence must belong to its consuming task and identity"
+                )
+            if load.skill_name in skill_names:
+                raise ValueError("context pack must not contain duplicate loaded skill identities")
+            skill_names.add(load.skill_name)
+            if load.outcome is SkillUseOutcome.MISS or load.instruction_fingerprint is None:
+                raise ValueError("context pack may include only loaded hit or partial skills")
+            loaded_digests = {
+                load.instruction_fingerprint,
+                *(resource.fingerprint for resource in load.loaded_resources),
+            }
+            if not loaded_digests.issubset(digests):
+                raise ValueError("context pack must materialize every loaded skill content item")
         return self
 
     def canonical_bytes(self) -> bytes:
