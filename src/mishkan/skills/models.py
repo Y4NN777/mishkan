@@ -101,6 +101,23 @@ class SkillBundleMode(StrEnum):
     SELECT = "select"
 
 
+class SkillLearningSourceKind(StrEnum):
+    TEXT = "text"
+    ARTIFACT = "artifact"
+    URL = "url"
+    REPOSITORY_EVIDENCE = "repository_evidence"
+    EXECUTION_EVIDENCE = "execution_evidence"
+
+
+class SkillLearningState(StrEnum):
+    REQUESTED = "requested"
+    RESEARCHING = "researching"
+    REVIEWING = "reviewing"
+    PROPOSED = "proposed"
+    REFUSED = "refused"
+    FAILED = "failed"
+
+
 class SkillBounds(SkillModel):
     max_frontmatter_bytes: int = Field(ge=128, le=1_048_576)
     max_manifest_bytes: int = Field(ge=256, le=16_777_216)
@@ -485,6 +502,144 @@ class SkillInvocationEvidence(SkillModel):
             raise ValueError("missed skill invocation cannot contain loaded skills")
         if self.outcome is not SkillUseOutcome.MISS and not names:
             raise ValueError("successful skill invocation requires load evidence")
+        return self
+
+
+class SkillLearningSource(SkillModel):
+    kind: SkillLearningSourceKind
+    locator: str = Field(min_length=1, max_length=4_096)
+    content: str | None = Field(default=None, min_length=1)
+
+    @model_validator(mode="after")
+    def content_matches_source_kind(self) -> SkillLearningSource:
+        if self.kind is SkillLearningSourceKind.TEXT:
+            if self.content is None:
+                raise ValueError("text learning source requires inline content")
+        elif self.content is not None:
+            raise ValueError("non-text learning source cannot carry inline content")
+        if self.kind in {
+            SkillLearningSourceKind.ARTIFACT,
+            SkillLearningSourceKind.REPOSITORY_EVIDENCE,
+            SkillLearningSourceKind.EXECUTION_EVIDENCE,
+        }:
+            if not self.locator.startswith("artifact:"):
+                raise ValueError("evidence learning source must use an artifact reference")
+            try:
+                UUID(self.locator.removeprefix("artifact:"))
+            except ValueError as exc:
+                raise ValueError("learning source artifact reference is invalid") from exc
+        if self.kind is SkillLearningSourceKind.URL:
+            from urllib.parse import urlsplit
+
+            parsed = urlsplit(self.locator)
+            if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+                raise ValueError("URL learning source must use an absolute HTTP(S) URL")
+            if parsed.username is not None or parsed.password is not None:
+                raise ValueError("URL learning source cannot contain credentials")
+        return self
+
+
+class SkillLearningRequest(SkillModel):
+    schema_version: Literal["1.0"] = "1.0"
+    request_id: UUID = Field(default_factory=new_id)
+    task_id: str = Field(min_length=1, max_length=256)
+    task_class: str = Field(min_length=1, max_length=256)
+    consuming_identity: str = Field(min_length=1, max_length=256)
+    suggested_name: str | None = Field(
+        default=None,
+        pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$",
+        max_length=64,
+    )
+    sources: tuple[SkillLearningSource, ...] = Field(min_length=1, max_length=128)
+    platform: str = Field(min_length=1, max_length=128)
+    organization_version: str = Field(min_length=1, max_length=512)
+    available_tools: frozenset[str] = frozenset()
+    reason: str = Field(min_length=1, max_length=2_048)
+    requested_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("requested_at")
+    @classmethod
+    def requested_at_is_unambiguous(cls, value: datetime) -> datetime:
+        return require_aware(value)
+
+
+class SkillPackageDraft(SkillModel):
+    schema_version: Literal["1.0"] = "1.0"
+    skill_name: str = Field(pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$", max_length=64)
+    description: str = Field(min_length=1, max_length=1_024)
+    instructions_markdown: str = Field(min_length=1, max_length=262_144)
+    required_tools: tuple[str, ...] = Field(max_length=256)
+    fallback_tools: dict[str, tuple[str, ...]] = Field(default_factory=dict)
+    task_classes: tuple[str, ...] = Field(min_length=1, max_length=256)
+    retrieval_references: tuple[str, ...] = Field(max_length=128)
+    source_fingerprints: tuple[str, ...] = Field(min_length=1, max_length=128)
+    rationale: str = Field(min_length=1, max_length=4_096)
+
+    @model_validator(mode="after")
+    def fallbacks_and_task_classes_are_coherent(self) -> SkillPackageDraft:
+        if not set(self.fallback_tools).issubset(self.required_tools):
+            raise ValueError("draft fallback tools must belong to its required tools")
+        if len(self.task_classes) != len(set(self.task_classes)):
+            raise ValueError("draft task classes must be unique")
+        return self
+
+    @property
+    def fingerprint(self) -> str:
+        payload = json.dumps(
+            self.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
+        ).encode()
+        return hashlib.sha256(payload).hexdigest()
+
+
+class SkillLearningReview(SkillModel):
+    schema_version: Literal["1.0"] = "1.0"
+    draft_fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
+    evaluator_identity: Literal["Research_Evaluator"] = "Research_Evaluator"
+    accepted: bool
+    findings: tuple[str, ...] = Field(max_length=128)
+    reason: str = Field(min_length=1, max_length=4_096)
+
+
+class SkillLearningRecord(SkillModel):
+    schema_version: Literal["1.0"] = "1.0"
+    request: SkillLearningRequest
+    state: SkillLearningState
+    source_fingerprints: tuple[str, ...] = Field(min_length=1, max_length=128)
+    base_version_id: UUID | None = None
+    draft: SkillPackageDraft | None = None
+    review: SkillLearningReview | None = None
+    package_collection_id: UUID | None = None
+    candidate_version_id: UUID | None = None
+    author_identity: Literal["Research_Synthesizer"] = "Research_Synthesizer"
+    policy_fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
+    refusal_code: str | None = Field(default=None, min_length=1, max_length=128)
+    revision: int = Field(default=1, ge=1)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("created_at", "updated_at")
+    @classmethod
+    def learning_timestamp_is_unambiguous(cls, value: datetime) -> datetime:
+        return require_aware(value)
+
+    @model_validator(mode="after")
+    def settlement_has_required_evidence(self) -> SkillLearningRecord:
+        if (
+            self.review is not None
+            and self.draft is not None
+            and self.review.draft_fingerprint != self.draft.fingerprint
+        ):
+            raise ValueError("learning review belongs to another draft")
+        if self.state is SkillLearningState.PROPOSED and (
+            self.draft is None
+            or self.review is None
+            or not self.review.accepted
+            or self.package_collection_id is None
+            or self.candidate_version_id is None
+        ):
+            raise ValueError("proposed learning record requires accepted immutable evidence")
+        if self.state is SkillLearningState.REFUSED and self.refusal_code is None:
+            raise ValueError("refused learning record requires a stable refusal code")
         return self
 
 

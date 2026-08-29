@@ -44,6 +44,7 @@ from mishkan.artifacts import (
 from mishkan.artifacts.service import DurableArtifactService
 from mishkan.config.models import CredentialReference, McpConfig, MishkanConfig
 from mishkan.crewai.credentials import CredentialPoolResolver
+from mishkan.crewai.skill_learning import CrewAISkillLearningRunner
 from mishkan.daemon.auth import TokenFile, TokenRecord
 from mishkan.daemon.bootstrap import DaemonPaths
 from mishkan.domain.errors import ErrorCode, MishkanError
@@ -76,7 +77,9 @@ from mishkan.policy.models import EffectivePolicy
 from mishkan.runtime import TaskReviewRejection
 from mishkan.skills import SkillInspectionProfileLoader, SkillPackageInspector
 from mishkan.skills.catalog import validate_skill_metadata_document
-from mishkan.skills.models import SkillUsageSummary, SkillVersionRecord
+from mishkan.skills.learning import SkillLearningRunner, SkillLearningService
+from mishkan.skills.learning_repository import SQLiteSkillLearningRepository
+from mishkan.skills.models import SkillLearningRecord, SkillUsageSummary, SkillVersionRecord
 from mishkan.skills.repository import SQLiteSkillLifecycleRepository, SQLiteSkillUsageRepository
 from mishkan.skills.service import SkillInvocationService
 from mishkan.tools.inspection import ContentInspector, InspectionProfileLoader
@@ -177,6 +180,7 @@ def create_app(
     config: MishkanConfig,
     *,
     mcp_stdio_commands: Mapping[str, McpStdioCommandBuilder] | None = None,
+    skill_learning_runner: SkillLearningRunner | None = None,
 ) -> FastAPI:
     paths = DaemonPaths.from_config(config)
     SchemaManager(paths.database).require_current()
@@ -224,6 +228,8 @@ def create_app(
     skill_usage: SQLiteSkillUsageRepository | None = None
     skill_inspector: SkillPackageInspector | None = None
     skill_invocation_service: SkillInvocationService | None = None
+    skill_learning_repository: SQLiteSkillLearningRepository | None = None
+    skill_learning_service: SkillLearningService | None = None
     if config.skills is not None:
         skill_lifecycle = SQLiteSkillLifecycleRepository(
             paths.database, busy_timeout_ms=persistence.busy_timeout_ms
@@ -244,6 +250,19 @@ def create_app(
             bundles=config.skills.bundles,
             automatic_selection=config.skills.automatic_selection,
             max_automatic_skills=config.skills.max_automatic_skills,
+        )
+        skill_learning_repository = SQLiteSkillLearningRepository(
+            paths.database, busy_timeout_ms=persistence.busy_timeout_ms
+        )
+        skill_learning_service = SkillLearningService(
+            skill_learning_repository,
+            skill_lifecycle,
+            artifacts,
+            skill_inspector,
+            content_inspector,
+            skill_learning_runner or CrewAISkillLearningRunner(config),
+            max_source_bytes=config.skills.learning_max_source_bytes,
+            max_catalog_candidates=config.skills.bounds.max_package_files,
         )
     changes = ChangeSetService(
         paths.database,
@@ -546,6 +565,7 @@ def create_app(
                                 skill_usage,
                                 skill_inspector,
                                 skill_invocation_service,
+                                skill_learning_service,
                             )
                         except MishkanError as error:
                             return repository.fail_reserved(
@@ -1019,6 +1039,25 @@ def create_app(
             requested_skill=skill_name,
         )
 
+    @app.get("/v1/skill-learning")
+    async def skill_learning_list(
+        _principal: TokenRecord = authenticated,
+        offset: Annotated[int, Query(ge=0)] = 0,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
+    ) -> tuple[SkillLearningRecord, ...]:
+        if skill_learning_repository is None:
+            return ()
+        return await _thread_call(skill_learning_repository.list, offset=offset, limit=limit)
+
+    @app.get("/v1/skill-learning/{request_id}")
+    async def skill_learning_get(
+        request_id: UUID,
+        _principal: TokenRecord = authenticated,
+    ) -> SkillLearningRecord:
+        if skill_learning_repository is None:
+            raise MishkanError(ErrorCode.REQUIRED_DEPENDENCY, "Skill learning is not configured")
+        return await _thread_call(skill_learning_repository.get, str(request_id))
+
     @app.get("/v1/mcp/connections")
     async def mcp_connection_list(
         _principal: TokenRecord = authenticated,
@@ -1140,6 +1179,7 @@ def _dispatch(
     skill_usage: SQLiteSkillUsageRepository | None,
     skill_inspector: SkillPackageInspector | None,
     skill_invocation_service: SkillInvocationService | None,
+    skill_learning_service: SkillLearningService | None,
 ) -> tuple[str, dict[str, object]]:
     payload = command.payload
     if command.command_type == "system.checkpoint" and command.target_type == "system":
@@ -1432,6 +1472,18 @@ def _dispatch(
             policy_fingerprint=authorized.decision.policy_fingerprint,
         )
         return "skill.invocation_resolved", evidence.model_dump(mode="json")
+    if command.command_type == "skill.learn":
+        learning_request = authorized.skill_learning
+        if skill_learning_service is None or learning_request is None:
+            raise MishkanError(ErrorCode.REQUIRED_DEPENDENCY, "Skill learning is not configured")
+        learning_record = skill_learning_service.learn(
+            learning_request,
+            policy_fingerprint=authorized.decision.policy_fingerprint,
+        )
+        return (
+            f"skill.learning_{learning_record.state.value}",
+            learning_record.model_dump(mode="json"),
+        )
     raise MishkanError(
         ErrorCode.OUTPUT_CONTRACT,
         "application command type has no registered handler",

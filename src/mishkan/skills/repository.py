@@ -345,6 +345,21 @@ class SQLiteSkillLifecycleRepository:
                 return None
             return self._record(self._require_row(session, pointer.version_id))
 
+    def active_versions(self, *, limit: int) -> tuple[SkillVersionRecord, ...]:
+        if limit < 1 or limit > 100_000:
+            raise MishkanError(ErrorCode.OUTPUT_CONTRACT, "active skill query bound is invalid")
+        with Session(self._engine) as session:
+            rows = session.scalars(
+                select(SkillVersionRow)
+                .join(
+                    SkillActiveVersionRow,
+                    SkillActiveVersionRow.version_id == SkillVersionRow.id,
+                )
+                .order_by(SkillVersionRow.skill_name, SkillVersionRow.id)
+                .limit(limit)
+            ).all()
+            return tuple(self._record(row) for row in rows)
+
     def versions(self, skill_name: str) -> tuple[SkillVersionRecord, ...]:
         with Session(self._engine) as session:
             rows = session.scalars(

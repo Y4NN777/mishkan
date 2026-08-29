@@ -577,6 +577,19 @@ class SkillLifecycleDecisionRow(Base):
     decided_at: Mapped[str] = mapped_column(String(40), nullable=False)
 
 
+class SkillLearningRow(Base):
+    __tablename__ = "skill_learning"
+
+    request_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    task_id: Mapped[str] = mapped_column(String(256), nullable=False)
+    task_class: Mapped[str] = mapped_column(String(256), nullable=False)
+    state: Mapped[str] = mapped_column(String(32), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
 @dataclass(frozen=True, slots=True)
 class RunSnapshot:
     run_id: str

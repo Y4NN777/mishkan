@@ -1,6 +1,6 @@
 schema_version: "1.0"
 source_id: bundled.local
-revision: "12"
+revision: "13"
 adoption_authority: MISHKAN release
 priority: 0
 rules:
@@ -150,6 +150,7 @@ rules:
         - skill.version.unpin
         - skill.usage.record
         - skill.invoke
+        - skill.learn
       roles: [application-client]
       capabilities:
         - application.system.checkpoint
@@ -176,6 +177,7 @@ rules:
         - application.skill.lifecycle
         - application.skill.usage
         - application.skill.invoke
+        - application.skill.learn
       effect_classes: [control, coordination, artifact, filesystem, process, external, registry_lifecycle, skill_lifecycle]
       effects: ["*"]
       paths: ["*"]

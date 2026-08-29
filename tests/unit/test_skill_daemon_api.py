@@ -16,18 +16,63 @@ from mishkan.daemon import DaemonBootstrap, create_app
 from mishkan.daemon.auth import TokenFile
 from mishkan.domain.identity import new_id
 from mishkan.skills import (
+    SkillActivationState,
     SkillInvocationRequest,
+    SkillLearningRequest,
+    SkillLearningReview,
+    SkillLearningSource,
+    SkillLearningSourceKind,
     SkillLifecycleDecision,
     SkillMetadata,
     SkillMutationAction,
     SkillMutationDisposition,
+    SkillPackageDraft,
     SkillProvenanceLock,
     SkillSelectionContext,
     SkillSourceKind,
+    SkillTrustState,
     SkillVersionRecord,
     SkillVersionState,
 )
 from mishkan.tools.inspection import ContentInspector, InspectionProfileLoader
+
+
+class _DaemonResearchRunner:
+    def propose(
+        self,
+        request: SkillLearningRequest,
+        *,
+        desired_name: str,
+        base: SkillVersionRecord | None,
+        source_packet: tuple[dict[str, object], ...],
+        source_fingerprints: tuple[str, ...],
+    ) -> SkillPackageDraft:
+        del base, source_packet
+        return SkillPackageDraft(
+            skill_name=desired_name,
+            description="Apply the reviewed daemon correction.",
+            instructions_markdown="Use only the accepted task evidence.",
+            required_tools=(),
+            task_classes=(request.task_class,),
+            retrieval_references=(),
+            source_fingerprints=source_fingerprints,
+            rationale="The correction is reusable.",
+        )
+
+    def review(
+        self,
+        request: SkillLearningRequest,
+        draft: SkillPackageDraft,
+        *,
+        source_fingerprints: tuple[str, ...],
+    ) -> SkillLearningReview:
+        del request, source_fingerprints
+        return SkillLearningReview(
+            draft_fingerprint=draft.fingerprint,
+            accepted=True,
+            findings=(),
+            reason="Independent evaluation accepted the attributable proposal.",
+        )
 
 
 def _config(tmp_path: Path) -> MishkanConfig:
@@ -103,8 +148,8 @@ Review only the accepted change and attach evidence.
             source_revision="artifact-collection:" + str(collection.collection_id),
             package_uri=f"research-proposal:code-review@{collection.collection_id}",
             package_fingerprint=_fingerprint({"SKILL.md": instructions}),
-            trust="trusted",
-            activation="candidate",
+            trust=SkillTrustState.TRUSTED,
+            activation=SkillActivationState.CANDIDATE,
         ),
         provenance=SkillProvenanceLock(
             source_id="research-proposal",
@@ -121,7 +166,9 @@ Review only the accepted change and attach evidence.
     headers = {"Authorization": f"Bearer {token.token}"}
 
     async def scenario() -> None:
-        transport = httpx.ASGITransport(app=create_app(config))
+        transport = httpx.ASGITransport(
+            app=create_app(config, skill_learning_runner=_DaemonResearchRunner())
+        )
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
             registered = await client.post(
                 "/v1/commands",
@@ -201,5 +248,42 @@ Review only the accepted change and attach evidence.
             assert usage.status_code == 200
             assert usage.json()["hits"] == 1
             assert usage.json()["misses"] == 0
+
+            learning_request = SkillLearningRequest(
+                task_id="task-learn-daemon",
+                task_class="software.change.review",
+                consuming_identity=token.principal_id,
+                suggested_name="review-correction",
+                sources=(
+                    SkillLearningSource(
+                        kind=SkillLearningSourceKind.TEXT,
+                        locator="inline:test",
+                        content="Always bind a review claim to accepted evidence.",
+                    ),
+                ),
+                platform="linux",
+                organization_version="org:test",
+                reason="Preserve a reviewed correction.",
+            )
+            learned = await client.post(
+                "/v1/commands",
+                headers=headers,
+                json=ApplicationCommand(
+                    command_type="skill.learn",
+                    actor_id=token.principal_id,
+                    target_type="skill_learning",
+                    target_id=str(learning_request.request_id),
+                    payload={"request": learning_request.model_dump(mode="json")},
+                ).model_dump(mode="json"),
+            )
+            assert learned.status_code == 200, learned.text
+            assert learned.json()["payload"]["state"] == "proposed"
+            assert learned.json()["payload"]["candidate_version_id"] is not None
+            lineage = await client.get(
+                f"/v1/skill-learning/{learning_request.request_id}",
+                headers=headers,
+            )
+            assert lineage.status_code == 200
+            assert lineage.json() == learned.json()["payload"]
 
     asyncio.run(scenario())

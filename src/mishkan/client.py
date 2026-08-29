@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import os
 import tempfile
@@ -17,6 +19,7 @@ from mishkan.artifacts import (
     ArtifactCollection,
     ArtifactManifest,
     ArtifactPin,
+    ArtifactProvenance,
     UploadSession,
     WorkingReference,
 )
@@ -38,6 +41,8 @@ from mishkan.execution import CursorRead, ExecutionSession
 from mishkan.skills.models import (
     SkillInvocationEvidence,
     SkillInvocationRequest,
+    SkillLearningRecord,
+    SkillLearningRequest,
     SkillUsageSummary,
     SkillVersionRecord,
 )
@@ -80,6 +85,61 @@ class Mishkan:
         )
         response.raise_for_status()
         return CommandResult.model_validate(response.json())
+
+    def put_artifact(
+        self,
+        content: bytes,
+        *,
+        media_type: str,
+        provenance: ArtifactProvenance,
+        chunk_bytes: int,
+        sensitivity: str = "internal",
+        retention: str = "run",
+    ) -> ArtifactManifest:
+        """Stream immutable bytes through the same versioned daemon commands."""
+        if chunk_bytes < 1:
+            raise ValueError("artifact chunk bound must be positive")
+        opened = self.command(
+            ApplicationCommand(
+                command_type="artifact.upload.open",
+                actor_id=self.principal_id,
+                target_type="artifact_service",
+                payload={
+                    "expected_size": len(content),
+                    "expected_digest": f"sha256:{hashlib.sha256(content).hexdigest()}",
+                    "media_type": media_type,
+                    "provenance": provenance.model_dump(mode="json"),
+                    "sensitivity": sensitivity,
+                    "retention": retention,
+                },
+            )
+        )
+        upload = UploadSession.model_validate(opened.payload)
+        for offset in range(0, len(content), chunk_bytes):
+            self.command(
+                ApplicationCommand(
+                    command_type="artifact.upload.chunk",
+                    actor_id=self.principal_id,
+                    target_type="artifact_upload",
+                    target_id=str(upload.upload_id),
+                    payload={
+                        "offset": offset,
+                        "content_base64": base64.b64encode(
+                            content[offset : offset + chunk_bytes]
+                        ).decode("ascii"),
+                    },
+                )
+            )
+        committed = self.command(
+            ApplicationCommand(
+                command_type="artifact.upload.commit",
+                actor_id=self.principal_id,
+                target_type="artifact_upload",
+                target_id=str(upload.upload_id),
+                payload={},
+            )
+        )
+        return ArtifactManifest.model_validate(committed.payload)
 
     def snapshot(self) -> SnapshotEnvelope:
         response = self._client.get("/v1/snapshot", headers=self._headers())
@@ -461,6 +521,42 @@ class Mishkan:
             )
         )
         return SkillInvocationEvidence.model_validate(result.payload)
+
+    def learn_skill(self, request: SkillLearningRequest) -> SkillLearningRecord:
+        """Execute a governed Research proposal and return its durable lineage."""
+        result = self.command(
+            ApplicationCommand(
+                command_type="skill.learn",
+                actor_id=self.principal_id,
+                target_type="skill_learning",
+                target_id=str(request.request_id),
+                payload={"request": request.model_dump(mode="json")},
+            )
+        )
+        return SkillLearningRecord.model_validate(result.payload)
+
+    def skill_learning(
+        self,
+        *,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> tuple[SkillLearningRecord, ...]:
+        response = self._client.get(
+            "/v1/skill-learning",
+            headers=self._headers(),
+            params={"offset": offset, "limit": limit},
+        )
+        response.raise_for_status()
+        return tuple(SkillLearningRecord.model_validate(item) for item in response.json())
+
+    def skill_learning_record(self, request_id: str) -> SkillLearningRecord:
+        identity = quote(request_id, safe="")
+        response = self._client.get(
+            f"/v1/skill-learning/{identity}",
+            headers=self._headers(),
+        )
+        response.raise_for_status()
+        return SkillLearningRecord.model_validate(response.json())
 
     def mcp_connections(
         self,

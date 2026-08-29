@@ -1336,6 +1336,112 @@ def invoke_skill(
     _emit(evidence.model_dump(mode="json"), as_json=_state(ctx).json_output)
 
 
+@skill_app.command("learn")
+def learn_skill(
+    ctx: typer.Context,
+    source: Annotated[
+        str,
+        typer.Argument(help="Text, local file, HTTP(S) URL, or artifact reference."),
+    ],
+    task_id: Annotated[str, typer.Option(help="Durable task identity.")],
+    task_class: Annotated[str, typer.Option(help="Exact task class to improve.")],
+    reason: Annotated[str, typer.Option(help="Why this procedural learning is requested.")],
+    name: Annotated[
+        str | None,
+        typer.Option(help="Exact existing or proposed skill name; required when no match exists."),
+    ] = None,
+    source_kind: Annotated[
+        str,
+        typer.Option(
+            "--kind",
+            help="auto, text, file, url, artifact, repository_evidence, or execution_evidence.",
+        ),
+    ] = "auto",
+    organization_version: Annotated[str, typer.Option()] = "*",
+    platform: Annotated[str | None, typer.Option()] = None,
+    available_tool: Annotated[
+        list[str] | None,
+        typer.Option("--available-tool", help="Observed available tool; repeatable."),
+    ] = None,
+) -> None:
+    """Run `/learn <source>` as governed Research work and return a staged candidate or refusal."""
+    import sys
+
+    from mishkan.artifacts import ArtifactProvenance
+    from mishkan.domain.identity import new_id
+    from mishkan.skills import (
+        SkillLearningRequest,
+        SkillLearningSource,
+        SkillLearningSourceKind,
+    )
+
+    effective = _load_or_exit(ctx).value
+    if effective.skills is None or effective.artifacts is None:
+        raise typer.BadParameter("skills and artifacts must be configured")
+    request_id = new_id()
+    inferred = source_kind
+    candidate_path = Path(source)
+    if inferred == "auto":
+        if source.startswith(("https://", "http://")):
+            inferred = "url"
+        elif source.startswith("artifact:"):
+            inferred = "artifact"
+        elif candidate_path.is_file():
+            inferred = "file"
+        else:
+            inferred = "text"
+    with _daemon_client(ctx) as client:
+        if inferred == "file":
+            try:
+                content = candidate_path.read_bytes()
+            except OSError as exc:
+                raise typer.BadParameter("learning source file cannot be read") from exc
+            if len(content) > effective.skills.learning_max_source_bytes:
+                raise typer.BadParameter("learning source file exceeds the configured byte bound")
+            manifest = client.put_artifact(
+                content,
+                media_type="application/octet-stream",
+                provenance=ArtifactProvenance(
+                    producer_identity=client.principal_id,
+                    run_id=f"skill-learning:{request_id}",
+                    task_attempt_id=task_id,
+                    call_id=f"source:{request_id}",
+                    capability="skill.learn.source",
+                    channel="learning-source",
+                ),
+                chunk_bytes=effective.artifacts.chunk_bytes,
+                retention="skill-lineage",
+            )
+            learning_source = SkillLearningSource(
+                kind=SkillLearningSourceKind.ARTIFACT,
+                locator=manifest.reference,
+            )
+        else:
+            try:
+                selected_kind = SkillLearningSourceKind(inferred)
+            except ValueError as exc:
+                raise typer.BadParameter("unsupported learning source kind") from exc
+            learning_source = SkillLearningSource(
+                kind=selected_kind,
+                locator="inline:cli" if selected_kind is SkillLearningSourceKind.TEXT else source,
+                content=source if selected_kind is SkillLearningSourceKind.TEXT else None,
+            )
+        request = SkillLearningRequest(
+            request_id=request_id,
+            task_id=task_id,
+            task_class=task_class,
+            consuming_identity=client.principal_id,
+            suggested_name=name,
+            sources=(learning_source,),
+            platform=platform or sys.platform,
+            organization_version=organization_version,
+            available_tools=frozenset(available_tool or ()),
+            reason=reason,
+        )
+        record = client.learn_skill(request)
+    _emit(record.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
 @skill_app.command("register")
 def register_skill(
     ctx: typer.Context,

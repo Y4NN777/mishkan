@@ -42,6 +42,7 @@ from mishkan.policy import (
 )
 from mishkan.skills.models import (
     SkillInvocationRequest,
+    SkillLearningRequest,
     SkillLifecycleDecision,
     SkillUsageRecord,
     SkillVersionRecord,
@@ -196,8 +197,9 @@ COMMAND_SEMANTICS = MappingProxyType(
         "skill.usage.record": CommandSemantics(
             "application.skill.usage", "control", ("skill.usage.record",)
         ),
-        "skill.invoke": CommandSemantics(
-            "application.skill.invoke", "control", ("skill.invoke",)
+        "skill.invoke": CommandSemantics("application.skill.invoke", "control", ("skill.invoke",)),
+        "skill.learn": CommandSemantics(
+            "application.skill.learn", "skill_lifecycle", ("skill.proposal.create",)
         ),
         **{
             f"registry.entry.{action.value}": CommandSemantics(
@@ -254,6 +256,7 @@ _COMMAND_TARGETS = MappingProxyType(
         "skill.version.unpin": ("skill_version", "uuid"),
         "skill.usage.record": ("skill_usage", "uuid"),
         "skill.invoke": ("task", "required"),
+        "skill.learn": ("skill_learning", "uuid"),
         **{
             f"registry.entry.{action.value}": ("registry_entry", "required")
             for action in RegistryLifecycleAction
@@ -323,6 +326,7 @@ _COMMAND_PAYLOAD_FIELDS = MappingProxyType(
         "skill.version.unpin": (frozenset({"expected_revision"}), frozenset()),
         "skill.usage.record": (frozenset({"record"}), frozenset()),
         "skill.invoke": (frozenset({"request"}), frozenset()),
+        "skill.learn": (frozenset({"request"}), frozenset()),
         "registry.entry.add": (frozenset({"entry_kind", "definition"}), frozenset()),
         "registry.entry.enable": (frozenset({"entry_kind"}), frozenset()),
         "registry.entry.disable": (frozenset({"entry_kind"}), frozenset()),
@@ -348,6 +352,7 @@ class AuthorizedApplicationCommand:
     skill_decision: SkillLifecycleDecision | None = None
     skill_usage: SkillUsageRecord | None = None
     skill_invocation: SkillInvocationRequest | None = None
+    skill_learning: SkillLearningRequest | None = None
 
 
 class ApplicationCommandAuthority:
@@ -403,6 +408,7 @@ class ApplicationCommandAuthority:
         skill_decision: SkillLifecycleDecision | None = None
         skill_usage: SkillUsageRecord | None = None
         skill_invocation: SkillInvocationRequest | None = None
+        skill_learning: SkillLearningRequest | None = None
 
         try:
             if normalized.command_type == "run.initialize":
@@ -624,6 +630,22 @@ class ApplicationCommandAuthority:
                     )
                 )
                 external_resources = (requested, f"task:{skill_invocation.context.task_id}")
+            elif normalized.command_type == "skill.learn":
+                skill_learning = SkillLearningRequest.model_validate(normalized.payload["request"])
+                if normalized.target_id != str(skill_learning.request_id):
+                    raise ValueError("skill learning target differs from its request identity")
+                if skill_learning.consuming_identity != normalized.actor_id:
+                    raise MishkanError(
+                        ErrorCode.AUTHORITY_NOT_GRANTED,
+                        "skill learning identity must match the authenticated command actor",
+                    )
+                resources = [
+                    f"skill-learning:{skill_learning.request_id}",
+                    f"task:{skill_learning.task_id}",
+                ]
+                for source in skill_learning.sources:
+                    resources.append(f"learning-source:{source.kind.value}:{source.locator}")
+                external_resources = tuple(resources)
             elif normalized.target_id is not None:
                 external_resources = (f"{normalized.target_type}:{normalized.target_id}",)
         except (KeyError, TypeError, ValueError, ValidationError) as exc:
@@ -669,6 +691,7 @@ class ApplicationCommandAuthority:
             skill_decision=skill_decision,
             skill_usage=skill_usage,
             skill_invocation=skill_invocation,
+            skill_learning=skill_learning,
         )
 
     @staticmethod
