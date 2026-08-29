@@ -60,6 +60,7 @@ cannot be represented clearly in one row.
 | D-038 | Delivery | Accepted | I03 mutations, sessions, artifacts, and durable-daemon increment has passed its acceptance gate | The deterministic 207-test suite, 81.10% branch coverage, live CrewAI/Ollama regression, and six-job Linux/macOS Python 3.11–3.13 matrix are accepted evidence; I03 may be promoted topic-to-`develop`, and I04 may begin on a new topic branch only after that promotion | `VALIDATION/durability.md`; GitHub Actions run 33058347691; engineer continuation authorization, 2026-08-27 |
 | D-039 | Delivery | Accepted; current baseline revalidated and promoted | I04 Web, Browser, MCP, and external-harness increment has passed its corrected acceptance gate | The original 275-test/80.21% gate remains historical evidence for `55b01c3`. The cross-baseline audit checkpoint `6a73e98` closes the verified conformance gaps. Promotion exposed one transient Chromium screenshot refusal; `3481ca5` adds a strictly bounded read-only retry and regression tests, passes a 400-test/80.24% local gate, and passes complete topic and `develop` Linux/macOS Python 3.11–3.13 matrices. I04 is promoted to `develop`; I05 requires explicit authorization | `VALIDATION/web-browser-mcp.md`; current GitHub Actions runs 33203400309 and 33203711009; historical runs 33079214948, 33079611836, and 33186236919; conformance revalidation, 2026-08-28 |
 | D-040 | Delivery | Accepted; integrated gate closed | Promote the corrected I04 baseline through `develop` into `main` and close the I04 integration gate | The historical GitHub merge commits on `main` made the branches topologically divergent while their common I02 trees were identical. Merge checkpoint `0534988` reconnects that history without changing the validated I04 tree. Complete Linux/macOS Python 3.11–3.13 matrices pass on both `develop` and `main`. I04 is integrated; I05 remains unauthorized until an explicit engineer decision starts it on a new topic branch | `VALIDATION/web-browser-mcp.md`; GitHub Actions runs 33205106907 and 33205571801; engineer closure authorization, 2026-08-28 |
+| D-041 | Delivery | Accepted; I05 authorized | Accept Implementation Plan 1.6 and begin I05 on `feat/i05-skills-engineering-foundation` | ICM informs deterministic, inspectable context packages but does not introduce filesystem orchestration or another runtime. OpenTelemetry is the neutral derived-observability boundary; LangSmith is an optional disabled-by-default exporter and evaluation surface with sanitized disclosure, no authoritative state, no Prompt Hub ingestion, and no acceptance authority. Existing CTX, SKL, OBS, SAF, CrewAI, Artifact, and harness invariants remain unchanged | Engineer validation of the ICM/LangSmith study and instruction to update the plan and continue, 2026-08-29 |
 
 ## Working-decision promotion matrix
 
@@ -105,8 +106,9 @@ the complete local, live-model, and remote evidence recorded in `VALIDATION/dura
 records I04's original acceptance. Its requested cross-baseline audit is implemented at `6a73e98`;
 the promotion correction and current local/remote gate are green at `3481ca5` as recorded in
 `VALIDATION/web-browser-mcp.md`. D-040 records the history-preserving promotion checkpoint `0534988`
-and green `develop` and `main` matrices. I04 is integrated and closed; I05 awaits explicit
-authorization.
+and green `develop` and `main` matrices. I04 is integrated and closed. D-041 accepts Implementation
+Plan 1.6 and authorizes I05 on its dedicated topic branch; the I05 gate remains open until observed
+acceptance evidence exists.
 
 ## Review rules
 
