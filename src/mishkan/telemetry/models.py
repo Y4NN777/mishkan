@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from datetime import datetime
 from enum import StrEnum
 from typing import Literal
@@ -40,6 +41,72 @@ class TelemetryExportState(StrEnum):
 
 
 TelemetryScalar = str | bool | int | float
+
+
+class LangSmithFeedbackImportRequest(TelemetryModel):
+    """Bounded, attributable feedback copied from an authorized LangSmith client."""
+
+    schema_version: Literal["1.0"] = "1.0"
+    import_id: UUID = Field(default_factory=uuid4)
+    owner_identity: str = Field(min_length=1, max_length=256)
+    project_name: str = Field(min_length=1, max_length=256)
+    external_feedback_id: UUID
+    traced_run_id: UUID
+    session_id: UUID | None = None
+    key: str = Field(min_length=1, max_length=256)
+    score: float | None = None
+    value: TelemetryScalar | None = None
+    comment: str | None = Field(default=None, max_length=8_192)
+    feedback_source_type: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z][A-Za-z0-9_.:-]*$",
+    )
+    source_created_at: datetime
+
+    @field_validator("source_created_at")
+    @classmethod
+    def source_time_is_unambiguous(cls, value: datetime) -> datetime:
+        return require_aware(value)
+
+    @field_validator("value")
+    @classmethod
+    def string_value_is_bounded(cls, value: TelemetryScalar | None) -> TelemetryScalar | None:
+        if isinstance(value, str) and len(value.encode()) > 8_192:
+            raise ValueError("LangSmith feedback value exceeds its public bound")
+        if isinstance(value, float) and not math.isfinite(value):
+            raise ValueError("LangSmith feedback value must be finite")
+        return value
+
+    @field_validator("score")
+    @classmethod
+    def score_is_finite(cls, value: float | None) -> float | None:
+        if value is not None and not math.isfinite(value):
+            raise ValueError("LangSmith feedback score must be finite")
+        return value
+
+
+class TelemetryEvaluationCandidate(TelemetryModel):
+    schema_version: Literal["1.0"] = "1.0"
+    evidence_id: UUID = Field(default_factory=uuid4)
+    source: Literal["langsmith"] = "langsmith"
+    request: LangSmithFeedbackImportRequest
+    source_payload_digest: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    policy_fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
+    authority: Literal["candidate_only"] = "candidate_only"
+    accepted: Literal[False] = False
+    imported_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("imported_at")
+    @classmethod
+    def import_time_is_unambiguous(cls, value: datetime) -> datetime:
+        return require_aware(value)
+
+
+class TelemetryEvaluationImportResult(TelemetryModel):
+    schema_version: Literal["1.0"] = "1.0"
+    candidate: TelemetryEvaluationCandidate
+    artifact_reference: str = Field(pattern=r"^artifact:[0-9a-f-]{36}$")
 
 
 class TelemetryRecord(TelemetryModel):

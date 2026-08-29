@@ -1,7 +1,10 @@
 """Public optional telemetry contracts without eager exporter side effects."""
 
 from mishkan.telemetry.models import (
+    LangSmithFeedbackImportRequest,
     TelemetryDisclosure,
+    TelemetryEvaluationCandidate,
+    TelemetryEvaluationImportResult,
     TelemetryExporterKind,
     TelemetryExportEvidence,
     TelemetryExportState,
@@ -11,7 +14,10 @@ from mishkan.telemetry.models import (
 )
 
 __all__ = [
+    "LangSmithFeedbackImportRequest",
     "TelemetryDisclosure",
+    "TelemetryEvaluationCandidate",
+    "TelemetryEvaluationImportResult",
     "TelemetryExportEvidence",
     "TelemetryExportState",
     "TelemetryExporterKind",

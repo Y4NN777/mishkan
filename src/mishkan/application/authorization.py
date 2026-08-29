@@ -57,6 +57,7 @@ from mishkan.skills.models import (
     SkillUsageRecord,
     SkillVersionRecord,
 )
+from mishkan.telemetry.models import LangSmithFeedbackImportRequest
 from mishkan.tools.models import RegistryEntryKind, RegistryLifecycleAction, RegistryMutation
 
 
@@ -246,6 +247,11 @@ COMMAND_SEMANTICS = MappingProxyType(
         "environment.binding.invalidate": CommandSemantics(
             "application.environment.invalidate", "control", ("environment.binding.invalidate",)
         ),
+        "telemetry.evaluation.import": CommandSemantics(
+            "application.telemetry.evaluation",
+            "artifact",
+            ("telemetry.evaluation.import",),
+        ),
         **{
             f"registry.entry.{action.value}": CommandSemantics(
                 "application.registry.lifecycle",
@@ -313,6 +319,7 @@ _COMMAND_TARGETS = MappingProxyType(
         "environment.attempt.settle": ("environment_operation", "uuid"),
         "environment.verification.record": ("environment_verification", "uuid"),
         "environment.binding.invalidate": ("environment_binding", "uuid"),
+        "telemetry.evaluation.import": ("telemetry_evaluation", "uuid"),
         **{
             f"registry.entry.{action.value}": ("registry_entry", "required")
             for action in RegistryLifecycleAction
@@ -406,6 +413,7 @@ _COMMAND_PAYLOAD_FIELDS = MappingProxyType(
         ),
         "environment.verification.record": (frozenset({"request"}), frozenset()),
         "environment.binding.invalidate": (frozenset({"invalidation"}), frozenset()),
+        "telemetry.evaluation.import": (frozenset({"request"}), frozenset()),
         "registry.entry.add": (frozenset({"entry_kind", "definition"}), frozenset()),
         "registry.entry.enable": (frozenset({"entry_kind"}), frozenset()),
         "registry.entry.disable": (frozenset({"entry_kind"}), frozenset()),
@@ -440,6 +448,7 @@ class AuthorizedApplicationCommand:
     environment_operation_plan: EnvironmentOperationPlan | None = None
     environment_verification: EnvironmentVerificationRequest | None = None
     environment_invalidation: EnvironmentInvalidation | None = None
+    telemetry_evaluation: LangSmithFeedbackImportRequest | None = None
 
 
 class ApplicationCommandAuthority:
@@ -504,6 +513,7 @@ class ApplicationCommandAuthority:
         environment_operation_plan: EnvironmentOperationPlan | None = None
         environment_verification: EnvironmentVerificationRequest | None = None
         environment_invalidation: EnvironmentInvalidation | None = None
+        telemetry_evaluation: LangSmithFeedbackImportRequest | None = None
 
         try:
             if normalized.command_type == "run.initialize":
@@ -902,6 +912,22 @@ class ApplicationCommandAuthority:
                     f"environment-binding:{environment_invalidation.binding_id}",
                     *(f"task:{task_id}" for task_id in environment_invalidation.affected_task_ids),
                 )
+            elif normalized.command_type == "telemetry.evaluation.import":
+                telemetry_evaluation = LangSmithFeedbackImportRequest.model_validate(
+                    normalized.payload["request"]
+                )
+                if normalized.target_id != str(telemetry_evaluation.import_id):
+                    raise ValueError("telemetry evaluation target differs from its import request")
+                if telemetry_evaluation.owner_identity != normalized.actor_id:
+                    raise MishkanError(
+                        ErrorCode.AUTHORITY_NOT_GRANTED,
+                        "telemetry evaluation owner must match the authenticated actor",
+                    )
+                external_resources = (
+                    f"langsmith-project:{telemetry_evaluation.project_name}",
+                    f"langsmith-run:{telemetry_evaluation.traced_run_id}",
+                    f"langsmith-feedback:{telemetry_evaluation.external_feedback_id}",
+                )
             elif normalized.target_id is not None:
                 external_resources = (f"{normalized.target_type}:{normalized.target_id}",)
         except (KeyError, TypeError, ValueError, ValidationError) as exc:
@@ -956,6 +982,7 @@ class ApplicationCommandAuthority:
             environment_operation_plan=environment_operation_plan,
             environment_verification=environment_verification,
             environment_invalidation=environment_invalidation,
+            telemetry_evaluation=telemetry_evaluation,
         )
 
     @staticmethod

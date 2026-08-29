@@ -102,7 +102,14 @@ from mishkan.skills.models import (
     SkillUsageSummary,
     SkillVersionRecord,
 )
-from mishkan.telemetry.models import TelemetryExportEvidence, TelemetryRecord, TelemetryStatus
+from mishkan.telemetry.models import (
+    LangSmithFeedbackImportRequest,
+    TelemetryEvaluationCandidate,
+    TelemetryEvaluationImportResult,
+    TelemetryExportEvidence,
+    TelemetryRecord,
+    TelemetryStatus,
+)
 from mishkan.tools.execution import ExecutionRequest, ExecutionResult
 from mishkan.web.models import (
     CitationEvidence,
@@ -176,6 +183,7 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "mcp-discovery-v1.schema.json": McpDiscoverySnapshot,
     "mcp-primitive-v1.schema.json": McpPrimitiveDescriptor,
     "mcp-progress-v1.schema.json": McpProgressEvent,
+    "langsmith-feedback-import-request-v1.schema.json": LangSmithFeedbackImportRequest,
     "run-initialization-request-v1.schema.json": RunInitializationRequest,
     "skill-bundle-definition-v1.schema.json": SkillBundleDefinition,
     "skill-bundle-resolution-v1.schema.json": SkillBundleResolution,
@@ -217,6 +225,8 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "snapshot-envelope-v1.schema.json": SnapshotEnvelope,
     "task-review-rejection-v1.schema.json": TaskReviewRejection,
     "telemetry-export-evidence-v1.schema.json": TelemetryExportEvidence,
+    "telemetry-evaluation-candidate-v1.schema.json": TelemetryEvaluationCandidate,
+    "telemetry-evaluation-import-result-v1.schema.json": TelemetryEvaluationImportResult,
     "telemetry-record-v1.schema.json": TelemetryRecord,
     "telemetry-status-v1.schema.json": TelemetryStatus,
     "technical-pack-catalogue-v1.schema.json": TechnicalPackCatalogue,

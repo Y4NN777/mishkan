@@ -65,7 +65,11 @@ from mishkan.skills.models import (
     SkillUsageSummary,
     SkillVersionRecord,
 )
-from mishkan.telemetry.models import TelemetryStatus
+from mishkan.telemetry.models import (
+    LangSmithFeedbackImportRequest,
+    TelemetryEvaluationImportResult,
+    TelemetryStatus,
+)
 
 
 class Mishkan:
@@ -170,6 +174,21 @@ class Mishkan:
         response = self._client.get("/v1/telemetry/status", headers=self._headers())
         response.raise_for_status()
         return TelemetryStatus.model_validate(response.json())
+
+    def import_langsmith_feedback(
+        self,
+        request: LangSmithFeedbackImportRequest,
+    ) -> TelemetryEvaluationImportResult:
+        result = self.command(
+            ApplicationCommand(
+                command_type="telemetry.evaluation.import",
+                actor_id=self.principal_id,
+                target_type="telemetry_evaluation",
+                target_id=str(request.import_id),
+                payload={"request": request.model_dump(mode="json")},
+            )
+        )
+        return TelemetryEvaluationImportResult.model_validate(result.payload)
 
     def events(
         self,

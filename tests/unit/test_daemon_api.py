@@ -23,7 +23,12 @@ from mishkan.daemon.bootstrap import DaemonPaths
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.time import utc_now
 from mishkan.persistence import SQLiteApplicationRepository
-from mishkan.telemetry.models import TelemetryDisclosure, TelemetryRecord
+from mishkan.telemetry.models import (
+    LangSmithFeedbackImportRequest,
+    TelemetryDisclosure,
+    TelemetryEvaluationImportResult,
+    TelemetryRecord,
+)
 
 
 @pytest.fixture
@@ -59,6 +64,60 @@ async def test_health_is_public_but_queries_require_authentication(tmp_path: Pat
         response = await client.get("/v1/snapshot", headers={"Authorization": f"Bearer {token}"})
         assert response.status_code == 200
         assert response.json()["cursor"] == 0
+
+
+@pytest.mark.anyio
+async def test_langsmith_feedback_enters_only_as_attributed_candidate_artifact(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    paths = DaemonBootstrap().setup(config)
+    token = TokenFile(paths.token_file).read()
+    headers = {"Authorization": f"Bearer {token.token}"}
+    request = LangSmithFeedbackImportRequest(
+        owner_identity=token.principal_id,
+        project_name="mishkan-evaluation",
+        external_feedback_id="d08f11da-cd89-4f87-b437-f962877de1cf",
+        traced_run_id="b439e8d1-a9d0-4c93-9201-e98932683745",
+        key="correctness",
+        score=1.0,
+        comment="The result follows the accepted evidence.",
+        feedback_source_type="model",
+        source_created_at=utc_now(),
+    )
+    command = ApplicationCommand(
+        command_type="telemetry.evaluation.import",
+        actor_id=token.principal_id,
+        target_type="telemetry_evaluation",
+        target_id=str(request.import_id),
+        payload={"request": request.model_dump(mode="json")},
+    )
+    transport = httpx.ASGITransport(app=create_app(config))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=command.model_dump(mode="json"),
+        )
+        assert response.status_code == 200
+        result = TelemetryEvaluationImportResult.model_validate(response.json()["payload"])
+        assert result.candidate.authority == "candidate_only"
+        assert result.candidate.accepted is False
+        assert result.candidate.request.external_feedback_id == request.external_feedback_id
+
+        artifact_id = result.artifact_reference.removeprefix("artifact:")
+        artifact = await client.get(f"/v1/artifacts/{artifact_id}/content", headers=headers)
+        assert artifact.status_code == 200
+        persisted = artifact.json()
+        assert persisted["authority"] == "candidate_only"
+        assert persisted["accepted"] is False
+
+        replay = await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=command.model_dump(mode="json"),
+        )
+        assert replay.json()["payload"] == response.json()["payload"]
 
 
 @pytest.mark.anyio
@@ -124,7 +183,7 @@ async def test_authenticated_command_and_event_query_share_durable_contract(
         "command_type": "system.checkpoint",
         "matched_rule_ids": ["local.application-commands"],
         "policy_fingerprint": event_payload["policy_fingerprint"],
-        "policy_revisions": ["bundled.local@18"],
+        "policy_revisions": ["bundled.local@19"],
         "request_schema_version": "1.0",
         "payload_fields": ["checkpoint"],
         "result_fields": ["recorded"],

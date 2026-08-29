@@ -35,6 +35,7 @@ run_app = typer.Typer(help="Inspect, cancel, and recover durable runs.")
 mcp_app = typer.Typer(help="Connect and inspect governed MCP peers through mishkand.")
 skill_app = typer.Typer(help="Inspect and govern procedural skill versions through mishkand.")
 environment_app = typer.Typer(help="Observe and resolve engineering environments truthfully.")
+telemetry_app = typer.Typer(help="Inspect telemetry and import attributed evaluation evidence.")
 app.add_typer(config_app, name="config")
 app.add_typer(schema_app, name="schema")
 app.add_typer(daemon_app, name="daemon")
@@ -50,6 +51,43 @@ app.add_typer(run_app, name="run")
 app.add_typer(mcp_app, name="mcp")
 app.add_typer(skill_app, name="skill")
 app.add_typer(environment_app, name="environment")
+app.add_typer(telemetry_app, name="telemetry")
+
+
+@telemetry_app.command("status")
+def telemetry_status(ctx: typer.Context) -> None:
+    """Show the optional exporter state without making telemetry authoritative."""
+    with _daemon_client(ctx) as client:
+        status = client.telemetry_status()
+    _emit(status.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@telemetry_app.command("import-langsmith-feedback")
+def import_langsmith_feedback(
+    ctx: typer.Context,
+    request_file: Annotated[
+        Path,
+        typer.Option("--request", help="JSON LangSmithFeedbackImportRequest."),
+    ],
+) -> None:
+    """Store LangSmith feedback as immutable candidate-only evidence."""
+    from mishkan.telemetry import LangSmithFeedbackImportRequest
+
+    try:
+        request = LangSmithFeedbackImportRequest.model_validate_json(
+            request_file.read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter(
+            "--request must contain a valid LangSmithFeedbackImportRequest"
+        ) from exc
+    with _daemon_client(ctx) as client:
+        if request.owner_identity != client.principal_id:
+            raise typer.BadParameter(
+                "request owner_identity must match the authenticated daemon principal"
+            )
+        result = client.import_langsmith_feedback(request)
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
 
 
 @dataclass(frozen=True, slots=True)

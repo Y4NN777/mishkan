@@ -112,8 +112,10 @@ from mishkan.skills.models import (
 )
 from mishkan.skills.repository import SQLiteSkillLifecycleRepository, SQLiteSkillUsageRepository
 from mishkan.skills.service import SkillInvocationService
+from mishkan.telemetry.evidence import TelemetryEvaluationService
 from mishkan.telemetry.exporters import OtlpHttpTelemetryExporter, TelemetryExporter
 from mishkan.telemetry.models import (
+    TelemetryEvaluationImportResult,
     TelemetryExporterKind,
     TelemetryRecord,
     TelemetryRecordStatus,
@@ -498,6 +500,7 @@ def create_app(
             else None
         ),
     )
+    telemetry_evaluation_service = TelemetryEvaluationService(artifacts)
     telemetry_tasks: set[asyncio.Task[object]] = set()
 
     def project_telemetry(
@@ -788,6 +791,7 @@ def create_app(
                                 environment_operation_planner,
                                 environment_evidence_service,
                                 technical_pack_service,
+                                telemetry_evaluation_service,
                             )
                         except MishkanError as error:
                             result = repository.fail_reserved(
@@ -1522,10 +1526,24 @@ def _dispatch(
     environment_operation_planner: EnvironmentOperationPlanner | None,
     environment_evidence_service: EnvironmentEvidenceService | None,
     technical_pack_service: TechnicalPackService | None,
+    telemetry_evaluation_service: TelemetryEvaluationService,
 ) -> tuple[str, dict[str, object]]:
     payload = command.payload
     if command.command_type == "system.checkpoint" and command.target_type == "system":
         return "system.checkpoint_recorded", {"recorded": True}
+    if command.command_type == "telemetry.evaluation.import":
+        evaluation_request = authorized.telemetry_evaluation
+        if evaluation_request is None:
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT,
+                "authorized telemetry evaluation import is absent",
+            )
+        evaluation: TelemetryEvaluationImportResult = telemetry_evaluation_service.import_langsmith(
+            evaluation_request,
+            policy_fingerprint=authorized.decision.policy_fingerprint,
+            resolved_secrets=tuple(resolved_credentials.values()),
+        )
+        return "telemetry.evaluation_imported", evaluation.model_dump(mode="json")
     if command.command_type == "artifact.upload.open":
         upload = artifacts.open_upload(
             expected_size=int(payload["expected_size"]),
