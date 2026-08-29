@@ -35,6 +35,7 @@ from mishkan.browser.models import (
 )
 from mishkan.config.models import MishkanConfig
 from mishkan.context.models import ContextPackManifest, ContextPackMaterialization
+from mishkan.context.profile import ConfirmedEngineerFact, EngineerProfile
 from mishkan.domain.errors import ErrorEnvelope
 from mishkan.domain.identity import DomainRecord
 from mishkan.edits.git import GitEffectRequest, GitEffectResult
@@ -151,6 +152,7 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "change-set-v1.schema.json": ChangeSet,
     "command-result-v1.schema.json": CommandResult,
     "config-v1.schema.json": MishkanConfig,
+    "confirmed-engineer-fact-v1.schema.json": ConfirmedEngineerFact,
     "context-pack-manifest-v1.schema.json": ContextPackManifest,
     "context-pack-materialization-v1.schema.json": ContextPackMaterialization,
     "domain-record-v1.schema.json": DomainRecord,
@@ -158,6 +160,7 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "engineering-command-candidate-v1.schema.json": EngineeringCommandCandidate,
     "engineering-command-plan-v1.schema.json": EngineeringCommandPlan,
     "engineering-command-request-v1.schema.json": EngineeringCommandRequest,
+    "engineer-profile-v1.schema.json": EngineerProfile,
     "environment-attempt-v1.schema.json": EnvironmentAttempt,
     "environment-descriptor-validation-result-v1.schema.json": DescriptorValidationResult,
     "environment-binding-request-v1.schema.json": EnvironmentBindingRequest,

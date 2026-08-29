@@ -26,6 +26,7 @@ from mishkan.artifacts import (
 from mishkan.artifacts import (
     ArtifactHold as ArtifactEvidenceHold,
 )
+from mishkan.context import EngineerProfile
 from mishkan.daemon.auth import TokenFile
 from mishkan.edits import ChangeSetResult
 from mishkan.environment import (
@@ -176,6 +177,11 @@ class Mishkan:
         response = self._client.get("/v1/telemetry/status", headers=self._headers())
         response.raise_for_status()
         return TelemetryStatus.model_validate(response.json())
+
+    def engineer_profile(self) -> EngineerProfile:
+        response = self._client.get("/v1/context/engineer-profile", headers=self._headers())
+        response.raise_for_status()
+        return EngineerProfile.model_validate(response.json())
 
     def import_langsmith_feedback(
         self,

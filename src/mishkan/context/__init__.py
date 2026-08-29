@@ -7,11 +7,15 @@ from mishkan.context.models import (
     ContextPackMaterialization,
     MaterializedContextEntry,
 )
+from mishkan.context.profile import ConfirmedEngineerFact, EngineerProfile, EngineerProfileLoader
 
 __all__ = [
+    "ConfirmedEngineerFact",
     "ContextPackEntry",
     "ContextPackManifest",
     "ContextPackMaterialization",
     "ContextPackMaterializer",
+    "EngineerProfile",
+    "EngineerProfileLoader",
     "MaterializedContextEntry",
 ]

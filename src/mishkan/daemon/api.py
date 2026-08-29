@@ -44,6 +44,7 @@ from mishkan.artifacts import (
 )
 from mishkan.artifacts.service import DurableArtifactService
 from mishkan.config.models import CredentialReference, McpConfig, MishkanConfig
+from mishkan.context import EngineerProfile, EngineerProfileLoader
 from mishkan.crewai.credentials import CredentialPoolResolver
 from mishkan.crewai.skill_learning import CrewAISkillLearningRunner
 from mishkan.daemon.auth import TokenFile, TokenRecord
@@ -507,6 +508,11 @@ def create_app(
         ),
     )
     telemetry_evaluation_service = TelemetryEvaluationService(artifacts)
+    engineer_profile = (
+        EngineerProfileLoader().load(config.engineer_profile, paths.workspace)
+        if config.engineer_profile is not None
+        else None
+    )
     telemetry_tasks: set[asyncio.Task[object]] = set()
 
     def project_telemetry(
@@ -954,6 +960,17 @@ def create_app(
         _principal: TokenRecord = authenticated,
     ) -> TelemetryStatus:
         return telemetry_service.status()
+
+    @app.get("/v1/context/engineer-profile")
+    async def confirmed_engineer_profile(
+        _principal: TokenRecord = authenticated,
+    ) -> EngineerProfile:
+        if engineer_profile is None:
+            raise MishkanError(
+                ErrorCode.REQUIRED_DEPENDENCY,
+                "A confirmed portable engineer profile is not configured",
+            )
+        return engineer_profile
 
     @app.get("/v1/tools/registry")
     async def tool_registry(

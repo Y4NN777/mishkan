@@ -657,6 +657,7 @@ class MishkanConfig(StrictConfigModel):
     browser: BrowserConfig | None = None
     mcp: McpConfig | None = None
     skills: SkillsConfig | None = None
+    engineer_profile: str | None = None
     engineering_profile: str | None = None
     engineering_pack_sources: tuple[str, ...] = Field(
         default=("package://mishkan.resources.environment/technical-packs.yaml",),

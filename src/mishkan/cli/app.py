@@ -36,6 +36,7 @@ mcp_app = typer.Typer(help="Connect and inspect governed MCP peers through mishk
 skill_app = typer.Typer(help="Inspect and govern procedural skill versions through mishkand.")
 environment_app = typer.Typer(help="Observe and resolve engineering environments truthfully.")
 telemetry_app = typer.Typer(help="Inspect telemetry and import attributed evaluation evidence.")
+context_app = typer.Typer(help="Inspect confirmed portable and observed engineering context.")
 app.add_typer(config_app, name="config")
 app.add_typer(schema_app, name="schema")
 app.add_typer(daemon_app, name="daemon")
@@ -52,6 +53,15 @@ app.add_typer(mcp_app, name="mcp")
 app.add_typer(skill_app, name="skill")
 app.add_typer(environment_app, name="environment")
 app.add_typer(telemetry_app, name="telemetry")
+app.add_typer(context_app, name="context")
+
+
+@context_app.command("engineer-profile")
+def show_engineer_profile(ctx: typer.Context) -> None:
+    """Show only explicitly confirmed portable profile facts."""
+    with _daemon_client(ctx) as client:
+        profile = client.engineer_profile()
+    _emit(profile.model_dump(mode="json"), as_json=_state(ctx).json_output)
 
 
 @telemetry_app.command("status")

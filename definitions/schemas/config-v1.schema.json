@@ -1968,6 +1968,18 @@
       ],
       "default": null
     },
+    "engineer_profile": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Engineer Profile"
+    },
     "engineering_pack_sources": {
       "default": [
         "package://mishkan.resources.environment/technical-packs.yaml"
