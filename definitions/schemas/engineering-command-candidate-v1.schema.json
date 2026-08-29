@@ -1,0 +1,113 @@
+{
+  "$defs": {
+    "EngineeringCommandState": {
+      "enum": [
+        "ready",
+        "unavailable"
+      ],
+      "title": "EngineeringCommandState",
+      "type": "string"
+    },
+    "ExecutionMode": {
+      "enum": [
+        "process",
+        "shell",
+        "pty",
+        "job"
+      ],
+      "title": "ExecutionMode",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "action": {
+      "title": "Action",
+      "type": "string"
+    },
+    "arguments": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Arguments",
+      "type": "array"
+    },
+    "declared_effects": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Declared Effects",
+      "type": "array"
+    },
+    "engine_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Engine Id"
+    },
+    "evidence": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Evidence",
+      "type": "array"
+    },
+    "executable": {
+      "anyOf": [
+        {
+          "format": "path",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Executable"
+    },
+    "mode": {
+      "$ref": "#/$defs/ExecutionMode"
+    },
+    "network": {
+      "title": "Network",
+      "type": "boolean"
+    },
+    "pack_id": {
+      "title": "Pack Id",
+      "type": "string"
+    },
+    "pack_revision": {
+      "title": "Pack Revision",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "state": {
+      "$ref": "#/$defs/EngineeringCommandState"
+    }
+  },
+  "required": [
+    "pack_id",
+    "pack_revision",
+    "action",
+    "state",
+    "mode",
+    "declared_effects",
+    "network",
+    "evidence"
+  ],
+  "title": "EngineeringCommandCandidate",
+  "type": "object"
+}

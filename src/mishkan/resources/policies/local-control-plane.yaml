@@ -1,6 +1,6 @@
 schema_version: "1.0"
 source_id: bundled.local
-revision: "17"
+revision: "18"
 adoption_authority: MISHKAN release
 priority: 0
 rules:
@@ -158,6 +158,7 @@ rules:
         - environment.resolve
         - environment.descriptor.validate
         - environment.operation.plan
+        - environment.command.plan
         - environment.attempt.settle
         - environment.verification.record
         - environment.binding.invalidate
@@ -192,6 +193,7 @@ rules:
         - application.environment.resolve
         - application.environment.descriptor
         - application.environment.operation
+        - application.environment.command
         - application.environment.attempt
         - application.environment.verification
         - application.environment.invalidate

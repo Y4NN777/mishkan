@@ -54,6 +54,8 @@ from mishkan.edits import ChangeSet, ChangeSetResult, ChangeSetService
 from mishkan.edits.git import GovernedGitService
 from mishkan.environment import (
     DescriptorValidationResult,
+    EngineeringCommandCandidate,
+    EngineeringCommandPlan,
     EnvironmentAttempt,
     EnvironmentBinding,
     EnvironmentDescriptorSet,
@@ -66,6 +68,8 @@ from mishkan.environment import (
     EnvironmentOperationPlanner,
     EnvironmentResolver,
     EnvironmentVerification,
+    TechnicalPackLoader,
+    TechnicalPackService,
     load_environment_profile,
 )
 from mishkan.environment.repository import SQLiteEnvironmentRepository
@@ -340,6 +344,7 @@ def create_app(
     environment_descriptor_validator: EnvironmentDescriptorValidator | None = None
     environment_operation_planner: EnvironmentOperationPlanner | None = None
     environment_evidence_service: EnvironmentEvidenceService | None = None
+    technical_pack_service: TechnicalPackService | None = None
     if config.engineering_profile is not None:
         environment_profile = load_environment_profile(
             config.engineering_profile,
@@ -367,6 +372,9 @@ def create_app(
         environment_evidence_service = EnvironmentEvidenceService(
             environment_profile,
             environment_repository,
+        )
+        technical_pack_service = TechnicalPackService(
+            TechnicalPackLoader().load(config.engineering_pack_sources, paths.workspace)
         )
     skill_lifecycle: SQLiteSkillLifecycleRepository | None = None
     skill_usage: SQLiteSkillUsageRepository | None = None
@@ -779,6 +787,7 @@ def create_app(
                                 environment_descriptor_validator,
                                 environment_operation_planner,
                                 environment_evidence_service,
+                                technical_pack_service,
                             )
                         except MishkanError as error:
                             result = repository.fail_reserved(
@@ -1317,6 +1326,19 @@ def create_app(
             )
         return await _thread_call(environment_repository.observation, str(observation_id))
 
+    @app.get("/v1/environment/observations/{observation_id}/command-candidates")
+    async def environment_command_candidates(
+        observation_id: UUID,
+        _principal: TokenRecord = authenticated,
+    ) -> tuple[EngineeringCommandCandidate, ...]:
+        if environment_repository is None or technical_pack_service is None:
+            raise MishkanError(
+                ErrorCode.REQUIRED_DEPENDENCY,
+                "Engineering command packs are not configured",
+            )
+        observation = await _thread_call(environment_repository.observation, str(observation_id))
+        return await _thread_call(technical_pack_service.candidates, observation)
+
     @app.get("/v1/environment/bindings/{binding_id}")
     async def environment_binding_get(
         binding_id: UUID,
@@ -1499,6 +1521,7 @@ def _dispatch(
     environment_descriptor_validator: EnvironmentDescriptorValidator | None,
     environment_operation_planner: EnvironmentOperationPlanner | None,
     environment_evidence_service: EnvironmentEvidenceService | None,
+    technical_pack_service: TechnicalPackService | None,
 ) -> tuple[str, dict[str, object]]:
     payload = command.payload
     if command.command_type == "system.checkpoint" and command.target_type == "system":
@@ -1903,6 +1926,23 @@ def _dispatch(
             operation_request
         )
         return "environment.operation_planned", operation_plan.model_dump(mode="json")
+    if command.command_type == "environment.command.plan":
+        command_request = authorized.engineering_command
+        if (
+            environment_repository is None
+            or technical_pack_service is None
+            or command_request is None
+        ):
+            raise MishkanError(
+                ErrorCode.REQUIRED_DEPENDENCY,
+                "Engineering command planning is not configured",
+            )
+        observation = environment_repository.observation(str(command_request.observation_id))
+        command_plan: EngineeringCommandPlan = technical_pack_service.plan(
+            observation,
+            command_request,
+        )
+        return "environment.command_planned", command_plan.model_dump(mode="json")
     if command.command_type == "environment.attempt.settle":
         attempt_operation_plan = authorized.environment_operation_plan
         if attempt_operation_plan is None or environment_evidence_service is None:

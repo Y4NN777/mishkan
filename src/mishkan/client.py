@@ -30,6 +30,9 @@ from mishkan.daemon.auth import TokenFile
 from mishkan.edits import ChangeSetResult
 from mishkan.environment import (
     DescriptorValidationResult,
+    EngineeringCommandCandidate,
+    EngineeringCommandPlan,
+    EngineeringCommandRequest,
     EnvironmentAttempt,
     EnvironmentBinding,
     EnvironmentBindingRequest,
@@ -634,6 +637,50 @@ class Mishkan:
         )
         response.raise_for_status()
         return EnvironmentBinding.model_validate(response.json())
+
+    def engineering_command_candidates(
+        self,
+        observation_id: str,
+    ) -> tuple[EngineeringCommandCandidate, ...]:
+        identity = quote(observation_id, safe="")
+        response = self._client.get(
+            f"/v1/environment/observations/{identity}/command-candidates",
+            headers=self._headers(),
+        )
+        response.raise_for_status()
+        return tuple(EngineeringCommandCandidate.model_validate(item) for item in response.json())
+
+    def plan_engineering_command(
+        self,
+        request: EngineeringCommandRequest,
+    ) -> EngineeringCommandPlan:
+        result = self.command(
+            ApplicationCommand(
+                command_type="environment.command.plan",
+                actor_id=self.principal_id,
+                target_type="engineering_command",
+                target_id=str(request.request_id),
+                payload={"request": request.model_dump(mode="json")},
+            )
+        )
+        return EngineeringCommandPlan.model_validate(result.payload)
+
+    def start_engineering_command(
+        self,
+        request: EngineeringCommandRequest,
+    ) -> tuple[EngineeringCommandPlan, ExecutionSession]:
+        plan = self.plan_engineering_command(request)
+        if plan.execution.mode.value not in {"job", "pty"}:
+            raise ValueError("daemon engineering command requires a supervised session mode")
+        result = self.command(
+            ApplicationCommand(
+                command_type="session.start",
+                actor_id=self.principal_id,
+                target_type="session_service",
+                payload={"request": plan.execution.model_dump(mode="json")},
+            )
+        )
+        return plan, ExecutionSession.model_validate(result.payload)
 
     def validate_environment_descriptors(
         self,

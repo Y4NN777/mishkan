@@ -1872,6 +1872,75 @@ def show_environment_binding(
     _emit(binding.model_dump(mode="json"), as_json=_state(ctx).json_output)
 
 
+@environment_app.command("command-candidates")
+def show_engineering_command_candidates(
+    ctx: typer.Context,
+    observation_id: Annotated[str, typer.Argument(help="Environment observation UUID.")],
+) -> None:
+    """Show exact executable pack commands and explicit unavailable alternatives."""
+    with _daemon_client(ctx) as client:
+        candidates = client.engineering_command_candidates(observation_id)
+    _emit(
+        [item.model_dump(mode="json") for item in candidates],
+        as_json=_state(ctx).json_output,
+    )
+
+
+def _engineering_command_request(source: Path):  # type: ignore[no-untyped-def]
+    from mishkan.environment import EngineeringCommandRequest
+
+    try:
+        return EngineeringCommandRequest.model_validate_json(source.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter(
+            "--request must contain a valid EngineeringCommandRequest"
+        ) from exc
+
+
+@environment_app.command("plan-command")
+def plan_engineering_command(
+    ctx: typer.Context,
+    request_file: Annotated[
+        Path,
+        typer.Option("--request", help="JSON exact technical-pack command request."),
+    ],
+) -> None:
+    """Resolve an applicable pack action to one observed executable without running it."""
+    request = _engineering_command_request(request_file)
+    with _daemon_client(ctx) as client:
+        if request.owner_identity != client.principal_id:
+            raise typer.BadParameter(
+                "request owner_identity must match the authenticated daemon principal"
+            )
+        plan = client.plan_engineering_command(request)
+    _emit(plan.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@environment_app.command("start-command")
+def start_engineering_command(
+    ctx: typer.Context,
+    request_file: Annotated[
+        Path,
+        typer.Option("--request", help="JSON exact technical-pack command request."),
+    ],
+) -> None:
+    """Plan and start a pack command through the governed I03 session supervisor."""
+    request = _engineering_command_request(request_file)
+    with _daemon_client(ctx) as client:
+        if request.owner_identity != client.principal_id:
+            raise typer.BadParameter(
+                "request owner_identity must match the authenticated daemon principal"
+            )
+        plan, session = client.start_engineering_command(request)
+    _emit(
+        {
+            "plan": plan.model_dump(mode="json"),
+            "session": session.model_dump(mode="json"),
+        },
+        as_json=_state(ctx).json_output,
+    )
+
+
 @environment_app.command("validate-descriptors")
 def validate_environment_descriptors(
     ctx: typer.Context,

@@ -1203,6 +1203,449 @@
       "title": "SessionProfileConfig",
       "type": "object"
     },
+    "SkillActivationState": {
+      "enum": [
+        "candidate",
+        "active",
+        "inactive",
+        "quarantined",
+        "archived"
+      ],
+      "title": "SkillActivationState",
+      "type": "string"
+    },
+    "SkillBounds": {
+      "additionalProperties": false,
+      "properties": {
+        "allow_frontmatter_extensions": {
+          "title": "Allow Frontmatter Extensions",
+          "type": "boolean"
+        },
+        "max_frontmatter_bytes": {
+          "maximum": 1048576,
+          "minimum": 128,
+          "title": "Max Frontmatter Bytes",
+          "type": "integer"
+        },
+        "max_manifest_bytes": {
+          "maximum": 16777216,
+          "minimum": 256,
+          "title": "Max Manifest Bytes",
+          "type": "integer"
+        },
+        "max_package_bytes": {
+          "maximum": 4294967296,
+          "minimum": 256,
+          "title": "Max Package Bytes",
+          "type": "integer"
+        },
+        "max_package_files": {
+          "maximum": 100000,
+          "minimum": 1,
+          "title": "Max Package Files",
+          "type": "integer"
+        },
+        "max_resource_bytes": {
+          "maximum": 1073741824,
+          "minimum": 1,
+          "title": "Max Resource Bytes",
+          "type": "integer"
+        },
+        "max_resource_depth": {
+          "maximum": 64,
+          "minimum": 1,
+          "title": "Max Resource Depth",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_frontmatter_bytes",
+        "max_manifest_bytes",
+        "max_resource_bytes",
+        "max_package_bytes",
+        "max_package_files",
+        "max_resource_depth",
+        "allow_frontmatter_extensions"
+      ],
+      "title": "SkillBounds",
+      "type": "object"
+    },
+    "SkillBundleDefinition": {
+      "additionalProperties": false,
+      "properties": {
+        "bundle_id": {
+          "pattern": "^[a-z][a-z0-9_.-]{2,127}$",
+          "title": "Bundle Id",
+          "type": "string"
+        },
+        "max_selected": {
+          "anyOf": [
+            {
+              "maximum": 1000,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Selected"
+        },
+        "mode": {
+          "$ref": "#/$defs/SkillBundleMode"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "skills": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Skills",
+          "type": "array"
+        },
+        "summary": {
+          "maxLength": 1024,
+          "minLength": 3,
+          "title": "Summary",
+          "type": "string"
+        },
+        "version": {
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$",
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "bundle_id",
+        "version",
+        "summary",
+        "mode",
+        "skills"
+      ],
+      "title": "SkillBundleDefinition",
+      "type": "object"
+    },
+    "SkillBundleMode": {
+      "enum": [
+        "all",
+        "select"
+      ],
+      "title": "SkillBundleMode",
+      "type": "string"
+    },
+    "SkillSourceDefinition": {
+      "additionalProperties": false,
+      "properties": {
+        "default_activation": {
+          "$ref": "#/$defs/SkillActivationState"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "kind": {
+          "$ref": "#/$defs/SkillSourceKind"
+        },
+        "package_activation": {
+          "additionalProperties": {
+            "$ref": "#/$defs/SkillActivationState"
+          },
+          "title": "Package Activation",
+          "type": "object"
+        },
+        "precedence": {
+          "maximum": 1000000,
+          "minimum": -1000000,
+          "title": "Precedence",
+          "type": "integer"
+        },
+        "revision": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Revision",
+          "type": "string"
+        },
+        "source_id": {
+          "pattern": "^[a-z][a-z0-9_.-]{1,127}$",
+          "title": "Source Id",
+          "type": "string"
+        },
+        "trust": {
+          "$ref": "#/$defs/SkillTrustState"
+        },
+        "uri": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_id",
+        "kind",
+        "uri",
+        "revision",
+        "precedence",
+        "trust",
+        "default_activation"
+      ],
+      "title": "SkillSourceDefinition",
+      "type": "object"
+    },
+    "SkillSourceKind": {
+      "enum": [
+        "bundled",
+        "project",
+        "operator",
+        "community",
+        "source_control",
+        "url",
+        "hub"
+      ],
+      "title": "SkillSourceKind",
+      "type": "string"
+    },
+    "SkillTrustState": {
+      "enum": [
+        "untrusted",
+        "trusted",
+        "quarantined"
+      ],
+      "title": "SkillTrustState",
+      "type": "string"
+    },
+    "SkillsConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "automatic_selection": {
+          "title": "Automatic Selection",
+          "type": "boolean"
+        },
+        "bounds": {
+          "$ref": "#/$defs/SkillBounds"
+        },
+        "bundles": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SkillBundleDefinition"
+          },
+          "title": "Bundles",
+          "type": "array"
+        },
+        "inspection_profile": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Inspection Profile",
+          "type": "string"
+        },
+        "learning_max_source_bytes": {
+          "maximum": 1073741824,
+          "minimum": 1,
+          "title": "Learning Max Source Bytes",
+          "type": "integer"
+        },
+        "managed_root": {
+          "format": "path",
+          "title": "Managed Root",
+          "type": "string"
+        },
+        "max_automatic_skills": {
+          "maximum": 1000,
+          "minimum": 1,
+          "title": "Max Automatic Skills",
+          "type": "integer"
+        },
+        "miss_proposal_threshold": {
+          "maximum": 1000000,
+          "minimum": 1,
+          "title": "Miss Proposal Threshold",
+          "type": "integer"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/SkillSourceDefinition"
+          },
+          "minItems": 1,
+          "title": "Sources",
+          "type": "array"
+        },
+        "stale_after_days": {
+          "maximum": 36500,
+          "minimum": 1,
+          "title": "Stale After Days",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "managed_root",
+        "sources",
+        "bounds",
+        "inspection_profile",
+        "automatic_selection",
+        "max_automatic_skills",
+        "miss_proposal_threshold",
+        "stale_after_days",
+        "learning_max_source_bytes"
+      ],
+      "title": "SkillsConfig",
+      "type": "object"
+    },
+    "TelemetryConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "disclosure": {
+          "$ref": "#/$defs/TelemetryDisclosure",
+          "default": "off"
+        },
+        "exporter": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TelemetryExporterConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "include_command_payload": {
+          "default": false,
+          "title": "Include Command Payload",
+          "type": "boolean"
+        },
+        "include_result_payload": {
+          "default": false,
+          "title": "Include Result Payload",
+          "type": "boolean"
+        },
+        "max_attribute_bytes": {
+          "default": 4096,
+          "maximum": 1048576,
+          "minimum": 1,
+          "title": "Max Attribute Bytes",
+          "type": "integer"
+        },
+        "max_attributes": {
+          "default": 64,
+          "maximum": 1000,
+          "minimum": 1,
+          "title": "Max Attributes",
+          "type": "integer"
+        },
+        "metadata_attributes": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Metadata Attributes",
+          "type": "array"
+        }
+      },
+      "title": "TelemetryConfig",
+      "type": "object"
+    },
+    "TelemetryDisclosure": {
+      "enum": [
+        "off",
+        "metadata_only",
+        "sanitized"
+      ],
+      "title": "TelemetryDisclosure",
+      "type": "string"
+    },
+    "TelemetryExporterConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "credential_header": {
+          "default": "authorization",
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Credential Header",
+          "type": "string"
+        },
+        "credential_prefix": {
+          "default": "Bearer ",
+          "maxLength": 64,
+          "title": "Credential Prefix",
+          "type": "string"
+        },
+        "credential_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CredentialReference"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "endpoint": {
+          "format": "uri",
+          "minLength": 1,
+          "title": "Endpoint",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/TelemetryExporterKind"
+        },
+        "network_profile": {
+          "minLength": 1,
+          "title": "Network Profile",
+          "type": "string"
+        },
+        "project": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Project"
+        },
+        "service_name": {
+          "default": "mishkand",
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Service Name",
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "default": 5.0,
+          "exclusiveMinimum": 0,
+          "maximum": 300,
+          "title": "Timeout Seconds",
+          "type": "number"
+        }
+      },
+      "required": [
+        "kind",
+        "endpoint",
+        "network_profile"
+      ],
+      "title": "TelemetryExporterConfig",
+      "type": "object"
+    },
+    "TelemetryExporterKind": {
+      "enum": [
+        "otlp_http",
+        "langsmith_otlp"
+      ],
+      "title": "TelemetryExporterKind",
+      "type": "string"
+    },
     "WebComponentRole": {
       "enum": [
         "direct_source",
@@ -1525,6 +1968,29 @@
       ],
       "default": null
     },
+    "engineering_pack_sources": {
+      "default": [
+        "package://mishkan.resources.environment/technical-packs.yaml"
+      ],
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Engineering Pack Sources",
+      "type": "array"
+    },
+    "engineering_profile": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Engineering Profile"
+    },
     "inspection_profile": {
       "anyOf": [
         {
@@ -1618,6 +2084,20 @@
         }
       ],
       "default": null
+    },
+    "skills": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SkillsConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "telemetry": {
+      "$ref": "#/$defs/TelemetryConfig"
     },
     "timezone": {
       "title": "Timezone",

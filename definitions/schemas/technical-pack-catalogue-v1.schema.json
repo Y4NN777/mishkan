@@ -1,0 +1,161 @@
+{
+  "$defs": {
+    "ExecutionMode": {
+      "enum": [
+        "process",
+        "shell",
+        "pty",
+        "job"
+      ],
+      "title": "ExecutionMode",
+      "type": "string"
+    },
+    "PackCommandAlternative": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Arguments",
+          "type": "array"
+        },
+        "engine_id": {
+          "pattern": "^[a-z][a-z0-9_.-]{1,127}$",
+          "title": "Engine Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "engine_id"
+      ],
+      "title": "PackCommandAlternative",
+      "type": "object"
+    },
+    "PackCommandDefinition": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "pattern": "^[a-z][a-z0-9_.-]{1,127}$",
+          "title": "Action",
+          "type": "string"
+        },
+        "alternatives": {
+          "items": {
+            "$ref": "#/$defs/PackCommandAlternative"
+          },
+          "minItems": 1,
+          "title": "Alternatives",
+          "type": "array"
+        },
+        "declared_effects": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Declared Effects",
+          "type": "array"
+        },
+        "mode": {
+          "$ref": "#/$defs/ExecutionMode"
+        },
+        "network": {
+          "default": false,
+          "title": "Network",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "action",
+        "mode",
+        "alternatives"
+      ],
+      "title": "PackCommandDefinition",
+      "type": "object"
+    },
+    "TechnicalPackDefinition": {
+      "additionalProperties": false,
+      "properties": {
+        "commands": {
+          "items": {
+            "$ref": "#/$defs/PackCommandDefinition"
+          },
+          "minItems": 1,
+          "title": "Commands",
+          "type": "array"
+        },
+        "ecosystems": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Ecosystems",
+          "type": "array"
+        },
+        "marker_names": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Marker Names",
+          "type": "array"
+        },
+        "pack_id": {
+          "pattern": "^[a-z][a-z0-9_.-]{1,127}$",
+          "title": "Pack Id",
+          "type": "string"
+        },
+        "revision": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Revision",
+          "type": "string"
+        }
+      },
+      "required": [
+        "pack_id",
+        "revision",
+        "ecosystems",
+        "commands"
+      ],
+      "title": "TechnicalPackDefinition",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "catalogue_id": {
+      "pattern": "^[a-z][a-z0-9_.-]{1,127}$",
+      "title": "Catalogue Id",
+      "type": "string"
+    },
+    "packs": {
+      "items": {
+        "$ref": "#/$defs/TechnicalPackDefinition"
+      },
+      "minItems": 1,
+      "title": "Packs",
+      "type": "array"
+    },
+    "revision": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Revision",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "catalogue_id",
+    "revision",
+    "packs"
+  ],
+  "title": "TechnicalPackCatalogue",
+  "type": "object"
+}

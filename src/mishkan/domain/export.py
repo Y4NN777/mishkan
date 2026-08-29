@@ -53,6 +53,12 @@ from mishkan.environment.models import (
     EnvironmentVerification,
     EnvironmentVerificationRequest,
 )
+from mishkan.environment.packs import (
+    EngineeringCommandCandidate,
+    EngineeringCommandPlan,
+    EngineeringCommandRequest,
+    TechnicalPackCatalogue,
+)
 from mishkan.events.models import (
     EventEnvelope,
     EventPage,
@@ -140,6 +146,9 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "context-pack-materialization-v1.schema.json": ContextPackMaterialization,
     "domain-record-v1.schema.json": DomainRecord,
     "error-envelope-v1.schema.json": ErrorEnvelope,
+    "engineering-command-candidate-v1.schema.json": EngineeringCommandCandidate,
+    "engineering-command-plan-v1.schema.json": EngineeringCommandPlan,
+    "engineering-command-request-v1.schema.json": EngineeringCommandRequest,
     "environment-attempt-v1.schema.json": EnvironmentAttempt,
     "environment-descriptor-validation-result-v1.schema.json": DescriptorValidationResult,
     "environment-binding-request-v1.schema.json": EnvironmentBindingRequest,
@@ -210,6 +219,7 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "telemetry-export-evidence-v1.schema.json": TelemetryExportEvidence,
     "telemetry-record-v1.schema.json": TelemetryRecord,
     "telemetry-status-v1.schema.json": TelemetryStatus,
+    "technical-pack-catalogue-v1.schema.json": TechnicalPackCatalogue,
 }
 
 _EXPORT_MANIFEST = ".mishkan-schema-export.json"

@@ -73,6 +73,22 @@ engines:
     executable_names: [node]
     semantics: [language.run]
     project_markers: [package.json]
+  - engine_id: npm
+    executable_names: [npm]
+    semantics: [dependency.acquire, language.build, language.test]
+    project_markers: [package.json, package-lock.json]
+  - engine_id: pnpm
+    executable_names: [pnpm]
+    semantics: [dependency.acquire, language.build, language.test]
+    project_markers: [package.json, pnpm-lock.yaml]
+  - engine_id: yarn
+    executable_names: [yarn]
+    semantics: [dependency.acquire, language.build, language.test]
+    project_markers: [package.json, yarn.lock]
+  - engine_id: bun
+    executable_names: [bun]
+    semantics: [dependency.acquire, language.build, language.test]
+    project_markers: [package.json, bun.lock]
   - engine_id: java
     executable_names: [java]
     semantics: [language.run]
@@ -81,6 +97,10 @@ engines:
     executable_names: [gradle]
     semantics: [language.build, language.test, android.build]
     project_markers: [build.gradle, build.gradle.kts]
+  - engine_id: maven
+    executable_names: [mvn]
+    semantics: [dependency.acquire, language.build, language.test]
+    project_markers: [pom.xml]
   - engine_id: python
     executable_names: [python3, python]
     semantics: [language.run, language.test]
@@ -93,11 +113,55 @@ engines:
     executable_names: [cc, clang, gcc]
     semantics: [language.build, language.test]
     project_markers: [CMakeLists.txt, Makefile, meson.build]
+  - engine_id: cmake
+    executable_names: [cmake]
+    semantics: [language.build, language.test]
+    project_markers: [CMakeLists.txt]
+  - engine_id: make
+    executable_names: [make]
+    semantics: [language.build, language.test]
+    project_markers: [Makefile]
   - engine_id: swift
     executable_names: [swift]
     semantics: [language.build, language.test]
     platforms: [linux, darwin]
     project_markers: [Package.swift]
+  - engine_id: maestro
+    executable_names: [maestro]
+    semantics: [mobile.ui.test]
+    platforms: [linux, darwin]
+    project_markers: [settings.gradle, settings.gradle.kts, Package.swift]
+  - engine_id: kubectl
+    executable_names: [kubectl]
+    semantics: [kubernetes.inspect, kubernetes.lifecycle]
+  - engine_id: helm
+    executable_names: [helm]
+    semantics: [kubernetes.package, kubernetes.lifecycle]
+  - engine_id: terraform
+    executable_names: [terraform, tofu]
+    semantics: [infrastructure.plan, infrastructure.apply]
+    project_markers: [main.tf, tofu.lock.hcl, .terraform.lock.hcl]
+  - engine_id: ansible
+    executable_names: [ansible, ansible-playbook]
+    semantics: [configuration.inspect, configuration.apply]
+  - engine_id: prometheus
+    executable_names: [prometheus, promtool]
+    semantics: [observability.metrics, observability.validate]
+  - engine_id: grafana
+    executable_names: [grafana, grafana-server]
+    semantics: [observability.visualize]
+  - engine_id: elasticsearch
+    executable_names: [elasticsearch]
+    semantics: [observability.search]
+  - engine_id: minio
+    executable_names: [minio, mc]
+    semantics: [object-storage.serve, object-storage.inspect]
+  - engine_id: postgresql
+    executable_names: [psql]
+    semantics: [database.inspect, database.query]
+  - engine_id: sqlite
+    executable_names: [sqlite3]
+    semantics: [database.inspect, database.query]
   - engine_id: systemctl-user
     executable_names: [systemctl]
     adapter_id: quadlet.systemctl

@@ -1,0 +1,141 @@
+{
+  "$defs": {
+    "SkillFindingCategory": {
+      "enum": [
+        "security",
+        "privacy",
+        "unicode",
+        "credential",
+        "prompt_injection",
+        "destructive_action"
+      ],
+      "title": "SkillFindingCategory",
+      "type": "string"
+    },
+    "SkillFindingSeverity": {
+      "enum": [
+        "info",
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "title": "SkillFindingSeverity",
+      "type": "string"
+    },
+    "SkillInspectionRule": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "$ref": "#/$defs/SkillFindingCategory"
+        },
+        "path_patterns": {
+          "default": [
+            "*"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "title": "Path Patterns",
+          "type": "array"
+        },
+        "pattern": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Pattern",
+          "type": "string"
+        },
+        "rule_id": {
+          "pattern": "^[a-z][a-z0-9_.-]{1,127}$",
+          "title": "Rule Id",
+          "type": "string"
+        },
+        "severity": {
+          "$ref": "#/$defs/SkillFindingSeverity"
+        },
+        "summary": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rule_id",
+        "category",
+        "severity",
+        "pattern",
+        "summary"
+      ],
+      "title": "SkillInspectionRule",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "adoption_authority": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Adoption Authority",
+      "type": "string"
+    },
+    "max_scanned_file_bytes": {
+      "maximum": 1073741824,
+      "minimum": 1,
+      "title": "Max Scanned File Bytes",
+      "type": "integer"
+    },
+    "max_scanned_files": {
+      "maximum": 100000,
+      "minimum": 1,
+      "title": "Max Scanned Files",
+      "type": "integer"
+    },
+    "max_total_bytes": {
+      "maximum": 4294967296,
+      "minimum": 1,
+      "title": "Max Total Bytes",
+      "type": "integer"
+    },
+    "profile_id": {
+      "pattern": "^[a-z][a-z0-9_.-]{1,127}$",
+      "title": "Profile Id",
+      "type": "string"
+    },
+    "quarantine_threshold": {
+      "$ref": "#/$defs/SkillFindingSeverity"
+    },
+    "revision": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Revision",
+      "type": "string"
+    },
+    "rules": {
+      "items": {
+        "$ref": "#/$defs/SkillInspectionRule"
+      },
+      "minItems": 1,
+      "title": "Rules",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "profile_id",
+    "revision",
+    "adoption_authority",
+    "quarantine_threshold",
+    "rules",
+    "max_scanned_files",
+    "max_scanned_file_bytes",
+    "max_total_bytes"
+  ],
+  "title": "SkillInspectionProfile",
+  "type": "object"
+}

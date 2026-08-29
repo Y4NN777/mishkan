@@ -31,6 +31,7 @@ from mishkan.domain.time import utc_now
 from mishkan.edits import ChangeSet
 from mishkan.edits.git import GitEffectMode, GitEffectRequest
 from mishkan.environment import (
+    EngineeringCommandRequest,
     EnvironmentBindingRequest,
     EnvironmentDescriptorSet,
     EnvironmentInvalidation,
@@ -231,6 +232,9 @@ COMMAND_SEMANTICS = MappingProxyType(
         "environment.operation.plan": CommandSemantics(
             "application.environment.operation", "control", ("environment.operation.plan",)
         ),
+        "environment.command.plan": CommandSemantics(
+            "application.environment.command", "control", ("environment.command.plan",)
+        ),
         "environment.attempt.settle": CommandSemantics(
             "application.environment.attempt", "control", ("environment.attempt.settle",)
         ),
@@ -305,6 +309,7 @@ _COMMAND_TARGETS = MappingProxyType(
         "environment.resolve": ("environment_binding_request", "uuid"),
         "environment.descriptor.validate": ("environment_descriptor_set", "uuid"),
         "environment.operation.plan": ("environment_operation", "uuid"),
+        "environment.command.plan": ("engineering_command", "uuid"),
         "environment.attempt.settle": ("environment_operation", "uuid"),
         "environment.verification.record": ("environment_verification", "uuid"),
         "environment.binding.invalidate": ("environment_binding", "uuid"),
@@ -394,6 +399,7 @@ _COMMAND_PAYLOAD_FIELDS = MappingProxyType(
         "environment.resolve": (frozenset({"request"}), frozenset()),
         "environment.descriptor.validate": (frozenset({"descriptor_set"}), frozenset()),
         "environment.operation.plan": (frozenset({"request"}), frozenset()),
+        "environment.command.plan": (frozenset({"request"}), frozenset()),
         "environment.attempt.settle": (
             frozenset({"operation_plan", "session_id"}),
             frozenset(),
@@ -430,6 +436,7 @@ class AuthorizedApplicationCommand:
     environment_binding: EnvironmentBindingRequest | None = None
     environment_descriptor_set: EnvironmentDescriptorSet | None = None
     environment_operation: EnvironmentOperationRequest | None = None
+    engineering_command: EngineeringCommandRequest | None = None
     environment_operation_plan: EnvironmentOperationPlan | None = None
     environment_verification: EnvironmentVerificationRequest | None = None
     environment_invalidation: EnvironmentInvalidation | None = None
@@ -493,6 +500,7 @@ class ApplicationCommandAuthority:
         environment_binding: EnvironmentBindingRequest | None = None
         environment_descriptor_set: EnvironmentDescriptorSet | None = None
         environment_operation: EnvironmentOperationRequest | None = None
+        engineering_command: EngineeringCommandRequest | None = None
         environment_operation_plan: EnvironmentOperationPlan | None = None
         environment_verification: EnvironmentVerificationRequest | None = None
         environment_invalidation: EnvironmentInvalidation | None = None
@@ -826,6 +834,22 @@ class ApplicationCommandAuthority:
                     f"environment-adapter:{environment_operation.adapter_id}",
                     f"environment-operation:{environment_operation.operation.value}",
                 )
+            elif normalized.command_type == "environment.command.plan":
+                engineering_command = EngineeringCommandRequest.model_validate(
+                    normalized.payload["request"]
+                )
+                if normalized.target_id != str(engineering_command.request_id):
+                    raise ValueError("engineering command target differs from its request")
+                if engineering_command.owner_identity != normalized.actor_id:
+                    raise MishkanError(
+                        ErrorCode.AUTHORITY_NOT_GRANTED,
+                        "engineering command owner must match the authenticated actor",
+                    )
+                external_resources = (
+                    f"environment-observation:{engineering_command.observation_id}",
+                    f"engineering-pack:{engineering_command.pack_id}",
+                    f"engineering-action:{engineering_command.action}",
+                )
             elif normalized.command_type == "environment.attempt.settle":
                 environment_operation_plan = EnvironmentOperationPlan.model_validate(
                     normalized.payload["operation_plan"]
@@ -928,6 +952,7 @@ class ApplicationCommandAuthority:
             environment_binding=environment_binding,
             environment_descriptor_set=environment_descriptor_set,
             environment_operation=environment_operation,
+            engineering_command=engineering_command,
             environment_operation_plan=environment_operation_plan,
             environment_verification=environment_verification,
             environment_invalidation=environment_invalidation,

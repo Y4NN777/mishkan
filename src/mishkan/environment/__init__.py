@@ -28,6 +28,15 @@ from mishkan.environment.models import (
 )
 from mishkan.environment.observer import EnvironmentObserver
 from mishkan.environment.operations import EnvironmentOperationPlanner
+from mishkan.environment.packs import (
+    EngineeringCommandCandidate,
+    EngineeringCommandPlan,
+    EngineeringCommandRequest,
+    EngineeringCommandState,
+    TechnicalPackCatalogue,
+    TechnicalPackLoader,
+    TechnicalPackService,
+)
 from mishkan.environment.profile import EnvironmentProfile, load_environment_profile
 from mishkan.environment.resolver import EnvironmentResolver
 
@@ -37,6 +46,10 @@ __all__ = [
     "DescriptorObservation",
     "DescriptorValidationResult",
     "EngineObservation",
+    "EngineeringCommandCandidate",
+    "EngineeringCommandPlan",
+    "EngineeringCommandRequest",
+    "EngineeringCommandState",
     "EnvironmentAttempt",
     "EnvironmentBinding",
     "EnvironmentBindingRequest",
@@ -60,5 +73,8 @@ __all__ = [
     "EnvironmentSettlement",
     "EnvironmentVerification",
     "EnvironmentVerificationRequest",
+    "TechnicalPackCatalogue",
+    "TechnicalPackLoader",
+    "TechnicalPackService",
     "load_environment_profile",
 ]

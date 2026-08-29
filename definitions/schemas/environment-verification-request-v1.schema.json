@@ -1,0 +1,68 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "binding_id": {
+      "format": "uuid",
+      "title": "Binding Id",
+      "type": "string"
+    },
+    "check_attempt_ids": {
+      "additionalProperties": {
+        "items": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "maxProperties": 64,
+      "minProperties": 1,
+      "title": "Check Attempt Ids",
+      "type": "object"
+    },
+    "context_fingerprint": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Context Fingerprint",
+      "type": "string"
+    },
+    "engine_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Engine Id",
+      "type": "string"
+    },
+    "limitations": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Limitations",
+      "type": "array"
+    },
+    "owner_identity": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Owner Identity",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "verification_id": {
+      "format": "uuid",
+      "title": "Verification Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "binding_id",
+    "owner_identity",
+    "context_fingerprint",
+    "engine_id",
+    "check_attempt_ids"
+  ],
+  "title": "EnvironmentVerificationRequest",
+  "type": "object"
+}

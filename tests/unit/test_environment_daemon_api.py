@@ -19,6 +19,9 @@ from mishkan.daemon import DaemonBootstrap, create_app
 from mishkan.daemon.auth import TokenFile
 from mishkan.domain.time import utc_now
 from mishkan.environment import (
+    EngineeringCommandPlan,
+    EngineeringCommandRequest,
+    EngineeringCommandState,
     EnvironmentBinding,
     EnvironmentBindingRequest,
     EnvironmentBindingState,
@@ -53,8 +56,15 @@ def _config(tmp_path: Path):  # type: ignore[no-untyped-def]
 @pytest.mark.anyio
 async def test_environment_commands_share_authority_persistence_and_queries(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     (tmp_path / "go.mod").write_text("module example.test/project\n", encoding="utf-8")
+    binaries = tmp_path / "bin"
+    binaries.mkdir()
+    go = binaries / "go"
+    go.write_text("#!/bin/sh\nprintf 'pack-command-executed\\n'\n", encoding="utf-8")
+    go.chmod(0o755)
+    monkeypatch.setenv("PATH", str(binaries))
     config = _config(tmp_path)
     paths = DaemonBootstrap().setup(config)
     token = TokenFile(paths.token_file).read()
@@ -84,6 +94,70 @@ async def test_environment_commands_share_authority_persistence_and_queries(
         observation = EnvironmentObservation.model_validate(observed_response.json()["payload"])
         assert observation.manifests["go"] == ("go.mod",)
         assert observation.path_sensitivity == "machine_local"
+
+        candidates_response = await client.get(
+            f"/v1/environment/observations/{observation.observation_id}/command-candidates",
+            headers=headers,
+        )
+        assert candidates_response.status_code == 200
+        go_test = next(
+            item
+            for item in candidates_response.json()
+            if item["pack_id"] == "go" and item["action"] == "test"
+        )
+        assert go_test["state"] == EngineeringCommandState.READY.value
+        assert Path(go_test["executable"]).is_absolute()
+
+        engineering_request = EngineeringCommandRequest(
+            observation_id=observation.observation_id,
+            observation_fingerprint=observation.fingerprint,
+            pack_id="go",
+            action="test",
+            owner_identity=token.principal_id,
+            run_id="run:pack-test",
+            task_id="task:pack-test",
+            session_profile="standard",
+            deadline=utc_now() + timedelta(minutes=5),
+            timeout_seconds=60,
+        )
+        command_plan_response = await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=ApplicationCommand(
+                command_type="environment.command.plan",
+                actor_id=token.principal_id,
+                target_type="engineering_command",
+                target_id=str(engineering_request.request_id),
+                payload={"request": engineering_request.model_dump(mode="json")},
+            ).model_dump(mode="json"),
+        )
+        assert command_plan_response.status_code == 200
+        engineering_plan = EngineeringCommandPlan.model_validate(
+            command_plan_response.json()["payload"]
+        )
+        assert engineering_plan.execution.executable == go_test["executable"]
+        assert engineering_plan.execution.policy_fingerprint == "0" * 64
+
+        session_response = await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=ApplicationCommand(
+                command_type="session.start",
+                actor_id=token.principal_id,
+                target_type="session_service",
+                payload={"request": engineering_plan.execution.model_dump(mode="json")},
+            ).model_dump(mode="json"),
+        )
+        assert session_response.status_code == 200
+        session_id = session_response.json()["payload"]["execution_id"]
+        settled = await _wait_for_session(client, headers, session_id)
+        assert settled["state"] == "settled"
+        assert settled["result"]["exit_code"] == 0
+        output_response = await client.get(
+            f"/v1/sessions/{session_id}/output",
+            headers=headers,
+        )
+        assert output_response.json()["data"] == "pack-command-executed\n"
 
         binding_request = EnvironmentBindingRequest(
             mission_id="mission:test",
@@ -133,6 +207,7 @@ async def test_environment_commands_share_authority_persistence_and_queries(
     assert EnvironmentBinding.model_validate(binding_query.json()) == binding
     event_types = {event["event_type"] for event in events.json()["events"]}
     assert "environment.observed" in event_types
+    assert "environment.command_planned" in event_types
     assert "environment.binding_unresolved" in event_types
 
 

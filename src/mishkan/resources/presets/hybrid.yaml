@@ -1,6 +1,8 @@
 schema_version: "1.5"
 mode: hybrid
 engineering_profile: package://mishkan.resources.environment/default.yaml
+engineering_pack_sources:
+  - package://mishkan.resources.environment/technical-packs.yaml
 telemetry:
   disclosure: "off"
   metadata_attributes:

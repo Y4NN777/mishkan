@@ -1,0 +1,148 @@
+schema_version: "1.0"
+catalogue_id: mishkan-engineering-core
+revision: "1"
+packs:
+  - pack_id: go
+    revision: "1"
+    ecosystems: [go]
+    commands:
+      - action: test
+        mode: job
+        alternatives:
+          - engine_id: go
+            arguments: [test, ./...]
+      - action: build
+        mode: job
+        declared_effects: [workspace.build.outputs]
+        alternatives:
+          - engine_id: go
+            arguments: [build, ./...]
+  - pack_id: javascript-typescript
+    revision: "1"
+    ecosystems: [javascript_typescript]
+    commands:
+      - action: test
+        mode: job
+        alternatives:
+          - engine_id: npm
+            arguments: [test, --if-present]
+          - engine_id: pnpm
+            arguments: [test, --if-present]
+          - engine_id: yarn
+            arguments: [test, --if-present]
+          - engine_id: bun
+            arguments: [test]
+      - action: build
+        mode: job
+        declared_effects: [workspace.build.outputs]
+        alternatives:
+          - engine_id: npm
+            arguments: [run, build, --if-present]
+          - engine_id: pnpm
+            arguments: [run, build, --if-present]
+          - engine_id: yarn
+            arguments: [run, build]
+          - engine_id: bun
+            arguments: [run, build]
+  - pack_id: java-kotlin
+    revision: "1"
+    ecosystems: [java_kotlin_android]
+    marker_names: [pom.xml, build.gradle, build.gradle.kts]
+    commands:
+      - action: test
+        mode: job
+        alternatives:
+          - engine_id: maven
+            arguments: [test]
+          - engine_id: gradle
+            arguments: [test]
+      - action: build
+        mode: job
+        declared_effects: [workspace.build.outputs]
+        alternatives:
+          - engine_id: maven
+            arguments: [package, -DskipTests]
+          - engine_id: gradle
+            arguments: [build]
+  - pack_id: android
+    revision: "1"
+    ecosystems: [java_kotlin_android]
+    marker_names: [settings.gradle, settings.gradle.kts]
+    commands:
+      - action: test
+        mode: job
+        alternatives:
+          - engine_id: gradle
+            arguments: [test]
+      - action: build
+        mode: job
+        declared_effects: [workspace.build.outputs]
+        alternatives:
+          - engine_id: gradle
+            arguments: [assembleDebug]
+  - pack_id: python
+    revision: "1"
+    ecosystems: [python]
+    commands:
+      - action: validate
+        mode: job
+        alternatives:
+          - engine_id: python
+            arguments: [-m, compileall, -q, .]
+      - action: test
+        mode: job
+        alternatives:
+          - engine_id: python
+            arguments: [-m, pytest]
+  - pack_id: rust
+    revision: "1"
+    ecosystems: [rust]
+    commands:
+      - action: test
+        mode: job
+        alternatives:
+          - engine_id: rust
+            arguments: [test]
+      - action: build
+        mode: job
+        declared_effects: [workspace.build.outputs]
+        alternatives:
+          - engine_id: rust
+            arguments: [build]
+  - pack_id: c-native
+    revision: "1"
+    ecosystems: [c]
+    commands:
+      - action: build
+        mode: job
+        declared_effects: [workspace.build.outputs]
+        alternatives:
+          - engine_id: cmake
+            arguments: [--build, build]
+          - engine_id: make
+            arguments: []
+  - pack_id: swift
+    revision: "1"
+    ecosystems: [swift]
+    commands:
+      - action: test
+        mode: job
+        alternatives:
+          - engine_id: swift
+            arguments: [test]
+      - action: build
+        mode: job
+        declared_effects: [workspace.build.outputs]
+        alternatives:
+          - engine_id: swift
+            arguments: [build]
+  - pack_id: maestro-mobile-ui
+    revision: "1"
+    ecosystems: [java_kotlin_android, swift]
+    marker_names: [settings.gradle, settings.gradle.kts, Package.swift]
+    commands:
+      - action: ui-test
+        mode: job
+        alternatives:
+          - engine_id: maestro
+            arguments: [test, .maestro]

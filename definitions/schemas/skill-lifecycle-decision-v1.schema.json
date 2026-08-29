@@ -1,0 +1,84 @@
+{
+  "$defs": {
+    "SkillMutationDisposition": {
+      "enum": [
+        "allow",
+        "require_review",
+        "deny"
+      ],
+      "title": "SkillMutationDisposition",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "actor_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Actor Id",
+      "type": "string"
+    },
+    "decided_at": {
+      "format": "date-time",
+      "title": "Decided At",
+      "type": "string"
+    },
+    "decision_id": {
+      "format": "uuid",
+      "title": "Decision Id",
+      "type": "string"
+    },
+    "disposition": {
+      "$ref": "#/$defs/SkillMutationDisposition"
+    },
+    "expected_active_version_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Expected Active Version Id"
+    },
+    "policy_fingerprint": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Policy Fingerprint",
+      "type": "string"
+    },
+    "quarantine_override": {
+      "default": false,
+      "title": "Quarantine Override",
+      "type": "boolean"
+    },
+    "reason": {
+      "maxLength": 2048,
+      "minLength": 1,
+      "title": "Reason",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "version_id": {
+      "format": "uuid",
+      "title": "Version Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "version_id",
+    "disposition",
+    "actor_id",
+    "policy_fingerprint",
+    "reason"
+  ],
+  "title": "SkillLifecycleDecision",
+  "type": "object"
+}

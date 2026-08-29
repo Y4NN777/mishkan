@@ -658,6 +658,10 @@ class MishkanConfig(StrictConfigModel):
     mcp: McpConfig | None = None
     skills: SkillsConfig | None = None
     engineering_profile: str | None = None
+    engineering_pack_sources: tuple[str, ...] = Field(
+        default=("package://mishkan.resources.environment/technical-packs.yaml",),
+        min_length=1,
+    )
     telemetry: TelemetryConfig = Field(default_factory=TelemetryConfig)
 
     @field_validator("timezone")

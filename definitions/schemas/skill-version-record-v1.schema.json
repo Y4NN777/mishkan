@@ -1,0 +1,605 @@
+{
+  "$defs": {
+    "SkillActivationState": {
+      "enum": [
+        "candidate",
+        "active",
+        "inactive",
+        "quarantined",
+        "archived"
+      ],
+      "title": "SkillActivationState",
+      "type": "string"
+    },
+    "SkillFindingCategory": {
+      "enum": [
+        "security",
+        "privacy",
+        "unicode",
+        "credential",
+        "prompt_injection",
+        "destructive_action"
+      ],
+      "title": "SkillFindingCategory",
+      "type": "string"
+    },
+    "SkillFindingSeverity": {
+      "enum": [
+        "info",
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "title": "SkillFindingSeverity",
+      "type": "string"
+    },
+    "SkillInspectionFinding": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "$ref": "#/$defs/SkillFindingCategory"
+        },
+        "evidence_fingerprint": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Evidence Fingerprint",
+          "type": "string"
+        },
+        "line": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Line"
+        },
+        "logical_path": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Logical Path",
+          "type": "string"
+        },
+        "rule_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Rule Id",
+          "type": "string"
+        },
+        "severity": {
+          "$ref": "#/$defs/SkillFindingSeverity"
+        },
+        "summary": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rule_id",
+        "category",
+        "severity",
+        "logical_path",
+        "summary",
+        "evidence_fingerprint"
+      ],
+      "title": "SkillInspectionFinding",
+      "type": "object"
+    },
+    "SkillInspectionResult": {
+      "additionalProperties": false,
+      "properties": {
+        "findings": {
+          "items": {
+            "$ref": "#/$defs/SkillInspectionFinding"
+          },
+          "title": "Findings",
+          "type": "array"
+        },
+        "inspected_at": {
+          "format": "date-time",
+          "title": "Inspected At",
+          "type": "string"
+        },
+        "package_fingerprint": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Package Fingerprint",
+          "type": "string"
+        },
+        "profile_fingerprint": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Profile Fingerprint",
+          "type": "string"
+        },
+        "profile_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Profile Id",
+          "type": "string"
+        },
+        "profile_revision": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Profile Revision",
+          "type": "string"
+        },
+        "quarantined": {
+          "title": "Quarantined",
+          "type": "boolean"
+        },
+        "scanned_bytes": {
+          "minimum": 0,
+          "title": "Scanned Bytes",
+          "type": "integer"
+        },
+        "scanned_files": {
+          "minimum": 0,
+          "title": "Scanned Files",
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "profile_id",
+        "profile_revision",
+        "profile_fingerprint",
+        "package_fingerprint",
+        "findings",
+        "scanned_files",
+        "scanned_bytes",
+        "quarantined"
+      ],
+      "title": "SkillInspectionResult",
+      "type": "object"
+    },
+    "SkillMetadata": {
+      "additionalProperties": false,
+      "properties": {
+        "activation": {
+          "$ref": "#/$defs/SkillActivationState"
+        },
+        "allowed_tools_hint": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Allowed Tools Hint"
+        },
+        "author_claim": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Author Claim"
+        },
+        "compatibility_summary": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Compatibility Summary"
+        },
+        "description": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "fallback_tools": {
+          "additionalProperties": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": "Fallback Tools",
+          "type": "object"
+        },
+        "license": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "License"
+        },
+        "name": {
+          "maxLength": 64,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "organization_versions": {
+          "default": [
+            "*"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "title": "Organization Versions",
+          "type": "array"
+        },
+        "package_fingerprint": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Package Fingerprint",
+          "type": "string"
+        },
+        "package_uri": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Package Uri",
+          "type": "string"
+        },
+        "platforms": {
+          "default": [
+            "*"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "title": "Platforms",
+          "type": "array"
+        },
+        "required_tools": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Tools",
+          "type": "array"
+        },
+        "resource_paths": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Resource Paths",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "source_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "source_kind": {
+          "$ref": "#/$defs/SkillSourceKind"
+        },
+        "source_revision": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Source Revision",
+          "type": "string"
+        },
+        "task_classes": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Task Classes",
+          "type": "array"
+        },
+        "trust": {
+          "$ref": "#/$defs/SkillTrustState"
+        },
+        "version": {
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$",
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "description",
+        "version",
+        "source_id",
+        "source_kind",
+        "source_revision",
+        "package_uri",
+        "package_fingerprint",
+        "trust",
+        "activation"
+      ],
+      "title": "SkillMetadata",
+      "type": "object"
+    },
+    "SkillMutationAction": {
+      "enum": [
+        "create",
+        "patch",
+        "edit",
+        "delete",
+        "archive",
+        "restore",
+        "install",
+        "update",
+        "reset"
+      ],
+      "title": "SkillMutationAction",
+      "type": "string"
+    },
+    "SkillProvenanceLock": {
+      "additionalProperties": false,
+      "properties": {
+        "acquired_at": {
+          "format": "date-time",
+          "title": "Acquired At",
+          "type": "string"
+        },
+        "author_claim": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Author Claim"
+        },
+        "dependency_fingerprints": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Dependency Fingerprints",
+          "type": "array"
+        },
+        "package_fingerprint": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Package Fingerprint",
+          "type": "string"
+        },
+        "resolved_revision": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Resolved Revision",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "source_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "source_kind": {
+          "$ref": "#/$defs/SkillSourceKind"
+        },
+        "source_uri": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Source Uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_id",
+        "source_kind",
+        "source_uri",
+        "resolved_revision",
+        "package_fingerprint"
+      ],
+      "title": "SkillProvenanceLock",
+      "type": "object"
+    },
+    "SkillSourceKind": {
+      "enum": [
+        "bundled",
+        "project",
+        "operator",
+        "community",
+        "source_control",
+        "url",
+        "hub"
+      ],
+      "title": "SkillSourceKind",
+      "type": "string"
+    },
+    "SkillTrustState": {
+      "enum": [
+        "untrusted",
+        "trusted",
+        "quarantined"
+      ],
+      "title": "SkillTrustState",
+      "type": "string"
+    },
+    "SkillVersionState": {
+      "enum": [
+        "candidate",
+        "validating",
+        "eligible",
+        "staged",
+        "active",
+        "quarantined",
+        "rejected",
+        "archived",
+        "superseded"
+      ],
+      "title": "SkillVersionState",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "activation_decision_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Activation Decision Id"
+    },
+    "base_version_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Base Version Id"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "inspection": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SkillInspectionResult"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "metadata": {
+      "$ref": "#/$defs/SkillMetadata"
+    },
+    "mutation_action": {
+      "$ref": "#/$defs/SkillMutationAction"
+    },
+    "mutation_artifact_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Mutation Artifact Id"
+    },
+    "package_collection_id": {
+      "format": "uuid",
+      "title": "Package Collection Id",
+      "type": "string"
+    },
+    "pinned": {
+      "default": false,
+      "title": "Pinned",
+      "type": "boolean"
+    },
+    "policy_fingerprint": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Policy Fingerprint",
+      "type": "string"
+    },
+    "provenance": {
+      "$ref": "#/$defs/SkillProvenanceLock"
+    },
+    "revision": {
+      "default": 1,
+      "minimum": 1,
+      "title": "Revision",
+      "type": "integer"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "skill_name": {
+      "maxLength": 64,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+      "title": "Skill Name",
+      "type": "string"
+    },
+    "skill_version": {
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$",
+      "title": "Skill Version",
+      "type": "string"
+    },
+    "state": {
+      "$ref": "#/$defs/SkillVersionState"
+    },
+    "updated_at": {
+      "format": "date-time",
+      "title": "Updated At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "skill_name",
+    "skill_version",
+    "state",
+    "package_collection_id",
+    "metadata",
+    "provenance",
+    "mutation_action",
+    "policy_fingerprint"
+  ],
+  "title": "SkillVersionRecord",
+  "type": "object"
+}

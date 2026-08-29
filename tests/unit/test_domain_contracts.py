@@ -106,6 +106,9 @@ def test_public_contract_catalogue_exports_deterministically(tmp_path: Path) -> 
         "context-pack-materialization-v1.schema.json",
         "domain-record-v1.schema.json",
         "error-envelope-v1.schema.json",
+        "engineering-command-candidate-v1.schema.json",
+        "engineering-command-plan-v1.schema.json",
+        "engineering-command-request-v1.schema.json",
         "environment-attempt-v1.schema.json",
         "environment-binding-request-v1.schema.json",
         "environment-binding-v1.schema.json",
@@ -176,6 +179,7 @@ def test_public_contract_catalogue_exports_deterministically(tmp_path: Path) -> 
         "telemetry-export-evidence-v1.schema.json",
         "telemetry-record-v1.schema.json",
         "telemetry-status-v1.schema.json",
+        "technical-pack-catalogue-v1.schema.json",
     }
     assert set(SCHEMAS) == expected
 

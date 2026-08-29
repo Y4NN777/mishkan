@@ -1,0 +1,90 @@
+{
+  "$defs": {
+    "EnvironmentInvalidationCause": {
+      "enum": [
+        "context",
+        "repository",
+        "platform",
+        "engine",
+        "policy",
+        "mission_scope"
+      ],
+      "title": "EnvironmentInvalidationCause",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "affected_task_ids": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Affected Task Ids",
+      "type": "array"
+    },
+    "binding_id": {
+      "format": "uuid",
+      "title": "Binding Id",
+      "type": "string"
+    },
+    "cause": {
+      "$ref": "#/$defs/EnvironmentInvalidationCause"
+    },
+    "expected_binding_revision": {
+      "minimum": 1,
+      "title": "Expected Binding Revision",
+      "type": "integer"
+    },
+    "invalidated_at": {
+      "format": "date-time",
+      "title": "Invalidated At",
+      "type": "string"
+    },
+    "invalidation_id": {
+      "format": "uuid",
+      "title": "Invalidation Id",
+      "type": "string"
+    },
+    "observed_context_fingerprint": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Observed Context Fingerprint",
+      "type": "string"
+    },
+    "owner_identity": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Owner Identity",
+      "type": "string"
+    },
+    "policy_fingerprint": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Policy Fingerprint",
+      "type": "string"
+    },
+    "reason": {
+      "maxLength": 4096,
+      "minLength": 1,
+      "title": "Reason",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "binding_id",
+    "expected_binding_revision",
+    "owner_identity",
+    "cause",
+    "observed_context_fingerprint",
+    "affected_task_ids",
+    "policy_fingerprint",
+    "reason"
+  ],
+  "title": "EnvironmentInvalidation",
+  "type": "object"
+}

@@ -1,0 +1,67 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "hits": {
+      "minimum": 0,
+      "title": "Hits",
+      "type": "integer"
+    },
+    "last_recorded_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Recorded At"
+    },
+    "misses": {
+      "minimum": 0,
+      "title": "Misses",
+      "type": "integer"
+    },
+    "partials": {
+      "minimum": 0,
+      "title": "Partials",
+      "type": "integer"
+    },
+    "requested_skill": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Requested Skill"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "task_class": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Task Class",
+      "type": "string"
+    }
+  },
+  "required": [
+    "task_class",
+    "hits",
+    "partials",
+    "misses"
+  ],
+  "title": "SkillUsageSummary",
+  "type": "object"
+}

@@ -1,0 +1,46 @@
+{
+  "$defs": {
+    "SkillLearningSourceKind": {
+      "enum": [
+        "text",
+        "artifact",
+        "url",
+        "repository_evidence",
+        "execution_evidence"
+      ],
+      "title": "SkillLearningSourceKind",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "content": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Content"
+    },
+    "kind": {
+      "$ref": "#/$defs/SkillLearningSourceKind"
+    },
+    "locator": {
+      "maxLength": 4096,
+      "minLength": 1,
+      "title": "Locator",
+      "type": "string"
+    }
+  },
+  "required": [
+    "kind",
+    "locator"
+  ],
+  "title": "SkillLearningSource",
+  "type": "object"
+}

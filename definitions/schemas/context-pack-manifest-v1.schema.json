@@ -1,0 +1,366 @@
+{
+  "$defs": {
+    "ContextPackEntry": {
+      "additionalProperties": false,
+      "description": "One immutable artifact projected at a safe logical path.",
+      "properties": {
+        "artifact_reference": {
+          "pattern": "^artifact:[0-9a-f-]{36}$",
+          "title": "Artifact Reference",
+          "type": "string"
+        },
+        "digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Digest",
+          "type": "string"
+        },
+        "layer": {
+          "pattern": "^[a-z][a-z0-9_.-]{0,63}$",
+          "title": "Layer",
+          "type": "string"
+        },
+        "logical_path": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Logical Path",
+          "type": "string"
+        },
+        "media_type": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Media Type",
+          "type": "string"
+        },
+        "order": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "title": "Order",
+          "type": "integer"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "sensitivity": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Sensitivity",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        },
+        "source_revision": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Revision"
+        }
+      },
+      "required": [
+        "logical_path",
+        "layer",
+        "order",
+        "artifact_reference",
+        "digest",
+        "size_bytes",
+        "media_type",
+        "sensitivity"
+      ],
+      "title": "ContextPackEntry",
+      "type": "object"
+    },
+    "SkillLoadEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "consuming_identity": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Consuming Identity",
+          "type": "string"
+        },
+        "instruction_fingerprint": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Instruction Fingerprint"
+        },
+        "loaded_resources": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SkillLoadedResource"
+          },
+          "title": "Loaded Resources",
+          "type": "array"
+        },
+        "outcome": {
+          "$ref": "#/$defs/SkillUseOutcome"
+        },
+        "package_fingerprint": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Package Fingerprint",
+          "type": "string"
+        },
+        "reason": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "skill_name": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Skill Name",
+          "type": "string"
+        },
+        "skill_version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Skill Version",
+          "type": "string"
+        },
+        "task_class": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Task Class",
+          "type": "string"
+        },
+        "task_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Task Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "task_id",
+        "task_class",
+        "consuming_identity",
+        "skill_name",
+        "skill_version",
+        "package_fingerprint",
+        "outcome",
+        "reason"
+      ],
+      "title": "SkillLoadEvidence",
+      "type": "object"
+    },
+    "SkillLoadedResource": {
+      "additionalProperties": false,
+      "properties": {
+        "fingerprint": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Fingerprint",
+          "type": "string"
+        },
+        "path": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "fingerprint",
+        "size_bytes"
+      ],
+      "title": "SkillLoadedResource",
+      "type": "object"
+    },
+    "SkillUseOutcome": {
+      "enum": [
+        "hit",
+        "partial",
+        "miss"
+      ],
+      "title": "SkillUseOutcome",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Authoritative description of a bounded context projection.",
+  "properties": {
+    "agent_identity": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Agent Identity",
+      "type": "string"
+    },
+    "context_pack_id": {
+      "format": "uuid",
+      "title": "Context Pack Id",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "entries": {
+      "items": {
+        "$ref": "#/$defs/ContextPackEntry"
+      },
+      "minItems": 1,
+      "title": "Entries",
+      "type": "array"
+    },
+    "max_entries": {
+      "maximum": 10000,
+      "minimum": 1,
+      "title": "Max Entries",
+      "type": "integer"
+    },
+    "max_entry_bytes": {
+      "maximum": 1073741824,
+      "minimum": 1,
+      "title": "Max Entry Bytes",
+      "type": "integer"
+    },
+    "max_total_bytes": {
+      "maximum": 4294967296,
+      "minimum": 1,
+      "title": "Max Total Bytes",
+      "type": "integer"
+    },
+    "mission_brief_revision": {
+      "anyOf": [
+        {
+          "maxLength": 512,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Mission Brief Revision"
+    },
+    "mission_id": {
+      "anyOf": [
+        {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Mission Id"
+    },
+    "organization_revision": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Organization Revision",
+      "type": "string"
+    },
+    "output_contract_digest": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Output Contract Digest",
+      "type": "string"
+    },
+    "output_contract_reference": {
+      "pattern": "^artifact:[0-9a-f-]{36}$",
+      "title": "Output Contract Reference",
+      "type": "string"
+    },
+    "plan_revision": {
+      "anyOf": [
+        {
+          "maxLength": 512,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Plan Revision"
+    },
+    "run_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "skill_loads": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/SkillLoadEvidence"
+      },
+      "title": "Skill Loads",
+      "type": "array"
+    },
+    "task_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Task Id",
+      "type": "string"
+    },
+    "verification_contract_digest": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Verification Contract Digest",
+      "type": "string"
+    },
+    "verification_contract_reference": {
+      "pattern": "^artifact:[0-9a-f-]{36}$",
+      "title": "Verification Contract Reference",
+      "type": "string"
+    }
+  },
+  "required": [
+    "organization_revision",
+    "agent_identity",
+    "run_id",
+    "task_id",
+    "output_contract_reference",
+    "output_contract_digest",
+    "verification_contract_reference",
+    "verification_contract_digest",
+    "max_entries",
+    "max_entry_bytes",
+    "max_total_bytes",
+    "entries"
+  ],
+  "title": "ContextPackManifest",
+  "type": "object"
+}
