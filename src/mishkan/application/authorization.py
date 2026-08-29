@@ -41,6 +41,7 @@ from mishkan.policy import (
     ResourceRequest,
 )
 from mishkan.skills.models import (
+    SkillInvocationRequest,
     SkillLifecycleDecision,
     SkillUsageRecord,
     SkillVersionRecord,
@@ -195,6 +196,9 @@ COMMAND_SEMANTICS = MappingProxyType(
         "skill.usage.record": CommandSemantics(
             "application.skill.usage", "control", ("skill.usage.record",)
         ),
+        "skill.invoke": CommandSemantics(
+            "application.skill.invoke", "control", ("skill.invoke",)
+        ),
         **{
             f"registry.entry.{action.value}": CommandSemantics(
                 "application.registry.lifecycle",
@@ -249,6 +253,7 @@ _COMMAND_TARGETS = MappingProxyType(
         "skill.version.pin": ("skill_version", "uuid"),
         "skill.version.unpin": ("skill_version", "uuid"),
         "skill.usage.record": ("skill_usage", "uuid"),
+        "skill.invoke": ("task", "required"),
         **{
             f"registry.entry.{action.value}": ("registry_entry", "required")
             for action in RegistryLifecycleAction
@@ -317,6 +322,7 @@ _COMMAND_PAYLOAD_FIELDS = MappingProxyType(
         "skill.version.pin": (frozenset({"expected_revision"}), frozenset()),
         "skill.version.unpin": (frozenset({"expected_revision"}), frozenset()),
         "skill.usage.record": (frozenset({"record"}), frozenset()),
+        "skill.invoke": (frozenset({"request"}), frozenset()),
         "registry.entry.add": (frozenset({"entry_kind", "definition"}), frozenset()),
         "registry.entry.enable": (frozenset({"entry_kind"}), frozenset()),
         "registry.entry.disable": (frozenset({"entry_kind"}), frozenset()),
@@ -341,6 +347,7 @@ class AuthorizedApplicationCommand:
     skill_version: SkillVersionRecord | None = None
     skill_decision: SkillLifecycleDecision | None = None
     skill_usage: SkillUsageRecord | None = None
+    skill_invocation: SkillInvocationRequest | None = None
 
 
 class ApplicationCommandAuthority:
@@ -395,6 +402,7 @@ class ApplicationCommandAuthority:
         skill_version: SkillVersionRecord | None = None
         skill_decision: SkillLifecycleDecision | None = None
         skill_usage: SkillUsageRecord | None = None
+        skill_invocation: SkillInvocationRequest | None = None
 
         try:
             if normalized.command_type == "run.initialize":
@@ -595,6 +603,27 @@ class ApplicationCommandAuthority:
                     f"skill:{skill_usage.requested_skill}",
                     f"task:{skill_usage.task_id}",
                 )
+            elif normalized.command_type == "skill.invoke":
+                skill_invocation = SkillInvocationRequest.model_validate(
+                    normalized.payload["request"]
+                )
+                if normalized.target_id != skill_invocation.context.task_id:
+                    raise ValueError("skill invocation target differs from its task context")
+                if skill_invocation.context.consuming_identity != normalized.actor_id:
+                    raise MishkanError(
+                        ErrorCode.AUTHORITY_NOT_GRANTED,
+                        "skill invocation identity must match the authenticated command actor",
+                    )
+                requested = (
+                    f"skill:{skill_invocation.requested_name}"
+                    if skill_invocation.requested_name is not None
+                    else (
+                        f"skill-bundle:{skill_invocation.bundle_id}"
+                        if skill_invocation.bundle_id is not None
+                        else "skill-selection:automatic"
+                    )
+                )
+                external_resources = (requested, f"task:{skill_invocation.context.task_id}")
             elif normalized.target_id is not None:
                 external_resources = (f"{normalized.target_type}:{normalized.target_id}",)
         except (KeyError, TypeError, ValueError, ValidationError) as exc:
@@ -639,6 +668,7 @@ class ApplicationCommandAuthority:
             skill_version=skill_version,
             skill_decision=skill_decision,
             skill_usage=skill_usage,
+            skill_invocation=skill_invocation,
         )
 
     @staticmethod

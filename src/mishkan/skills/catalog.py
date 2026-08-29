@@ -77,60 +77,7 @@ class SkillCatalog:
         )
 
     def select(self, name: str, context: SkillSelectionContext) -> SkillSelection:
-        metadata = self._metadata.get(name)
-        if metadata is None:
-            return SkillSelection(
-                requested_name=name,
-                context=context,
-                outcome=SkillUseOutcome.MISS,
-                reason="skill is not present in the configured catalogue",
-                missing_conditions=(f"skill:{name}",),
-            )
-        unavailable = self._availability(metadata, context)
-        if unavailable:
-            return SkillSelection(
-                requested_name=name,
-                context=context,
-                outcome=SkillUseOutcome.MISS,
-                reason="skill is not eligible for this task context",
-                missing_conditions=unavailable,
-            )
-        fallback_bindings: dict[str, str] = {}
-        missing_tools: list[str] = []
-        for tool in metadata.required_tools:
-            if tool in context.available_tools:
-                continue
-            fallback = next(
-                (
-                    candidate
-                    for candidate in metadata.fallback_tools.get(tool, ())
-                    if candidate in context.available_tools
-                ),
-                None,
-            )
-            if fallback is None:
-                missing_tools.append(f"tool:{tool}")
-            else:
-                fallback_bindings[tool] = fallback
-        if missing_tools:
-            return SkillSelection(
-                requested_name=name,
-                context=context,
-                outcome=SkillUseOutcome.MISS,
-                reason="skill required tools are unavailable",
-                missing_conditions=tuple(sorted(missing_tools)),
-            )
-        outcome = SkillUseOutcome.PARTIAL if fallback_bindings else SkillUseOutcome.HIT
-        return SkillSelection(
-            requested_name=name,
-            context=context,
-            outcome=outcome,
-            selected=metadata,
-            reason=(
-                "compatible fallback tool selected" if fallback_bindings else "skill is eligible"
-            ),
-            fallback_bindings=fallback_bindings,
-        )
+        return select_skill_metadata(name, self._metadata.get(name), context)
 
     def load_instructions(self, selection: SkillSelection) -> LoadedSkill:
         metadata = selection.selected
@@ -548,6 +495,149 @@ class SkillCatalog:
             message,
             details={"path": str(path)},
         )
+
+
+def validate_skill_metadata_document(metadata: SkillMetadata, content: bytes) -> str:
+    """Verify client-supplied Level-0 metadata against the immutable SKILL.md bytes."""
+    try:
+        text = content.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise MishkanError(ErrorCode.SKILL_CONTRACT, "SKILL.md must be UTF-8 text") from exc
+    lines = text.splitlines(keepends=True)
+    if not lines or lines[0].strip() != "---":
+        raise MishkanError(ErrorCode.SKILL_CONTRACT, "SKILL.md must start with YAML frontmatter")
+    closing = next(
+        (index for index, line in enumerate(lines[1:], 1) if line.strip() == "---"),
+        None,
+    )
+    if closing is None:
+        raise MishkanError(ErrorCode.SKILL_CONTRACT, "SKILL.md frontmatter is incomplete")
+    try:
+        document = yaml.safe_load("".join(lines[1:closing]))
+    except yaml.YAMLError as exc:
+        raise MishkanError(
+            ErrorCode.SKILL_CONTRACT, "SKILL.md frontmatter is invalid YAML"
+        ) from exc
+    if not isinstance(document, dict):
+        raise MishkanError(ErrorCode.SKILL_CONTRACT, "SKILL.md frontmatter must be a mapping")
+    declared_metadata = document.get("metadata") or {}
+    if not isinstance(declared_metadata, dict):
+        raise MishkanError(ErrorCode.SKILL_CONTRACT, "skill metadata must be a mapping")
+    mishkan = declared_metadata.get("mishkan") or {}
+    if not isinstance(mishkan, dict):
+        raise MishkanError(ErrorCode.SKILL_CONTRACT, "skill metadata.mishkan must be a mapping")
+
+    def strings(key: str, default: tuple[str, ...]) -> tuple[str, ...]:
+        value = mishkan.get(key, list(default))
+        if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+            raise MishkanError(ErrorCode.SKILL_CONTRACT, f"skill {key} must be a string list")
+        return tuple(value)
+
+    raw_fallbacks = mishkan.get("fallback_tools", {})
+    if not isinstance(raw_fallbacks, dict) or any(
+        not isinstance(key, str)
+        or not isinstance(value, list)
+        or not all(isinstance(item, str) for item in value)
+        for key, value in raw_fallbacks.items()
+    ):
+        raise MishkanError(ErrorCode.SKILL_CONTRACT, "skill fallback_tools is invalid")
+    fallbacks = {str(key): tuple(value) for key, value in raw_fallbacks.items()}
+    declared = {
+        "name": document.get("name"),
+        "description": document.get("description"),
+        "version": declared_metadata.get("version"),
+        "license": document.get("license"),
+        "compatibility_summary": document.get("compatibility"),
+        "allowed_tools_hint": document.get("allowed-tools"),
+        "author_claim": declared_metadata.get("author"),
+        "platforms": strings("platforms", ("*",)),
+        "required_tools": strings("required_tools", ()),
+        "fallback_tools": fallbacks,
+        "organization_versions": strings("organization_versions", ("*",)),
+        "task_classes": strings("task_classes", ()),
+    }
+    observed = {
+        "name": metadata.name,
+        "description": metadata.description,
+        "version": metadata.version,
+        "license": metadata.license,
+        "compatibility_summary": metadata.compatibility_summary,
+        "allowed_tools_hint": metadata.allowed_tools_hint,
+        "author_claim": metadata.author_claim,
+        "platforms": metadata.platforms,
+        "required_tools": metadata.required_tools,
+        "fallback_tools": metadata.fallback_tools,
+        "organization_versions": metadata.organization_versions,
+        "task_classes": metadata.task_classes,
+    }
+    if declared != observed:
+        raise MishkanError(
+            ErrorCode.SKILL_TRUST,
+            "skill Level-0 metadata differs from immutable SKILL.md frontmatter",
+        )
+    body = "".join(lines[closing + 1 :])
+    if not body.strip():
+        raise MishkanError(ErrorCode.SKILL_CONTRACT, "SKILL.md has no operating instructions")
+    return f"sha256:{hashlib.sha256(content).hexdigest()}"
+
+
+def select_skill_metadata(
+    requested_name: str,
+    metadata: SkillMetadata | None,
+    context: SkillSelectionContext,
+) -> SkillSelection:
+    """Apply the same compatibility rules to filesystem or durable metadata."""
+    if metadata is None:
+        return SkillSelection(
+            requested_name=requested_name,
+            context=context,
+            outcome=SkillUseOutcome.MISS,
+            reason="skill is not present in the configured catalogue",
+            missing_conditions=(f"skill:{requested_name}",),
+        )
+    unavailable = SkillCatalog._availability(metadata, context)
+    if unavailable:
+        return SkillSelection(
+            requested_name=requested_name,
+            context=context,
+            outcome=SkillUseOutcome.MISS,
+            reason="skill is not eligible for this task context",
+            missing_conditions=unavailable,
+        )
+    fallback_bindings: dict[str, str] = {}
+    missing_tools: list[str] = []
+    for tool in metadata.required_tools:
+        if tool in context.available_tools:
+            continue
+        fallback = next(
+            (
+                candidate
+                for candidate in metadata.fallback_tools.get(tool, ())
+                if candidate in context.available_tools
+            ),
+            None,
+        )
+        if fallback is None:
+            missing_tools.append(f"tool:{tool}")
+        else:
+            fallback_bindings[tool] = fallback
+    if missing_tools:
+        return SkillSelection(
+            requested_name=requested_name,
+            context=context,
+            outcome=SkillUseOutcome.MISS,
+            reason="skill required tools are unavailable",
+            missing_conditions=tuple(sorted(missing_tools)),
+        )
+    outcome = SkillUseOutcome.PARTIAL if fallback_bindings else SkillUseOutcome.HIT
+    return SkillSelection(
+        requested_name=requested_name,
+        context=context,
+        outcome=outcome,
+        selected=metadata,
+        reason=("compatible fallback tool selected" if fallback_bindings else "skill is eligible"),
+        fallback_bindings=fallback_bindings,
+    )
 
 
 def default_selection_context(

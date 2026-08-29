@@ -16,10 +16,13 @@ from mishkan.daemon import DaemonBootstrap, create_app
 from mishkan.daemon.auth import TokenFile
 from mishkan.domain.identity import new_id
 from mishkan.skills import (
+    SkillInvocationRequest,
     SkillLifecycleDecision,
+    SkillMetadata,
     SkillMutationAction,
     SkillMutationDisposition,
     SkillProvenanceLock,
+    SkillSelectionContext,
     SkillSourceKind,
     SkillVersionRecord,
     SkillVersionState,
@@ -91,6 +94,18 @@ Review only the accepted change and attach evidence.
         skill_version="1.0.0",
         state=SkillVersionState.CANDIDATE,
         package_collection_id=collection.collection_id,
+        metadata=SkillMetadata(
+            name="code-review",
+            description="Review accepted software changes.",
+            version="1.0.0",
+            source_id="research-proposal",
+            source_kind=SkillSourceKind.PROJECT,
+            source_revision="artifact-collection:" + str(collection.collection_id),
+            package_uri=f"research-proposal:code-review@{collection.collection_id}",
+            package_fingerprint=_fingerprint({"SKILL.md": instructions}),
+            trust="trusted",
+            activation="candidate",
+        ),
         provenance=SkillProvenanceLock(
             source_id="research-proposal",
             source_kind=SkillSourceKind.PROJECT,
@@ -149,5 +164,42 @@ Review only the accepted change and attach evidence.
             assert active.status_code == 200
             assert active.json()["state"] == "active"
             assert active.json()["policy_fingerprint"] != "0" * 64
+
+            invocation = SkillInvocationRequest(
+                requested_name="code-review",
+                context=SkillSelectionContext(
+                    task_id="task-review-1",
+                    task_class="software.review",
+                    consuming_identity=token.principal_id,
+                    platform="linux",
+                    organization_version="*",
+                ),
+            )
+            invoked = await client.post(
+                "/v1/commands",
+                headers=headers,
+                json=ApplicationCommand(
+                    command_type="skill.invoke",
+                    actor_id=token.principal_id,
+                    target_type="task",
+                    target_id="task-review-1",
+                    payload={"request": invocation.model_dump(mode="json")},
+                ).model_dump(mode="json"),
+            )
+            assert invoked.status_code == 200, invoked.text
+            invocation_evidence = invoked.json()["payload"]
+            assert invocation_evidence["outcome"] == "hit"
+            assert invocation_evidence["load_evidence"][0]["skill_name"] == "code-review"
+            assert invocation_evidence["package_collections"] == {
+                "code-review": str(collection.collection_id)
+            }
+            usage = await client.get(
+                "/v1/skill-usage/summary",
+                headers=headers,
+                params={"task_class": "software.review", "skill_name": "code-review"},
+            )
+            assert usage.status_code == 200
+            assert usage.json()["hits"] == 1
+            assert usage.json()["misses"] == 0
 
     asyncio.run(scenario())

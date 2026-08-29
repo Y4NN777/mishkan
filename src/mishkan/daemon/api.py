@@ -75,8 +75,10 @@ from mishkan.policy import Decision
 from mishkan.policy.models import EffectivePolicy
 from mishkan.runtime import TaskReviewRejection
 from mishkan.skills import SkillInspectionProfileLoader, SkillPackageInspector
+from mishkan.skills.catalog import validate_skill_metadata_document
 from mishkan.skills.models import SkillUsageSummary, SkillVersionRecord
 from mishkan.skills.repository import SQLiteSkillLifecycleRepository, SQLiteSkillUsageRepository
+from mishkan.skills.service import SkillInvocationService
 from mishkan.tools.inspection import ContentInspector, InspectionProfileLoader
 from mishkan.tools.isolation import IsolationProfileLoader, observe_container_commands
 from mishkan.tools.lifecycle import ToolRegistryLifecycle
@@ -221,6 +223,7 @@ def create_app(
     skill_lifecycle: SQLiteSkillLifecycleRepository | None = None
     skill_usage: SQLiteSkillUsageRepository | None = None
     skill_inspector: SkillPackageInspector | None = None
+    skill_invocation_service: SkillInvocationService | None = None
     if config.skills is not None:
         skill_lifecycle = SQLiteSkillLifecycleRepository(
             paths.database, busy_timeout_ms=persistence.busy_timeout_ms
@@ -233,6 +236,14 @@ def create_app(
                 config.skills.inspection_profile,
                 paths.workspace,
             )
+        )
+        skill_invocation_service = SkillInvocationService(
+            skill_lifecycle,
+            skill_usage,
+            artifacts,
+            bundles=config.skills.bundles,
+            automatic_selection=config.skills.automatic_selection,
+            max_automatic_skills=config.skills.max_automatic_skills,
         )
     changes = ChangeSetService(
         paths.database,
@@ -534,6 +545,7 @@ def create_app(
                                 skill_lifecycle,
                                 skill_usage,
                                 skill_inspector,
+                                skill_invocation_service,
                             )
                         except MishkanError as error:
                             return repository.fail_reserved(
@@ -1127,6 +1139,7 @@ def _dispatch(
     skill_lifecycle: SQLiteSkillLifecycleRepository | None,
     skill_usage: SQLiteSkillUsageRepository | None,
     skill_inspector: SkillPackageInspector | None,
+    skill_invocation_service: SkillInvocationService | None,
 ) -> tuple[str, dict[str, object]]:
     payload = command.payload
     if command.command_type == "system.checkpoint" and command.target_type == "system":
@@ -1340,6 +1353,18 @@ def _dispatch(
             skill_entries[logical_path] = artifacts.read_bytes(artifact_reference)
         if "SKILL.md" not in skill_entries:
             raise MishkanError(ErrorCode.SKILL_CONTRACT, "skill package has no SKILL.md")
+        if version.metadata.activation.value != "candidate":
+            raise MishkanError(
+                ErrorCode.SKILL_TRUST,
+                "new skill metadata must enter as a candidate",
+            )
+        resources = tuple(sorted(path for path in skill_entries if path != "SKILL.md"))
+        if version.metadata.resource_paths != resources:
+            raise MishkanError(
+                ErrorCode.SKILL_TRUST,
+                "skill metadata resource paths differ from its immutable collection",
+            )
+        validate_skill_metadata_document(version.metadata, skill_entries["SKILL.md"])
         effective_version = version.model_copy(
             update={"policy_fingerprint": authorized.decision.policy_fingerprint}
         )
@@ -1398,6 +1423,15 @@ def _dispatch(
         )
         recorded = skill_usage.record(effective_usage)
         return "skill.usage_recorded", recorded.model_dump(mode="json")
+    if command.command_type == "skill.invoke":
+        request = authorized.skill_invocation
+        if skill_invocation_service is None or request is None:
+            raise MishkanError(ErrorCode.REQUIRED_DEPENDENCY, "Skills invocation is not configured")
+        evidence = skill_invocation_service.invoke(
+            request,
+            policy_fingerprint=authorized.decision.policy_fingerprint,
+        )
+        return "skill.invocation_resolved", evidence.model_dump(mode="json")
     raise MishkanError(
         ErrorCode.OUTPUT_CONTRACT,
         "application command type has no registered handler",

@@ -410,6 +410,7 @@ class SkillVersionRecord(SkillModel):
     skill_version: str = Field(pattern=r"^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$")
     state: SkillVersionState
     package_collection_id: UUID
+    metadata: SkillMetadata
     provenance: SkillProvenanceLock
     inspection: SkillInspectionResult | None = None
     base_version_id: UUID | None = None
@@ -429,10 +430,61 @@ class SkillVersionRecord(SkillModel):
 
     @model_validator(mode="after")
     def package_matches_provenance(self) -> SkillVersionRecord:
+        if (
+            self.metadata.name != self.skill_name
+            or self.metadata.version != self.skill_version
+            or self.metadata.package_fingerprint != self.provenance.package_fingerprint
+            or self.metadata.source_id != self.provenance.source_id
+            or self.metadata.source_kind is not self.provenance.source_kind
+            or self.metadata.source_revision != self.provenance.resolved_revision
+        ):
+            raise ValueError("skill metadata differs from its version or provenance lock")
         if self.inspection is not None and (
             self.inspection.package_fingerprint != self.provenance.package_fingerprint
         ):
             raise ValueError("skill inspection belongs to another package")
+        return self
+
+
+class SkillInvocationRequest(SkillModel):
+    schema_version: Literal["1.0"] = "1.0"
+    requested_name: str | None = Field(
+        default=None,
+        pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$",
+        max_length=64,
+    )
+    bundle_id: str | None = Field(
+        default=None,
+        pattern=r"^[a-z][a-z0-9_.-]{2,127}$",
+    )
+    context: SkillSelectionContext
+
+    @model_validator(mode="after")
+    def explicit_target_is_unambiguous(self) -> SkillInvocationRequest:
+        if self.requested_name is not None and self.bundle_id is not None:
+            raise ValueError("skill invocation cannot request a skill and bundle together")
+        return self
+
+
+class SkillInvocationEvidence(SkillModel):
+    schema_version: Literal["1.0"] = "1.0"
+    request: SkillInvocationRequest
+    outcome: SkillUseOutcome
+    selections: tuple[SkillSelection, ...]
+    load_evidence: tuple[SkillLoadEvidence, ...]
+    package_collections: dict[str, UUID]
+    instruction_artifacts: dict[str, str]
+    reason: str = Field(min_length=1, max_length=2_048)
+
+    @model_validator(mode="after")
+    def loaded_skills_have_exact_artifact_evidence(self) -> SkillInvocationEvidence:
+        names = {item.skill_name for item in self.load_evidence}
+        if set(self.package_collections) != names or set(self.instruction_artifacts) != names:
+            raise ValueError("loaded skills require exact collection and instruction artifacts")
+        if self.outcome is SkillUseOutcome.MISS and names:
+            raise ValueError("missed skill invocation cannot contain loaded skills")
+        if self.outcome is not SkillUseOutcome.MISS and not names:
+            raise ValueError("successful skill invocation requires load evidence")
         return self
 
 

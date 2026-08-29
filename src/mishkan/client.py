@@ -35,7 +35,12 @@ from mishkan.events import (
     EventHold as EventEvidenceHold,
 )
 from mishkan.execution import CursorRead, ExecutionSession
-from mishkan.skills.models import SkillUsageSummary, SkillVersionRecord
+from mishkan.skills.models import (
+    SkillInvocationEvidence,
+    SkillInvocationRequest,
+    SkillUsageSummary,
+    SkillVersionRecord,
+)
 
 
 class Mishkan:
@@ -443,6 +448,19 @@ class Mishkan:
         )
         response.raise_for_status()
         return SkillUsageSummary.model_validate(response.json())
+
+    def invoke_skill(self, request: SkillInvocationRequest) -> SkillInvocationEvidence:
+        """Resolve and load active instructions through the governed command path."""
+        result = self.command(
+            ApplicationCommand(
+                command_type="skill.invoke",
+                actor_id=self.principal_id,
+                target_type="task",
+                target_id=request.context.task_id,
+                payload={"request": request.model_dump(mode="json")},
+            )
+        )
+        return SkillInvocationEvidence.model_validate(result.payload)
 
     def mcp_connections(
         self,

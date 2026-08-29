@@ -1281,6 +1281,61 @@ def active_skill(
     )
 
 
+@skill_app.command("invoke")
+def invoke_skill(
+    ctx: typer.Context,
+    task_id: Annotated[str, typer.Argument(help="Durable task identity.")],
+    task_class: Annotated[str, typer.Argument(help="Exact task class.")],
+    selector: Annotated[
+        str | None,
+        typer.Argument(help="Slash skill selector such as /code-review."),
+    ] = None,
+    bundle: Annotated[
+        str | None,
+        typer.Option(help="Configured bundle identity; mutually exclusive with selector."),
+    ] = None,
+    organization_version: Annotated[
+        str,
+        typer.Option(help="Organization definition revision used by the task."),
+    ] = "*",
+    platform: Annotated[
+        str | None,
+        typer.Option(help="Observed target platform; defaults to the current Python platform."),
+    ] = None,
+    available_tool: Annotated[
+        list[str] | None,
+        typer.Option("--available-tool", help="Actually available tool identity; repeatable."),
+    ] = None,
+) -> None:
+    """Resolve explicit `/skill`, bundle, or automatic skills and return exact evidence."""
+    import sys
+
+    from mishkan.skills import SkillInvocationRequest, SkillSelectionContext
+
+    requested_name: str | None = None
+    if selector is not None:
+        if not selector.startswith("/") or len(selector) == 1:
+            raise typer.BadParameter("selector must use slash form, for example /code-review")
+        requested_name = selector[1:]
+    if requested_name is not None and bundle is not None:
+        raise typer.BadParameter("selector and --bundle are mutually exclusive")
+    with _daemon_client(ctx) as client:
+        request = SkillInvocationRequest(
+            requested_name=requested_name,
+            bundle_id=bundle,
+            context=SkillSelectionContext(
+                task_id=task_id,
+                task_class=task_class,
+                consuming_identity=client.principal_id,
+                platform=platform or sys.platform,
+                organization_version=organization_version,
+                available_tools=frozenset(available_tool or ()),
+            ),
+        )
+        evidence = client.invoke_skill(request)
+    _emit(evidence.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
 @skill_app.command("register")
 def register_skill(
     ctx: typer.Context,
