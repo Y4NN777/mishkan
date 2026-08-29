@@ -1,6 +1,6 @@
 schema_version: "1.0"
 source_id: bundled.local
-revision: "10"
+revision: "11"
 adoption_authority: MISHKAN release
 priority: 0
 rules:
@@ -143,6 +143,12 @@ rules:
         - registry.entry.update
         - registry.entry.remove
         - registry.entry.set_precedence
+        - skill.version.register
+        - skill.version.decide
+        - skill.version.archive
+        - skill.version.pin
+        - skill.version.unpin
+        - skill.usage.record
       roles: [application-client]
       capabilities:
         - application.system.checkpoint
@@ -166,7 +172,9 @@ rules:
         - application.mcp.connect
         - application.mcp.control
         - application.registry.lifecycle
-      effect_classes: [control, coordination, artifact, filesystem, process, external, registry_lifecycle]
+        - application.skill.lifecycle
+        - application.skill.usage
+      effect_classes: [control, coordination, artifact, filesystem, process, external, registry_lifecycle, skill_lifecycle]
       effects: ["*"]
       paths: ["*"]
       executables: ["*"]

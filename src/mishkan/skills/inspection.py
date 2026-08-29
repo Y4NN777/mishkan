@@ -54,10 +54,7 @@ class SkillPackageInspector:
         root = package.resolve()
         if not root.is_dir():
             raise MishkanError(ErrorCode.SKILL_CONTRACT, "skill package is not a directory")
-        findings: list[SkillInspectionFinding] = []
-        digest = hashlib.sha256()
-        scanned_files = 0
-        scanned_bytes = 0
+        entries: list[tuple[str, bytes]] = []
         for path in sorted(root.rglob("*"), key=lambda item: item.as_posix()):
             if path.is_symlink():
                 raise MishkanError(
@@ -66,9 +63,6 @@ class SkillPackageInspector:
                 )
             if not path.is_file():
                 continue
-            scanned_files += 1
-            if scanned_files > self.profile.max_scanned_files:
-                raise self._bounded_error("file count")
             logical_path = path.relative_to(root).as_posix()
             if any(part in {"", ".", ".."} for part in PurePosixPath(logical_path).parts):
                 raise MishkanError(ErrorCode.SKILL_CONTRACT, "skill package path is invalid")
@@ -80,6 +74,30 @@ class SkillPackageInspector:
                     "skill package content cannot be inspected",
                     details={"path": logical_path, "reason": type(exc).__name__},
                 ) from exc
+            entries.append((logical_path, content))
+        return self.inspect_entries(dict(entries), expected_fingerprint=expected_fingerprint)
+
+    def inspect_entries(
+        self,
+        entries: dict[str, bytes],
+        *,
+        expected_fingerprint: str,
+    ) -> SkillInspectionResult:
+        findings: list[SkillInspectionFinding] = []
+        digest = hashlib.sha256()
+        scanned_bytes = 0
+        if len(entries) > self.profile.max_scanned_files:
+            raise self._bounded_error("file count")
+        for logical_path, content in sorted(entries.items()):
+            path = PurePosixPath(logical_path)
+            if (
+                not logical_path
+                or "\\" in logical_path
+                or "\x00" in logical_path
+                or path.is_absolute()
+                or any(part in {"", ".", ".."} for part in path.parts)
+            ):
+                raise MishkanError(ErrorCode.SKILL_CONTRACT, "skill package path is invalid")
             if len(content) > self.profile.max_scanned_file_bytes:
                 raise self._bounded_error("file bytes")
             scanned_bytes += len(content)
@@ -128,7 +146,7 @@ class SkillPackageInspector:
             profile_fingerprint=self.profile.fingerprint,
             package_fingerprint=observed_fingerprint,
             findings=tuple(findings),
-            scanned_files=scanned_files,
+            scanned_files=len(entries),
             scanned_bytes=scanned_bytes,
             quarantined=quarantined,
         )

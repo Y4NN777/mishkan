@@ -409,7 +409,7 @@ class SkillVersionRecord(SkillModel):
     skill_name: str = Field(pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$", max_length=64)
     skill_version: str = Field(pattern=r"^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$")
     state: SkillVersionState
-    package_artifact_id: UUID
+    package_collection_id: UUID
     provenance: SkillProvenanceLock
     inspection: SkillInspectionResult | None = None
     base_version_id: UUID | None = None

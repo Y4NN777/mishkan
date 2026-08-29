@@ -85,7 +85,7 @@ def _candidate(
         skill_name="code-review",
         skill_version=skill_version,
         state=SkillVersionState.CANDIDATE,
-        package_artifact_id=new_id(),
+        package_collection_id=new_id(),
         provenance=SkillProvenanceLock(
             source_id="project-skills",
             source_kind=SkillSourceKind.PROJECT,

@@ -35,6 +35,7 @@ from mishkan.events import (
     EventHold as EventEvidenceHold,
 )
 from mishkan.execution import CursorRead, ExecutionSession
+from mishkan.skills.models import SkillUsageSummary, SkillVersionRecord
 
 
 class Mishkan:
@@ -401,6 +402,47 @@ class Mishkan:
         )
         response.raise_for_status()
         return tuple(dict(item) for item in response.json())
+
+    def skills(
+        self,
+        *,
+        offset: int = 0,
+        limit: int = 100,
+        name: str | None = None,
+    ) -> tuple[SkillVersionRecord, ...]:
+        params: dict[str, str | int] = {"offset": offset, "limit": limit}
+        if name is not None:
+            params["name"] = name
+        response = self._client.get("/v1/skills", headers=self._headers(), params=params)
+        response.raise_for_status()
+        return tuple(SkillVersionRecord.model_validate(item) for item in response.json())
+
+    def active_skill(self, name: str) -> SkillVersionRecord | None:
+        identity = quote(name, safe="")
+        response = self._client.get(
+            f"/v1/skills/{identity}/active",
+            headers=self._headers(),
+        )
+        response.raise_for_status()
+        payload = response.json()
+        return None if payload is None else SkillVersionRecord.model_validate(payload)
+
+    def skill_usage_summary(
+        self,
+        task_class: str,
+        *,
+        skill_name: str | None = None,
+    ) -> SkillUsageSummary:
+        params: dict[str, str] = {"task_class": task_class}
+        if skill_name is not None:
+            params["skill_name"] = skill_name
+        response = self._client.get(
+            "/v1/skill-usage/summary",
+            headers=self._headers(),
+            params=params,
+        )
+        response.raise_for_status()
+        return SkillUsageSummary.model_validate(response.json())
 
     def mcp_connections(
         self,

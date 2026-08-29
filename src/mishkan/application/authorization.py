@@ -40,6 +40,11 @@ from mishkan.policy import (
     PolicyLoader,
     ResourceRequest,
 )
+from mishkan.skills.models import (
+    SkillLifecycleDecision,
+    SkillUsageRecord,
+    SkillVersionRecord,
+)
 from mishkan.tools.models import RegistryEntryKind, RegistryLifecycleAction, RegistryMutation
 
 
@@ -172,6 +177,24 @@ COMMAND_SEMANTICS = MappingProxyType(
         "mcp.call.reconcile": CommandSemantics(
             "application.mcp.control", "external", ("mcp.call.reconcile",), True
         ),
+        "skill.version.register": CommandSemantics(
+            "application.skill.lifecycle", "skill_lifecycle", ("skill.version.register",)
+        ),
+        "skill.version.decide": CommandSemantics(
+            "application.skill.lifecycle", "skill_lifecycle", ("skill.version.decide",)
+        ),
+        "skill.version.archive": CommandSemantics(
+            "application.skill.lifecycle", "skill_lifecycle", ("skill.version.archive",)
+        ),
+        "skill.version.pin": CommandSemantics(
+            "application.skill.lifecycle", "skill_lifecycle", ("skill.version.pin",)
+        ),
+        "skill.version.unpin": CommandSemantics(
+            "application.skill.lifecycle", "skill_lifecycle", ("skill.version.unpin",)
+        ),
+        "skill.usage.record": CommandSemantics(
+            "application.skill.usage", "control", ("skill.usage.record",)
+        ),
         **{
             f"registry.entry.{action.value}": CommandSemantics(
                 "application.registry.lifecycle",
@@ -220,6 +243,12 @@ _COMMAND_TARGETS = MappingProxyType(
         "mcp.connection.connect": ("mcp_connection", "required"),
         "mcp.call.cancel": ("mcp_call", "uuid"),
         "mcp.call.reconcile": ("mcp_call", "uuid"),
+        "skill.version.register": ("skill_version", "uuid"),
+        "skill.version.decide": ("skill_version", "uuid"),
+        "skill.version.archive": ("skill_version", "uuid"),
+        "skill.version.pin": ("skill_version", "uuid"),
+        "skill.version.unpin": ("skill_version", "uuid"),
+        "skill.usage.record": ("skill_usage", "uuid"),
         **{
             f"registry.entry.{action.value}": ("registry_entry", "required")
             for action in RegistryLifecycleAction
@@ -279,6 +308,15 @@ _COMMAND_PAYLOAD_FIELDS = MappingProxyType(
         "mcp.connection.connect": (frozenset(), frozenset()),
         "mcp.call.cancel": (frozenset(), frozenset()),
         "mcp.call.reconcile": (frozenset(), frozenset()),
+        "skill.version.register": (frozenset({"record"}), frozenset()),
+        "skill.version.decide": (frozenset({"decision"}), frozenset()),
+        "skill.version.archive": (
+            frozenset({"decision", "expected_revision"}),
+            frozenset(),
+        ),
+        "skill.version.pin": (frozenset({"expected_revision"}), frozenset()),
+        "skill.version.unpin": (frozenset({"expected_revision"}), frozenset()),
+        "skill.usage.record": (frozenset({"record"}), frozenset()),
         "registry.entry.add": (frozenset({"entry_kind", "definition"}), frozenset()),
         "registry.entry.enable": (frozenset({"entry_kind"}), frozenset()),
         "registry.entry.disable": (frozenset({"entry_kind"}), frozenset()),
@@ -300,6 +338,9 @@ class AuthorizedApplicationCommand:
     session_request: ExecutionRequest | None = None
     git_request: GitEffectRequest | None = None
     registry_mutation: RegistryMutation | None = None
+    skill_version: SkillVersionRecord | None = None
+    skill_decision: SkillLifecycleDecision | None = None
+    skill_usage: SkillUsageRecord | None = None
 
 
 class ApplicationCommandAuthority:
@@ -351,6 +392,9 @@ class ApplicationCommandAuthority:
         session_request: ExecutionRequest | None = None
         git_request: GitEffectRequest | None = None
         registry_mutation: RegistryMutation | None = None
+        skill_version: SkillVersionRecord | None = None
+        skill_decision: SkillLifecycleDecision | None = None
+        skill_usage: SkillUsageRecord | None = None
 
         try:
             if normalized.command_type == "run.initialize":
@@ -512,6 +556,45 @@ class ApplicationCommandAuthority:
                 external_resources = (
                     f"registry:{registry_mutation.entry_kind.value}:{registry_mutation.identity}",
                 )
+            elif normalized.command_type == "skill.version.register":
+                skill_version = SkillVersionRecord.model_validate(normalized.payload["record"])
+                if normalized.target_id != str(skill_version.id):
+                    raise ValueError("skill target differs from its immutable version identity")
+                external_resources = (
+                    f"skill:{skill_version.skill_name}@{skill_version.skill_version}",
+                    f"artifact-collection:{skill_version.package_collection_id}",
+                )
+                effects = tuple(sorted({*effects, f"skill.{skill_version.mutation_action.value}"}))
+            elif normalized.command_type in {"skill.version.decide", "skill.version.archive"}:
+                skill_decision = SkillLifecycleDecision.model_validate(
+                    normalized.payload["decision"]
+                )
+                if normalized.target_id != str(skill_decision.version_id):
+                    raise ValueError("skill decision targets another immutable version")
+                effects = tuple(
+                    sorted(
+                        {
+                            *effects,
+                            f"skill.disposition.{skill_decision.disposition.value}",
+                            *(
+                                ("skill.quarantine.override",)
+                                if skill_decision.quarantine_override
+                                else ()
+                            ),
+                        }
+                    )
+                )
+                external_resources = (f"skill-version:{skill_decision.version_id}",)
+            elif normalized.command_type in {"skill.version.pin", "skill.version.unpin"}:
+                external_resources = (f"skill-version:{self._target_uuid(normalized)}",)
+            elif normalized.command_type == "skill.usage.record":
+                skill_usage = SkillUsageRecord.model_validate(normalized.payload["record"])
+                if normalized.target_id != str(skill_usage.id):
+                    raise ValueError("skill usage target differs from its evidence identity")
+                external_resources = (
+                    f"skill:{skill_usage.requested_skill}",
+                    f"task:{skill_usage.task_id}",
+                )
             elif normalized.target_id is not None:
                 external_resources = (f"{normalized.target_type}:{normalized.target_id}",)
         except (KeyError, TypeError, ValueError, ValidationError) as exc:
@@ -553,6 +636,9 @@ class ApplicationCommandAuthority:
             session_request=session_request,
             git_request=git_request,
             registry_mutation=registry_mutation,
+            skill_version=skill_version,
+            skill_decision=skill_decision,
+            skill_usage=skill_usage,
         )
 
     @staticmethod

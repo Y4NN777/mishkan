@@ -5,12 +5,14 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
-from collections.abc import AsyncIterator, Iterator, Mapping
+from collections.abc import AsyncIterator, Callable, Iterator, Mapping
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Annotated, Literal
+from functools import partial
+from typing import Annotated, Literal, ParamSpec, TypeVar
 from uuid import UUID
 
+import anyio
 from fastapi import Depends, FastAPI, Header, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -72,9 +74,24 @@ from mishkan.persistence import LocalRunRepository, SchemaManager, SQLiteApplica
 from mishkan.policy import Decision
 from mishkan.policy.models import EffectivePolicy
 from mishkan.runtime import TaskReviewRejection
+from mishkan.skills import SkillInspectionProfileLoader, SkillPackageInspector
+from mishkan.skills.models import SkillUsageSummary, SkillVersionRecord
+from mishkan.skills.repository import SQLiteSkillLifecycleRepository, SQLiteSkillUsageRepository
 from mishkan.tools.inspection import ContentInspector, InspectionProfileLoader
 from mishkan.tools.isolation import IsolationProfileLoader, observe_container_commands
 from mishkan.tools.lifecycle import ToolRegistryLifecycle
+
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
+
+
+async def _thread_call(function: Callable[_P, _R], /, *args: _P.args, **kwargs: _P.kwargs) -> _R:
+    """Keep sync work off-loop while remaining live if a thread wakeup is coalesced."""
+    call = partial(function, *args, **kwargs)
+    task = asyncio.create_task(anyio.to_thread.run_sync(call))
+    while not task.done():
+        await asyncio.sleep(0.01)
+    return task.result()
 
 
 class _RequestBodyLimitMiddleware:
@@ -109,16 +126,25 @@ class _RequestBodyLimitMiddleware:
             if not message.get("more_body", False):
                 break
         delivered = False
+        response_complete = asyncio.Event()
 
         async def replay() -> Message:
             nonlocal delivered
             if delivered:
-                await asyncio.Event().wait()
-                raise RuntimeError("unreachable request receive state")
+                await response_complete.wait()
+                return {"type": "http.disconnect"}
             delivered = True
             return {"type": "http.request", "body": bytes(body), "more_body": False}
 
-        await self._app(scope, replay, send)
+        async def observe_send(message: Message) -> None:
+            await send(message)
+            if message["type"] == "http.response.body" and not message.get("more_body", False):
+                response_complete.set()
+
+        try:
+            await self._app(scope, replay, observe_send)
+        finally:
+            response_complete.set()
 
     @staticmethod
     async def _reject(scope: Scope, receive: Receive, send: Send) -> None:
@@ -192,6 +218,22 @@ def create_app(
         staging_ttl_seconds=artifact_config.staging_ttl_seconds,
         content_inspector=content_inspector,
     )
+    skill_lifecycle: SQLiteSkillLifecycleRepository | None = None
+    skill_usage: SQLiteSkillUsageRepository | None = None
+    skill_inspector: SkillPackageInspector | None = None
+    if config.skills is not None:
+        skill_lifecycle = SQLiteSkillLifecycleRepository(
+            paths.database, busy_timeout_ms=persistence.busy_timeout_ms
+        )
+        skill_usage = SQLiteSkillUsageRepository(
+            paths.database, busy_timeout_ms=persistence.busy_timeout_ms
+        )
+        skill_inspector = SkillPackageInspector(
+            SkillInspectionProfileLoader().load(
+                config.skills.inspection_profile,
+                paths.workspace,
+            )
+        )
     changes = ChangeSetService(
         paths.database,
         paths.workspace,
@@ -414,7 +456,7 @@ def create_app(
 
                     async def execute_run() -> CommandResult:
                         async with run_execution_lock:
-                            await asyncio.to_thread(
+                            await _thread_call(
                                 MishkanInitializer().run,
                                 config,
                                 paths.workspace,
@@ -466,12 +508,12 @@ def create_app(
                 async def execute_effect() -> CommandResult:
                     async with target_lock:
                         try:
-                            await asyncio.to_thread(
+                            await _thread_call(
                                 repository.verify_reserved_precondition,
                                 command,
                                 target_id=target_id,
                             )
-                            event_type, result_payload = await asyncio.to_thread(
+                            event_type, result_payload = await _thread_call(
                                 _dispatch,
                                 command,
                                 authorized,
@@ -489,6 +531,9 @@ def create_app(
                                 mcp_runner,
                                 mcp_config,
                                 resolved_credentials,
+                                skill_lifecycle,
+                                skill_usage,
+                                skill_inspector,
                             )
                         except MishkanError as error:
                             return repository.fail_reserved(
@@ -611,7 +656,7 @@ def create_app(
 
     @app.get("/v1/health")
     async def health() -> dict[str, str]:
-        status = await asyncio.to_thread(SchemaManager(paths.database).status)
+        status = SchemaManager(paths.database).status()
         return {"status": "ready", "schema": status.head_revision}
 
     @app.post("/v1/commands", response_model=CommandResult)
@@ -625,14 +670,14 @@ def create_app(
     async def snapshot(
         _principal: TokenRecord = authenticated,
     ) -> SnapshotEnvelope:
-        return await asyncio.to_thread(repository.snapshot, limit=daemon.event_page_limit)
+        return await _thread_call(repository.snapshot, limit=daemon.event_page_limit)
 
     @app.get("/v1/tools/registry")
     async def tool_registry(
         _principal: TokenRecord = authenticated,
         limit: Annotated[int, Query(ge=1, le=1_000)] = 1_000,
     ) -> dict[str, object]:
-        entries = await asyncio.to_thread(registry_lifecycle.entries, limit=limit)
+        entries = await _thread_call(registry_lifecycle.entries, limit=limit)
         return {
             "entries": [entry.model_dump(mode="json") for entry in entries],
             "count": len(entries),
@@ -654,7 +699,7 @@ def create_app(
         occurred_before: datetime | None = None,
         security_relevant: bool | None = None,
     ) -> EventPage:
-        return await asyncio.to_thread(
+        return await _thread_call(
             repository.events,
             after_cursor=after,
             limit=limit or daemon.event_page_limit,
@@ -675,7 +720,7 @@ def create_app(
         _principal: TokenRecord = authenticated,
         active_only: bool = False,
     ) -> tuple[EventEvidenceHold, ...]:
-        return await asyncio.to_thread(repository.event_holds, active_only=active_only)
+        return await _thread_call(repository.event_holds, active_only=active_only)
 
     @app.get("/v1/events/retention-policy")
     async def event_retention_policy_query(
@@ -690,7 +735,7 @@ def create_app(
     async def event_retention_plans(
         _principal: TokenRecord = authenticated,
     ) -> tuple[EventRetentionPlan, ...]:
-        return await asyncio.to_thread(repository.event_retention_plans)
+        return await _thread_call(repository.event_retention_plans)
 
     @app.get("/v1/events/stream")
     async def event_stream(
@@ -718,7 +763,7 @@ def create_app(
                     ErrorCode.OUTPUT_CONTRACT,
                     "Last-Event-ID must contain an integer event cursor",
                 ) from exc
-        initial = await asyncio.to_thread(
+        initial = await _thread_call(
             repository.events,
             after_cursor=cursor,
             limit=daemon.event_page_limit,
@@ -756,7 +801,7 @@ def create_app(
                 if heartbeat_elapsed >= daemon.heartbeat_seconds:
                     yield f": heartbeat {current}\n\n"
                     heartbeat_elapsed = 0.0
-                page = await asyncio.to_thread(
+                page = await _thread_call(
                     repository.events,
                     after_cursor=current,
                     limit=daemon.event_page_limit,
@@ -784,21 +829,21 @@ def create_app(
         offset: Annotated[int, Query(ge=0)] = 0,
         limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
     ) -> tuple[ArtifactManifest, ...]:
-        return await asyncio.to_thread(artifacts.list_manifests, offset=offset, limit=limit)
+        return await _thread_call(artifacts.list_manifests, offset=offset, limit=limit)
 
     @app.get("/v1/artifacts/{artifact_id}")
     async def artifact_manifest(
         artifact_id: str,
         _principal: TokenRecord = authenticated,
     ) -> ArtifactManifest:
-        return await asyncio.to_thread(artifacts.manifest, f"artifact:{artifact_id}")
+        return await _thread_call(artifacts.manifest, f"artifact:{artifact_id}")
 
     @app.get("/v1/artifacts/{artifact_id}/content")
     async def artifact_content(
         artifact_id: str,
         _principal: TokenRecord = authenticated,
     ) -> StreamingResponse:
-        manifest = await asyncio.to_thread(artifacts.manifest, f"artifact:{artifact_id}")
+        manifest = await _thread_call(artifacts.manifest, f"artifact:{artifact_id}")
 
         def body() -> Iterator[bytes]:
             yield from artifacts.iter_bytes(
@@ -816,7 +861,7 @@ def create_app(
         upload_id: UUID,
         _principal: TokenRecord = authenticated,
     ) -> UploadSession:
-        return await asyncio.to_thread(artifacts.upload, upload_id)
+        return await _thread_call(artifacts.upload, upload_id)
 
     @app.get("/v1/artifact-collections")
     async def artifact_collection_list(
@@ -824,7 +869,7 @@ def create_app(
         offset: Annotated[int, Query(ge=0)] = 0,
         limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
     ) -> tuple[ArtifactCollection, ...]:
-        return await asyncio.to_thread(artifacts.list_collections, offset=offset, limit=limit)
+        return await _thread_call(artifacts.list_collections, offset=offset, limit=limit)
 
     @app.get("/v1/artifact-references")
     async def artifact_reference_list(
@@ -832,7 +877,7 @@ def create_app(
         offset: Annotated[int, Query(ge=0)] = 0,
         limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
     ) -> tuple[WorkingReference, ...]:
-        return await asyncio.to_thread(artifacts.list_references, offset=offset, limit=limit)
+        return await _thread_call(artifacts.list_references, offset=offset, limit=limit)
 
     @app.get("/v1/artifact-holds")
     async def artifact_hold_list(
@@ -840,7 +885,7 @@ def create_app(
         offset: Annotated[int, Query(ge=0)] = 0,
         limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
     ) -> tuple[ArtifactEvidenceHold, ...]:
-        return await asyncio.to_thread(artifacts.list_holds, offset=offset, limit=limit)
+        return await _thread_call(artifacts.list_holds, offset=offset, limit=limit)
 
     @app.get("/v1/artifact-pins")
     async def artifact_pin_list(
@@ -848,7 +893,7 @@ def create_app(
         offset: Annotated[int, Query(ge=0)] = 0,
         limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
     ) -> tuple[ArtifactPin, ...]:
-        return await asyncio.to_thread(artifacts.list_pins, offset=offset, limit=limit)
+        return await _thread_call(artifacts.list_pins, offset=offset, limit=limit)
 
     @app.get("/v1/change-sets")
     async def change_set_list(
@@ -856,14 +901,14 @@ def create_app(
         offset: Annotated[int, Query(ge=0)] = 0,
         limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
     ) -> tuple[ChangeSetResult, ...]:
-        return await asyncio.to_thread(changes.list, offset=offset, limit=limit)
+        return await _thread_call(changes.list, offset=offset, limit=limit)
 
     @app.get("/v1/change-sets/{change_set_id}")
     async def change_set_get(
         change_set_id: UUID,
         _principal: TokenRecord = authenticated,
     ) -> ChangeSetResult:
-        return await asyncio.to_thread(changes.get, change_set_id)
+        return await _thread_call(changes.get, change_set_id)
 
     @app.get("/v1/sessions")
     async def session_list(
@@ -871,14 +916,14 @@ def create_app(
         offset: Annotated[int, Query(ge=0)] = 0,
         limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
     ) -> tuple[ExecutionSession, ...]:
-        return await asyncio.to_thread(supervisor.list, offset=offset, limit=limit)
+        return await _thread_call(supervisor.list, offset=offset, limit=limit)
 
     @app.get("/v1/sessions/{session_id}")
     async def session_get(
         session_id: UUID,
         _principal: TokenRecord = authenticated,
     ) -> ExecutionSession:
-        return await asyncio.to_thread(supervisor.status, session_id)
+        return await _thread_call(supervisor.status, session_id)
 
     @app.get("/v1/sessions/{session_id}/output")
     async def session_output(
@@ -890,7 +935,7 @@ def create_app(
         binary: bool = False,
     ) -> CursorRead:
         selected: Literal["stdout", "stderr"] = "stdout" if channel == "stdout" else "stderr"
-        return await asyncio.to_thread(
+        return await _thread_call(
             supervisor.read,
             session_id,
             channel=selected,
@@ -905,7 +950,7 @@ def create_app(
         offset: Annotated[int, Query(ge=0)] = 0,
         limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
     ) -> tuple[dict[str, object], ...]:
-        return await asyncio.to_thread(repository.runs, offset=offset, limit=limit)
+        return await _thread_call(repository.runs, offset=offset, limit=limit)
 
     @app.get("/v1/runs/{run_id}/tasks")
     async def task_list(
@@ -914,14 +959,53 @@ def create_app(
         offset: Annotated[int, Query(ge=0)] = 0,
         limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
     ) -> tuple[dict[str, object], ...]:
-        return await asyncio.to_thread(repository.tasks, run_id, offset=offset, limit=limit)
+        return await _thread_call(repository.tasks, run_id, offset=offset, limit=limit)
 
     @app.get("/v1/runs/{run_id}/review-rejections")
     async def review_rejection_list(
         run_id: str,
         _principal: TokenRecord = authenticated,
     ) -> tuple[TaskReviewRejection, ...]:
-        return await asyncio.to_thread(run_repository.rejected_reviews, run_id)
+        return await _thread_call(run_repository.rejected_reviews, run_id)
+
+    @app.get("/v1/skills")
+    async def skill_version_list(
+        _principal: TokenRecord = authenticated,
+        offset: Annotated[int, Query(ge=0)] = 0,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
+        name: str | None = None,
+    ) -> tuple[SkillVersionRecord, ...]:
+        if skill_lifecycle is None:
+            return ()
+        return await _thread_call(
+            skill_lifecycle.list_versions,
+            offset=offset,
+            limit=limit,
+            skill_name=name,
+        )
+
+    @app.get("/v1/skills/{skill_name}/active")
+    async def active_skill_version(
+        skill_name: str,
+        _principal: TokenRecord = authenticated,
+    ) -> SkillVersionRecord | None:
+        if skill_lifecycle is None:
+            return None
+        return await _thread_call(skill_lifecycle.active, skill_name)
+
+    @app.get("/v1/skill-usage/summary")
+    async def skill_usage_summary(
+        task_class: str,
+        _principal: TokenRecord = authenticated,
+        skill_name: str | None = None,
+    ) -> SkillUsageSummary:
+        if skill_usage is None:
+            raise MishkanError(ErrorCode.REQUIRED_DEPENDENCY, "Skills capability is not configured")
+        return await _thread_call(
+            skill_usage.summary,
+            task_class,
+            requested_skill=skill_name,
+        )
 
     @app.get("/v1/mcp/connections")
     async def mcp_connection_list(
@@ -931,7 +1015,7 @@ def create_app(
     ) -> tuple[dict[str, object], ...]:
         if mcp_repository is None:
             return ()
-        connections = await asyncio.to_thread(
+        connections = await _thread_call(
             mcp_repository.list_connections,
             offset=offset,
             limit=limit,
@@ -945,7 +1029,7 @@ def create_app(
     ) -> tuple[dict[str, object], ...]:
         if mcp_repository is None:
             return ()
-        primitives = await asyncio.to_thread(mcp_repository.list_primitives, connection_id)
+        primitives = await _thread_call(mcp_repository.list_primitives, connection_id)
         return tuple(item.model_dump(mode="json") for item in primitives)
 
     @app.get("/v1/mcp/connections/{connection_id}/contracts")
@@ -956,7 +1040,7 @@ def create_app(
         if mcp_repository is None or mcp_config is None:
             return ()
         factory = McpContractFactory(mcp_config)
-        primitives = await asyncio.to_thread(mcp_repository.list_primitives, connection_id)
+        primitives = await _thread_call(mcp_repository.list_primitives, connection_id)
         return tuple(
             factory.build(connection_id, item).model_dump(mode="json")
             for item in primitives
@@ -971,7 +1055,7 @@ def create_app(
     ) -> tuple[dict[str, object], ...]:
         if mcp_repository is None:
             return ()
-        return await asyncio.to_thread(mcp_repository.list_calls, offset=offset, limit=limit)
+        return await _thread_call(mcp_repository.list_calls, offset=offset, limit=limit)
 
     @app.get("/v1/mcp/calls/{request_id}/progress")
     async def mcp_progress_list(
@@ -983,7 +1067,7 @@ def create_app(
         if mcp_repository is None:
             return ()
         assert mcp_config is not None
-        progress = await asyncio.to_thread(
+        progress = await _thread_call(
             mcp_repository.progress_after,
             request_id,
             cursor,
@@ -1040,6 +1124,9 @@ def _dispatch(
     mcp_runner: McpServiceRunner | None,
     mcp_config: McpConfig | None,
     resolved_credentials: dict[str, str],
+    skill_lifecycle: SQLiteSkillLifecycleRepository | None,
+    skill_usage: SQLiteSkillUsageRepository | None,
+    skill_inspector: SkillPackageInspector | None,
 ) -> tuple[str, dict[str, object]]:
     payload = command.payload
     if command.command_type == "system.checkpoint" and command.target_type == "system":
@@ -1232,6 +1319,85 @@ def _dispatch(
         request_id = UUID(command.target_id)
         mcp_result = mcp_runner.resume_remote_task(request_id, credentials=resolved_credentials)
         return "mcp.call_reconciled", mcp_result.model_dump(mode="json")
+    if command.command_type == "skill.version.register":
+        version = authorized.skill_version
+        if skill_lifecycle is None or skill_inspector is None or version is None:
+            raise MishkanError(ErrorCode.REQUIRED_DEPENDENCY, "Skills lifecycle is not configured")
+        collection = artifacts.collection(version.package_collection_id)
+        total = 0
+        skill_entries: dict[str, bytes] = {}
+        for logical_path, artifact_reference in collection.entries.items():
+            manifest = artifacts.manifest(artifact_reference)
+            total += manifest.size_bytes
+            if (
+                manifest.size_bytes > skill_inspector.profile.max_scanned_file_bytes
+                or total > skill_inspector.profile.max_total_bytes
+            ):
+                raise MishkanError(
+                    ErrorCode.SKILL_TRUST,
+                    "skill artifact collection exceeds configured inspection bounds",
+                )
+            skill_entries[logical_path] = artifacts.read_bytes(artifact_reference)
+        if "SKILL.md" not in skill_entries:
+            raise MishkanError(ErrorCode.SKILL_CONTRACT, "skill package has no SKILL.md")
+        effective_version = version.model_copy(
+            update={"policy_fingerprint": authorized.decision.policy_fingerprint}
+        )
+        registered = skill_lifecycle.register_candidate(effective_version)
+        inspection = skill_inspector.inspect_entries(
+            skill_entries,
+            expected_fingerprint=registered.provenance.package_fingerprint,
+        )
+        inspected = skill_lifecycle.record_inspection(
+            str(registered.id),
+            inspection,
+            expected_revision=registered.revision,
+        )
+        return "skill.version_inspected", inspected.model_dump(mode="json")
+    if command.command_type == "skill.version.decide":
+        decision = authorized.skill_decision
+        if skill_lifecycle is None or decision is None:
+            raise MishkanError(ErrorCode.REQUIRED_DEPENDENCY, "Skills lifecycle is not configured")
+        effective_decision = decision.model_copy(
+            update={"policy_fingerprint": authorized.decision.policy_fingerprint}
+        )
+        decided = skill_lifecycle.decide(effective_decision)
+        return f"skill.version_{decided.state.value}", decided.model_dump(mode="json")
+    if command.command_type == "skill.version.archive":
+        decision = authorized.skill_decision
+        if skill_lifecycle is None or decision is None or command.target_id is None:
+            raise MishkanError(ErrorCode.REQUIRED_DEPENDENCY, "Skills lifecycle is not configured")
+        effective_decision = decision.model_copy(
+            update={"policy_fingerprint": authorized.decision.policy_fingerprint}
+        )
+        archived = skill_lifecycle.archive(
+            command.target_id,
+            effective_decision,
+            expected_revision=int(payload["expected_revision"]),
+        )
+        return "skill.version_archived", archived.model_dump(mode="json")
+    if command.command_type in {"skill.version.pin", "skill.version.unpin"}:
+        if skill_lifecycle is None or command.target_id is None:
+            raise MishkanError(ErrorCode.REQUIRED_DEPENDENCY, "Skills lifecycle is not configured")
+        pinned = command.command_type.endswith(".pin")
+        version = skill_lifecycle.set_pin(
+            command.target_id,
+            pinned=pinned,
+            expected_revision=int(payload["expected_revision"]),
+        )
+        return (
+            "skill.version_pinned" if pinned else "skill.version_unpinned",
+            version.model_dump(mode="json"),
+        )
+    if command.command_type == "skill.usage.record":
+        usage = authorized.skill_usage
+        if skill_usage is None or usage is None:
+            raise MishkanError(ErrorCode.REQUIRED_DEPENDENCY, "Skills usage is not configured")
+        effective_usage = usage.model_copy(
+            update={"policy_fingerprint": authorized.decision.policy_fingerprint}
+        )
+        recorded = skill_usage.record(effective_usage)
+        return "skill.usage_recorded", recorded.model_dump(mode="json")
     raise MishkanError(
         ErrorCode.OUTPUT_CONTRACT,
         "application command type has no registered handler",

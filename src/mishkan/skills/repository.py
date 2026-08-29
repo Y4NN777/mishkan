@@ -354,6 +354,26 @@ class SQLiteSkillLifecycleRepository:
             ).all()
             return tuple(self._record(row) for row in rows)
 
+    def list_versions(
+        self,
+        *,
+        offset: int = 0,
+        limit: int = 100,
+        skill_name: str | None = None,
+    ) -> tuple[SkillVersionRecord, ...]:
+        if offset < 0 or limit < 1 or limit > 1_000:
+            raise MishkanError(ErrorCode.OUTPUT_CONTRACT, "skill query bound is invalid")
+        query = select(SkillVersionRow)
+        if skill_name is not None:
+            query = query.where(SkillVersionRow.skill_name == skill_name)
+        with Session(self._engine) as session:
+            rows = session.scalars(
+                query.order_by(SkillVersionRow.updated_at, SkillVersionRow.id)
+                .offset(offset)
+                .limit(limit)
+            ).all()
+            return tuple(self._record(row) for row in rows)
+
     def _activate_pointer(
         self,
         session: Session,

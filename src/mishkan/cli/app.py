@@ -33,6 +33,7 @@ terminal_app = typer.Typer(help="Open and control daemon-owned PTY sessions.")
 job_app = typer.Typer(help="Start and control daemon-owned managed jobs.")
 run_app = typer.Typer(help="Inspect, cancel, and recover durable runs.")
 mcp_app = typer.Typer(help="Connect and inspect governed MCP peers through mishkand.")
+skill_app = typer.Typer(help="Inspect and govern procedural skill versions through mishkand.")
 app.add_typer(config_app, name="config")
 app.add_typer(schema_app, name="schema")
 app.add_typer(daemon_app, name="daemon")
@@ -46,6 +47,7 @@ app.add_typer(terminal_app, name="terminal")
 app.add_typer(job_app, name="job")
 app.add_typer(run_app, name="run")
 app.add_typer(mcp_app, name="mcp")
+app.add_typer(skill_app, name="skill")
 
 
 @dataclass(frozen=True, slots=True)
@@ -1247,6 +1249,220 @@ def _run_effect(
             )
         )
     _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@skill_app.command("list")
+def list_skills(
+    ctx: typer.Context,
+    name: Annotated[str | None, typer.Option(help="Filter by exact skill identity.")] = None,
+    offset: Annotated[int, typer.Option(min=0)] = 0,
+    limit: Annotated[int, typer.Option(min=1, max=1_000)] = 100,
+) -> None:
+    """List bounded immutable skill versions and their lifecycle state."""
+    with _daemon_client(ctx) as client:
+        values = client.skills(name=name, offset=offset, limit=limit)
+    _emit(
+        [value.model_dump(mode="json") for value in values],
+        as_json=_state(ctx).json_output,
+    )
+
+
+@skill_app.command("active")
+def active_skill(
+    ctx: typer.Context,
+    name: Annotated[str, typer.Argument(help="Exact skill identity.")],
+) -> None:
+    """Show the active immutable version, if one exists."""
+    with _daemon_client(ctx) as client:
+        value = client.active_skill(name)
+    _emit(
+        None if value is None else value.model_dump(mode="json"),
+        as_json=_state(ctx).json_output,
+    )
+
+
+@skill_app.command("register")
+def register_skill(
+    ctx: typer.Context,
+    record_file: Annotated[
+        Path,
+        typer.Option("--record", help="JSON SkillVersionRecord referencing an ArtifactCollection."),
+    ],
+    expected_revision: Annotated[int, typer.Option(min=0)] = 0,
+) -> None:
+    """Register and inspect an Artifact-first candidate through effective policy."""
+    from mishkan.application import ApplicationCommand
+    from mishkan.skills import SkillVersionRecord
+
+    try:
+        record = SkillVersionRecord.model_validate_json(record_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter("--record must contain a valid SkillVersionRecord") from exc
+    with _daemon_client(ctx) as client:
+        result = client.command(
+            ApplicationCommand(
+                command_type="skill.version.register",
+                actor_id=client.principal_id,
+                target_type="skill_version",
+                target_id=str(record.id),
+                expected_revision=expected_revision,
+                payload={"record": record.model_dump(mode="json")},
+            )
+        )
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@skill_app.command("decide")
+def decide_skill(
+    ctx: typer.Context,
+    version_id: Annotated[str, typer.Argument(help="Skill version UUID.")],
+    disposition: Annotated[
+        str,
+        typer.Option(help="One of allow, require_review, or deny."),
+    ],
+    reason: Annotated[str, typer.Option(help="Non-secret decision reason.")],
+    expected_revision: Annotated[int | None, typer.Option(min=0)] = None,
+    expected_active: Annotated[
+        str | None, typer.Option(help="Current active version UUID.")
+    ] = None,
+    quarantine_override: Annotated[
+        bool,
+        typer.Option(help="Request the separately governed quarantine-override effect."),
+    ] = False,
+) -> None:
+    """Stage, deny, or atomically activate an inspected skill version."""
+    from uuid import UUID
+
+    from mishkan.application import ApplicationCommand
+    from mishkan.skills import SkillLifecycleDecision, SkillMutationDisposition
+
+    try:
+        selected = SkillMutationDisposition(disposition)
+        identity = UUID(version_id)
+        current = None if expected_active is None else UUID(expected_active)
+    except ValueError as exc:
+        raise typer.BadParameter("invalid disposition or skill version UUID") from exc
+    with _daemon_client(ctx) as client:
+        decision = SkillLifecycleDecision(
+            version_id=identity,
+            disposition=selected,
+            actor_id=client.principal_id,
+            policy_fingerprint="0" * 64,
+            expected_active_version_id=current,
+            quarantine_override=quarantine_override,
+            reason=reason,
+        )
+        result = client.command(
+            ApplicationCommand(
+                command_type="skill.version.decide",
+                actor_id=client.principal_id,
+                target_type="skill_version",
+                target_id=version_id,
+                expected_revision=expected_revision,
+                payload={"decision": decision.model_dump(mode="json")},
+            )
+        )
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@skill_app.command("archive")
+def archive_skill(
+    ctx: typer.Context,
+    version_id: Annotated[str, typer.Argument(help="Skill version UUID.")],
+    version_revision: Annotated[int, typer.Option(min=1, help="Lifecycle CAS revision.")],
+    reason: Annotated[str, typer.Option(help="Non-secret archival reason.")],
+    expected_revision: Annotated[int | None, typer.Option(min=0)] = None,
+) -> None:
+    """Archive one unpinned version without erasing its history."""
+    from uuid import UUID
+
+    from mishkan.application import ApplicationCommand
+    from mishkan.skills import SkillLifecycleDecision, SkillMutationDisposition
+
+    try:
+        identity = UUID(version_id)
+    except ValueError as exc:
+        raise typer.BadParameter("skill version identity must be a UUID") from exc
+    with _daemon_client(ctx) as client:
+        decision = SkillLifecycleDecision(
+            version_id=identity,
+            disposition=SkillMutationDisposition.ALLOW,
+            actor_id=client.principal_id,
+            policy_fingerprint="0" * 64,
+            reason=reason,
+        )
+        result = client.command(
+            ApplicationCommand(
+                command_type="skill.version.archive",
+                actor_id=client.principal_id,
+                target_type="skill_version",
+                target_id=version_id,
+                expected_revision=expected_revision,
+                payload={
+                    "decision": decision.model_dump(mode="json"),
+                    "expected_revision": version_revision,
+                },
+            )
+        )
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+def _pin_skill(
+    ctx: typer.Context,
+    version_id: str,
+    version_revision: int,
+    expected_revision: int | None,
+    *,
+    pinned: bool,
+) -> None:
+    from mishkan.application import ApplicationCommand
+
+    with _daemon_client(ctx) as client:
+        result = client.command(
+            ApplicationCommand(
+                command_type="skill.version.pin" if pinned else "skill.version.unpin",
+                actor_id=client.principal_id,
+                target_type="skill_version",
+                target_id=version_id,
+                expected_revision=expected_revision,
+                payload={"expected_revision": version_revision},
+            )
+        )
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@skill_app.command("pin")
+def pin_skill(
+    ctx: typer.Context,
+    version_id: str,
+    version_revision: Annotated[int, typer.Option(min=1)],
+    expected_revision: Annotated[int | None, typer.Option(min=0)] = None,
+) -> None:
+    """Protect a skill version from configured archival curation."""
+    _pin_skill(ctx, version_id, version_revision, expected_revision, pinned=True)
+
+
+@skill_app.command("unpin")
+def unpin_skill(
+    ctx: typer.Context,
+    version_id: str,
+    version_revision: Annotated[int, typer.Option(min=1)],
+    expected_revision: Annotated[int | None, typer.Option(min=0)] = None,
+) -> None:
+    """Remove archival protection through the same command authority."""
+    _pin_skill(ctx, version_id, version_revision, expected_revision, pinned=False)
+
+
+@skill_app.command("usage")
+def skill_usage(
+    ctx: typer.Context,
+    task_class: Annotated[str, typer.Argument(help="Exact task class.")],
+    name: Annotated[str | None, typer.Option(help="Optional exact skill identity.")] = None,
+) -> None:
+    """Show durable hit, partial, and miss aggregates without activating anything."""
+    with _daemon_client(ctx) as client:
+        summary = client.skill_usage_summary(task_class, skill_name=name)
+    _emit(summary.model_dump(mode="json"), as_json=_state(ctx).json_output)
 
 
 @mcp_app.command("connect")
