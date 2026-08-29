@@ -102,6 +102,8 @@ def test_public_contract_catalogue_exports_deterministically(tmp_path: Path) -> 
         "change-set-v1.schema.json",
         "command-result-v1.schema.json",
         "config-v1.schema.json",
+        "context-pack-manifest-v1.schema.json",
+        "context-pack-materialization-v1.schema.json",
         "domain-record-v1.schema.json",
         "error-envelope-v1.schema.json",
         "event-envelope-v1.schema.json",

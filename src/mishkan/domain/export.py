@@ -34,6 +34,7 @@ from mishkan.browser.models import (
     BrowserSessionRequest,
 )
 from mishkan.config.models import MishkanConfig
+from mishkan.context.models import ContextPackManifest, ContextPackMaterialization
 from mishkan.domain.errors import ErrorEnvelope
 from mishkan.domain.identity import DomainRecord
 from mishkan.edits.git import GitEffectRequest, GitEffectResult
@@ -96,6 +97,8 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "change-set-v1.schema.json": ChangeSet,
     "command-result-v1.schema.json": CommandResult,
     "config-v1.schema.json": MishkanConfig,
+    "context-pack-manifest-v1.schema.json": ContextPackManifest,
+    "context-pack-materialization-v1.schema.json": ContextPackMaterialization,
     "domain-record-v1.schema.json": DomainRecord,
     "error-envelope-v1.schema.json": ErrorEnvelope,
     "event-envelope-v1.schema.json": EventEnvelope,
