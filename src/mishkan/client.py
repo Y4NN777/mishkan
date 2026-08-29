@@ -28,6 +28,12 @@ from mishkan.artifacts import (
 )
 from mishkan.daemon.auth import TokenFile
 from mishkan.edits import ChangeSetResult
+from mishkan.environment import (
+    EnvironmentBinding,
+    EnvironmentBindingRequest,
+    EnvironmentObservation,
+    EnvironmentObservationRequest,
+)
 from mishkan.events import (
     EventEnvelope,
     EventPage,
@@ -569,6 +575,51 @@ class Mishkan:
         response = self._client.get("/v1/skill-curation", headers=self._headers())
         response.raise_for_status()
         return tuple(SkillCurationProposal.model_validate(item) for item in response.json())
+
+    def observe_environment(
+        self,
+        request: EnvironmentObservationRequest,
+    ) -> EnvironmentObservation:
+        result = self.command(
+            ApplicationCommand(
+                command_type="environment.observe",
+                actor_id=self.principal_id,
+                target_type="environment_observation",
+                target_id=str(request.observation_id),
+                payload={"request": request.model_dump(mode="json")},
+            )
+        )
+        return EnvironmentObservation.model_validate(result.payload)
+
+    def resolve_environment(self, request: EnvironmentBindingRequest) -> EnvironmentBinding:
+        result = self.command(
+            ApplicationCommand(
+                command_type="environment.resolve",
+                actor_id=self.principal_id,
+                target_type="environment_binding_request",
+                target_id=str(request.request_id),
+                payload={"request": request.model_dump(mode="json")},
+            )
+        )
+        return EnvironmentBinding.model_validate(result.payload)
+
+    def environment_observation(self, observation_id: str) -> EnvironmentObservation:
+        identity = quote(observation_id, safe="")
+        response = self._client.get(
+            f"/v1/environment/observations/{identity}",
+            headers=self._headers(),
+        )
+        response.raise_for_status()
+        return EnvironmentObservation.model_validate(response.json())
+
+    def environment_binding(self, binding_id: str) -> EnvironmentBinding:
+        identity = quote(binding_id, safe="")
+        response = self._client.get(
+            f"/v1/environment/bindings/{identity}",
+            headers=self._headers(),
+        )
+        response.raise_for_status()
+        return EnvironmentBinding.model_validate(response.json())
 
     def mcp_connections(
         self,

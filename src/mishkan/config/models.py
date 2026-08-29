@@ -594,6 +594,7 @@ class MishkanConfig(StrictConfigModel):
     browser: BrowserConfig | None = None
     mcp: McpConfig | None = None
     skills: SkillsConfig | None = None
+    engineering_profile: str | None = None
 
     @field_validator("timezone")
     @classmethod
@@ -602,7 +603,7 @@ class MishkanConfig(StrictConfigModel):
 
     @model_validator(mode="after")
     def references_exist(self) -> Self:
-        if self.schema_version in {"1.1", "1.2", "1.3", "1.4"}:
+        if self.schema_version in {"1.1", "1.2", "1.3", "1.4", "1.5"}:
             missing = [
                 field
                 for field, value in (
@@ -616,7 +617,7 @@ class MishkanConfig(StrictConfigModel):
                 raise ValueError(
                     f"configuration 1.1 requires governed capability fields: {missing}"
                 )
-        if self.schema_version in {"1.2", "1.3", "1.4"}:
+        if self.schema_version in {"1.2", "1.3", "1.4", "1.5"}:
             missing_daemon = [
                 field
                 for field, value in (
@@ -629,7 +630,7 @@ class MishkanConfig(StrictConfigModel):
             ]
             if missing_daemon:
                 raise ValueError(f"configuration 1.2 requires daemon fields: {missing_daemon}")
-        if self.schema_version in {"1.3", "1.4"}:
+        if self.schema_version in {"1.3", "1.4", "1.5"}:
             missing_capabilities = [
                 field
                 for field, value in (
@@ -661,8 +662,10 @@ class MishkanConfig(StrictConfigModel):
                     f"browser/MCP configuration references unknown network profiles: "
                     f"{missing_network_profiles}"
                 )
-        if self.schema_version == "1.4" and self.skills is None:
-            raise ValueError("configuration 1.4 requires the Skills capability configuration")
+        if self.schema_version in {"1.4", "1.5"} and self.skills is None:
+            raise ValueError("configuration 1.4+ requires the Skills capability configuration")
+        if self.schema_version == "1.5" and self.engineering_profile is None:
+            raise ValueError("configuration 1.5 requires an Engineering profile")
 
         missing_providers = sorted(
             {

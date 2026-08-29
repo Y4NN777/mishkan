@@ -1,0 +1,115 @@
+schema_version: "1.0"
+profile_id: engineering-default
+revision: "1"
+descriptor_paths:
+  devcontainer:
+    - .devcontainer/devcontainer.json
+    - .devcontainer.json
+  containerfile:
+    - Containerfile
+    - Dockerfile
+  compose:
+    - compose.yaml
+    - compose.yml
+    - docker-compose.yaml
+    - docker-compose.yml
+  podman_kube:
+    - podman-kube.yaml
+    - podman-kube.yml
+  quadlet:
+    - "*.container"
+    - "*.pod"
+  nix:
+    - flake.nix
+    - shell.nix
+  mise:
+    - mise.toml
+    - .mise.toml
+manifest_names:
+  go: [go.mod, go.sum]
+  javascript_typescript: [package.json, package-lock.json, pnpm-lock.yaml, yarn.lock, bun.lock]
+  java_kotlin_android: [pom.xml, build.gradle, build.gradle.kts, settings.gradle, settings.gradle.kts, gradle-wrapper.properties]
+  python: [pyproject.toml, uv.lock, poetry.lock, requirements.txt]
+  rust: [Cargo.toml, Cargo.lock]
+  c: [CMakeLists.txt, Makefile, meson.build]
+  swift: [Package.swift, Package.resolved]
+engines:
+  - engine_id: devcontainer-cli
+    executable_names: [devcontainer]
+    adapter_id: devcontainer.cli
+    semantics: [devcontainer.metadata, devcontainer.lifecycle]
+    project_markers: [.devcontainer/devcontainer.json, .devcontainer.json]
+  - engine_id: podman
+    executable_names: [podman]
+    adapter_id: podman.cli
+    semantics: [oci.build, oci.run, podman.kube, podman.quadlet]
+    platforms: [linux, darwin]
+    project_markers: [Containerfile, podman-kube.yaml, podman-kube.yml]
+  - engine_id: docker
+    executable_names: [docker]
+    adapter_id: docker.cli
+    semantics: [oci.build, oci.run, compose.lifecycle]
+    platforms: [linux, darwin]
+    project_markers: [Dockerfile, compose.yaml, compose.yml, docker-compose.yaml, docker-compose.yml]
+  - engine_id: podman-compose
+    executable_names: [podman-compose]
+    adapter_id: podman-compose.cli
+    semantics: [compose.lifecycle]
+    platforms: [linux, darwin]
+    project_markers: [compose.yaml, compose.yml, docker-compose.yaml, docker-compose.yml]
+  - engine_id: nix
+    executable_names: [nix]
+    adapter_id: nix.cli
+    semantics: [environment.materialize, dependency.acquire]
+    project_markers: [flake.nix, shell.nix]
+  - engine_id: mise
+    executable_names: [mise]
+    adapter_id: mise.cli
+    semantics: [toolchain.materialize]
+    project_markers: [mise.toml, .mise.toml]
+  - engine_id: go
+    executable_names: [go]
+    semantics: [language.build, language.test]
+    project_markers: [go.mod]
+  - engine_id: node
+    executable_names: [node]
+    semantics: [language.run]
+    project_markers: [package.json]
+  - engine_id: java
+    executable_names: [java]
+    semantics: [language.run]
+    project_markers: [pom.xml, build.gradle, build.gradle.kts]
+  - engine_id: gradle
+    executable_names: [gradle]
+    semantics: [language.build, language.test, android.build]
+    project_markers: [build.gradle, build.gradle.kts]
+  - engine_id: python
+    executable_names: [python3, python]
+    semantics: [language.run, language.test]
+    project_markers: [pyproject.toml, requirements.txt]
+  - engine_id: rust
+    executable_names: [cargo, rustc]
+    semantics: [language.build, language.test]
+    project_markers: [Cargo.toml]
+  - engine_id: c-toolchain
+    executable_names: [cc, clang, gcc]
+    semantics: [language.build, language.test]
+    project_markers: [CMakeLists.txt, Makefile, meson.build]
+  - engine_id: swift
+    executable_names: [swift]
+    semantics: [language.build, language.test]
+    platforms: [linux, darwin]
+    project_markers: [Package.swift]
+resolution_order:
+  - explicit_configuration
+  - project_declaration
+  - execution_environment
+  - active_pack
+  - isolated_materialization
+  - external_capability
+  - compatible_fallback
+max_observed_files: 10000
+max_descriptor_bytes: 4194304
+max_manifest_depth: 8
+excluded_directories: [.git, .mishkan, .venv, node_modules, build, dist, target]
+freshness_seconds: 300

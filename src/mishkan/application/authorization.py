@@ -30,6 +30,7 @@ from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.time import utc_now
 from mishkan.edits import ChangeSet
 from mishkan.edits.git import GitEffectMode, GitEffectRequest
+from mishkan.environment import EnvironmentBindingRequest, EnvironmentObservationRequest
 from mishkan.execution import ExecutionRequest, ExecutionSession
 from mishkan.policy import (
     AuthorizationDecision,
@@ -210,6 +211,12 @@ COMMAND_SEMANTICS = MappingProxyType(
         "skill.learn": CommandSemantics(
             "application.skill.learn", "skill_lifecycle", ("skill.proposal.create",)
         ),
+        "environment.observe": CommandSemantics(
+            "application.environment.observe", "read", ("environment.observe",)
+        ),
+        "environment.resolve": CommandSemantics(
+            "application.environment.resolve", "control", ("environment.resolve",)
+        ),
         **{
             f"registry.entry.{action.value}": CommandSemantics(
                 "application.registry.lifecycle",
@@ -269,6 +276,8 @@ _COMMAND_TARGETS = MappingProxyType(
         "skill.usage.record": ("skill_usage", "uuid"),
         "skill.invoke": ("task", "required"),
         "skill.learn": ("skill_learning", "uuid"),
+        "environment.observe": ("environment_observation", "uuid"),
+        "environment.resolve": ("environment_binding_request", "uuid"),
         **{
             f"registry.entry.{action.value}": ("registry_entry", "required")
             for action in RegistryLifecycleAction
@@ -351,6 +360,8 @@ _COMMAND_PAYLOAD_FIELDS = MappingProxyType(
         "skill.usage.record": (frozenset({"record"}), frozenset()),
         "skill.invoke": (frozenset({"request"}), frozenset()),
         "skill.learn": (frozenset({"request"}), frozenset()),
+        "environment.observe": (frozenset({"request"}), frozenset()),
+        "environment.resolve": (frozenset({"request"}), frozenset()),
         "registry.entry.add": (frozenset({"entry_kind", "definition"}), frozenset()),
         "registry.entry.enable": (frozenset({"entry_kind"}), frozenset()),
         "registry.entry.disable": (frozenset({"entry_kind"}), frozenset()),
@@ -377,6 +388,8 @@ class AuthorizedApplicationCommand:
     skill_usage: SkillUsageRecord | None = None
     skill_invocation: SkillInvocationRequest | None = None
     skill_learning: SkillLearningRequest | None = None
+    environment_observation: EnvironmentObservationRequest | None = None
+    environment_binding: EnvironmentBindingRequest | None = None
 
 
 class ApplicationCommandAuthority:
@@ -433,6 +446,8 @@ class ApplicationCommandAuthority:
         skill_usage: SkillUsageRecord | None = None
         skill_invocation: SkillInvocationRequest | None = None
         skill_learning: SkillLearningRequest | None = None
+        environment_observation: EnvironmentObservationRequest | None = None
+        environment_binding: EnvironmentBindingRequest | None = None
 
         try:
             if normalized.command_type == "run.initialize":
@@ -676,6 +691,49 @@ class ApplicationCommandAuthority:
                 for source in skill_learning.sources:
                     resources.append(f"learning-source:{source.kind.value}:{source.locator}")
                 external_resources = tuple(resources)
+            elif normalized.command_type == "environment.observe":
+                environment_observation = EnvironmentObservationRequest.model_validate(
+                    normalized.payload["request"]
+                )
+                if normalized.target_id != str(environment_observation.observation_id):
+                    raise ValueError("environment observation target differs from its request")
+                if environment_observation.actor_identity != normalized.actor_id:
+                    raise MishkanError(
+                        ErrorCode.AUTHORITY_NOT_GRANTED,
+                        "environment observation identity must match the authenticated actor",
+                    )
+                paths = (".",)
+                external_resources = (
+                    f"environment-context:{environment_observation.context_id}",
+                    f"execution-location:{environment_observation.execution_location}",
+                )
+            elif normalized.command_type == "environment.resolve":
+                environment_binding = EnvironmentBindingRequest.model_validate(
+                    normalized.payload["request"]
+                )
+                if normalized.target_id != str(environment_binding.request_id):
+                    raise ValueError("environment binding target differs from its request")
+                if environment_binding.owner_identity != normalized.actor_id:
+                    raise MishkanError(
+                        ErrorCode.AUTHORITY_NOT_GRANTED,
+                        "environment binding owner must match the authenticated actor",
+                    )
+                external_resources = tuple(
+                    dict.fromkeys(
+                        (
+                            f"environment-context:{environment_binding.context_id}",
+                            f"environment-observation:{environment_binding.observation_id}",
+                            *(
+                                f"engine:{engine_id}"
+                                for engine_id in environment_binding.authorized_engine_ids
+                            ),
+                            *(
+                                f"descriptor-format:{format_name}"
+                                for format_name in environment_binding.allowed_descriptor_formats
+                            ),
+                        )
+                    )
+                )
             elif normalized.target_id is not None:
                 external_resources = (f"{normalized.target_type}:{normalized.target_id}",)
         except (KeyError, TypeError, ValueError, ValidationError) as exc:
@@ -722,6 +780,8 @@ class ApplicationCommandAuthority:
             skill_usage=skill_usage,
             skill_invocation=skill_invocation,
             skill_learning=skill_learning,
+            environment_observation=environment_observation,
+            environment_binding=environment_binding,
         )
 
     @staticmethod

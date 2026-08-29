@@ -590,6 +590,57 @@ class SkillLearningRow(Base):
     updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
 
 
+class EnvironmentObservationRow(Base):
+    __tablename__ = "environment_observations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    context_id: Mapped[str] = mapped_column(String(256), nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    observed_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class EnvironmentBindingRow(Base):
+    __tablename__ = "environment_bindings"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    request_id: Mapped[str] = mapped_column(String(36), unique=True, nullable=False)
+    observation_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    context_id: Mapped[str] = mapped_column(String(256), nullable=False)
+    state: Mapped[str] = mapped_column(String(32), nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    resolved_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class EnvironmentDescriptorSetRow(Base):
+    __tablename__ = "environment_descriptor_sets"
+
+    descriptor_set_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    binding_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    recorded_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class EnvironmentAttemptRow(Base):
+    __tablename__ = "environment_attempts"
+
+    attempt_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    binding_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    recorded_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class EnvironmentVerificationRow(Base):
+    __tablename__ = "environment_verifications"
+
+    verification_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    binding_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    recorded_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
 @dataclass(frozen=True, slots=True)
 class RunSnapshot:
     run_id: str

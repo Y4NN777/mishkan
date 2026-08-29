@@ -39,6 +39,15 @@ from mishkan.domain.errors import ErrorEnvelope
 from mishkan.domain.identity import DomainRecord
 from mishkan.edits.git import GitEffectRequest, GitEffectResult
 from mishkan.edits.models import ChangeSet, ChangeSetResult
+from mishkan.environment.models import (
+    EnvironmentAttempt,
+    EnvironmentBinding,
+    EnvironmentBindingRequest,
+    EnvironmentDescriptorSet,
+    EnvironmentObservation,
+    EnvironmentObservationRequest,
+    EnvironmentVerification,
+)
 from mishkan.events.models import (
     EventEnvelope,
     EventPage,
@@ -125,6 +134,13 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "context-pack-materialization-v1.schema.json": ContextPackMaterialization,
     "domain-record-v1.schema.json": DomainRecord,
     "error-envelope-v1.schema.json": ErrorEnvelope,
+    "environment-attempt-v1.schema.json": EnvironmentAttempt,
+    "environment-binding-request-v1.schema.json": EnvironmentBindingRequest,
+    "environment-binding-v1.schema.json": EnvironmentBinding,
+    "environment-descriptor-set-v1.schema.json": EnvironmentDescriptorSet,
+    "environment-observation-request-v1.schema.json": EnvironmentObservationRequest,
+    "environment-observation-v1.schema.json": EnvironmentObservation,
+    "environment-verification-v1.schema.json": EnvironmentVerification,
     "event-envelope-v1.schema.json": EventEnvelope,
     "event-hold-v1.schema.json": EventEvidenceHold,
     "event-page-v1.schema.json": EventPage,

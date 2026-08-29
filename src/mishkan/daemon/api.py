@@ -9,6 +9,7 @@ from collections.abc import AsyncIterator, Callable, Iterator, Mapping
 from contextlib import asynccontextmanager
 from datetime import datetime
 from functools import partial
+from pathlib import Path
 from typing import Annotated, Literal, ParamSpec, TypeVar
 from uuid import UUID
 
@@ -50,6 +51,14 @@ from mishkan.daemon.bootstrap import DaemonPaths
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.edits import ChangeSet, ChangeSetResult, ChangeSetService
 from mishkan.edits.git import GovernedGitService
+from mishkan.environment import (
+    EnvironmentBinding,
+    EnvironmentObservation,
+    EnvironmentObserver,
+    EnvironmentResolver,
+    load_environment_profile,
+)
+from mishkan.environment.repository import SQLiteEnvironmentRepository
 from mishkan.events import (
     EventHold as EventEvidenceHold,
 )
@@ -231,6 +240,23 @@ def create_app(
         staging_ttl_seconds=artifact_config.staging_ttl_seconds,
         content_inspector=content_inspector,
     )
+    environment_repository: SQLiteEnvironmentRepository | None = None
+    environment_observer: EnvironmentObserver | None = None
+    environment_resolver: EnvironmentResolver | None = None
+    if config.engineering_profile is not None:
+        environment_profile = load_environment_profile(
+            config.engineering_profile,
+            paths.workspace,
+        )
+        environment_repository = SQLiteEnvironmentRepository(
+            paths.database,
+            artifacts=artifacts,
+            busy_timeout_ms=persistence.busy_timeout_ms,
+        )
+        environment_observer = EnvironmentObserver(environment_profile)
+        environment_resolver = EnvironmentResolver(
+            freshness_seconds=environment_profile.freshness_seconds
+        )
     skill_lifecycle: SQLiteSkillLifecycleRepository | None = None
     skill_usage: SQLiteSkillUsageRepository | None = None
     skill_inspector: SkillPackageInspector | None = None
@@ -582,6 +608,9 @@ def create_app(
                                 skill_inspector,
                                 skill_invocation_service,
                                 skill_learning_service,
+                                environment_repository,
+                                environment_observer,
+                                environment_resolver,
                             )
                         except MishkanError as error:
                             return repository.fail_reserved(
@@ -1090,6 +1119,30 @@ def create_app(
             return ()
         return await _thread_call(skill_maintenance.curation)
 
+    @app.get("/v1/environment/observations/{observation_id}")
+    async def environment_observation_get(
+        observation_id: UUID,
+        _principal: TokenRecord = authenticated,
+    ) -> EnvironmentObservation:
+        if environment_repository is None:
+            raise MishkanError(
+                ErrorCode.REQUIRED_DEPENDENCY,
+                "Environment capability is not configured",
+            )
+        return await _thread_call(environment_repository.observation, str(observation_id))
+
+    @app.get("/v1/environment/bindings/{binding_id}")
+    async def environment_binding_get(
+        binding_id: UUID,
+        _principal: TokenRecord = authenticated,
+    ) -> EnvironmentBinding:
+        if environment_repository is None:
+            raise MishkanError(
+                ErrorCode.REQUIRED_DEPENDENCY,
+                "Environment capability is not configured",
+            )
+        return await _thread_call(environment_repository.binding, str(binding_id))
+
     @app.get("/v1/mcp/connections")
     async def mcp_connection_list(
         _principal: TokenRecord = authenticated,
@@ -1212,6 +1265,9 @@ def _dispatch(
     skill_inspector: SkillPackageInspector | None,
     skill_invocation_service: SkillInvocationService | None,
     skill_learning_service: SkillLearningService | None,
+    environment_repository: SQLiteEnvironmentRepository | None,
+    environment_observer: EnvironmentObserver | None,
+    environment_resolver: EnvironmentResolver | None,
 ) -> tuple[str, dict[str, object]]:
     payload = command.payload
     if command.command_type == "system.checkpoint" and command.target_type == "system":
@@ -1536,6 +1592,46 @@ def _dispatch(
         return (
             f"skill.learning_{learning_record.state.value}",
             learning_record.model_dump(mode="json"),
+        )
+    if command.command_type == "environment.observe":
+        observation_request = authorized.environment_observation
+        if (
+            environment_repository is None
+            or environment_observer is None
+            or observation_request is None
+        ):
+            raise MishkanError(
+                ErrorCode.REQUIRED_DEPENDENCY,
+                "Environment observation is not configured",
+            )
+        observation = environment_observer.observe(
+            Path(authorized.request.repository),
+            request=observation_request,
+        )
+        recorded_observation = environment_repository.record_observation(observation)
+        return "environment.observed", recorded_observation.model_dump(mode="json")
+    if command.command_type == "environment.resolve":
+        binding_request = authorized.environment_binding
+        if (
+            environment_repository is None
+            or environment_resolver is None
+            or binding_request is None
+        ):
+            raise MishkanError(
+                ErrorCode.REQUIRED_DEPENDENCY,
+                "Environment resolution is not configured",
+            )
+        effective_binding_request = binding_request.model_copy(
+            update={"policy_fingerprint": authorized.decision.policy_fingerprint}
+        )
+        observation = environment_repository.observation(
+            str(effective_binding_request.observation_id)
+        )
+        binding = environment_resolver.resolve(effective_binding_request, observation)
+        recorded_binding = environment_repository.record_binding(binding)
+        return (
+            f"environment.binding_{binding.state.value}",
+            recorded_binding.model_dump(mode="json"),
         )
     raise MishkanError(
         ErrorCode.OUTPUT_CONTRACT,

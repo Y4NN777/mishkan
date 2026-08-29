@@ -9,10 +9,11 @@ class SchemaRegistry:
     """Closed registry of versions understood by the running release."""
 
     _supported: Mapping[str, frozenset[str]] = {
-        "mishkan.config": frozenset({"1.0", "1.1", "1.2", "1.3", "1.4"}),
+        "mishkan.config": frozenset({"1.0", "1.1", "1.2", "1.3", "1.4", "1.5"}),
         "mishkan.context-pack": frozenset({"1.0"}),
         "mishkan.error": frozenset({"1.0"}),
         "mishkan.discovery": frozenset({"1.0"}),
+        "mishkan.environment-profile": frozenset({"1.0"}),
         "mishkan.inspection": frozenset({"1.0"}),
         "mishkan.isolation": frozenset({"1.0"}),
         "mishkan.organization": frozenset({"1.0"}),

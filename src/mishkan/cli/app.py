@@ -34,6 +34,7 @@ job_app = typer.Typer(help="Start and control daemon-owned managed jobs.")
 run_app = typer.Typer(help="Inspect, cancel, and recover durable runs.")
 mcp_app = typer.Typer(help="Connect and inspect governed MCP peers through mishkand.")
 skill_app = typer.Typer(help="Inspect and govern procedural skill versions through mishkand.")
+environment_app = typer.Typer(help="Observe and resolve engineering environments truthfully.")
 app.add_typer(config_app, name="config")
 app.add_typer(schema_app, name="schema")
 app.add_typer(daemon_app, name="daemon")
@@ -48,6 +49,7 @@ app.add_typer(job_app, name="job")
 app.add_typer(run_app, name="run")
 app.add_typer(mcp_app, name="mcp")
 app.add_typer(skill_app, name="skill")
+app.add_typer(environment_app, name="environment")
 
 
 @dataclass(frozen=True, slots=True)
@@ -1791,6 +1793,83 @@ def skill_curation(ctx: typer.Context) -> None:
         [item.model_dump(mode="json") for item in proposals],
         as_json=_state(ctx).json_output,
     )
+
+
+@environment_app.command("observe")
+def observe_environment(
+    ctx: typer.Context,
+    context_id: Annotated[str, typer.Option(help="Mission-local environment context identity.")],
+    execution_location: Annotated[
+        str,
+        typer.Option(help="Exact machine, worker, or prospective location identity."),
+    ],
+    repository_id: Annotated[str | None, typer.Option()] = None,
+    repository_revision: Annotated[str | None, typer.Option()] = None,
+) -> None:
+    """Record bounded read-only evidence for the configured project workspace."""
+    from mishkan.environment import EnvironmentObservationRequest
+
+    with _daemon_client(ctx) as client:
+        observation = client.observe_environment(
+            EnvironmentObservationRequest(
+                actor_identity=client.principal_id,
+                context_id=context_id,
+                repository_id=repository_id,
+                repository_revision=repository_revision,
+                execution_location=execution_location,
+            )
+        )
+    _emit(observation.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@environment_app.command("resolve")
+def resolve_environment(
+    ctx: typer.Context,
+    request_file: Annotated[
+        Path,
+        typer.Option("--request", help="JSON EnvironmentBindingRequest authored by the crew."),
+    ],
+) -> None:
+    """Resolve one exact agent-authored outcome without substituting another outcome."""
+    from mishkan.environment import EnvironmentBindingRequest
+
+    try:
+        request = EnvironmentBindingRequest.model_validate_json(
+            request_file.read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter(
+            "--request must contain a valid EnvironmentBindingRequest"
+        ) from exc
+    with _daemon_client(ctx) as client:
+        if request.owner_identity != client.principal_id:
+            raise typer.BadParameter(
+                "request owner_identity must match the authenticated daemon principal"
+            )
+        binding = client.resolve_environment(request)
+    _emit(binding.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@environment_app.command("observation")
+def show_environment_observation(
+    ctx: typer.Context,
+    observation_id: Annotated[str, typer.Argument(help="Environment observation UUID.")],
+) -> None:
+    """Show one exact durable observation."""
+    with _daemon_client(ctx) as client:
+        observation = client.environment_observation(observation_id)
+    _emit(observation.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@environment_app.command("binding")
+def show_environment_binding(
+    ctx: typer.Context,
+    binding_id: Annotated[str, typer.Argument(help="Environment binding UUID.")],
+) -> None:
+    """Show one exact durable compatibility decision."""
+    with _daemon_client(ctx) as client:
+        binding = client.environment_binding(binding_id)
+    _emit(binding.model_dump(mode="json"), as_json=_state(ctx).json_output)
 
 
 @mcp_app.command("connect")
