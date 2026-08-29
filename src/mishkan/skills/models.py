@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from enum import StrEnum
 from typing import Literal
+from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from mishkan.domain.identity import new_id
+from mishkan.domain.time import require_aware, utc_now
 
 
 class SkillModel(BaseModel):
@@ -40,6 +45,11 @@ class SkillUseOutcome(StrEnum):
     HIT = "hit"
     PARTIAL = "partial"
     MISS = "miss"
+
+
+class SkillBundleMode(StrEnum):
+    ALL = "all"
+    SELECT = "select"
 
 
 class SkillBounds(SkillModel):
@@ -140,3 +150,120 @@ class SkillLoadEvidence(SkillModel):
     reason: str = Field(min_length=1, max_length=2_048)
     instruction_fingerprint: str | None = Field(default=None, pattern=r"^sha256:[a-f0-9]{64}$")
     loaded_resources: tuple[SkillLoadedResource, ...] = ()
+
+
+class SkillBundleDefinition(SkillModel):
+    schema_version: Literal["1.0"] = "1.0"
+    bundle_id: str = Field(pattern=r"^[a-z][a-z0-9_.-]{2,127}$")
+    version: str = Field(pattern=r"^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$")
+    summary: str = Field(min_length=3, max_length=1_024)
+    mode: SkillBundleMode
+    skills: tuple[str, ...] = Field(min_length=1)
+    max_selected: int | None = Field(default=None, ge=1, le=1_000)
+
+    @model_validator(mode="after")
+    def selection_bound_matches_mode(self) -> SkillBundleDefinition:
+        if len(self.skills) != len(set(self.skills)):
+            raise ValueError("skill bundle identities must be unique")
+        if self.mode is SkillBundleMode.ALL and self.max_selected is not None:
+            raise ValueError("all-mode skill bundle cannot declare max_selected")
+        if self.mode is SkillBundleMode.SELECT and self.max_selected is None:
+            raise ValueError("select-mode skill bundle requires max_selected")
+        return self
+
+
+class SkillBundleResolution(SkillModel):
+    schema_version: Literal["1.0"] = "1.0"
+    bundle_id: str = Field(min_length=1, max_length=128)
+    bundle_version: str = Field(min_length=1, max_length=128)
+    context: SkillSelectionContext
+    outcome: SkillUseOutcome
+    selections: tuple[SkillSelection, ...]
+    selected_skill_names: tuple[str, ...]
+    reason: str = Field(min_length=1, max_length=2_048)
+
+    @model_validator(mode="after")
+    def selected_names_are_proven(self) -> SkillBundleResolution:
+        proven = {
+            selection.selected.name
+            for selection in self.selections
+            if selection.selected is not None
+        }
+        if len(self.selected_skill_names) != len(set(self.selected_skill_names)):
+            raise ValueError("selected bundle skill identities must be unique")
+        if not set(self.selected_skill_names).issubset(proven):
+            raise ValueError("selected bundle skills must have eligible selection evidence")
+        if self.outcome is SkillUseOutcome.MISS and self.selected_skill_names:
+            raise ValueError("missed bundle cannot select skills")
+        if self.outcome is not SkillUseOutcome.MISS and not self.selected_skill_names:
+            raise ValueError("resolved bundle must select at least one skill")
+        return self
+
+
+class SkillUsageRecord(SkillModel):
+    schema_version: Literal["1.0"] = "1.0"
+    id: UUID = Field(default_factory=new_id)
+    task_id: str = Field(min_length=1, max_length=256)
+    task_class: str = Field(min_length=1, max_length=256)
+    consuming_identity: str = Field(min_length=1, max_length=256)
+    requested_skill: str = Field(min_length=1, max_length=64)
+    skill_version: str | None = Field(default=None, min_length=1, max_length=128)
+    package_fingerprint: str | None = Field(default=None, pattern=r"^sha256:[a-f0-9]{64}$")
+    outcome: SkillUseOutcome
+    reason: str = Field(min_length=1, max_length=2_048)
+    policy_fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
+    evidence: SkillLoadEvidence | SkillSelection
+    recorded_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("recorded_at")
+    @classmethod
+    def recorded_at_is_unambiguous(cls, value: datetime) -> datetime:
+        return require_aware(value)
+
+    @model_validator(mode="after")
+    def evidence_matches_record(self) -> SkillUsageRecord:
+        if self.evidence.outcome is not self.outcome:
+            raise ValueError("skill usage evidence outcome differs from its record")
+        if isinstance(self.evidence, SkillSelection):
+            if self.evidence.requested_name != self.requested_skill:
+                raise ValueError("skill usage selection names another skill")
+            if (
+                self.evidence.context.task_id != self.task_id
+                or self.evidence.context.task_class != self.task_class
+                or self.evidence.context.consuming_identity != self.consuming_identity
+            ):
+                raise ValueError("skill usage selection belongs to another task context")
+            if self.evidence.selected is not None:
+                if self.skill_version != self.evidence.selected.version:
+                    raise ValueError("skill usage version differs from its selection")
+                if self.package_fingerprint != self.evidence.selected.package_fingerprint:
+                    raise ValueError("skill usage fingerprint differs from its selection")
+        else:
+            if self.evidence.skill_name != self.requested_skill:
+                raise ValueError("skill load evidence names another skill")
+            if (
+                self.evidence.task_id != self.task_id
+                or self.evidence.task_class != self.task_class
+                or self.evidence.consuming_identity != self.consuming_identity
+            ):
+                raise ValueError("skill load evidence belongs to another task context")
+            if self.skill_version != self.evidence.skill_version:
+                raise ValueError("skill usage version differs from its load evidence")
+            if self.package_fingerprint != self.evidence.package_fingerprint:
+                raise ValueError("skill usage fingerprint differs from its load evidence")
+        return self
+
+
+class SkillUsageSummary(SkillModel):
+    schema_version: Literal["1.0"] = "1.0"
+    task_class: str = Field(min_length=1, max_length=256)
+    requested_skill: str | None = Field(default=None, min_length=1, max_length=64)
+    hits: int = Field(ge=0)
+    partials: int = Field(ge=0)
+    misses: int = Field(ge=0)
+    last_recorded_at: datetime | None = None
+
+    @field_validator("last_recorded_at")
+    @classmethod
+    def last_recorded_at_is_unambiguous(cls, value: datetime | None) -> datetime | None:
+        return None if value is None else require_aware(value)

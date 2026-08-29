@@ -6,6 +6,8 @@ from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.skills import (
     SkillActivationState,
     SkillBounds,
+    SkillBundleDefinition,
+    SkillBundleMode,
     SkillCatalog,
     SkillSelectionContext,
     SkillSourceDefinition,
@@ -242,3 +244,48 @@ def test_remote_source_requires_local_acquisition_lock(tmp_path: Path) -> None:
     )
     with pytest.raises(MishkanError, match="acquired local provenance lock"):
         SkillCatalog((source,), tmp_path, bounds=_bounds())
+
+
+def test_all_mode_bundle_refuses_partial_membership(tmp_path: Path) -> None:
+    skills = tmp_path / "skills"
+    _write_skill(skills, name="code-review")
+    _write_skill(
+        skills,
+        name="security-review",
+        required_tools=("security.scan",),
+    )
+    catalog = SkillCatalog((_source("project:skills"),), tmp_path, bounds=_bounds())
+    bundle = SkillBundleDefinition(
+        bundle_id="assurance.core",
+        version="1.0.0",
+        summary="Independent software assurance skills.",
+        mode=SkillBundleMode.ALL,
+        skills=("code-review", "security-review"),
+    )
+
+    resolution = catalog.resolve_bundle(bundle, _context())
+
+    assert resolution.outcome is SkillUseOutcome.MISS
+    assert resolution.selected_skill_names == ()
+    assert len(resolution.selections) == 2
+
+
+def test_select_mode_bundle_keeps_evaluation_and_selection_distinct(tmp_path: Path) -> None:
+    skills = tmp_path / "skills"
+    _write_skill(skills, name="code-review")
+    _write_skill(skills, name="security-review")
+    catalog = SkillCatalog((_source("project:skills"),), tmp_path, bounds=_bounds())
+    bundle = SkillBundleDefinition(
+        bundle_id="assurance.choose-one",
+        version="1.0.0",
+        summary="Choose one compatible assurance skill.",
+        mode=SkillBundleMode.SELECT,
+        skills=("security-review", "code-review"),
+        max_selected=1,
+    )
+
+    resolution = catalog.resolve_bundle(bundle, _context())
+
+    assert resolution.outcome is SkillUseOutcome.HIT
+    assert resolution.selected_skill_names == ("security-review",)
+    assert len(resolution.selections) == 2

@@ -521,6 +521,23 @@ class ExecutionSessionRow(Base):
     updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
 
 
+class SkillUsageRow(Base):
+    __tablename__ = "skill_usage"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    task_id: Mapped[str] = mapped_column(String(256), nullable=False)
+    task_class: Mapped[str] = mapped_column(String(256), nullable=False)
+    consuming_identity: Mapped[str] = mapped_column(String(256), nullable=False)
+    requested_skill: Mapped[str] = mapped_column(String(64), nullable=False)
+    skill_version: Mapped[str | None] = mapped_column(String(128))
+    package_fingerprint: Mapped[str | None] = mapped_column(String(71))
+    outcome: Mapped[str] = mapped_column(String(16), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    policy_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    evidence_payload: Mapped[str] = mapped_column(Text, nullable=False)
+    recorded_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
 @dataclass(frozen=True, slots=True)
 class RunSnapshot:
     run_id: str

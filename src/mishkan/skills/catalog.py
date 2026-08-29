@@ -16,6 +16,9 @@ from mishkan.domain.sources import resolve_source_path
 from mishkan.skills.models import (
     SkillActivationState,
     SkillBounds,
+    SkillBundleDefinition,
+    SkillBundleMode,
+    SkillBundleResolution,
     SkillLoadedResource,
     SkillLoadEvidence,
     SkillMetadata,
@@ -174,6 +177,65 @@ class SkillCatalog:
             instruction_fingerprint=digest,
         )
         return LoadedSkill(metadata=metadata, instructions=text, evidence=evidence)
+
+    def resolve_bundle(
+        self,
+        bundle: SkillBundleDefinition,
+        context: SkillSelectionContext,
+    ) -> SkillBundleResolution:
+        selections = tuple(self.select(name, context) for name in bundle.skills)
+        eligible = tuple(
+            selection for selection in selections if selection.outcome is not SkillUseOutcome.MISS
+        )
+        if bundle.mode is SkillBundleMode.ALL:
+            if len(eligible) != len(selections):
+                return SkillBundleResolution(
+                    bundle_id=bundle.bundle_id,
+                    bundle_version=bundle.version,
+                    context=context,
+                    outcome=SkillUseOutcome.MISS,
+                    selections=selections,
+                    selected_skill_names=(),
+                    reason="all-mode bundle contains an ineligible skill",
+                )
+            outcome = (
+                SkillUseOutcome.PARTIAL
+                if any(item.outcome is SkillUseOutcome.PARTIAL for item in eligible)
+                else SkillUseOutcome.HIT
+            )
+            chosen = eligible
+        else:
+            limit = bundle.max_selected
+            if limit is None:
+                raise AssertionError("validated select-mode bundle has no bound")
+            chosen = eligible[:limit]
+            if not chosen:
+                return SkillBundleResolution(
+                    bundle_id=bundle.bundle_id,
+                    bundle_version=bundle.version,
+                    context=context,
+                    outcome=SkillUseOutcome.MISS,
+                    selections=selections,
+                    selected_skill_names=(),
+                    reason="select-mode bundle has no eligible skill",
+                )
+            outcome = (
+                SkillUseOutcome.PARTIAL
+                if len(eligible) < len(selections)
+                or any(item.outcome is SkillUseOutcome.PARTIAL for item in chosen)
+                else SkillUseOutcome.HIT
+            )
+        return SkillBundleResolution(
+            bundle_id=bundle.bundle_id,
+            bundle_version=bundle.version,
+            context=context,
+            outcome=outcome,
+            selections=selections,
+            selected_skill_names=tuple(
+                item.selected.name for item in chosen if item.selected is not None
+            ),
+            reason="bundle resolved from explicit skill order and task compatibility",
+        )
 
     def load_resource(self, loaded: LoadedSkill, relative_path: str) -> LoadedSkill:
         normalized = self._safe_resource_path(relative_path)
