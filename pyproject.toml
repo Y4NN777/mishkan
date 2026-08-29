@@ -21,6 +21,7 @@ dependencies = [
   "httpx>=0.28,<1",
   "jsonschema>=4.23,<5",
   "mcp>=1.28,<2",
+  "opentelemetry-proto>=1.42,<2",
   "psutil>=7.2,<8",
   "pydantic>=2.10,<3",
   "playwright>=1.62,<2",

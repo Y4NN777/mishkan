@@ -17,6 +17,7 @@ from pydantic import (
 
 from mishkan.domain.time import validate_timezone
 from mishkan.skills.models import SkillBounds, SkillBundleDefinition, SkillSourceDefinition
+from mishkan.telemetry.models import TelemetryDisclosure, TelemetryExporterKind
 
 
 class StrictConfigModel(BaseModel):
@@ -569,6 +570,68 @@ class SkillsConfig(StrictConfigModel):
         return self
 
 
+class TelemetryExporterConfig(StrictConfigModel):
+    kind: TelemetryExporterKind
+    endpoint: AnyHttpUrl
+    network_profile: str = Field(min_length=1)
+    credential_ref: CredentialReference | None = None
+    credential_header: str = Field(default="authorization", min_length=1, max_length=128)
+    credential_prefix: str = Field(default="Bearer ", max_length=64)
+    project: str | None = Field(default=None, min_length=1, max_length=256)
+    service_name: str = Field(default="mishkand", min_length=1, max_length=256)
+    timeout_seconds: float = Field(default=5.0, gt=0, le=300)
+
+    @field_validator("credential_header")
+    @classmethod
+    def credential_header_is_safe(cls, value: str) -> str:
+        normalized = value.casefold()
+        forbidden = {
+            "connection",
+            "content-length",
+            "host",
+            "keep-alive",
+            "proxy-authorization",
+            "te",
+            "trailer",
+            "transfer-encoding",
+            "upgrade",
+        }
+        if not value.replace("-", "").isalnum() or normalized in forbidden:
+            raise ValueError("telemetry credential header is invalid or transport-controlled")
+        return value
+
+    @model_validator(mode="after")
+    def exporter_contract_matches_kind(self) -> Self:
+        if self.kind is TelemetryExporterKind.LANGSMITH_OTLP:
+            if self.credential_ref is None or self.project is None:
+                raise ValueError("LangSmith OTLP requires a credential reference and project")
+            if self.credential_header.casefold() != "x-api-key":
+                raise ValueError("LangSmith OTLP credential header must be x-api-key")
+            if self.credential_prefix:
+                raise ValueError("LangSmith OTLP credential prefix must be empty")
+        return self
+
+
+class TelemetryConfig(StrictConfigModel):
+    disclosure: TelemetryDisclosure = TelemetryDisclosure.OFF
+    exporter: TelemetryExporterConfig | None = None
+    metadata_attributes: tuple[str, ...] = Field(default_factory=tuple, max_length=64)
+    include_command_payload: bool = False
+    include_result_payload: bool = False
+    max_attributes: int = Field(default=64, ge=1, le=1_000)
+    max_attribute_bytes: int = Field(default=4_096, ge=1, le=1_048_576)
+
+    @model_validator(mode="after")
+    def disclosure_has_exact_exporter(self) -> Self:
+        if self.disclosure is TelemetryDisclosure.OFF and self.exporter is not None:
+            raise ValueError("off telemetry cannot configure an exporter")
+        if self.disclosure is not TelemetryDisclosure.OFF and self.exporter is None:
+            raise ValueError("enabled telemetry disclosure requires an exporter")
+        if len(self.metadata_attributes) != len(set(self.metadata_attributes)):
+            raise ValueError("telemetry metadata attributes must be unique")
+        return self
+
+
 class MishkanConfig(StrictConfigModel):
     """Complete effective configuration required before a run can be accepted."""
 
@@ -595,6 +658,7 @@ class MishkanConfig(StrictConfigModel):
     mcp: McpConfig | None = None
     skills: SkillsConfig | None = None
     engineering_profile: str | None = None
+    telemetry: TelemetryConfig = Field(default_factory=TelemetryConfig)
 
     @field_validator("timezone")
     @classmethod
@@ -662,6 +726,11 @@ class MishkanConfig(StrictConfigModel):
                     f"browser/MCP configuration references unknown network profiles: "
                     f"{missing_network_profiles}"
                 )
+            if (
+                self.telemetry.exporter is not None
+                and self.telemetry.exporter.network_profile not in self.web.network_profiles
+            ):
+                raise ValueError("telemetry exporter references an unknown network profile")
         if self.schema_version in {"1.4", "1.5"} and self.skills is None:
             raise ValueError("configuration 1.4+ requires the Skills capability configuration")
         if self.schema_version == "1.5" and self.engineering_profile is None:

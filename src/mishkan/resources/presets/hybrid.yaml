@@ -1,6 +1,20 @@
 schema_version: "1.5"
 mode: hybrid
 engineering_profile: package://mishkan.resources.environment/default.yaml
+telemetry:
+  disclosure: "off"
+  metadata_attributes:
+    - mishkan.command.id
+    - mishkan.command.type
+    - mishkan.actor.id
+    - mishkan.target.type
+    - mishkan.result.status
+    - mishkan.result.revision
+    - mishkan.event.cursor
+  include_command_payload: false
+  include_result_payload: false
+  max_attributes: 64
+  max_attribute_bytes: 4096
 timezone: UTC
 project:
   workspace: .

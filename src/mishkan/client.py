@@ -62,6 +62,7 @@ from mishkan.skills.models import (
     SkillUsageSummary,
     SkillVersionRecord,
 )
+from mishkan.telemetry.models import TelemetryStatus
 
 
 class Mishkan:
@@ -161,6 +162,11 @@ class Mishkan:
         response = self._client.get("/v1/snapshot", headers=self._headers())
         response.raise_for_status()
         return SnapshotEnvelope.model_validate(response.json())
+
+    def telemetry_status(self) -> TelemetryStatus:
+        response = self._client.get("/v1/telemetry/status", headers=self._headers())
+        response.raise_for_status()
+        return TelemetryStatus.model_validate(response.json())
 
     def events(
         self,

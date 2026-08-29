@@ -96,6 +96,7 @@ from mishkan.skills.models import (
     SkillUsageSummary,
     SkillVersionRecord,
 )
+from mishkan.telemetry.models import TelemetryExportEvidence, TelemetryRecord, TelemetryStatus
 from mishkan.tools.execution import ExecutionRequest, ExecutionResult
 from mishkan.web.models import (
     CitationEvidence,
@@ -206,6 +207,9 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "execution-session-v1.schema.json": ExecutionSession,
     "snapshot-envelope-v1.schema.json": SnapshotEnvelope,
     "task-review-rejection-v1.schema.json": TaskReviewRejection,
+    "telemetry-export-evidence-v1.schema.json": TelemetryExportEvidence,
+    "telemetry-record-v1.schema.json": TelemetryRecord,
+    "telemetry-status-v1.schema.json": TelemetryStatus,
 }
 
 _EXPORT_MANIFEST = ".mishkan-schema-export.json"

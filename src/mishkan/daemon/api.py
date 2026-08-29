@@ -49,6 +49,7 @@ from mishkan.crewai.skill_learning import CrewAISkillLearningRunner
 from mishkan.daemon.auth import TokenFile, TokenRecord
 from mishkan.daemon.bootstrap import DaemonPaths
 from mishkan.domain.errors import ErrorCode, MishkanError
+from mishkan.domain.time import utc_now
 from mishkan.edits import ChangeSet, ChangeSetResult, ChangeSetService
 from mishkan.edits.git import GovernedGitService
 from mishkan.environment import (
@@ -107,12 +108,95 @@ from mishkan.skills.models import (
 )
 from mishkan.skills.repository import SQLiteSkillLifecycleRepository, SQLiteSkillUsageRepository
 from mishkan.skills.service import SkillInvocationService
+from mishkan.telemetry.exporters import OtlpHttpTelemetryExporter, TelemetryExporter
+from mishkan.telemetry.models import (
+    TelemetryExporterKind,
+    TelemetryRecord,
+    TelemetryRecordStatus,
+    TelemetryStatus,
+)
+from mishkan.telemetry.service import TelemetryService
 from mishkan.tools.inspection import ContentInspector, InspectionProfileLoader
 from mishkan.tools.isolation import IsolationProfileLoader, observe_container_commands
 from mishkan.tools.lifecycle import ToolRegistryLifecycle
 
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
+
+
+def _telemetry_record(
+    config: MishkanConfig,
+    command: ApplicationCommand,
+    result: CommandResult,
+    *,
+    started_at: datetime,
+    completed_at: datetime | None = None,
+    name: str = "mishkan.command.completed",
+) -> TelemetryRecord:
+    attributes: dict[str, str | bool | int | float] = {
+        "mishkan.command.id": str(command.command_id),
+        "mishkan.command.type": command.command_type,
+        "mishkan.actor.id": command.actor_id,
+        "mishkan.target.type": command.target_type,
+        "mishkan.result.status": result.status.value,
+    }
+    if result.revision is not None:
+        attributes["mishkan.result.revision"] = result.revision
+    if result.event_cursor is not None:
+        attributes["mishkan.event.cursor"] = result.event_cursor
+    if result.error is not None:
+        attributes["mishkan.error.code"] = result.error.code.value
+    content: list[str] = []
+    if config.telemetry.include_command_payload:
+        attributes["mishkan.command.payload"] = json.dumps(
+            command.payload, sort_keys=True, separators=(",", ":")
+        )
+        content.append("mishkan.command.payload")
+    if config.telemetry.include_result_payload:
+        attributes["mishkan.result.payload"] = json.dumps(
+            result.payload, sort_keys=True, separators=(",", ":")
+        )
+        content.append("mishkan.result.payload")
+    return TelemetryRecord(
+        name=name,
+        started_at=started_at,
+        completed_at=completed_at or result.completed_at,
+        status=(TelemetryRecordStatus.OK if result.error is None else TelemetryRecordStatus.ERROR),
+        attributes=attributes,
+        content_attribute_names=tuple(content),
+    )
+
+
+def _build_telemetry_exporter(
+    config: MishkanConfig,
+    credential_resolver: CredentialPoolResolver,
+) -> TelemetryExporter:
+    exporter = config.telemetry.exporter
+    if exporter is None or config.web is None:
+        raise MishkanError(
+            ErrorCode.OPTIONAL_DEPENDENCY,
+            "telemetry exporter is disabled",
+        )
+    headers: dict[str, str] = {}
+    credential = exporter.credential_ref
+    if credential is not None:
+        value = credential_resolver.resolve((credential,))[0]
+        if value is None:
+            raise MishkanError(
+                ErrorCode.AUTHORIZATION_MISSING,
+                "telemetry exporter credential is unavailable",
+            )
+        headers[exporter.credential_header] = f"{exporter.credential_prefix}{value}"
+    if exporter.kind is TelemetryExporterKind.LANGSMITH_OTLP:
+        assert exporter.project is not None
+        headers["Langsmith-Project"] = exporter.project
+    return OtlpHttpTelemetryExporter(
+        endpoint=str(exporter.endpoint),
+        profile=config.web.network_profiles[exporter.network_profile],
+        service_name=exporter.service_name,
+        headers=headers,
+        timeout_seconds=exporter.timeout_seconds,
+    )
 
 
 async def _thread_call(function: Callable[_P, _R], /, *args: _P.args, **kwargs: _P.kwargs) -> _R:
@@ -206,6 +290,7 @@ def create_app(
     *,
     mcp_stdio_commands: Mapping[str, McpStdioCommandBuilder] | None = None,
     skill_learning_runner: SkillLearningRunner | None = None,
+    telemetry_exporter_factory: Callable[[], TelemetryExporter] | None = None,
 ) -> FastAPI:
     paths = DaemonPaths.from_config(config)
     SchemaManager(paths.database).require_current()
@@ -393,11 +478,44 @@ def create_app(
         mcp_service.reconcile_after_restart()
         mcp_runner = McpServiceRunner(mcp_service)
     credential_resolver = CredentialPoolResolver()
+    telemetry_exporter_config = config.telemetry.exporter
+
+    telemetry_service = TelemetryService(
+        config.telemetry,
+        content_inspector,
+        telemetry_exporter_factory
+        or (
+            partial(_build_telemetry_exporter, config, credential_resolver)
+            if telemetry_exporter_config is not None
+            else None
+        ),
+    )
+    telemetry_tasks: set[asyncio.Task[object]] = set()
+
+    def project_telemetry(
+        command: ApplicationCommand,
+        result: CommandResult,
+        started_at: datetime,
+        resolved_secrets: tuple[str, ...],
+    ) -> None:
+        record = _telemetry_record(config, command, result, started_at=started_at)
+        task = asyncio.create_task(
+            _thread_call(
+                telemetry_service.observe,
+                record,
+                resolved_secrets=resolved_secrets,
+            ),
+            name=f"telemetry:{command.command_id}",
+        )
+        telemetry_tasks.add(task)
+        task.add_done_callback(telemetry_tasks.discard)
+
     command_authority = ApplicationCommandAuthority(
         config, paths.workspace, changes, supervisor, mcp_runner
     )
 
     async def execute_command(command: ApplicationCommand, principal_id: str) -> CommandResult:
+        command_started_at = utc_now()
         if command.actor_id != principal_id:
             raise MishkanError(
                 ErrorCode.AUTHORITY_NOT_GRANTED,
@@ -441,7 +559,7 @@ def create_app(
                     "decision": authorized.decision.decision.value,
                 },
             )
-            return repository.refuse(
+            result = repository.refuse(
                 authorized.command,
                 target_id=authorized.command.target_id or "local-instance",
                 error=refusal,
@@ -451,6 +569,8 @@ def create_app(
                     "error_code": refusal.envelope.code,
                 },
             )
+            project_telemetry(command, result, command_started_at, ())
+            return result
         command = authorized.command
         if command.command_type.startswith("registry.entry."):
             mutation = authorized.registry_mutation
@@ -566,7 +686,26 @@ def create_app(
                                 ErrorCode.RUN_INTERRUPTED,
                                 "CrewAI run did not establish exactly one durable run identity",
                             )
-                        return accepted[0]
+                        result = accepted[0]
+                        record = _telemetry_record(
+                            config,
+                            command,
+                            result,
+                            started_at=command_started_at,
+                            completed_at=utc_now(),
+                            name="mishkan.run.initialized",
+                        )
+                        task = asyncio.create_task(
+                            _thread_call(
+                                telemetry_service.observe,
+                                record,
+                                resolved_secrets=tuple(resolved_credentials.values()),
+                            ),
+                            name=f"telemetry:{command.command_id}",
+                        )
+                        telemetry_tasks.add(task)
+                        task.add_done_callback(telemetry_tasks.discard)
+                        return result
 
                     task = asyncio.create_task(
                         execute_run(),
@@ -642,7 +781,7 @@ def create_app(
                                 environment_evidence_service,
                             )
                         except MishkanError as error:
-                            return repository.fail_reserved(
+                            result = repository.fail_reserved(
                                 command,
                                 target_id=target_id,
                                 error=error,
@@ -666,20 +805,30 @@ def create_app(
                                 "its registered contract",
                                 details={"command_type": command.command_type},
                             )
-                            return repository.fail_reserved(
+                            result = repository.fail_reserved(
                                 command,
                                 target_id=target_id,
                                 error=payload_error,
                                 event_payload=_authorization_projection(authorized),
                             )
-                        return repository.complete_reserved(
-                            command,
-                            target_id=target_id,
-                            event_type=event_type,
-                            result_payload=result_payload,
-                            event_payload=_event_projection(command, result_payload, authorized),
-                            source="mishkand",
-                        )
+                        else:
+                            result = repository.complete_reserved(
+                                command,
+                                target_id=target_id,
+                                event_type=event_type,
+                                result_payload=result_payload,
+                                event_payload=_event_projection(
+                                    command, result_payload, authorized
+                                ),
+                                source="mishkand",
+                            )
+                    project_telemetry(
+                        command,
+                        result,
+                        command_started_at,
+                        tuple(resolved_credentials.values()),
+                    )
+                    return result
 
                 task = asyncio.create_task(
                     execute_effect(),
@@ -723,6 +872,8 @@ def create_app(
             async with mcp_http.lifespan():
                 yield
         finally:
+            for task in telemetry_tasks:
+                task.cancel()
             if mcp_runner is not None:
                 mcp_runner.close()
 
@@ -777,6 +928,12 @@ def create_app(
         _principal: TokenRecord = authenticated,
     ) -> SnapshotEnvelope:
         return await _thread_call(repository.snapshot, limit=daemon.event_page_limit)
+
+    @app.get("/v1/telemetry/status")
+    async def telemetry_status(
+        _principal: TokenRecord = authenticated,
+    ) -> TelemetryStatus:
+        return telemetry_service.status()
 
     @app.get("/v1/tools/registry")
     async def tool_registry(

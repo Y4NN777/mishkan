@@ -15,7 +15,7 @@ from sqlalchemy import create_engine, text
 
 from mishkan.application import ApplicationCommand
 from mishkan.config.loader import ConfigLoader
-from mishkan.config.models import MishkanConfig, ProjectConfig
+from mishkan.config.models import MishkanConfig, ProjectConfig, TelemetryConfig
 from mishkan.config.presets import preset_text
 from mishkan.daemon import DaemonBootstrap, create_app
 from mishkan.daemon.auth import TokenFile
@@ -23,6 +23,7 @@ from mishkan.daemon.bootstrap import DaemonPaths
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.time import utc_now
 from mishkan.persistence import SQLiteApplicationRepository
+from mishkan.telemetry.models import TelemetryDisclosure, TelemetryRecord
 
 
 @pytest.fixture
@@ -130,6 +131,67 @@ async def test_authenticated_command_and_event_query_share_durable_contract(
     }
     assert len(event_payload["authorization_request_fingerprint"]) == 64
     assert len(event_payload["policy_fingerprint"]) == 64
+
+
+@pytest.mark.anyio
+async def test_command_telemetry_is_derived_after_acceptance_and_queryable(tmp_path: Path) -> None:
+    class Exporter:
+        def __init__(self) -> None:
+            self.records: list[TelemetryRecord] = []
+
+        def export(self, record: TelemetryRecord) -> bool:
+            self.records.append(record)
+            return True
+
+    exporter = Exporter()
+    config = _config(tmp_path).model_copy(
+        update={
+            "telemetry": TelemetryConfig(
+                disclosure=TelemetryDisclosure.METADATA_ONLY,
+                exporter={
+                    "kind": "otlp_http",
+                    "endpoint": "https://telemetry.example/v1/traces",
+                    "network_profile": "public-read",
+                },
+                metadata_attributes=(
+                    "mishkan.command.id",
+                    "mishkan.command.type",
+                    "mishkan.result.status",
+                ),
+                include_command_payload=True,
+            )
+        }
+    )
+    paths = DaemonBootstrap().setup(config)
+    token = TokenFile(paths.token_file).read().token
+    headers = {"Authorization": f"Bearer {token}"}
+    command = ApplicationCommand(
+        command_type="system.checkpoint",
+        actor_id="local-operator",
+        target_type="system",
+        target_id="telemetry-checkpoint",
+        payload={"checkpoint": "must-not-cross-metadata-only"},
+    )
+    transport = httpx.ASGITransport(
+        app=create_app(config, telemetry_exporter_factory=lambda: exporter)
+    )
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/commands", headers=headers, json=command.model_dump(mode="json")
+        )
+        assert response.json()["status"] == "accepted"
+        for _ in range(100):
+            status = await client.get("/v1/telemetry/status", headers=headers)
+            if status.json()["attempted"] == 1:
+                break
+            await asyncio.sleep(0.01)
+
+    assert status.json()["exported"] == 1
+    assert exporter.records[0].attributes == {
+        "mishkan.command.id": str(command.command_id),
+        "mishkan.command.type": "system.checkpoint",
+        "mishkan.result.status": "accepted",
+    }
 
 
 @pytest.mark.anyio
