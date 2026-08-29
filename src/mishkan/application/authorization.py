@@ -188,6 +188,15 @@ COMMAND_SEMANTICS = MappingProxyType(
         "skill.version.archive": CommandSemantics(
             "application.skill.lifecycle", "skill_lifecycle", ("skill.version.archive",)
         ),
+        "skill.version.delete": CommandSemantics(
+            "application.skill.lifecycle", "skill_lifecycle", ("skill.delete",)
+        ),
+        "skill.version.restore": CommandSemantics(
+            "application.skill.lifecycle", "skill_lifecycle", ("skill.restore",)
+        ),
+        "skill.version.reset": CommandSemantics(
+            "application.skill.lifecycle", "skill_lifecycle", ("skill.reset",)
+        ),
         "skill.version.pin": CommandSemantics(
             "application.skill.lifecycle", "skill_lifecycle", ("skill.version.pin",)
         ),
@@ -252,6 +261,9 @@ _COMMAND_TARGETS = MappingProxyType(
         "skill.version.register": ("skill_version", "uuid"),
         "skill.version.decide": ("skill_version", "uuid"),
         "skill.version.archive": ("skill_version", "uuid"),
+        "skill.version.delete": ("skill_version", "uuid"),
+        "skill.version.restore": ("skill_version", "uuid"),
+        "skill.version.reset": ("skill_version", "uuid"),
         "skill.version.pin": ("skill_version", "uuid"),
         "skill.version.unpin": ("skill_version", "uuid"),
         "skill.usage.record": ("skill_usage", "uuid"),
@@ -319,6 +331,18 @@ _COMMAND_PAYLOAD_FIELDS = MappingProxyType(
         "skill.version.register": (frozenset({"record"}), frozenset()),
         "skill.version.decide": (frozenset({"decision"}), frozenset()),
         "skill.version.archive": (
+            frozenset({"decision", "expected_revision"}),
+            frozenset(),
+        ),
+        "skill.version.delete": (
+            frozenset({"decision", "expected_revision"}),
+            frozenset(),
+        ),
+        "skill.version.restore": (
+            frozenset({"decision", "expected_revision"}),
+            frozenset(),
+        ),
+        "skill.version.reset": (
             frozenset({"decision", "expected_revision"}),
             frozenset(),
         ),
@@ -579,7 +603,13 @@ class ApplicationCommandAuthority:
                     f"artifact-collection:{skill_version.package_collection_id}",
                 )
                 effects = tuple(sorted({*effects, f"skill.{skill_version.mutation_action.value}"}))
-            elif normalized.command_type in {"skill.version.decide", "skill.version.archive"}:
+            elif normalized.command_type in {
+                "skill.version.decide",
+                "skill.version.archive",
+                "skill.version.delete",
+                "skill.version.restore",
+                "skill.version.reset",
+            }:
                 skill_decision = SkillLifecycleDecision.model_validate(
                     normalized.payload["decision"]
                 )

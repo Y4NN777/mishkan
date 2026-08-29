@@ -79,7 +79,14 @@ from mishkan.skills import SkillInspectionProfileLoader, SkillPackageInspector
 from mishkan.skills.catalog import validate_skill_metadata_document
 from mishkan.skills.learning import SkillLearningRunner, SkillLearningService
 from mishkan.skills.learning_repository import SQLiteSkillLearningRepository
-from mishkan.skills.models import SkillLearningRecord, SkillUsageSummary, SkillVersionRecord
+from mishkan.skills.maintenance import SkillMaintenanceService
+from mishkan.skills.models import (
+    SkillCurationProposal,
+    SkillLearningRecord,
+    SkillUpdateReport,
+    SkillUsageSummary,
+    SkillVersionRecord,
+)
 from mishkan.skills.repository import SQLiteSkillLifecycleRepository, SQLiteSkillUsageRepository
 from mishkan.skills.service import SkillInvocationService
 from mishkan.tools.inspection import ContentInspector, InspectionProfileLoader
@@ -230,6 +237,7 @@ def create_app(
     skill_invocation_service: SkillInvocationService | None = None
     skill_learning_repository: SQLiteSkillLearningRepository | None = None
     skill_learning_service: SkillLearningService | None = None
+    skill_maintenance: SkillMaintenanceService | None = None
     if config.skills is not None:
         skill_lifecycle = SQLiteSkillLifecycleRepository(
             paths.database, busy_timeout_ms=persistence.busy_timeout_ms
@@ -263,6 +271,14 @@ def create_app(
             skill_learning_runner or CrewAISkillLearningRunner(config),
             max_source_bytes=config.skills.learning_max_source_bytes,
             max_catalog_candidates=config.skills.bounds.max_package_files,
+        )
+        skill_maintenance = SkillMaintenanceService(
+            skill_lifecycle,
+            skill_usage,
+            sources=config.skills.sources,
+            bounds=config.skills.bounds,
+            project_root=paths.workspace,
+            stale_after_days=config.skills.stale_after_days,
         )
     changes = ChangeSetService(
         paths.database,
@@ -1058,6 +1074,22 @@ def create_app(
             raise MishkanError(ErrorCode.REQUIRED_DEPENDENCY, "Skill learning is not configured")
         return await _thread_call(skill_learning_repository.get, str(request_id))
 
+    @app.get("/v1/skill-updates")
+    async def skill_update_report(
+        _principal: TokenRecord = authenticated,
+    ) -> SkillUpdateReport:
+        if skill_maintenance is None:
+            raise MishkanError(ErrorCode.REQUIRED_DEPENDENCY, "Skill maintenance is not configured")
+        return await _thread_call(skill_maintenance.updates)
+
+    @app.get("/v1/skill-curation")
+    async def skill_curation_proposals(
+        _principal: TokenRecord = authenticated,
+    ) -> tuple[SkillCurationProposal, ...]:
+        if skill_maintenance is None:
+            return ()
+        return await _thread_call(skill_maintenance.curation)
+
     @app.get("/v1/mcp/connections")
     async def mcp_connection_list(
         _principal: TokenRecord = authenticated,
@@ -1428,7 +1460,7 @@ def _dispatch(
         )
         decided = skill_lifecycle.decide(effective_decision)
         return f"skill.version_{decided.state.value}", decided.model_dump(mode="json")
-    if command.command_type == "skill.version.archive":
+    if command.command_type in {"skill.version.archive", "skill.version.delete"}:
         decision = authorized.skill_decision
         if skill_lifecycle is None or decision is None or command.target_id is None:
             raise MishkanError(ErrorCode.REQUIRED_DEPENDENCY, "Skills lifecycle is not configured")
@@ -1440,7 +1472,28 @@ def _dispatch(
             effective_decision,
             expected_revision=int(payload["expected_revision"]),
         )
-        return "skill.version_archived", archived.model_dump(mode="json")
+        return (
+            "skill.version_archived"
+            if command.command_type.endswith(".archive")
+            else "skill.version_deleted",
+            archived.model_dump(mode="json"),
+        )
+    if command.command_type in {"skill.version.restore", "skill.version.reset"}:
+        decision = authorized.skill_decision
+        if skill_lifecycle is None or decision is None or command.target_id is None:
+            raise MishkanError(ErrorCode.REQUIRED_DEPENDENCY, "Skills lifecycle is not configured")
+        effective_decision = decision.model_copy(
+            update={"policy_fingerprint": authorized.decision.policy_fingerprint}
+        )
+        operation = command.command_type.rsplit(".", 1)[-1]
+        restored = skill_lifecycle.reactivate(
+            command.target_id,
+            effective_decision,
+            expected_revision=int(payload["expected_revision"]),
+            operation=operation,
+        )
+        event_type = "skill.version_restored" if operation == "restore" else "skill.version_reset"
+        return event_type, restored.model_dump(mode="json")
     if command.command_type in {"skill.version.pin", "skill.version.unpin"}:
         if skill_lifecycle is None or command.target_id is None:
             raise MishkanError(ErrorCode.REQUIRED_DEPENDENCY, "Skills lifecycle is not configured")

@@ -226,6 +226,20 @@ def test_activation_is_atomic_cas_and_preserves_superseded_history(tmp_path: Pat
     assert repository.get(str(active_v1.id)).state is SkillVersionState.SUPERSEDED
     assert len(repository.versions("code-review")) == 2
 
+    prior = repository.get(str(active_v1.id))
+    reset = repository.reactivate(
+        str(prior.id),
+        _decision(
+            prior,
+            SkillMutationDisposition.ALLOW,
+            expected_active_version_id=active_v2.id,
+        ),
+        expected_revision=prior.revision,
+        operation="reset",
+    )
+    assert repository.active("code-review") == reset
+    assert repository.get(str(active_v2.id)).state is SkillVersionState.SUPERSEDED
+
 
 def test_staging_quarantine_override_pin_archive_and_restore_survive_restart(
     tmp_path: Path,
@@ -270,12 +284,15 @@ def test_staging_quarantine_override_pin_archive_and_restore_survive_restart(
     )
     assert repository.active("code-review") is None
 
-    restored = SQLiteSkillLifecycleRepository(database).decide(
+    restored = SQLiteSkillLifecycleRepository(database).reactivate(
+        str(archived.id),
         _decision(
             archived,
             SkillMutationDisposition.ALLOW,
             quarantine_override=True,
-        )
+        ),
+        expected_revision=archived.revision,
+        operation="restore",
     )
     assert restored.state is SkillVersionState.ACTIVE
     assert restored.provenance.package_fingerprint == candidate.provenance.package_fingerprint

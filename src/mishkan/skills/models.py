@@ -118,6 +118,15 @@ class SkillLearningState(StrEnum):
     FAILED = "failed"
 
 
+class SkillUpdateState(StrEnum):
+    CURRENT = "current"
+    UPDATE_AVAILABLE = "update_available"
+    VERSION_CONFLICT = "version_conflict"
+    UNTRACKED = "untracked"
+    ACQUISITION_REQUIRED = "acquisition_required"
+    SOURCE_UNAVAILABLE = "source_unavailable"
+
+
 class SkillBounds(SkillModel):
     max_frontmatter_bytes: int = Field(ge=128, le=1_048_576)
     max_manifest_bytes: int = Field(ge=256, le=16_777_216)
@@ -641,6 +650,46 @@ class SkillLearningRecord(SkillModel):
         if self.state is SkillLearningState.REFUSED and self.refusal_code is None:
             raise ValueError("refused learning record requires a stable refusal code")
         return self
+
+
+class SkillUpdateEvidence(SkillModel):
+    schema_version: Literal["1.0"] = "1.0"
+    source_id: str = Field(min_length=1, max_length=128)
+    skill_name: str | None = Field(default=None, min_length=1, max_length=64)
+    state: SkillUpdateState
+    candidate: SkillMetadata | None = None
+    active_version_id: UUID | None = None
+    active_version: str | None = Field(default=None, min_length=1, max_length=128)
+    active_fingerprint: str | None = Field(default=None, pattern=r"^sha256:[a-f0-9]{64}$")
+    changed_fields: tuple[str, ...] = ()
+    reason: str = Field(min_length=1, max_length=2_048)
+
+
+class SkillUpdateReport(SkillModel):
+    schema_version: Literal["1.0"] = "1.0"
+    observations: tuple[SkillUpdateEvidence, ...]
+    checked_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("checked_at")
+    @classmethod
+    def checked_at_is_unambiguous(cls, value: datetime) -> datetime:
+        return require_aware(value)
+
+
+class SkillCurationProposal(SkillModel):
+    schema_version: Literal["1.0"] = "1.0"
+    version_id: UUID
+    skill_name: str = Field(min_length=1, max_length=64)
+    skill_version: str = Field(min_length=1, max_length=128)
+    action: Literal["archive"] = "archive"
+    last_used_at: datetime | None = None
+    stale_after_days: int = Field(ge=1, le=36_500)
+    reason: str = Field(min_length=1, max_length=2_048)
+
+    @field_validator("last_used_at")
+    @classmethod
+    def last_used_at_is_unambiguous(cls, value: datetime | None) -> datetime | None:
+        return None if value is None else require_aware(value)
 
 
 class SkillLifecycleDecision(SkillModel):

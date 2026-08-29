@@ -133,6 +133,18 @@ class SQLiteSkillUsageRepository:
             last_recorded_at=max(timestamps) if timestamps else None,
         )
 
+    def last_used(self, requested_skill: str) -> datetime | None:
+        with Session(self._engine) as session:
+            value = session.scalar(
+                select(func.max(SkillUsageRow.recorded_at)).where(
+                    SkillUsageRow.requested_skill == requested_skill,
+                    SkillUsageRow.outcome.in_(
+                        (SkillUseOutcome.HIT.value, SkillUseOutcome.PARTIAL.value)
+                    ),
+                )
+            )
+        return None if value is None else datetime.fromisoformat(value)
+
     @staticmethod
     def _payload(record: SkillUsageRecord) -> str:
         return json.dumps(record.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
@@ -307,6 +319,61 @@ class SQLiteSkillLifecycleRepository:
             self._update_row(row, updated)
             self._record_decision(session, decision)
             self._event(session, updated, "skill.version_archived")
+            return updated
+
+    def reactivate(
+        self,
+        version_id: str,
+        decision: SkillLifecycleDecision,
+        *,
+        expected_revision: int,
+        operation: str,
+    ) -> SkillVersionRecord:
+        if operation not in {"restore", "reset"}:
+            raise MishkanError(ErrorCode.SKILL_CONTRACT, "skill reactivation mode is invalid")
+        if str(decision.version_id) != version_id:
+            raise MishkanError(
+                ErrorCode.SKILL_CONTRACT,
+                "skill reactivation decision targets another version",
+            )
+        if decision.disposition is not SkillMutationDisposition.ALLOW:
+            raise MishkanError(
+                ErrorCode.AUTHORITY_NOT_GRANTED,
+                "skill reactivation requires an allow decision",
+            )
+        with Session(self._engine) as session, session.begin():
+            if session.get(SkillLifecycleDecisionRow, str(decision.decision_id)) is not None:
+                return self._record(self._require_row(session, version_id))
+            row = self._require_row(session, version_id)
+            current = self._record(row)
+            if current.revision != expected_revision:
+                raise self._revision_error(current)
+            if current.inspection is None:
+                raise MishkanError(
+                    ErrorCode.SKILL_TRUST,
+                    "skill version cannot be reactivated before inspection",
+                )
+            if current.inspection.quarantined and not decision.quarantine_override:
+                raise MishkanError(
+                    ErrorCode.SKILL_TRUST,
+                    "quarantined skill reactivation requires explicit override authority",
+                )
+            self._activate_pointer(session, current, decision)
+            updated = current.model_copy(
+                update={
+                    "state": SkillVersionState.ACTIVE,
+                    "activation_decision_id": decision.decision_id,
+                    "policy_fingerprint": decision.policy_fingerprint,
+                    "revision": current.revision + 1,
+                    "updated_at": utc_now(),
+                }
+            )
+            self._update_row(row, updated)
+            self._record_decision(session, decision)
+            event_type = (
+                "skill.version_restored" if operation == "restore" else "skill.version_reset"
+            )
+            self._event(session, updated, event_type)
             return updated
 
     def set_pin(

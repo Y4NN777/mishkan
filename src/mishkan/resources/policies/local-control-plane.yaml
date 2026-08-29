@@ -1,6 +1,6 @@
 schema_version: "1.0"
 source_id: bundled.local
-revision: "13"
+revision: "14"
 adoption_authority: MISHKAN release
 priority: 0
 rules:
@@ -146,6 +146,9 @@ rules:
         - skill.version.register
         - skill.version.decide
         - skill.version.archive
+        - skill.version.delete
+        - skill.version.restore
+        - skill.version.reset
         - skill.version.pin
         - skill.version.unpin
         - skill.usage.record

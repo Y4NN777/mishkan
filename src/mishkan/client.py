@@ -39,10 +39,12 @@ from mishkan.events import (
 )
 from mishkan.execution import CursorRead, ExecutionSession
 from mishkan.skills.models import (
+    SkillCurationProposal,
     SkillInvocationEvidence,
     SkillInvocationRequest,
     SkillLearningRecord,
     SkillLearningRequest,
+    SkillUpdateReport,
     SkillUsageSummary,
     SkillVersionRecord,
 )
@@ -557,6 +559,16 @@ class Mishkan:
         )
         response.raise_for_status()
         return SkillLearningRecord.model_validate(response.json())
+
+    def skill_updates(self) -> SkillUpdateReport:
+        response = self._client.get("/v1/skill-updates", headers=self._headers())
+        response.raise_for_status()
+        return SkillUpdateReport.model_validate(response.json())
+
+    def skill_curation(self) -> tuple[SkillCurationProposal, ...]:
+        response = self._client.get("/v1/skill-curation", headers=self._headers())
+        response.raise_for_status()
+        return tuple(SkillCurationProposal.model_validate(item) for item in response.json())
 
     def mcp_connections(
         self,

@@ -1568,6 +1568,154 @@ def archive_skill(
     _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
 
 
+@skill_app.command("delete")
+def delete_skill(
+    ctx: typer.Context,
+    version_id: Annotated[str, typer.Argument(help="Skill version UUID.")],
+    version_revision: Annotated[int, typer.Option(min=1, help="Lifecycle CAS revision.")],
+    reason: Annotated[str, typer.Option(help="Non-secret logical deletion reason.")],
+    expected_revision: Annotated[int | None, typer.Option(min=0)] = None,
+) -> None:
+    """Logically delete one unpinned version while preserving recoverable history."""
+    _archive_or_delete_skill(
+        ctx,
+        version_id,
+        version_revision,
+        reason,
+        expected_revision,
+        command_type="skill.version.delete",
+    )
+
+
+def _archive_or_delete_skill(
+    ctx: typer.Context,
+    version_id: str,
+    version_revision: int,
+    reason: str,
+    expected_revision: int | None,
+    *,
+    command_type: str,
+) -> None:
+    from uuid import UUID
+
+    from mishkan.application import ApplicationCommand
+    from mishkan.skills import SkillLifecycleDecision, SkillMutationDisposition
+
+    try:
+        identity = UUID(version_id)
+    except ValueError as exc:
+        raise typer.BadParameter("skill version identity must be a UUID") from exc
+    with _daemon_client(ctx) as client:
+        decision = SkillLifecycleDecision(
+            version_id=identity,
+            disposition=SkillMutationDisposition.ALLOW,
+            actor_id=client.principal_id,
+            policy_fingerprint="0" * 64,
+            reason=reason,
+        )
+        result = client.command(
+            ApplicationCommand(
+                command_type=command_type,
+                actor_id=client.principal_id,
+                target_type="skill_version",
+                target_id=version_id,
+                expected_revision=expected_revision,
+                payload={
+                    "decision": decision.model_dump(mode="json"),
+                    "expected_revision": version_revision,
+                },
+            )
+        )
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+def _reactivate_skill(
+    ctx: typer.Context,
+    version_id: str,
+    version_revision: int,
+    reason: str,
+    expected_active: str | None,
+    expected_revision: int | None,
+    *,
+    operation: str,
+) -> None:
+    from uuid import UUID
+
+    from mishkan.application import ApplicationCommand
+    from mishkan.skills import SkillLifecycleDecision, SkillMutationDisposition
+
+    try:
+        identity = UUID(version_id)
+        active_identity = None if expected_active is None else UUID(expected_active)
+    except ValueError as exc:
+        raise typer.BadParameter("skill version identities must be UUIDs") from exc
+    with _daemon_client(ctx) as client:
+        decision = SkillLifecycleDecision(
+            version_id=identity,
+            disposition=SkillMutationDisposition.ALLOW,
+            actor_id=client.principal_id,
+            policy_fingerprint="0" * 64,
+            expected_active_version_id=active_identity,
+            reason=reason,
+        )
+        result = client.command(
+            ApplicationCommand(
+                command_type=f"skill.version.{operation}",
+                actor_id=client.principal_id,
+                target_type="skill_version",
+                target_id=version_id,
+                expected_revision=expected_revision,
+                payload={
+                    "decision": decision.model_dump(mode="json"),
+                    "expected_revision": version_revision,
+                },
+            )
+        )
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@skill_app.command("restore")
+def restore_skill(
+    ctx: typer.Context,
+    version_id: Annotated[str, typer.Argument(help="Archived skill version UUID.")],
+    version_revision: Annotated[int, typer.Option(min=1)],
+    reason: Annotated[str, typer.Option(help="Non-secret restoration reason.")],
+    expected_active: Annotated[str | None, typer.Option()] = None,
+    expected_revision: Annotated[int | None, typer.Option(min=0)] = None,
+) -> None:
+    """Atomically restore an archived immutable version through policy and CAS."""
+    _reactivate_skill(
+        ctx,
+        version_id,
+        version_revision,
+        reason,
+        expected_active,
+        expected_revision,
+        operation="restore",
+    )
+
+
+@skill_app.command("reset")
+def reset_skill(
+    ctx: typer.Context,
+    version_id: Annotated[str, typer.Argument(help="Prior inspected version UUID.")],
+    version_revision: Annotated[int, typer.Option(min=1)],
+    reason: Annotated[str, typer.Option(help="Non-secret reset reason.")],
+    expected_active: Annotated[str, typer.Option(help="Current active version UUID.")],
+    expected_revision: Annotated[int | None, typer.Option(min=0)] = None,
+) -> None:
+    """Atomically reset an active pointer to a prior inspected version through CAS."""
+    _reactivate_skill(
+        ctx,
+        version_id,
+        version_revision,
+        reason,
+        expected_active,
+        expected_revision,
+        operation="reset",
+    )
+
+
 def _pin_skill(
     ctx: typer.Context,
     version_id: str,
@@ -1624,6 +1772,25 @@ def skill_usage(
     with _daemon_client(ctx) as client:
         summary = client.skill_usage_summary(task_class, skill_name=name)
     _emit(summary.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@skill_app.command("updates")
+def skill_updates(ctx: typer.Context) -> None:
+    """Detect configured-source updates and conflicts without activating them."""
+    with _daemon_client(ctx) as client:
+        report = client.skill_updates()
+    _emit(report.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@skill_app.command("curation")
+def skill_curation(ctx: typer.Context) -> None:
+    """Show non-destructive archival proposals under the configured stale-use rule."""
+    with _daemon_client(ctx) as client:
+        proposals = client.skill_curation()
+    _emit(
+        [item.model_dump(mode="json") for item in proposals],
+        as_json=_state(ctx).json_output,
+    )
 
 
 @mcp_app.command("connect")
