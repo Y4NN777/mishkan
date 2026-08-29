@@ -2001,6 +2001,34 @@ def validate_environment_descriptors(
     _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
 
 
+@environment_app.command("plan-descriptor-change")
+def plan_environment_descriptor_change(
+    ctx: typer.Context,
+    request_file: Annotated[
+        Path,
+        typer.Option("--request", help="JSON EnvironmentDescriptorChangeRequest."),
+    ],
+) -> None:
+    """Compose validated artifacts into an exact-base change set without applying it."""
+    from mishkan.environment import EnvironmentDescriptorChangeRequest
+
+    try:
+        request = EnvironmentDescriptorChangeRequest.model_validate_json(
+            request_file.read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter(
+            "--request must contain a valid EnvironmentDescriptorChangeRequest"
+        ) from exc
+    with _daemon_client(ctx) as client:
+        if request.owner_identity != client.principal_id:
+            raise typer.BadParameter(
+                "request owner_identity must match the authenticated daemon principal"
+            )
+        plan = client.plan_environment_descriptor_change(request)
+    _emit(plan.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
 def _environment_operation_request(source: Path):  # type: ignore[no-untyped-def]
     from mishkan.environment import EnvironmentOperationRequest
 

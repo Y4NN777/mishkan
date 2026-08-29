@@ -33,6 +33,7 @@ from mishkan.edits.git import GitEffectMode, GitEffectRequest
 from mishkan.environment import (
     EngineeringCommandRequest,
     EnvironmentBindingRequest,
+    EnvironmentDescriptorChangeRequest,
     EnvironmentDescriptorSet,
     EnvironmentInvalidation,
     EnvironmentObservationRequest,
@@ -230,6 +231,9 @@ COMMAND_SEMANTICS = MappingProxyType(
         "environment.descriptor.validate": CommandSemantics(
             "application.environment.descriptor", "read", ("environment.descriptor.validate",)
         ),
+        "environment.descriptor.change.plan": CommandSemantics(
+            "application.environment.descriptor", "control", ("environment.descriptor.change.plan",)
+        ),
         "environment.operation.plan": CommandSemantics(
             "application.environment.operation", "control", ("environment.operation.plan",)
         ),
@@ -314,6 +318,7 @@ _COMMAND_TARGETS = MappingProxyType(
         "environment.observe": ("environment_observation", "uuid"),
         "environment.resolve": ("environment_binding_request", "uuid"),
         "environment.descriptor.validate": ("environment_descriptor_set", "uuid"),
+        "environment.descriptor.change.plan": ("environment_descriptor_change", "uuid"),
         "environment.operation.plan": ("environment_operation", "uuid"),
         "environment.command.plan": ("engineering_command", "uuid"),
         "environment.attempt.settle": ("environment_operation", "uuid"),
@@ -405,6 +410,7 @@ _COMMAND_PAYLOAD_FIELDS = MappingProxyType(
         "environment.observe": (frozenset({"request"}), frozenset()),
         "environment.resolve": (frozenset({"request"}), frozenset()),
         "environment.descriptor.validate": (frozenset({"descriptor_set"}), frozenset()),
+        "environment.descriptor.change.plan": (frozenset({"request"}), frozenset()),
         "environment.operation.plan": (frozenset({"request"}), frozenset()),
         "environment.command.plan": (frozenset({"request"}), frozenset()),
         "environment.attempt.settle": (
@@ -443,6 +449,7 @@ class AuthorizedApplicationCommand:
     environment_observation: EnvironmentObservationRequest | None = None
     environment_binding: EnvironmentBindingRequest | None = None
     environment_descriptor_set: EnvironmentDescriptorSet | None = None
+    environment_descriptor_change: EnvironmentDescriptorChangeRequest | None = None
     environment_operation: EnvironmentOperationRequest | None = None
     engineering_command: EngineeringCommandRequest | None = None
     environment_operation_plan: EnvironmentOperationPlan | None = None
@@ -508,6 +515,7 @@ class ApplicationCommandAuthority:
         environment_observation: EnvironmentObservationRequest | None = None
         environment_binding: EnvironmentBindingRequest | None = None
         environment_descriptor_set: EnvironmentDescriptorSet | None = None
+        environment_descriptor_change: EnvironmentDescriptorChangeRequest | None = None
         environment_operation: EnvironmentOperationRequest | None = None
         engineering_command: EngineeringCommandRequest | None = None
         environment_operation_plan: EnvironmentOperationPlan | None = None
@@ -811,6 +819,20 @@ class ApplicationCommandAuthority:
                     f"environment-binding:{environment_descriptor_set.binding_id}",
                     *(member.artifact_reference for member in environment_descriptor_set.members),
                 )
+            elif normalized.command_type == "environment.descriptor.change.plan":
+                environment_descriptor_change = EnvironmentDescriptorChangeRequest.model_validate(
+                    normalized.payload["request"]
+                )
+                if normalized.target_id != str(environment_descriptor_change.request_id):
+                    raise ValueError("descriptor change target differs from its request")
+                if environment_descriptor_change.owner_identity != normalized.actor_id:
+                    raise MishkanError(
+                        ErrorCode.AUTHORITY_NOT_GRANTED,
+                        "descriptor change owner must match the authenticated actor",
+                    )
+                external_resources = (
+                    f"environment-descriptor-set:{environment_descriptor_change.descriptor_set_id}",
+                )
             elif normalized.command_type == "environment.operation.plan":
                 environment_operation = EnvironmentOperationRequest.model_validate(
                     normalized.payload["request"]
@@ -977,6 +999,7 @@ class ApplicationCommandAuthority:
             environment_observation=environment_observation,
             environment_binding=environment_binding,
             environment_descriptor_set=environment_descriptor_set,
+            environment_descriptor_change=environment_descriptor_change,
             environment_operation=environment_operation,
             engineering_command=engineering_command,
             environment_operation_plan=environment_operation_plan,

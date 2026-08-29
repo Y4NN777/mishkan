@@ -25,6 +25,8 @@ from mishkan.environment import (
     EnvironmentBinding,
     EnvironmentBindingRequest,
     EnvironmentBindingState,
+    EnvironmentDescriptorChangePlan,
+    EnvironmentDescriptorChangeRequest,
     EnvironmentDescriptorMember,
     EnvironmentDescriptorSet,
     EnvironmentInvalidation,
@@ -335,7 +337,6 @@ async def test_descriptor_validation_and_operation_plan_feed_the_job_supervisor(
         artifact_service.append_chunk(upload.upload_id, offset=0, content=content)
         manifest = artifact_service.commit_upload(upload.upload_id)
         descriptor_path = tmp_path / "Containerfile.generated"
-        descriptor_path.write_bytes(content)
         descriptor_set = EnvironmentDescriptorSet(
             binding_id=binding.binding_id,
             context_fingerprint=observation.fingerprint,
@@ -363,6 +364,54 @@ async def test_descriptor_validation_and_operation_plan_feed_the_job_supervisor(
         )
         assert validation_response.status_code == 200
         assert validation_response.json()["payload"]["valid"] is True
+
+        descriptor_change_request = EnvironmentDescriptorChangeRequest(
+            descriptor_set_id=descriptor_set.descriptor_set_id,
+            owner_identity=token.principal_id,
+        )
+        descriptor_change_response = await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=ApplicationCommand(
+                command_type="environment.descriptor.change.plan",
+                actor_id=token.principal_id,
+                target_type="environment_descriptor_change",
+                target_id=str(descriptor_change_request.request_id),
+                payload={"request": descriptor_change_request.model_dump(mode="json")},
+            ).model_dump(mode="json"),
+        )
+        descriptor_change = EnvironmentDescriptorChangePlan.model_validate(
+            descriptor_change_response.json()["payload"]
+        )
+        assert descriptor_change.change_set is not None
+        change_set = descriptor_change.change_set
+        planned_change = await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=ApplicationCommand(
+                command_type="change.plan",
+                actor_id=token.principal_id,
+                target_type="change_set",
+                target_id=str(change_set.id),
+                payload={"change_set": change_set.model_dump(mode="json")},
+            ).model_dump(mode="json"),
+        )
+        assert planned_change.status_code == 200
+        applied_change = await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=ApplicationCommand(
+                command_type="change.apply",
+                actor_id=token.principal_id,
+                target_type="change_set",
+                target_id=str(change_set.id),
+                expected_revision=planned_change.json()["revision"],
+                payload={},
+            ).model_dump(mode="json"),
+        )
+        assert applied_change.status_code == 200, applied_change.json()
+        assert applied_change.json()["payload"]["state"] == "verified"
+        assert descriptor_path.read_bytes() == content
 
         operation_request = EnvironmentOperationRequest(
             binding_id=binding.binding_id,

@@ -69,6 +69,11 @@ class EnvironmentDescriptorValidator:
                 binding.request.allowed_descriptor_formats,
             )
             violations.extend(f"{member.logical_path}:{item}" for item in member_violations)
+            if (
+                member.base_revision is not None
+                and member.base_revision != observation.repository_revision
+            ):
+                violations.append(f"{member.logical_path}:stale-base-revision")
             try:
                 manifest = self._artifacts.manifest(member.artifact_reference)
                 content = self._artifacts.read_bytes(member.artifact_reference)

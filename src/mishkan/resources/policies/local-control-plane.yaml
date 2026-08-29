@@ -1,6 +1,6 @@
 schema_version: "1.0"
 source_id: bundled.local
-revision: "19"
+revision: "20"
 adoption_authority: MISHKAN release
 priority: 0
 rules:
@@ -157,6 +157,7 @@ rules:
         - environment.observe
         - environment.resolve
         - environment.descriptor.validate
+        - environment.descriptor.change.plan
         - environment.operation.plan
         - environment.command.plan
         - environment.attempt.settle

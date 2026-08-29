@@ -93,6 +93,10 @@ class SQLiteEnvironmentRepository:
                 raise MishkanError(ErrorCode.ENGINEERING, "environment observation does not exist")
             return EnvironmentObservation.model_validate_json(row.payload)
 
+    def artifact_manifest(self, reference: str) -> ArtifactManifest:
+        """Resolve immutable descriptor content through the configured artifact authority."""
+        return self._artifacts.manifest(reference)
+
     def record_binding(self, record: EnvironmentBinding) -> EnvironmentBinding:
         payload = self._json(record)
         with Session(self._engine) as session, session.begin():

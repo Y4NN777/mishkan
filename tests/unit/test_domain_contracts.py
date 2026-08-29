@@ -112,6 +112,8 @@ def test_public_contract_catalogue_exports_deterministically(tmp_path: Path) -> 
         "environment-attempt-v1.schema.json",
         "environment-binding-request-v1.schema.json",
         "environment-binding-v1.schema.json",
+        "environment-descriptor-change-plan-v1.schema.json",
+        "environment-descriptor-change-request-v1.schema.json",
         "environment-descriptor-validation-result-v1.schema.json",
         "environment-descriptor-set-v1.schema.json",
         "environment-invalidation-v1.schema.json",

@@ -1,5 +1,6 @@
 """Truthful engineering-environment observation and binding contracts."""
 
+from mishkan.environment.changes import EnvironmentDescriptorChangePlanner
 from mishkan.environment.descriptors import EnvironmentDescriptorValidator
 from mishkan.environment.evidence import EnvironmentEvidenceService
 from mishkan.environment.models import (
@@ -12,6 +13,8 @@ from mishkan.environment.models import (
     EnvironmentBinding,
     EnvironmentBindingRequest,
     EnvironmentBindingState,
+    EnvironmentDescriptorChangePlan,
+    EnvironmentDescriptorChangeRequest,
     EnvironmentDescriptorMember,
     EnvironmentDescriptorSet,
     EnvironmentInvalidation,
@@ -54,6 +57,9 @@ __all__ = [
     "EnvironmentBinding",
     "EnvironmentBindingRequest",
     "EnvironmentBindingState",
+    "EnvironmentDescriptorChangePlan",
+    "EnvironmentDescriptorChangePlanner",
+    "EnvironmentDescriptorChangeRequest",
     "EnvironmentDescriptorMember",
     "EnvironmentDescriptorSet",
     "EnvironmentDescriptorValidator",

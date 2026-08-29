@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from mishkan.config.models import CredentialReference
 from mishkan.domain.identity import new_id
 from mishkan.domain.time import require_aware, utc_now
+from mishkan.edits import ChangeSet
 from mishkan.tools.execution import EffectSettlement, ExecutionRequest, ExecutionStatus
 
 
@@ -243,6 +244,29 @@ class EnvironmentDescriptorSet(EnvironmentModel):
     credential_references: tuple[str, ...] = ()
     lifecycle_commands: tuple[str, ...] = ()
     expected_artifacts: tuple[str, ...] = ()
+
+
+class EnvironmentDescriptorChangeRequest(EnvironmentModel):
+    schema_version: Literal["1.0"] = "1.0"
+    request_id: UUID = Field(default_factory=new_id)
+    descriptor_set_id: UUID
+    owner_identity: str = Field(min_length=1, max_length=256)
+    result_mode: int = Field(default=0o644, ge=0, le=0o7777)
+
+
+class EnvironmentDescriptorChangePlan(EnvironmentModel):
+    schema_version: Literal["1.0"] = "1.0"
+    request: EnvironmentDescriptorChangeRequest
+    binding_id: UUID
+    observation_fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
+    unchanged_paths: tuple[str, ...]
+    change_set: ChangeSet | None
+    planned_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("planned_at")
+    @classmethod
+    def change_plan_time_is_unambiguous(cls, value: datetime) -> datetime:
+        return require_aware(value)
 
 
 class EnvironmentAttempt(EnvironmentModel):

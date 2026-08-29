@@ -9,6 +9,8 @@ from mishkan.artifacts.service import DurableArtifactService
 from mishkan.domain.time import utc_now
 from mishkan.environment import (
     EnvironmentBindingRequest,
+    EnvironmentDescriptorChangePlanner,
+    EnvironmentDescriptorChangeRequest,
     EnvironmentDescriptorMember,
     EnvironmentDescriptorSet,
     EnvironmentDescriptorValidator,
@@ -137,6 +139,20 @@ def test_devcontainer_jsonc_reuse_preserves_exact_observed_bytes(tmp_path: Path)
     assert result.violations == ()
     assert artifacts.read_bytes(reference) == content
 
+    stale_set = descriptor_set.model_copy(
+        update={
+            "descriptor_set_id": descriptor_set.descriptor_set_id,
+            "members": (descriptor_set.members[0].model_copy(update={"base_revision": "stale"}),),
+        }
+    )
+    stale = EnvironmentDescriptorValidator(
+        repository,
+        artifacts,
+        max_descriptor_bytes=profile.max_descriptor_bytes,
+    ).validate(stale_set)
+    assert stale.valid is False
+    assert ".devcontainer/devcontainer.json:stale-base-revision" in stale.violations
+
 
 def test_podman_operation_is_a_literal_governed_job_plan(tmp_path: Path) -> None:
     artifacts, repository, profile, binaries, podman = _foundation(tmp_path, "podman")
@@ -200,6 +216,16 @@ def test_podman_operation_is_a_literal_governed_job_plan(tmp_path: Path) -> None
     )
     assert validator.validate(descriptor_set).valid
     repository.record_descriptor_set(descriptor_set)
+    change_plan = EnvironmentDescriptorChangePlanner(repository).plan(
+        EnvironmentDescriptorChangeRequest(
+            descriptor_set_id=descriptor_set.descriptor_set_id,
+            owner_identity="operator",
+        )
+    )
+    assert change_plan.change_set is not None
+    assert change_plan.change_set.operations[0].kind.value == "create"
+    assert change_plan.change_set.operations[0].precondition.value == "absent"
+    assert change_plan.change_set.operations[0].artifact_reference == reference
     (tmp_path / "Containerfile.generated").write_bytes(content)
     operation = EnvironmentOperationRequest(
         binding_id=binding.binding_id,

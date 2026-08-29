@@ -58,6 +58,8 @@ from mishkan.environment import (
     EngineeringCommandPlan,
     EnvironmentAttempt,
     EnvironmentBinding,
+    EnvironmentDescriptorChangePlan,
+    EnvironmentDescriptorChangePlanner,
     EnvironmentDescriptorSet,
     EnvironmentDescriptorValidator,
     EnvironmentEvidenceService,
@@ -344,6 +346,7 @@ def create_app(
     environment_observer: EnvironmentObserver | None = None
     environment_resolver: EnvironmentResolver | None = None
     environment_descriptor_validator: EnvironmentDescriptorValidator | None = None
+    environment_descriptor_change_planner: EnvironmentDescriptorChangePlanner | None = None
     environment_operation_planner: EnvironmentOperationPlanner | None = None
     environment_evidence_service: EnvironmentEvidenceService | None = None
     technical_pack_service: TechnicalPackService | None = None
@@ -365,6 +368,9 @@ def create_app(
             environment_repository,
             artifacts,
             max_descriptor_bytes=environment_profile.max_descriptor_bytes,
+        )
+        environment_descriptor_change_planner = EnvironmentDescriptorChangePlanner(
+            environment_repository
         )
         environment_operation_planner = EnvironmentOperationPlanner(
             environment_profile,
@@ -788,6 +794,7 @@ def create_app(
                                 environment_observer,
                                 environment_resolver,
                                 environment_descriptor_validator,
+                                environment_descriptor_change_planner,
                                 environment_operation_planner,
                                 environment_evidence_service,
                                 technical_pack_service,
@@ -1523,6 +1530,7 @@ def _dispatch(
     environment_observer: EnvironmentObserver | None,
     environment_resolver: EnvironmentResolver | None,
     environment_descriptor_validator: EnvironmentDescriptorValidator | None,
+    environment_descriptor_change_planner: EnvironmentDescriptorChangePlanner | None,
     environment_operation_planner: EnvironmentOperationPlanner | None,
     environment_evidence_service: EnvironmentEvidenceService | None,
     technical_pack_service: TechnicalPackService | None,
@@ -1933,6 +1941,17 @@ def _dispatch(
             else "environment.descriptor_rejected",
             validation.model_dump(mode="json"),
         )
+    if command.command_type == "environment.descriptor.change.plan":
+        change_request = authorized.environment_descriptor_change
+        if environment_descriptor_change_planner is None or change_request is None:
+            raise MishkanError(
+                ErrorCode.REQUIRED_DEPENDENCY,
+                "Environment descriptor change planning is not configured",
+            )
+        descriptor_change: EnvironmentDescriptorChangePlan = (
+            environment_descriptor_change_planner.plan(change_request)
+        )
+        return "environment.descriptor_change_planned", descriptor_change.model_dump(mode="json")
     if command.command_type == "environment.operation.plan":
         operation_request = authorized.environment_operation
         if environment_operation_planner is None or operation_request is None:

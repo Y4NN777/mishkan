@@ -36,6 +36,8 @@ from mishkan.environment import (
     EnvironmentAttempt,
     EnvironmentBinding,
     EnvironmentBindingRequest,
+    EnvironmentDescriptorChangePlan,
+    EnvironmentDescriptorChangeRequest,
     EnvironmentDescriptorSet,
     EnvironmentInvalidation,
     EnvironmentObservation,
@@ -715,6 +717,21 @@ class Mishkan:
             )
         )
         return DescriptorValidationResult.model_validate(result.payload)
+
+    def plan_environment_descriptor_change(
+        self,
+        request: EnvironmentDescriptorChangeRequest,
+    ) -> EnvironmentDescriptorChangePlan:
+        result = self.command(
+            ApplicationCommand(
+                command_type="environment.descriptor.change.plan",
+                actor_id=self.principal_id,
+                target_type="environment_descriptor_change",
+                target_id=str(request.request_id),
+                payload={"request": request.model_dump(mode="json")},
+            )
+        )
+        return EnvironmentDescriptorChangePlan.model_validate(result.payload)
 
     def plan_environment_operation(
         self,
