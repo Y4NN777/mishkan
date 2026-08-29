@@ -1947,6 +1947,14 @@
       ],
       "default": null
     },
+    "community_candidate_sources": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Community Candidate Sources",
+      "type": "array"
+    },
     "credential_bindings": {
       "additionalProperties": {
         "$ref": "#/$defs/CredentialReference"

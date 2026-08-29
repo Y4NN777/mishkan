@@ -64,6 +64,49 @@ def show_engineer_profile(ctx: typer.Context) -> None:
     _emit(profile.model_dump(mode="json"), as_json=_state(ctx).json_output)
 
 
+@context_app.command("community-candidates")
+def show_community_candidates(ctx: typer.Context) -> None:
+    """Show configured candidates; discovery never grants activation authority."""
+    with _daemon_client(ctx) as client:
+        candidates = client.community_candidates()
+    _emit(
+        {
+            "candidates": [candidate.model_dump(mode="json") for candidate in candidates],
+            "count": len(candidates),
+            "activation_authorized": False,
+        },
+        as_json=_state(ctx).json_output,
+    )
+
+
+@context_app.command("recommend")
+def recommend_community_candidate(
+    ctx: typer.Context,
+    request_file: Annotated[
+        Path,
+        typer.Option("--request", help="JSON ContextualRecommendationRequest."),
+    ],
+) -> None:
+    """Rank configured candidates against explicit evidence and criteria."""
+    from mishkan.context import ContextualRecommendationRequest
+
+    try:
+        request = ContextualRecommendationRequest.model_validate_json(
+            request_file.read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter(
+            "--request must contain a valid ContextualRecommendationRequest"
+        ) from exc
+    with _daemon_client(ctx) as client:
+        if request.owner_identity != client.principal_id:
+            raise typer.BadParameter(
+                "request owner_identity must match the authenticated daemon principal"
+            )
+        result = client.recommend_community_candidate(request)
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
 @telemetry_app.command("status")
 def telemetry_status(ctx: typer.Context) -> None:
     """Show the optional exporter state without making telemetry authoritative."""

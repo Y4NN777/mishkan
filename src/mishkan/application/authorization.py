@@ -26,6 +26,7 @@ from mishkan.config.models import (
     McpTransport,
     MishkanConfig,
 )
+from mishkan.context import ContextualRecommendationRequest
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.time import utc_now
 from mishkan.edits import ChangeSet
@@ -256,6 +257,9 @@ COMMAND_SEMANTICS = MappingProxyType(
             "artifact",
             ("telemetry.evaluation.import",),
         ),
+        "context.recommend": CommandSemantics(
+            "application.context.recommend", "read", ("context.recommend",)
+        ),
         **{
             f"registry.entry.{action.value}": CommandSemantics(
                 "application.registry.lifecycle",
@@ -325,6 +329,7 @@ _COMMAND_TARGETS = MappingProxyType(
         "environment.verification.record": ("environment_verification", "uuid"),
         "environment.binding.invalidate": ("environment_binding", "uuid"),
         "telemetry.evaluation.import": ("telemetry_evaluation", "uuid"),
+        "context.recommend": ("context_recommendation", "uuid"),
         **{
             f"registry.entry.{action.value}": ("registry_entry", "required")
             for action in RegistryLifecycleAction
@@ -420,6 +425,7 @@ _COMMAND_PAYLOAD_FIELDS = MappingProxyType(
         "environment.verification.record": (frozenset({"request"}), frozenset()),
         "environment.binding.invalidate": (frozenset({"invalidation"}), frozenset()),
         "telemetry.evaluation.import": (frozenset({"request"}), frozenset()),
+        "context.recommend": (frozenset({"request"}), frozenset()),
         "registry.entry.add": (frozenset({"entry_kind", "definition"}), frozenset()),
         "registry.entry.enable": (frozenset({"entry_kind"}), frozenset()),
         "registry.entry.disable": (frozenset({"entry_kind"}), frozenset()),
@@ -456,6 +462,7 @@ class AuthorizedApplicationCommand:
     environment_verification: EnvironmentVerificationRequest | None = None
     environment_invalidation: EnvironmentInvalidation | None = None
     telemetry_evaluation: LangSmithFeedbackImportRequest | None = None
+    context_recommendation: ContextualRecommendationRequest | None = None
 
 
 class ApplicationCommandAuthority:
@@ -522,6 +529,7 @@ class ApplicationCommandAuthority:
         environment_verification: EnvironmentVerificationRequest | None = None
         environment_invalidation: EnvironmentInvalidation | None = None
         telemetry_evaluation: LangSmithFeedbackImportRequest | None = None
+        context_recommendation: ContextualRecommendationRequest | None = None
 
         try:
             if normalized.command_type == "run.initialize":
@@ -950,6 +958,22 @@ class ApplicationCommandAuthority:
                     f"langsmith-run:{telemetry_evaluation.traced_run_id}",
                     f"langsmith-feedback:{telemetry_evaluation.external_feedback_id}",
                 )
+            elif normalized.command_type == "context.recommend":
+                context_recommendation = ContextualRecommendationRequest.model_validate(
+                    normalized.payload["request"]
+                )
+                if normalized.target_id != str(context_recommendation.request_id):
+                    raise ValueError("context recommendation target differs from its request")
+                if context_recommendation.owner_identity != normalized.actor_id:
+                    raise MishkanError(
+                        ErrorCode.AUTHORITY_NOT_GRANTED,
+                        "context recommendation owner must match the authenticated actor",
+                    )
+                external_resources = (
+                    f"context:{context_recommendation.context_id}",
+                    *(f"candidate:{item}" for item in context_recommendation.candidate_ids),
+                    *(f"evidence:{item}" for item in context_recommendation.project_evidence),
+                )
             elif normalized.target_id is not None:
                 external_resources = (f"{normalized.target_type}:{normalized.target_id}",)
         except (KeyError, TypeError, ValueError, ValidationError) as exc:
@@ -1006,6 +1030,7 @@ class ApplicationCommandAuthority:
             environment_verification=environment_verification,
             environment_invalidation=environment_invalidation,
             telemetry_evaluation=telemetry_evaluation,
+            context_recommendation=context_recommendation,
         )
 
     @staticmethod

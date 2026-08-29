@@ -1,0 +1,22 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "pattern": "^[a-z][a-z0-9_.-]{1,127}$",
+      "title": "Name",
+      "type": "string"
+    },
+    "weight": {
+      "exclusiveMinimum": 0,
+      "maximum": 1000,
+      "title": "Weight",
+      "type": "number"
+    }
+  },
+  "required": [
+    "name",
+    "weight"
+  ],
+  "title": "RecommendationCriterion",
+  "type": "object"
+}

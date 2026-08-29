@@ -1,0 +1,126 @@
+{
+  "$defs": {
+    "CandidateAssessment": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "title": "Candidate Id",
+          "type": "string"
+        },
+        "eligible": {
+          "title": "Eligible",
+          "type": "boolean"
+        },
+        "evidence_references": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence References",
+          "type": "array"
+        },
+        "rejected_by": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Rejected By",
+          "type": "array"
+        },
+        "score": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Score"
+        },
+        "uncertainties": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Uncertainties",
+          "type": "array"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "eligible",
+        "evidence_references"
+      ],
+      "title": "CandidateAssessment",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "activation_authorized": {
+      "const": false,
+      "default": false,
+      "title": "Activation Authorized",
+      "type": "boolean"
+    },
+    "catalogue_revisions": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Catalogue Revisions",
+      "type": "array"
+    },
+    "context_id": {
+      "title": "Context Id",
+      "type": "string"
+    },
+    "excluded": {
+      "items": {
+        "$ref": "#/$defs/CandidateAssessment"
+      },
+      "title": "Excluded",
+      "type": "array"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "project_evidence": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Project Evidence",
+      "type": "array"
+    },
+    "ranked": {
+      "items": {
+        "$ref": "#/$defs/CandidateAssessment"
+      },
+      "title": "Ranked",
+      "type": "array"
+    },
+    "request_id": {
+      "format": "uuid",
+      "title": "Request Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "request_id",
+    "context_id",
+    "ranked",
+    "excluded",
+    "project_evidence",
+    "catalogue_revisions"
+  ],
+  "title": "ContextualRecommendation",
+  "type": "object"
+}

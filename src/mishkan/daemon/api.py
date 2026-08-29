@@ -44,7 +44,13 @@ from mishkan.artifacts import (
 )
 from mishkan.artifacts.service import DurableArtifactService
 from mishkan.config.models import CredentialReference, McpConfig, MishkanConfig
-from mishkan.context import EngineerProfile, EngineerProfileLoader
+from mishkan.context import (
+    CommunityCandidateLoader,
+    ContextualRecommendation,
+    ContextualRecommendationService,
+    EngineerProfile,
+    EngineerProfileLoader,
+)
 from mishkan.crewai.credentials import CredentialPoolResolver
 from mishkan.crewai.skill_learning import CrewAISkillLearningRunner
 from mishkan.daemon.auth import TokenFile, TokenRecord
@@ -513,6 +519,9 @@ def create_app(
         if config.engineer_profile is not None
         else None
     )
+    community_recommendations = ContextualRecommendationService(
+        CommunityCandidateLoader().load(config.community_candidate_sources, paths.workspace)
+    )
     telemetry_tasks: set[asyncio.Task[object]] = set()
 
     def project_telemetry(
@@ -805,6 +814,7 @@ def create_app(
                                 environment_evidence_service,
                                 technical_pack_service,
                                 telemetry_evaluation_service,
+                                community_recommendations,
                             )
                         except MishkanError as error:
                             result = repository.fail_reserved(
@@ -971,6 +981,17 @@ def create_app(
                 "A confirmed portable engineer profile is not configured",
             )
         return engineer_profile
+
+    @app.get("/v1/context/community-candidates")
+    async def community_candidates(
+        _principal: TokenRecord = authenticated,
+    ) -> dict[str, object]:
+        candidates = community_recommendations.candidates()
+        return {
+            "candidates": [candidate.model_dump(mode="json") for candidate in candidates],
+            "count": len(candidates),
+            "activation_authorized": False,
+        }
 
     @app.get("/v1/tools/registry")
     async def tool_registry(
@@ -1552,6 +1573,7 @@ def _dispatch(
     environment_evidence_service: EnvironmentEvidenceService | None,
     technical_pack_service: TechnicalPackService | None,
     telemetry_evaluation_service: TelemetryEvaluationService,
+    community_recommendations: ContextualRecommendationService,
 ) -> tuple[str, dict[str, object]]:
     payload = command.payload
     if command.command_type == "system.checkpoint" and command.target_type == "system":
@@ -1569,6 +1591,17 @@ def _dispatch(
             resolved_secrets=tuple(resolved_credentials.values()),
         )
         return "telemetry.evaluation_imported", evaluation.model_dump(mode="json")
+    if command.command_type == "context.recommend":
+        recommendation_request = authorized.context_recommendation
+        if recommendation_request is None:
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT,
+                "authorized contextual recommendation request is absent",
+            )
+        recommendation: ContextualRecommendation = community_recommendations.recommend(
+            recommendation_request
+        )
+        return "context.recommendation_generated", recommendation.model_dump(mode="json")
     if command.command_type == "artifact.upload.open":
         upload = artifacts.open_upload(
             expected_size=int(payload["expected_size"]),

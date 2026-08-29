@@ -26,7 +26,12 @@ from mishkan.artifacts import (
 from mishkan.artifacts import (
     ArtifactHold as ArtifactEvidenceHold,
 )
-from mishkan.context import EngineerProfile
+from mishkan.context import (
+    CommunityCandidate,
+    ContextualRecommendation,
+    ContextualRecommendationRequest,
+    EngineerProfile,
+)
 from mishkan.daemon.auth import TokenFile
 from mishkan.edits import ChangeSetResult
 from mishkan.environment import (
@@ -182,6 +187,27 @@ class Mishkan:
         response = self._client.get("/v1/context/engineer-profile", headers=self._headers())
         response.raise_for_status()
         return EngineerProfile.model_validate(response.json())
+
+    def community_candidates(self) -> tuple[CommunityCandidate, ...]:
+        response = self._client.get("/v1/context/community-candidates", headers=self._headers())
+        response.raise_for_status()
+        return tuple(
+            CommunityCandidate.model_validate(item) for item in response.json()["candidates"]
+        )
+
+    def recommend_community_candidate(
+        self, request: ContextualRecommendationRequest
+    ) -> ContextualRecommendation:
+        result = self.command(
+            ApplicationCommand(
+                command_type="context.recommend",
+                actor_id=self.principal_id,
+                target_type="context_recommendation",
+                target_id=str(request.request_id),
+                payload={"request": request.model_dump(mode="json")},
+            )
+        )
+        return ContextualRecommendation.model_validate(result.payload)
 
     def import_langsmith_feedback(
         self,

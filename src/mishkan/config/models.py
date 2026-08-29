@@ -658,6 +658,7 @@ class MishkanConfig(StrictConfigModel):
     mcp: McpConfig | None = None
     skills: SkillsConfig | None = None
     engineer_profile: str | None = None
+    community_candidate_sources: tuple[str, ...] = ()
     engineering_profile: str | None = None
     engineering_pack_sources: tuple[str, ...] = Field(
         default=("package://mishkan.resources.environment/technical-packs.yaml",),

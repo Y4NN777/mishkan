@@ -1,0 +1,36 @@
+{
+  "$defs": {
+    "ConstraintState": {
+      "enum": [
+        "pass",
+        "fail",
+        "unknown"
+      ],
+      "title": "ConstraintState",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "compatibility": {
+      "$ref": "#/$defs/ConstraintState"
+    },
+    "execution": {
+      "$ref": "#/$defs/ConstraintState"
+    },
+    "policy": {
+      "$ref": "#/$defs/ConstraintState"
+    },
+    "trust": {
+      "$ref": "#/$defs/ConstraintState"
+    }
+  },
+  "required": [
+    "compatibility",
+    "policy",
+    "trust",
+    "execution"
+  ],
+  "title": "CandidateConstraints",
+  "type": "object"
+}

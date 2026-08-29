@@ -34,6 +34,15 @@ from mishkan.browser.models import (
     BrowserSessionRequest,
 )
 from mishkan.config.models import MishkanConfig
+from mishkan.context.candidates import (
+    CandidateAssessment,
+    CandidateConstraints,
+    CommunityCandidate,
+    CommunityCandidateCatalogue,
+    ContextualRecommendation,
+    ContextualRecommendationRequest,
+    RecommendationCriterion,
+)
 from mishkan.context.models import ContextPackManifest, ContextPackMaterialization
 from mishkan.context.profile import ConfirmedEngineerFact, EngineerProfile
 from mishkan.domain.errors import ErrorEnvelope
@@ -153,14 +162,21 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "command-result-v1.schema.json": CommandResult,
     "config-v1.schema.json": MishkanConfig,
     "confirmed-engineer-fact-v1.schema.json": ConfirmedEngineerFact,
+    "candidate-assessment-v1.schema.json": CandidateAssessment,
+    "candidate-constraints-v1.schema.json": CandidateConstraints,
+    "community-candidate-v1.schema.json": CommunityCandidate,
+    "community-candidate-catalogue-v1.schema.json": CommunityCandidateCatalogue,
     "context-pack-manifest-v1.schema.json": ContextPackManifest,
     "context-pack-materialization-v1.schema.json": ContextPackMaterialization,
+    "contextual-recommendation-request-v1.schema.json": ContextualRecommendationRequest,
+    "contextual-recommendation-v1.schema.json": ContextualRecommendation,
     "domain-record-v1.schema.json": DomainRecord,
     "error-envelope-v1.schema.json": ErrorEnvelope,
     "engineering-command-candidate-v1.schema.json": EngineeringCommandCandidate,
     "engineering-command-plan-v1.schema.json": EngineeringCommandPlan,
     "engineering-command-request-v1.schema.json": EngineeringCommandRequest,
     "engineer-profile-v1.schema.json": EngineerProfile,
+    "recommendation-criterion-v1.schema.json": RecommendationCriterion,
     "environment-attempt-v1.schema.json": EnvironmentAttempt,
     "environment-descriptor-validation-result-v1.schema.json": DescriptorValidationResult,
     "environment-binding-request-v1.schema.json": EnvironmentBindingRequest,
