@@ -1,6 +1,6 @@
 schema_version: "1.0"
 source_id: bundled.local
-revision: "15"
+revision: "16"
 adoption_authority: MISHKAN release
 priority: 0
 rules:
@@ -156,6 +156,8 @@ rules:
         - skill.learn
         - environment.observe
         - environment.resolve
+        - environment.descriptor.validate
+        - environment.operation.plan
       roles: [application-client]
       capabilities:
         - application.system.checkpoint
@@ -185,6 +187,8 @@ rules:
         - application.skill.learn
         - application.environment.observe
         - application.environment.resolve
+        - application.environment.descriptor
+        - application.environment.operation
       effect_classes: [read, control, coordination, artifact, filesystem, process, external, registry_lifecycle, skill_lifecycle]
       effects: ["*"]
       paths: ["*"]

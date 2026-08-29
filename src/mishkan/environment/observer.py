@@ -6,6 +6,7 @@ import hashlib
 import os
 import platform as host_platform
 import shutil
+from fnmatch import fnmatchcase
 from pathlib import Path, PurePosixPath
 
 from mishkan.domain.errors import ErrorCode, MishkanError
@@ -165,9 +166,10 @@ class EnvironmentObserver:
         detected = executable_path is not None
         platform_compatible = "*" in definition.platforms or platform_name in definition.platforms
         marker_names = {Path(path).name for path in marker_paths}
-        project_used = bool(
-            set(definition.project_markers) & marker_paths
-            or {Path(marker).name for marker in definition.project_markers} & marker_names
+        project_used = any(
+            marker in marker_paths
+            or any(fnmatchcase(name, Path(marker).name) for name in marker_names)
+            for marker in definition.project_markers
         )
         states = {
             "inventoried": AvailabilityState.TRUE,

@@ -52,9 +52,14 @@ from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.edits import ChangeSet, ChangeSetResult, ChangeSetService
 from mishkan.edits.git import GovernedGitService
 from mishkan.environment import (
+    DescriptorValidationResult,
     EnvironmentBinding,
+    EnvironmentDescriptorSet,
+    EnvironmentDescriptorValidator,
     EnvironmentObservation,
     EnvironmentObserver,
+    EnvironmentOperationPlan,
+    EnvironmentOperationPlanner,
     EnvironmentResolver,
     load_environment_profile,
 )
@@ -243,6 +248,8 @@ def create_app(
     environment_repository: SQLiteEnvironmentRepository | None = None
     environment_observer: EnvironmentObserver | None = None
     environment_resolver: EnvironmentResolver | None = None
+    environment_descriptor_validator: EnvironmentDescriptorValidator | None = None
+    environment_operation_planner: EnvironmentOperationPlanner | None = None
     if config.engineering_profile is not None:
         environment_profile = load_environment_profile(
             config.engineering_profile,
@@ -256,6 +263,16 @@ def create_app(
         environment_observer = EnvironmentObserver(environment_profile)
         environment_resolver = EnvironmentResolver(
             freshness_seconds=environment_profile.freshness_seconds
+        )
+        environment_descriptor_validator = EnvironmentDescriptorValidator(
+            environment_repository,
+            artifacts,
+            max_descriptor_bytes=environment_profile.max_descriptor_bytes,
+        )
+        environment_operation_planner = EnvironmentOperationPlanner(
+            environment_profile,
+            environment_repository,
+            artifacts,
         )
     skill_lifecycle: SQLiteSkillLifecycleRepository | None = None
     skill_usage: SQLiteSkillUsageRepository | None = None
@@ -611,6 +628,8 @@ def create_app(
                                 environment_repository,
                                 environment_observer,
                                 environment_resolver,
+                                environment_descriptor_validator,
+                                environment_operation_planner,
                             )
                         except MishkanError as error:
                             return repository.fail_reserved(
@@ -1143,6 +1162,21 @@ def create_app(
             )
         return await _thread_call(environment_repository.binding, str(binding_id))
 
+    @app.get("/v1/environment/descriptor-sets/{descriptor_set_id}")
+    async def environment_descriptor_set_get(
+        descriptor_set_id: UUID,
+        _principal: TokenRecord = authenticated,
+    ) -> EnvironmentDescriptorSet:
+        if environment_repository is None:
+            raise MishkanError(
+                ErrorCode.REQUIRED_DEPENDENCY,
+                "Environment capability is not configured",
+            )
+        return await _thread_call(
+            environment_repository.descriptor_set,
+            str(descriptor_set_id),
+        )
+
     @app.get("/v1/mcp/connections")
     async def mcp_connection_list(
         _principal: TokenRecord = authenticated,
@@ -1268,6 +1302,8 @@ def _dispatch(
     environment_repository: SQLiteEnvironmentRepository | None,
     environment_observer: EnvironmentObserver | None,
     environment_resolver: EnvironmentResolver | None,
+    environment_descriptor_validator: EnvironmentDescriptorValidator | None,
+    environment_operation_planner: EnvironmentOperationPlanner | None,
 ) -> tuple[str, dict[str, object]]:
     payload = command.payload
     if command.command_type == "system.checkpoint" and command.target_type == "system":
@@ -1633,6 +1669,45 @@ def _dispatch(
             f"environment.binding_{binding.state.value}",
             recorded_binding.model_dump(mode="json"),
         )
+    if command.command_type == "environment.descriptor.validate":
+        descriptor_set = authorized.environment_descriptor_set
+        if (
+            environment_repository is None
+            or environment_descriptor_validator is None
+            or descriptor_set is None
+        ):
+            raise MishkanError(
+                ErrorCode.REQUIRED_DEPENDENCY,
+                "Environment descriptor validation is not configured",
+            )
+        binding = environment_repository.binding(str(descriptor_set.binding_id))
+        if binding.request.owner_identity != command.actor_id:
+            raise MishkanError(
+                ErrorCode.AUTHORITY_NOT_GRANTED,
+                "environment descriptor owner must match the authenticated actor",
+            )
+        validation: DescriptorValidationResult = environment_descriptor_validator.validate(
+            descriptor_set
+        )
+        if validation.valid:
+            environment_repository.record_descriptor_set(descriptor_set)
+        return (
+            "environment.descriptor_validated"
+            if validation.valid
+            else "environment.descriptor_rejected",
+            validation.model_dump(mode="json"),
+        )
+    if command.command_type == "environment.operation.plan":
+        operation_request = authorized.environment_operation
+        if environment_operation_planner is None or operation_request is None:
+            raise MishkanError(
+                ErrorCode.REQUIRED_DEPENDENCY,
+                "Environment operation planning is not configured",
+            )
+        operation_plan: EnvironmentOperationPlan = environment_operation_planner.plan(
+            operation_request
+        )
+        return "environment.operation_planned", operation_plan.model_dump(mode="json")
     raise MishkanError(
         ErrorCode.OUTPUT_CONTRACT,
         "application command type has no registered handler",

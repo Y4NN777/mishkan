@@ -1872,6 +1872,94 @@ def show_environment_binding(
     _emit(binding.model_dump(mode="json"), as_json=_state(ctx).json_output)
 
 
+@environment_app.command("validate-descriptors")
+def validate_environment_descriptors(
+    ctx: typer.Context,
+    descriptor_file: Annotated[
+        Path,
+        typer.Option("--set", help="JSON EnvironmentDescriptorSet using immutable artifacts."),
+    ],
+) -> None:
+    """Validate and, only when valid, record an exact descriptor set."""
+    from mishkan.environment import EnvironmentDescriptorSet
+
+    try:
+        descriptor_set = EnvironmentDescriptorSet.model_validate_json(
+            descriptor_file.read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter("--set must contain a valid EnvironmentDescriptorSet") from exc
+    with _daemon_client(ctx) as client:
+        result = client.validate_environment_descriptors(descriptor_set)
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+def _environment_operation_request(source: Path):  # type: ignore[no-untyped-def]
+    from mishkan.environment import EnvironmentOperationRequest
+
+    try:
+        return EnvironmentOperationRequest.model_validate_json(source.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter(
+            "--request must contain a valid EnvironmentOperationRequest"
+        ) from exc
+
+
+@environment_app.command("plan-operation")
+def plan_environment_operation(
+    ctx: typer.Context,
+    request_file: Annotated[
+        Path,
+        typer.Option("--request", help="JSON exact adapter operation request."),
+    ],
+) -> None:
+    """Produce a literal policy-visible execution request without executing it."""
+    request = _environment_operation_request(request_file)
+    with _daemon_client(ctx) as client:
+        if request.owner_identity != client.principal_id:
+            raise typer.BadParameter(
+                "request owner_identity must match the authenticated daemon principal"
+            )
+        plan = client.plan_environment_operation(request)
+    _emit(plan.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@environment_app.command("start-operation")
+def start_environment_operation(
+    ctx: typer.Context,
+    request_file: Annotated[
+        Path,
+        typer.Option("--request", help="JSON exact managed-job operation request."),
+    ],
+) -> None:
+    """Plan then start a governed environment operation through the I03 job supervisor."""
+    request = _environment_operation_request(request_file)
+    with _daemon_client(ctx) as client:
+        if request.owner_identity != client.principal_id:
+            raise typer.BadParameter(
+                "request owner_identity must match the authenticated daemon principal"
+            )
+        plan, session = client.start_environment_operation(request)
+    _emit(
+        {
+            "plan": plan.model_dump(mode="json"),
+            "session": session.model_dump(mode="json"),
+        },
+        as_json=_state(ctx).json_output,
+    )
+
+
+@environment_app.command("descriptor-set")
+def show_environment_descriptor_set(
+    ctx: typer.Context,
+    descriptor_set_id: Annotated[str, typer.Argument(help="Environment descriptor-set UUID.")],
+) -> None:
+    """Show one validated durable descriptor set."""
+    with _daemon_client(ctx) as client:
+        descriptor_set = client.environment_descriptor_set(descriptor_set_id)
+    _emit(descriptor_set.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
 @mcp_app.command("connect")
 def connect_mcp(
     ctx: typer.Context,

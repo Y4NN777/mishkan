@@ -12,8 +12,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from mishkan.config.models import CredentialReference
 from mishkan.domain.identity import new_id
 from mishkan.domain.time import require_aware, utc_now
+from mishkan.tools.execution import ExecutionRequest
 
 
 class EnvironmentModel(BaseModel):
@@ -59,6 +61,16 @@ class EnvironmentSettlement(StrEnum):
     FAILED = "failed"
     CANCELLED = "cancelled"
     UNCERTAIN = "uncertain"
+
+
+class EnvironmentOperation(StrEnum):
+    VALIDATE = "validate"
+    BUILD = "build"
+    MATERIALIZE = "materialize"
+    START = "start"
+    READINESS = "readiness"
+    STOP = "stop"
+    CLEANUP = "cleanup"
 
 
 class AvailabilityFact(EnvironmentModel):
@@ -268,4 +280,100 @@ class EnvironmentVerification(EnvironmentModel):
     @field_validator("verified_at")
     @classmethod
     def verification_time_is_unambiguous(cls, value: datetime) -> datetime:
+        return require_aware(value)
+
+
+class EnvironmentOperationRequest(EnvironmentModel):
+    schema_version: Literal["1.0"] = "1.0"
+    operation_id: UUID = Field(default_factory=new_id)
+    binding_id: UUID
+    descriptor_set_id: UUID | None = None
+    adapter_id: str = Field(pattern=r"^[a-z][a-z0-9_.-]{1,255}$")
+    operation: EnvironmentOperation
+    descriptor_path: str | None = Field(default=None, min_length=1, max_length=1_024)
+    parameters: dict[str, str] = Field(default_factory=dict, max_length=32)
+    network_destinations: tuple[str, ...] = ()
+    credential_environment: dict[str, CredentialReference] = Field(
+        default_factory=dict,
+        max_length=32,
+    )
+    credential_references: tuple[CredentialReference, ...] = ()
+    owner_identity: str = Field(min_length=1, max_length=256)
+    run_id: str = Field(min_length=1, max_length=256)
+    task_id: str = Field(min_length=1, max_length=256)
+    session_profile: str = Field(min_length=1, max_length=128)
+    deadline: datetime
+    timeout_seconds: int = Field(ge=1, le=86_400)
+    expected_exit_codes: tuple[int, ...] = (0,)
+    preview_bytes: int = Field(default=65_536, ge=1, le=16_777_216)
+
+    @field_validator("deadline")
+    @classmethod
+    def operation_deadline_is_unambiguous(cls, value: datetime) -> datetime:
+        return require_aware(value)
+
+    @field_validator("descriptor_path")
+    @classmethod
+    def operation_descriptor_path_is_safe(cls, value: str | None) -> str | None:
+        if value is not None:
+            path = Path(value)
+            if path.is_absolute() or ".." in path.parts or "\\" in value:
+                raise ValueError("environment operation descriptor path is unsafe")
+        return value
+
+    @field_validator("parameters")
+    @classmethod
+    def operation_parameters_are_bounded(cls, value: dict[str, str]) -> dict[str, str]:
+        if any(
+            not key
+            or len(key) > 64
+            or not parameter
+            or len(parameter) > 1_024
+            or "\x00" in parameter
+            for key, parameter in value.items()
+        ):
+            raise ValueError("environment operation parameters are invalid")
+        return value
+
+    @field_validator("network_destinations")
+    @classmethod
+    def operation_network_destinations_are_unique(
+        cls,
+        value: tuple[str, ...],
+    ) -> tuple[str, ...]:
+        if len(value) != len(set(value)):
+            raise ValueError("environment network destinations must be unique")
+        return value
+
+
+class EnvironmentOperationPlan(EnvironmentModel):
+    schema_version: Literal["1.0"] = "1.0"
+    request: EnvironmentOperationRequest
+    binding_revision: int = Field(ge=1)
+    observation_fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
+    profile_id: str = Field(min_length=1, max_length=128)
+    profile_revision: str = Field(min_length=1, max_length=512)
+    adapter_revision: str = Field(min_length=1, max_length=512)
+    execution: ExecutionRequest
+    planned_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("planned_at")
+    @classmethod
+    def operation_plan_time_is_unambiguous(cls, value: datetime) -> datetime:
+        return require_aware(value)
+
+
+class DescriptorValidationResult(EnvironmentModel):
+    schema_version: Literal["1.0"] = "1.0"
+    descriptor_set_id: UUID
+    binding_id: UUID
+    valid: bool
+    validated_members: tuple[str, ...]
+    violations: tuple[str, ...]
+    validator_revision: str = Field(min_length=1, max_length=512)
+    validated_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("validated_at")
+    @classmethod
+    def descriptor_validation_time_is_unambiguous(cls, value: datetime) -> datetime:
         return require_aware(value)

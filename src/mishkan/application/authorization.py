@@ -30,7 +30,12 @@ from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.time import utc_now
 from mishkan.edits import ChangeSet
 from mishkan.edits.git import GitEffectMode, GitEffectRequest
-from mishkan.environment import EnvironmentBindingRequest, EnvironmentObservationRequest
+from mishkan.environment import (
+    EnvironmentBindingRequest,
+    EnvironmentDescriptorSet,
+    EnvironmentObservationRequest,
+    EnvironmentOperationRequest,
+)
 from mishkan.execution import ExecutionRequest, ExecutionSession
 from mishkan.policy import (
     AuthorizationDecision,
@@ -217,6 +222,12 @@ COMMAND_SEMANTICS = MappingProxyType(
         "environment.resolve": CommandSemantics(
             "application.environment.resolve", "control", ("environment.resolve",)
         ),
+        "environment.descriptor.validate": CommandSemantics(
+            "application.environment.descriptor", "read", ("environment.descriptor.validate",)
+        ),
+        "environment.operation.plan": CommandSemantics(
+            "application.environment.operation", "control", ("environment.operation.plan",)
+        ),
         **{
             f"registry.entry.{action.value}": CommandSemantics(
                 "application.registry.lifecycle",
@@ -278,6 +289,8 @@ _COMMAND_TARGETS = MappingProxyType(
         "skill.learn": ("skill_learning", "uuid"),
         "environment.observe": ("environment_observation", "uuid"),
         "environment.resolve": ("environment_binding_request", "uuid"),
+        "environment.descriptor.validate": ("environment_descriptor_set", "uuid"),
+        "environment.operation.plan": ("environment_operation", "uuid"),
         **{
             f"registry.entry.{action.value}": ("registry_entry", "required")
             for action in RegistryLifecycleAction
@@ -362,6 +375,8 @@ _COMMAND_PAYLOAD_FIELDS = MappingProxyType(
         "skill.learn": (frozenset({"request"}), frozenset()),
         "environment.observe": (frozenset({"request"}), frozenset()),
         "environment.resolve": (frozenset({"request"}), frozenset()),
+        "environment.descriptor.validate": (frozenset({"descriptor_set"}), frozenset()),
+        "environment.operation.plan": (frozenset({"request"}), frozenset()),
         "registry.entry.add": (frozenset({"entry_kind", "definition"}), frozenset()),
         "registry.entry.enable": (frozenset({"entry_kind"}), frozenset()),
         "registry.entry.disable": (frozenset({"entry_kind"}), frozenset()),
@@ -390,6 +405,8 @@ class AuthorizedApplicationCommand:
     skill_learning: SkillLearningRequest | None = None
     environment_observation: EnvironmentObservationRequest | None = None
     environment_binding: EnvironmentBindingRequest | None = None
+    environment_descriptor_set: EnvironmentDescriptorSet | None = None
+    environment_operation: EnvironmentOperationRequest | None = None
 
 
 class ApplicationCommandAuthority:
@@ -448,6 +465,8 @@ class ApplicationCommandAuthority:
         skill_learning: SkillLearningRequest | None = None
         environment_observation: EnvironmentObservationRequest | None = None
         environment_binding: EnvironmentBindingRequest | None = None
+        environment_descriptor_set: EnvironmentDescriptorSet | None = None
+        environment_operation: EnvironmentOperationRequest | None = None
 
         try:
             if normalized.command_type == "run.initialize":
@@ -734,6 +753,50 @@ class ApplicationCommandAuthority:
                         )
                     )
                 )
+            elif normalized.command_type == "environment.descriptor.validate":
+                environment_descriptor_set = EnvironmentDescriptorSet.model_validate(
+                    normalized.payload["descriptor_set"]
+                )
+                if normalized.target_id != str(environment_descriptor_set.descriptor_set_id):
+                    raise ValueError("environment descriptor target differs from its identity")
+                paths = tuple(member.logical_path for member in environment_descriptor_set.members)
+                external_resources = (
+                    f"environment-binding:{environment_descriptor_set.binding_id}",
+                    *(member.artifact_reference for member in environment_descriptor_set.members),
+                )
+            elif normalized.command_type == "environment.operation.plan":
+                environment_operation = EnvironmentOperationRequest.model_validate(
+                    normalized.payload["request"]
+                )
+                if normalized.target_id != str(environment_operation.operation_id):
+                    raise ValueError("environment operation target differs from its identity")
+                if environment_operation.owner_identity != normalized.actor_id:
+                    raise MishkanError(
+                        ErrorCode.AUTHORITY_NOT_GRANTED,
+                        "environment operation owner must match the authenticated actor",
+                    )
+                paths = (
+                    (environment_operation.descriptor_path,)
+                    if environment_operation.descriptor_path is not None
+                    else ()
+                )
+                network_destinations = environment_operation.network_destinations
+                credentials = tuple(
+                    dict.fromkeys(
+                        (
+                            *(item.locator for item in environment_operation.credential_references),
+                            *(
+                                item.locator
+                                for item in environment_operation.credential_environment.values()
+                            ),
+                        )
+                    )
+                )
+                external_resources = (
+                    f"environment-binding:{environment_operation.binding_id}",
+                    f"environment-adapter:{environment_operation.adapter_id}",
+                    f"environment-operation:{environment_operation.operation.value}",
+                )
             elif normalized.target_id is not None:
                 external_resources = (f"{normalized.target_type}:{normalized.target_id}",)
         except (KeyError, TypeError, ValueError, ValidationError) as exc:
@@ -782,6 +845,8 @@ class ApplicationCommandAuthority:
             skill_learning=skill_learning,
             environment_observation=environment_observation,
             environment_binding=environment_binding,
+            environment_descriptor_set=environment_descriptor_set,
+            environment_operation=environment_operation,
         )
 
     @staticmethod

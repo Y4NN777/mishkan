@@ -59,12 +59,10 @@ engines:
     project_markers: [compose.yaml, compose.yml, docker-compose.yaml, docker-compose.yml]
   - engine_id: nix
     executable_names: [nix]
-    adapter_id: nix.cli
     semantics: [environment.materialize, dependency.acquire]
     project_markers: [flake.nix, shell.nix]
   - engine_id: mise
     executable_names: [mise]
-    adapter_id: mise.cli
     semantics: [toolchain.materialize]
     project_markers: [mise.toml, .mise.toml]
   - engine_id: go
@@ -100,6 +98,127 @@ engines:
     semantics: [language.build, language.test]
     platforms: [linux, darwin]
     project_markers: [Package.swift]
+  - engine_id: systemctl-user
+    executable_names: [systemctl]
+    adapter_id: quadlet.systemctl
+    semantics: [quadlet.lifecycle]
+    platforms: [linux]
+    project_markers: ["*.container", "*.pod"]
+adapters:
+  - adapter_id: devcontainer.cli
+    revision: "1"
+    engine_id: devcontainer-cli
+    descriptor_formats: [devcontainer]
+    operations:
+      validate:
+        mode: job
+        arguments: [read-configuration, --workspace-folder, .]
+      materialize:
+        mode: job
+        arguments: [up, --workspace-folder, .]
+        declared_effects: [environment.materialize, container.create]
+        readiness: output_contains
+        readiness_value: outcome
+  - adapter_id: podman.cli
+    revision: "1"
+    engine_id: podman
+    descriptor_formats: [containerfile, podman_kube]
+    operations:
+      build:
+        mode: job
+        arguments: [build, --file, "$descriptor", --tag, "$image", .]
+        required_parameters: [image]
+        declared_effects: [container.image.build]
+      start:
+        mode: job
+        arguments: [run, --name, "$resource", "$image"]
+        required_parameters: [resource, image]
+        declared_effects: [container.create, container.start]
+        readiness: process_running
+      readiness:
+        mode: job
+        arguments: [inspect, "$resource"]
+        required_parameters: [resource]
+      stop:
+        mode: job
+        arguments: [stop, "$resource"]
+        required_parameters: [resource]
+        declared_effects: [container.stop]
+      cleanup:
+        mode: job
+        arguments: [rm, --force, "$resource"]
+        required_parameters: [resource]
+        declared_effects: [container.delete]
+      materialize:
+        mode: job
+        arguments: [kube, play, "$descriptor"]
+        declared_effects: [podman.kube.play]
+        readiness: process_running
+  - adapter_id: docker.cli
+    revision: "1"
+    engine_id: docker
+    descriptor_formats: [containerfile, compose]
+    operations:
+      build:
+        mode: job
+        arguments: [build, --file, "$descriptor", --tag, "$image", .]
+        required_parameters: [image]
+        declared_effects: [container.image.build]
+      materialize:
+        mode: job
+        arguments: [compose, --file, "$descriptor", up, --detach]
+        declared_effects: [compose.up]
+        readiness: process_running
+      readiness:
+        mode: job
+        arguments: [compose, --file, "$descriptor", ps]
+      cleanup:
+        mode: job
+        arguments: [compose, --file, "$descriptor", down]
+        declared_effects: [compose.down]
+  - adapter_id: podman-compose.cli
+    revision: "1"
+    engine_id: podman-compose
+    descriptor_formats: [compose]
+    operations:
+      validate:
+        mode: job
+        arguments: [-f, "$descriptor", config]
+      materialize:
+        mode: job
+        arguments: [-f, "$descriptor", up, --detach]
+        declared_effects: [compose.up]
+        readiness: process_running
+      readiness:
+        mode: job
+        arguments: [-f, "$descriptor", ps]
+      cleanup:
+        mode: job
+        arguments: [-f, "$descriptor", down]
+        declared_effects: [compose.down]
+  - adapter_id: quadlet.systemctl
+    revision: "1"
+    engine_id: systemctl-user
+    descriptor_formats: [quadlet]
+    operations:
+      materialize:
+        mode: job
+        arguments: [--user, daemon-reload]
+        declared_effects: [quadlet.reload]
+      start:
+        mode: job
+        arguments: [--user, start, "$resource"]
+        required_parameters: [resource]
+        declared_effects: [service.start]
+        readiness: process_running
+      readiness:
+        mode: job
+        arguments: [--user, is-active, "$resource"]
+      stop:
+        mode: job
+        arguments: [--user, stop, "$resource"]
+        required_parameters: [resource]
+        declared_effects: [service.stop]
 resolution_order:
   - explicit_configuration
   - project_declaration

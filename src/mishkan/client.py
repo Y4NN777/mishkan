@@ -29,10 +29,14 @@ from mishkan.artifacts import (
 from mishkan.daemon.auth import TokenFile
 from mishkan.edits import ChangeSetResult
 from mishkan.environment import (
+    DescriptorValidationResult,
     EnvironmentBinding,
     EnvironmentBindingRequest,
+    EnvironmentDescriptorSet,
     EnvironmentObservation,
     EnvironmentObservationRequest,
+    EnvironmentOperationPlan,
+    EnvironmentOperationRequest,
 )
 from mishkan.events import (
     EventEnvelope,
@@ -620,6 +624,62 @@ class Mishkan:
         )
         response.raise_for_status()
         return EnvironmentBinding.model_validate(response.json())
+
+    def validate_environment_descriptors(
+        self,
+        descriptor_set: EnvironmentDescriptorSet,
+    ) -> DescriptorValidationResult:
+        result = self.command(
+            ApplicationCommand(
+                command_type="environment.descriptor.validate",
+                actor_id=self.principal_id,
+                target_type="environment_descriptor_set",
+                target_id=str(descriptor_set.descriptor_set_id),
+                payload={"descriptor_set": descriptor_set.model_dump(mode="json")},
+            )
+        )
+        return DescriptorValidationResult.model_validate(result.payload)
+
+    def plan_environment_operation(
+        self,
+        request: EnvironmentOperationRequest,
+    ) -> EnvironmentOperationPlan:
+        result = self.command(
+            ApplicationCommand(
+                command_type="environment.operation.plan",
+                actor_id=self.principal_id,
+                target_type="environment_operation",
+                target_id=str(request.operation_id),
+                payload={"request": request.model_dump(mode="json")},
+            )
+        )
+        return EnvironmentOperationPlan.model_validate(result.payload)
+
+    def start_environment_operation(
+        self,
+        request: EnvironmentOperationRequest,
+    ) -> tuple[EnvironmentOperationPlan, ExecutionSession]:
+        plan = self.plan_environment_operation(request)
+        if plan.execution.mode.value != "job":
+            raise ValueError("daemon environment execution requires a managed-job adapter")
+        result = self.command(
+            ApplicationCommand(
+                command_type="session.start",
+                actor_id=self.principal_id,
+                target_type="session_service",
+                payload={"request": plan.execution.model_dump(mode="json")},
+            )
+        )
+        return plan, ExecutionSession.model_validate(result.payload)
+
+    def environment_descriptor_set(self, descriptor_set_id: str) -> EnvironmentDescriptorSet:
+        identity = quote(descriptor_set_id, safe="")
+        response = self._client.get(
+            f"/v1/environment/descriptor-sets/{identity}",
+            headers=self._headers(),
+        )
+        response.raise_for_status()
+        return EnvironmentDescriptorSet.model_validate(response.json())
 
     def mcp_connections(
         self,

@@ -40,12 +40,15 @@ from mishkan.domain.identity import DomainRecord
 from mishkan.edits.git import GitEffectRequest, GitEffectResult
 from mishkan.edits.models import ChangeSet, ChangeSetResult
 from mishkan.environment.models import (
+    DescriptorValidationResult,
     EnvironmentAttempt,
     EnvironmentBinding,
     EnvironmentBindingRequest,
     EnvironmentDescriptorSet,
     EnvironmentObservation,
     EnvironmentObservationRequest,
+    EnvironmentOperationPlan,
+    EnvironmentOperationRequest,
     EnvironmentVerification,
 )
 from mishkan.events.models import (
@@ -135,11 +138,14 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "domain-record-v1.schema.json": DomainRecord,
     "error-envelope-v1.schema.json": ErrorEnvelope,
     "environment-attempt-v1.schema.json": EnvironmentAttempt,
+    "environment-descriptor-validation-result-v1.schema.json": DescriptorValidationResult,
     "environment-binding-request-v1.schema.json": EnvironmentBindingRequest,
     "environment-binding-v1.schema.json": EnvironmentBinding,
     "environment-descriptor-set-v1.schema.json": EnvironmentDescriptorSet,
     "environment-observation-request-v1.schema.json": EnvironmentObservationRequest,
     "environment-observation-v1.schema.json": EnvironmentObservation,
+    "environment-operation-plan-v1.schema.json": EnvironmentOperationPlan,
+    "environment-operation-request-v1.schema.json": EnvironmentOperationRequest,
     "environment-verification-v1.schema.json": EnvironmentVerification,
     "event-envelope-v1.schema.json": EventEnvelope,
     "event-hold-v1.schema.json": EventEvidenceHold,

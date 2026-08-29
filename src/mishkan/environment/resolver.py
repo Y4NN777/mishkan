@@ -71,7 +71,13 @@ class EnvironmentResolver:
                     EnvironmentBindingState.INCOMPATIBLE,
                     ("compatible-existing-descriptor",),
                 )
-            return self._compatible(request, (), descriptors)
+            if (request.required_engine_ids or request.required_semantics) and not engines:
+                return self._refuse(
+                    request,
+                    EnvironmentBindingState.INCOMPATIBLE,
+                    self._missing_engine_conditions(request),
+                )
+            return self._compatible(request, engines, descriptors)
         if request.requested_outcome is EnvironmentOutcome.HOST_NATIVE:
             if not engines:
                 return self._refuse(

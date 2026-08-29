@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from importlib.resources import files
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -27,6 +28,31 @@ class EngineProbeDefinition(EnvironmentProfileModel):
     safe_version_arguments: tuple[str, ...] = ("--version",)
 
 
+class AdapterOperationDefinition(EnvironmentProfileModel):
+    mode: Literal["process", "job"]
+    arguments: tuple[str, ...] = Field(min_length=1)
+    required_parameters: tuple[str, ...] = ()
+    declared_effects: tuple[str, ...] = ()
+    readiness: Literal["process_running", "output_contains"] | None = None
+    readiness_value: str | None = Field(default=None, min_length=1, max_length=1_024)
+
+    @model_validator(mode="after")
+    def readiness_is_complete(self) -> AdapterOperationDefinition:
+        if self.readiness == "output_contains" and self.readiness_value is None:
+            raise ValueError("output readiness requires a configured value")
+        if self.readiness != "output_contains" and self.readiness_value is not None:
+            raise ValueError("readiness value is only valid for output readiness")
+        return self
+
+
+class EnvironmentAdapterDefinition(EnvironmentProfileModel):
+    adapter_id: str = Field(pattern=r"^[a-z][a-z0-9_.-]{1,255}$")
+    revision: str = Field(min_length=1, max_length=512)
+    engine_id: str = Field(pattern=r"^[a-z][a-z0-9_.-]{1,127}$")
+    descriptor_formats: tuple[str, ...] = Field(min_length=1)
+    operations: dict[str, AdapterOperationDefinition] = Field(min_length=1)
+
+
 class EnvironmentProfile(EnvironmentProfileModel):
     schema_version: str
     profile_id: str = Field(pattern=r"^[a-z][a-z0-9_.-]{1,127}$")
@@ -34,6 +60,7 @@ class EnvironmentProfile(EnvironmentProfileModel):
     descriptor_paths: dict[str, tuple[str, ...]] = Field(min_length=1)
     manifest_names: dict[str, tuple[str, ...]] = Field(min_length=1)
     engines: tuple[EngineProbeDefinition, ...] = Field(min_length=1)
+    adapters: tuple[EnvironmentAdapterDefinition, ...] = Field(min_length=1)
     resolution_order: tuple[str, ...] = Field(min_length=1)
     max_observed_files: int = Field(ge=1, le=100_000)
     max_descriptor_bytes: int = Field(ge=1, le=1_073_741_824)
@@ -46,6 +73,18 @@ class EnvironmentProfile(EnvironmentProfileModel):
         engine_ids = [engine.engine_id for engine in self.engines]
         if len(engine_ids) != len(set(engine_ids)):
             raise ValueError("environment engine identities must be unique")
+        adapter_ids = [adapter.adapter_id for adapter in self.adapters]
+        if len(adapter_ids) != len(set(adapter_ids)):
+            raise ValueError("environment adapter identities must be unique")
+        known_engines = set(engine_ids)
+        if any(adapter.engine_id not in known_engines for adapter in self.adapters):
+            raise ValueError("environment adapter references an unknown engine")
+        known_adapters = set(adapter_ids)
+        if any(
+            engine.adapter_id is not None and engine.adapter_id not in known_adapters
+            for engine in self.engines
+        ):
+            raise ValueError("environment engine references an unknown adapter")
         allowed_order = {
             "explicit_configuration",
             "project_declaration",
