@@ -1,15 +1,26 @@
 """Portable SKILL.md discovery and progressive loading."""
 
 from mishkan.skills.catalog import LoadedSkill, SkillCatalog
+from mishkan.skills.inspection import SkillPackageInspector
 from mishkan.skills.models import (
     SkillActivationState,
     SkillBounds,
     SkillBundleDefinition,
     SkillBundleMode,
     SkillBundleResolution,
+    SkillFindingCategory,
+    SkillFindingSeverity,
+    SkillInspectionFinding,
+    SkillInspectionProfile,
+    SkillInspectionResult,
+    SkillInspectionRule,
+    SkillLifecycleDecision,
     SkillLoadedResource,
     SkillLoadEvidence,
     SkillMetadata,
+    SkillMutationAction,
+    SkillMutationDisposition,
+    SkillProvenanceLock,
     SkillSelection,
     SkillSelectionContext,
     SkillSourceDefinition,
@@ -18,11 +29,14 @@ from mishkan.skills.models import (
     SkillUsageRecord,
     SkillUsageSummary,
     SkillUseOutcome,
+    SkillVersionRecord,
+    SkillVersionState,
 )
-from mishkan.skills.repository import SQLiteSkillUsageRepository
+from mishkan.skills.repository import SQLiteSkillLifecycleRepository, SQLiteSkillUsageRepository
 
 __all__ = [
     "LoadedSkill",
+    "SQLiteSkillLifecycleRepository",
     "SQLiteSkillUsageRepository",
     "SkillActivationState",
     "SkillBounds",
@@ -30,9 +44,20 @@ __all__ = [
     "SkillBundleMode",
     "SkillBundleResolution",
     "SkillCatalog",
+    "SkillFindingCategory",
+    "SkillFindingSeverity",
+    "SkillInspectionFinding",
+    "SkillInspectionProfile",
+    "SkillInspectionResult",
+    "SkillInspectionRule",
+    "SkillLifecycleDecision",
     "SkillLoadEvidence",
     "SkillLoadedResource",
     "SkillMetadata",
+    "SkillMutationAction",
+    "SkillMutationDisposition",
+    "SkillPackageInspector",
+    "SkillProvenanceLock",
     "SkillSelection",
     "SkillSelectionContext",
     "SkillSourceDefinition",
@@ -41,4 +66,6 @@ __all__ = [
     "SkillUsageRecord",
     "SkillUsageSummary",
     "SkillUseOutcome",
+    "SkillVersionRecord",
+    "SkillVersionState",
 ]

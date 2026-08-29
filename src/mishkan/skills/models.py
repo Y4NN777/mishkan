@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from datetime import datetime
 from enum import StrEnum
 from typing import Literal
@@ -45,6 +47,53 @@ class SkillUseOutcome(StrEnum):
     HIT = "hit"
     PARTIAL = "partial"
     MISS = "miss"
+
+
+class SkillVersionState(StrEnum):
+    CANDIDATE = "candidate"
+    VALIDATING = "validating"
+    ELIGIBLE = "eligible"
+    STAGED = "staged"
+    ACTIVE = "active"
+    QUARANTINED = "quarantined"
+    REJECTED = "rejected"
+    ARCHIVED = "archived"
+    SUPERSEDED = "superseded"
+
+
+class SkillFindingCategory(StrEnum):
+    SECURITY = "security"
+    PRIVACY = "privacy"
+    UNICODE = "unicode"
+    CREDENTIAL = "credential"
+    PROMPT_INJECTION = "prompt_injection"
+    DESTRUCTIVE_ACTION = "destructive_action"
+
+
+class SkillFindingSeverity(StrEnum):
+    INFO = "info"
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
+class SkillMutationAction(StrEnum):
+    CREATE = "create"
+    PATCH = "patch"
+    EDIT = "edit"
+    DELETE = "delete"
+    ARCHIVE = "archive"
+    RESTORE = "restore"
+    INSTALL = "install"
+    UPDATE = "update"
+    RESET = "reset"
+
+
+class SkillMutationDisposition(StrEnum):
+    ALLOW = "allow"
+    REQUIRE_REVIEW = "require_review"
+    DENY = "deny"
 
 
 class SkillBundleMode(StrEnum):
@@ -267,3 +316,139 @@ class SkillUsageSummary(SkillModel):
     @classmethod
     def last_recorded_at_is_unambiguous(cls, value: datetime | None) -> datetime | None:
         return None if value is None else require_aware(value)
+
+
+class SkillProvenanceLock(SkillModel):
+    schema_version: Literal["1.0"] = "1.0"
+    source_id: str = Field(min_length=1, max_length=128)
+    source_kind: SkillSourceKind
+    source_uri: str = Field(min_length=1, max_length=4_096)
+    resolved_revision: str = Field(min_length=1, max_length=512)
+    package_fingerprint: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    dependency_fingerprints: tuple[str, ...] = ()
+    author_claim: str | None = Field(default=None, min_length=1, max_length=512)
+    acquired_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("acquired_at")
+    @classmethod
+    def acquired_at_is_unambiguous(cls, value: datetime) -> datetime:
+        return require_aware(value)
+
+
+class SkillInspectionRule(SkillModel):
+    rule_id: str = Field(pattern=r"^[a-z][a-z0-9_.-]{1,127}$")
+    category: SkillFindingCategory
+    severity: SkillFindingSeverity
+    pattern: str = Field(min_length=1, max_length=8_192)
+    path_patterns: tuple[str, ...] = ("*",)
+    summary: str = Field(min_length=1, max_length=1_024)
+
+
+class SkillInspectionProfile(SkillModel):
+    schema_version: Literal["1.0"] = "1.0"
+    profile_id: str = Field(pattern=r"^[a-z][a-z0-9_.-]{1,127}$")
+    revision: str = Field(min_length=1, max_length=512)
+    adoption_authority: str = Field(min_length=1, max_length=256)
+    quarantine_threshold: SkillFindingSeverity
+    rules: tuple[SkillInspectionRule, ...] = Field(min_length=1)
+    max_scanned_files: int = Field(ge=1, le=100_000)
+    max_scanned_file_bytes: int = Field(ge=1, le=1_073_741_824)
+    max_total_bytes: int = Field(ge=1, le=4_294_967_296)
+
+    @model_validator(mode="after")
+    def rules_cover_required_categories(self) -> SkillInspectionProfile:
+        if len({rule.rule_id for rule in self.rules}) != len(self.rules):
+            raise ValueError("skill inspection rule identities must be unique")
+        missing = set(SkillFindingCategory) - {rule.category for rule in self.rules}
+        if missing:
+            raise ValueError(
+                "skill inspection profile must cover every mandatory category: "
+                + ", ".join(sorted(item.value for item in missing))
+            )
+        return self
+
+    @property
+    def fingerprint(self) -> str:
+        payload = json.dumps(
+            self.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
+        ).encode()
+        return hashlib.sha256(payload).hexdigest()
+
+
+class SkillInspectionFinding(SkillModel):
+    rule_id: str = Field(min_length=1, max_length=128)
+    category: SkillFindingCategory
+    severity: SkillFindingSeverity
+    logical_path: str = Field(min_length=1, max_length=1_024)
+    line: int | None = Field(default=None, ge=1)
+    summary: str = Field(min_length=1, max_length=1_024)
+    evidence_fingerprint: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+
+
+class SkillInspectionResult(SkillModel):
+    schema_version: Literal["1.0"] = "1.0"
+    profile_id: str = Field(min_length=1, max_length=128)
+    profile_revision: str = Field(min_length=1, max_length=512)
+    profile_fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
+    package_fingerprint: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    findings: tuple[SkillInspectionFinding, ...]
+    scanned_files: int = Field(ge=0)
+    scanned_bytes: int = Field(ge=0)
+    quarantined: bool
+    inspected_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("inspected_at")
+    @classmethod
+    def inspected_at_is_unambiguous(cls, value: datetime) -> datetime:
+        return require_aware(value)
+
+
+class SkillVersionRecord(SkillModel):
+    schema_version: Literal["1.0"] = "1.0"
+    id: UUID = Field(default_factory=new_id)
+    skill_name: str = Field(pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$", max_length=64)
+    skill_version: str = Field(pattern=r"^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$")
+    state: SkillVersionState
+    package_artifact_id: UUID
+    provenance: SkillProvenanceLock
+    inspection: SkillInspectionResult | None = None
+    base_version_id: UUID | None = None
+    mutation_action: SkillMutationAction
+    mutation_artifact_id: UUID | None = None
+    policy_fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
+    activation_decision_id: UUID | None = None
+    revision: int = Field(default=1, ge=1)
+    pinned: bool = False
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("created_at", "updated_at")
+    @classmethod
+    def timestamp_is_unambiguous(cls, value: datetime) -> datetime:
+        return require_aware(value)
+
+    @model_validator(mode="after")
+    def package_matches_provenance(self) -> SkillVersionRecord:
+        if self.inspection is not None and (
+            self.inspection.package_fingerprint != self.provenance.package_fingerprint
+        ):
+            raise ValueError("skill inspection belongs to another package")
+        return self
+
+
+class SkillLifecycleDecision(SkillModel):
+    schema_version: Literal["1.0"] = "1.0"
+    decision_id: UUID = Field(default_factory=new_id)
+    version_id: UUID
+    disposition: SkillMutationDisposition
+    actor_id: str = Field(min_length=1, max_length=256)
+    policy_fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
+    expected_active_version_id: UUID | None = None
+    quarantine_override: bool = False
+    reason: str = Field(min_length=1, max_length=2_048)
+    decided_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("decided_at")
+    @classmethod
+    def decided_at_is_unambiguous(cls, value: datetime) -> datetime:
+        return require_aware(value)

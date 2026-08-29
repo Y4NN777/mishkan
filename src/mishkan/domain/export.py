@@ -61,12 +61,16 @@ from mishkan.runtime import TaskReviewRejection
 from mishkan.skills.models import (
     SkillBundleDefinition,
     SkillBundleResolution,
+    SkillInspectionProfile,
+    SkillInspectionResult,
+    SkillLifecycleDecision,
     SkillLoadEvidence,
     SkillMetadata,
     SkillSelection,
     SkillSourceDefinition,
     SkillUsageRecord,
     SkillUsageSummary,
+    SkillVersionRecord,
 )
 from mishkan.tools.execution import ExecutionRequest, ExecutionResult
 from mishkan.web.models import (
@@ -129,12 +133,16 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "run-initialization-request-v1.schema.json": RunInitializationRequest,
     "skill-bundle-definition-v1.schema.json": SkillBundleDefinition,
     "skill-bundle-resolution-v1.schema.json": SkillBundleResolution,
+    "skill-inspection-profile-v1.schema.json": SkillInspectionProfile,
+    "skill-inspection-result-v1.schema.json": SkillInspectionResult,
+    "skill-lifecycle-decision-v1.schema.json": SkillLifecycleDecision,
     "skill-load-evidence-v1.schema.json": SkillLoadEvidence,
     "skill-metadata-v1.schema.json": SkillMetadata,
     "skill-selection-v1.schema.json": SkillSelection,
     "skill-source-v1.schema.json": SkillSourceDefinition,
     "skill-usage-record-v1.schema.json": SkillUsageRecord,
     "skill-usage-summary-v1.schema.json": SkillUsageSummary,
+    "skill-version-record-v1.schema.json": SkillVersionRecord,
     "web-citation-evidence-v1.schema.json": CitationEvidence,
     "web-crawl-request-v1.schema.json": CrawlRequest,
     "web-crawl-result-v1.schema.json": CrawlResult,

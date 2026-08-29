@@ -538,6 +538,45 @@ class SkillUsageRow(Base):
     recorded_at: Mapped[str] = mapped_column(String(40), nullable=False)
 
 
+class SkillVersionRow(Base):
+    __tablename__ = "skill_versions"
+    __table_args__ = (UniqueConstraint("skill_name", "skill_version"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    skill_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    skill_version: Mapped[str] = mapped_column(String(128), nullable=False)
+    package_fingerprint: Mapped[str] = mapped_column(String(71), nullable=False)
+    state: Mapped[str] = mapped_column(String(32), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class SkillActiveVersionRow(Base):
+    __tablename__ = "skill_active_versions"
+
+    skill_name: Mapped[str] = mapped_column(String(64), primary_key=True)
+    version_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("skill_versions.id"), nullable=False
+    )
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class SkillLifecycleDecisionRow(Base):
+    __tablename__ = "skill_lifecycle_decisions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    version_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("skill_versions.id"), nullable=False
+    )
+    disposition: Mapped[str] = mapped_column(String(32), nullable=False)
+    policy_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    decided_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
 @dataclass(frozen=True, slots=True)
 class RunSnapshot:
     run_id: str
