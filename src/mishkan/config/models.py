@@ -16,6 +16,7 @@ from pydantic import (
 )
 
 from mishkan.domain.time import validate_timezone
+from mishkan.skills.models import SkillBounds, SkillBundleDefinition, SkillSourceDefinition
 
 
 class StrictConfigModel(BaseModel):
@@ -538,6 +539,36 @@ class McpConfig(StrictConfigModel):
         return self
 
 
+class SkillsConfig(StrictConfigModel):
+    managed_root: Path
+    sources: tuple[SkillSourceDefinition, ...] = Field(min_length=1)
+    bounds: SkillBounds
+    bundles: tuple[SkillBundleDefinition, ...] = ()
+    inspection_profile: str = Field(min_length=1, max_length=4_096)
+    automatic_selection: bool
+    max_automatic_skills: int = Field(ge=1, le=1_000)
+    miss_proposal_threshold: int = Field(ge=1, le=1_000_000)
+    stale_after_days: int = Field(ge=1, le=36_500)
+    learning_max_source_bytes: int = Field(ge=1, le=1_073_741_824)
+
+    @field_validator("managed_root")
+    @classmethod
+    def managed_root_is_project_relative(cls, value: Path) -> Path:
+        if value.is_absolute() or not value.parts or ".." in value.parts:
+            raise ValueError("managed skill root must be project-relative")
+        return value
+
+    @model_validator(mode="after")
+    def identities_are_unique(self) -> Self:
+        source_ids = [source.source_id for source in self.sources]
+        bundle_ids = [bundle.bundle_id for bundle in self.bundles]
+        if len(source_ids) != len(set(source_ids)):
+            raise ValueError("skill source identities must be unique")
+        if len(bundle_ids) != len(set(bundle_ids)):
+            raise ValueError("skill bundle identities must be unique")
+        return self
+
+
 class MishkanConfig(StrictConfigModel):
     """Complete effective configuration required before a run can be accepted."""
 
@@ -562,6 +593,7 @@ class MishkanConfig(StrictConfigModel):
     web: WebConfig | None = None
     browser: BrowserConfig | None = None
     mcp: McpConfig | None = None
+    skills: SkillsConfig | None = None
 
     @field_validator("timezone")
     @classmethod
@@ -570,7 +602,7 @@ class MishkanConfig(StrictConfigModel):
 
     @model_validator(mode="after")
     def references_exist(self) -> Self:
-        if self.schema_version in {"1.1", "1.2", "1.3"}:
+        if self.schema_version in {"1.1", "1.2", "1.3", "1.4"}:
             missing = [
                 field
                 for field, value in (
@@ -584,7 +616,7 @@ class MishkanConfig(StrictConfigModel):
                 raise ValueError(
                     f"configuration 1.1 requires governed capability fields: {missing}"
                 )
-        if self.schema_version in {"1.2", "1.3"}:
+        if self.schema_version in {"1.2", "1.3", "1.4"}:
             missing_daemon = [
                 field
                 for field, value in (
@@ -597,7 +629,7 @@ class MishkanConfig(StrictConfigModel):
             ]
             if missing_daemon:
                 raise ValueError(f"configuration 1.2 requires daemon fields: {missing_daemon}")
-        if self.schema_version == "1.3":
+        if self.schema_version in {"1.3", "1.4"}:
             missing_capabilities = [
                 field
                 for field, value in (
@@ -629,6 +661,8 @@ class MishkanConfig(StrictConfigModel):
                     f"browser/MCP configuration references unknown network profiles: "
                     f"{missing_network_profiles}"
                 )
+        if self.schema_version == "1.4" and self.skills is None:
+            raise ValueError("configuration 1.4 requires the Skills capability configuration")
 
         missing_providers = sorted(
             {

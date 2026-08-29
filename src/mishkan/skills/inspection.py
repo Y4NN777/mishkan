@@ -5,9 +5,16 @@ from __future__ import annotations
 import fnmatch
 import hashlib
 import re
+from importlib.resources import files
 from pathlib import Path, PurePosixPath
+from typing import Any
+
+import yaml
+from pydantic import ValidationError
 
 from mishkan.domain.errors import ErrorCode, MishkanError
+from mishkan.domain.schema import SchemaRegistry
+from mishkan.domain.sources import resolve_source_path
 from mishkan.skills.models import (
     SkillFindingSeverity,
     SkillInspectionFinding,
@@ -132,3 +139,51 @@ class SkillPackageInspector:
             "skill package exceeds configured inspection bounds",
             details={"profile_id": self.profile.profile_id, "dimension": dimension},
         )
+
+
+class SkillInspectionProfileLoader:
+    def load(self, uri: str, project_root: Path) -> SkillInspectionProfile:
+        try:
+            raw: Any = yaml.safe_load(self._read(uri, project_root))
+        except yaml.YAMLError as exc:
+            raise MishkanError(
+                ErrorCode.CONFIGURATION,
+                "skill inspection profile is malformed YAML",
+                details={"source": uri},
+            ) from exc
+        if not isinstance(raw, dict):
+            raise MishkanError(
+                ErrorCode.CONFIGURATION,
+                "skill inspection profile must contain a mapping",
+                details={"source": uri},
+            )
+        SchemaRegistry.require_supported("mishkan.skill", raw.get("schema_version"))
+        try:
+            return SkillInspectionProfile.model_validate(raw)
+        except ValidationError as exc:
+            raise MishkanError(
+                ErrorCode.CONFIGURATION,
+                "skill inspection profile is invalid",
+                details={"source": uri, "violations": len(exc.errors())},
+            ) from exc
+
+    @staticmethod
+    def _read(uri: str, project_root: Path) -> bytes:
+        if uri.startswith("package://"):
+            location = uri.removeprefix("package://")
+            module, separator, resource = location.partition("/")
+            if not separator:
+                raise MishkanError(
+                    ErrorCode.CONFIGURATION,
+                    "package skill-inspection URI must identify a module and resource",
+                )
+            return files(module).joinpath(resource).read_bytes()
+        path = resolve_source_path(uri, project_root, "skill inspection profile")
+        try:
+            return path.read_bytes()
+        except OSError as exc:
+            raise MishkanError(
+                ErrorCode.CONFIGURATION,
+                "skill inspection profile cannot be read",
+                details={"source": uri, "reason": type(exc).__name__},
+            ) from exc

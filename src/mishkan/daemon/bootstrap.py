@@ -21,7 +21,7 @@ class DaemonPaths:
 
     @classmethod
     def from_config(cls, config: MishkanConfig) -> DaemonPaths:
-        if config.schema_version not in {"1.2", "1.3"} or not all(
+        if config.schema_version not in {"1.2", "1.3", "1.4"} or not all(
             (config.daemon, config.persistence, config.artifacts, config.sessions)
         ):
             raise MishkanError(
@@ -67,5 +67,13 @@ class DaemonBootstrap:
             )
         paths.artifacts.mkdir(parents=True, exist_ok=True)
         paths.sessions.mkdir(parents=True, exist_ok=True)
+        if config.skills is not None:
+            skill_root = (paths.workspace / config.skills.managed_root).resolve()
+            if not skill_root.is_relative_to(paths.workspace):
+                raise MishkanError(
+                    ErrorCode.AUTHORITY_NOT_GRANTED,
+                    "managed skill root escapes the configured workspace",
+                )
+            skill_root.mkdir(parents=True, exist_ok=True)
         TokenFile(paths.token_file).create(principal_id)
         return paths

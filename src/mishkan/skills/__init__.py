@@ -1,7 +1,7 @@
 """Portable SKILL.md discovery and progressive loading."""
 
 from mishkan.skills.catalog import LoadedSkill, SkillCatalog
-from mishkan.skills.inspection import SkillPackageInspector
+from mishkan.skills.inspection import SkillInspectionProfileLoader, SkillPackageInspector
 from mishkan.skills.models import (
     SkillActivationState,
     SkillBounds,
@@ -32,12 +32,9 @@ from mishkan.skills.models import (
     SkillVersionRecord,
     SkillVersionState,
 )
-from mishkan.skills.repository import SQLiteSkillLifecycleRepository, SQLiteSkillUsageRepository
 
 __all__ = [
     "LoadedSkill",
-    "SQLiteSkillLifecycleRepository",
-    "SQLiteSkillUsageRepository",
     "SkillActivationState",
     "SkillBounds",
     "SkillBundleDefinition",
@@ -48,6 +45,7 @@ __all__ = [
     "SkillFindingSeverity",
     "SkillInspectionFinding",
     "SkillInspectionProfile",
+    "SkillInspectionProfileLoader",
     "SkillInspectionResult",
     "SkillInspectionRule",
     "SkillLifecycleDecision",

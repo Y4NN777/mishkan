@@ -12,6 +12,7 @@ from mishkan.skills import (
     SkillFindingCategory,
     SkillFindingSeverity,
     SkillInspectionProfile,
+    SkillInspectionProfileLoader,
     SkillInspectionRule,
     SkillLifecycleDecision,
     SkillMutationAction,
@@ -21,8 +22,8 @@ from mishkan.skills import (
     SkillSourceKind,
     SkillVersionRecord,
     SkillVersionState,
-    SQLiteSkillLifecycleRepository,
 )
+from mishkan.skills.repository import SQLiteSkillLifecycleRepository
 
 
 def _package_fingerprint(root: Path) -> str:
@@ -130,6 +131,16 @@ def test_configured_inspection_quarantines_without_disclosing_match(tmp_path: Pa
     assert len(result.findings) == 1
     assert result.findings[0].category is SkillFindingCategory.CREDENTIAL
     assert "CANARY" not in result.model_dump_json()
+
+
+def test_bundled_inspection_profile_is_public_and_complete(tmp_path: Path) -> None:
+    profile = SkillInspectionProfileLoader().load(
+        "package://mishkan.resources.skills/default-inspection.yaml",
+        tmp_path,
+    )
+
+    assert {rule.category for rule in profile.rules} == set(SkillFindingCategory)
+    assert profile.adoption_authority == "project-security-policy"
 
 
 def test_inspection_refuses_provenance_drift_and_incomplete_profiles(tmp_path: Path) -> None:

@@ -12,8 +12,8 @@ from mishkan.skills import (
     SkillSelectionContext,
     SkillUsageRecord,
     SkillUseOutcome,
-    SQLiteSkillUsageRepository,
 )
+from mishkan.skills.repository import SQLiteSkillUsageRepository
 
 
 def _record(*, outcome: SkillUseOutcome = SkillUseOutcome.MISS) -> SkillUsageRecord:
