@@ -34,6 +34,29 @@ class PackCommandDefinition(PackModel):
     alternatives: tuple[PackCommandAlternative, ...] = Field(min_length=1)
     declared_effects: tuple[str, ...] = ()
     network: bool = False
+    environment: dict[str, str] = Field(default_factory=dict, max_length=64)
+    path_engine_ids: tuple[str, ...] = Field(default=(), max_length=64)
+
+    @field_validator("environment")
+    @classmethod
+    def environment_is_bounded_and_portable(cls, value: dict[str, str]) -> dict[str, str]:
+        if any(
+            not name
+            or len(name) > 128
+            or not name.replace("_", "").isalnum()
+            or len(content) > 2_048
+            for name, content in value.items()
+        ):
+            raise ValueError("technical-pack environment is invalid or unbounded")
+        unsupported = {
+            token
+            for content in value.values()
+            for token in content.split("$")[1:]
+            if token and not token.startswith("workspace")
+        }
+        if unsupported:
+            raise ValueError("technical-pack environment contains an unsupported placeholder")
+        return value
 
 
 class TechnicalPackDefinition(PackModel):
@@ -185,12 +208,24 @@ class TechnicalPackService:
             if pack.marker_names and not (set(pack.marker_names) & markers):
                 continue
             for command in pack.commands:
+                path_engines = tuple(
+                    engines.get(engine_id) for engine_id in command.path_engine_ids
+                )
+                dependencies_ready = all(
+                    engine is not None
+                    and engine.fact("eligible") is AvailabilityState.TRUE
+                    and engine.executable_path is not None
+                    for engine in path_engines
+                )
                 chosen = next(
                     (
                         (alternative, engines[alternative.engine_id])
                         for alternative in command.alternatives
-                        if alternative.engine_id in engines
+                        if dependencies_ready
+                        and alternative.engine_id in engines
                         and engines[alternative.engine_id].fact("eligible")
+                        is AvailabilityState.TRUE
+                        and engines[alternative.engine_id].fact("project_used")
                         is AvailabilityState.TRUE
                         and engines[alternative.engine_id].executable_path is not None
                     ),
@@ -199,6 +234,13 @@ class TechnicalPackService:
                 evidence = (
                     f"observation:{observation.observation_id}@{observation.revision}",
                     *(f"ecosystem:{item}" for item in observed_ecosystems),
+                    *(
+                        f"path-engine:{engine_id}:eligible"
+                        for engine_id in command.path_engine_ids
+                        if engines.get(engine_id) is not None
+                        and engines[engine_id].fact("eligible") is AvailabilityState.TRUE
+                        and engines[engine_id].executable_path is not None
+                    ),
                 )
                 if chosen is None:
                     candidates.append(
@@ -258,6 +300,34 @@ class TechnicalPackService:
                 "engineering pack command has no observed eligible engine",
             )
         assert candidate.executable is not None
+        executable = candidate.executable
+        definition = next(
+            definition
+            for pack in self._catalogue.packs
+            if pack.pack_id == request.pack_id
+            for definition in pack.commands
+            if definition.action == request.action
+        )
+        engines = {engine.engine_id: engine for engine in observation.engines}
+        environment = {
+            name: value.replace("$workspace", str(observation.workspace))
+            for name, value in definition.environment.items()
+        }
+        if definition.path_engine_ids:
+            dependency_directories: list[str] = []
+            for engine_id in definition.path_engine_ids:
+                dependency_path = engines[engine_id].executable_path
+                if dependency_path is not None:
+                    dependency_directories.append(str(dependency_path.parent))
+            path_directories = tuple(
+                dict.fromkeys(
+                    (
+                        str(executable.parent),
+                        *dependency_directories,
+                    )
+                )
+            )
+            environment["PATH"] = ":".join(path_directories)
         return EngineeringCommandPlan(
             request=request,
             candidate=candidate,
@@ -265,16 +335,16 @@ class TechnicalPackService:
             execution=ExecutionRequest(
                 execution_id=request.request_id,
                 mode=candidate.mode,
-                executable=str(candidate.executable),
+                executable=str(executable),
                 args=candidate.arguments,
                 cwd=".",
-                environment={},
+                environment=environment,
                 credential_environment={},
                 credential_references=(),
                 owner=request.owner_identity,
                 run_id=request.run_id,
                 task_id=request.task_id,
-                declared_executables=(str(candidate.executable),),
+                declared_executables=(str(executable),),
                 session_profile=request.session_profile,
                 deadline=request.deadline,
                 timeout_seconds=request.timeout_seconds,

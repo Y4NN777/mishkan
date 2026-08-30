@@ -104,6 +104,14 @@
           "default": null,
           "title": "Descriptor Set Id"
         },
+        "environment": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "maxProperties": 64,
+          "title": "Environment",
+          "type": "object"
+        },
         "expected_exit_codes": {
           "default": [
             0

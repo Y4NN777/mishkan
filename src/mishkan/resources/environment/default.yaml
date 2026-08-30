@@ -34,6 +34,10 @@ manifest_names:
   c: [CMakeLists.txt, Makefile, meson.build]
   swift: [Package.swift, Package.resolved]
 engines:
+  - engine_id: posix-shell
+    executable_names: [sh]
+    semantics: [process.shell]
+    platforms: [linux, darwin]
   - engine_id: devcontainer-cli
     executable_names: [devcontainer]
     adapter_id: devcontainer.cli
@@ -176,9 +180,11 @@ adapters:
     operations:
       validate:
         mode: job
+        path_engine_ids: [node, posix-shell]
         arguments: [read-configuration, --workspace-folder, .]
       materialize:
         mode: job
+        path_engine_ids: [node, posix-shell]
         arguments: [up, --workspace-folder, .]
         declared_effects: [environment.materialize, container.create]
         readiness: output_contains
@@ -190,31 +196,37 @@ adapters:
     operations:
       build:
         mode: job
+        path_engine_ids: [posix-shell]
         arguments: [build, --file, "$descriptor", --tag, "$image", .]
         required_parameters: [image]
         declared_effects: [container.image.build]
       start:
         mode: job
+        path_engine_ids: [posix-shell]
         arguments: [run, --name, "$resource", "$image"]
         required_parameters: [resource, image]
         declared_effects: [container.create, container.start]
         readiness: process_running
       readiness:
         mode: job
+        path_engine_ids: [posix-shell]
         arguments: [inspect, "$resource"]
         required_parameters: [resource]
       stop:
         mode: job
+        path_engine_ids: [posix-shell]
         arguments: [stop, "$resource"]
         required_parameters: [resource]
         declared_effects: [container.stop]
       cleanup:
         mode: job
+        path_engine_ids: [posix-shell]
         arguments: [rm, --force, "$resource"]
         required_parameters: [resource]
         declared_effects: [container.delete]
       materialize:
         mode: job
+        path_engine_ids: [posix-shell]
         arguments: [kube, play, "$descriptor"]
         declared_effects: [podman.kube.play]
         readiness: process_running
@@ -225,19 +237,23 @@ adapters:
     operations:
       build:
         mode: job
+        path_engine_ids: [posix-shell]
         arguments: [build, --file, "$descriptor", --tag, "$image", .]
         required_parameters: [image]
         declared_effects: [container.image.build]
       materialize:
         mode: job
+        path_engine_ids: [posix-shell]
         arguments: [compose, --file, "$descriptor", up, --detach]
         declared_effects: [compose.up]
         readiness: process_running
       readiness:
         mode: job
+        path_engine_ids: [posix-shell]
         arguments: [compose, --file, "$descriptor", ps]
       cleanup:
         mode: job
+        path_engine_ids: [posix-shell]
         arguments: [compose, --file, "$descriptor", down]
         declared_effects: [compose.down]
   - adapter_id: podman-compose.cli
@@ -247,17 +263,21 @@ adapters:
     operations:
       validate:
         mode: job
+        path_engine_ids: [posix-shell]
         arguments: [-f, "$descriptor", config]
       materialize:
         mode: job
+        path_engine_ids: [posix-shell]
         arguments: [-f, "$descriptor", up, --detach]
         declared_effects: [compose.up]
         readiness: process_running
       readiness:
         mode: job
+        path_engine_ids: [posix-shell]
         arguments: [-f, "$descriptor", ps]
       cleanup:
         mode: job
+        path_engine_ids: [posix-shell]
         arguments: [-f, "$descriptor", down]
         declared_effects: [compose.down]
   - adapter_id: quadlet.systemctl

@@ -57,6 +57,14 @@
           "title": "Declared Effects",
           "type": "array"
         },
+        "environment": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "maxProperties": 64,
+          "title": "Environment",
+          "type": "object"
+        },
         "mode": {
           "$ref": "#/$defs/ExecutionMode"
         },
@@ -64,6 +72,15 @@
           "default": false,
           "title": "Network",
           "type": "boolean"
+        },
+        "path_engine_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Path Engine Ids",
+          "type": "array"
         }
       },
       "required": [

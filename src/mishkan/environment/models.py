@@ -365,6 +365,7 @@ class EnvironmentOperationRequest(EnvironmentModel):
     operation: EnvironmentOperation
     descriptor_path: str | None = Field(default=None, min_length=1, max_length=1_024)
     parameters: dict[str, str] = Field(default_factory=dict, max_length=32)
+    environment: dict[str, str] = Field(default_factory=dict, max_length=64)
     network_destinations: tuple[str, ...] = ()
     credential_environment: dict[str, CredentialReference] = Field(
         default_factory=dict,
@@ -406,6 +407,20 @@ class EnvironmentOperationRequest(EnvironmentModel):
             for key, parameter in value.items()
         ):
             raise ValueError("environment operation parameters are invalid")
+        return value
+
+    @field_validator("environment")
+    @classmethod
+    def operation_environment_is_bounded(cls, value: dict[str, str]) -> dict[str, str]:
+        if any(
+            not key
+            or len(key) > 128
+            or not key.replace("_", "").isalnum()
+            or len(content) > 2_048
+            or "\x00" in content
+            for key, content in value.items()
+        ):
+            raise ValueError("environment operation environment is invalid")
         return value
 
     @field_validator("network_destinations")

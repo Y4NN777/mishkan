@@ -66,6 +66,10 @@ def _foundation(tmp_path: Path, executable_name: str):  # type: ignore[no-untype
     executable = binaries / executable_name
     executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     executable.chmod(0o755)
+    shell = binaries / "sh"
+    if shell != executable:
+        shell.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        shell.chmod(0o755)
     return artifacts, repository, profile, binaries, executable
 
 

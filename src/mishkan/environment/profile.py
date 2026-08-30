@@ -35,6 +35,7 @@ class AdapterOperationDefinition(EnvironmentProfileModel):
     declared_effects: tuple[str, ...] = ()
     readiness: Literal["process_running", "output_contains"] | None = None
     readiness_value: str | None = Field(default=None, min_length=1, max_length=1_024)
+    path_engine_ids: tuple[str, ...] = Field(default=(), max_length=64)
 
     @model_validator(mode="after")
     def readiness_is_complete(self) -> AdapterOperationDefinition:
@@ -79,6 +80,13 @@ class EnvironmentProfile(EnvironmentProfileModel):
         known_engines = set(engine_ids)
         if any(adapter.engine_id not in known_engines for adapter in self.adapters):
             raise ValueError("environment adapter references an unknown engine")
+        if any(
+            engine_id not in known_engines
+            for adapter in self.adapters
+            for operation in adapter.operations.values()
+            for engine_id in operation.path_engine_ids
+        ):
+            raise ValueError("environment adapter operation references an unknown path engine")
         known_adapters = set(adapter_ids)
         if any(
             engine.adapter_id is not None and engine.adapter_id not in known_adapters

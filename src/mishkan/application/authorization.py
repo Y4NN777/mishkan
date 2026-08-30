@@ -858,6 +858,12 @@ class ApplicationCommandAuthority:
                     else ()
                 )
                 network_destinations = environment_operation.network_destinations
+                environments = tuple(
+                    sorted(
+                        f"{name}={value}"
+                        for name, value in environment_operation.environment.items()
+                    )
+                )
                 credentials = tuple(
                     dict.fromkeys(
                         (

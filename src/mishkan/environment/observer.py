@@ -158,8 +158,9 @@ class EnvironmentObserver:
             observed = shutil.which(name, path=search_path)
             if observed is None:
                 continue
-            candidate = Path(observed).resolve(strict=True)
-            if candidate.is_file() and os.access(candidate, os.X_OK):
+            candidate = Path(observed).absolute()
+            target = candidate.resolve(strict=True)
+            if target.is_file() and os.access(candidate, os.X_OK):
                 executable_name = name
                 executable_path = candidate
                 break

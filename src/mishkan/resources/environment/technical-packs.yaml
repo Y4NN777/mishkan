@@ -8,12 +8,19 @@ packs:
     commands:
       - action: test
         mode: job
+        path_engine_ids: [go]
+        environment:
+          GOCACHE: $workspace/.mishkan/cache/go-build
+          GOMODCACHE: $workspace/.mishkan/cache/go-mod
         alternatives:
           - engine_id: go
             arguments: [test, ./...]
       - action: build
         mode: job
-        declared_effects: [workspace.build.outputs]
+        path_engine_ids: [go]
+        environment:
+          GOCACHE: $workspace/.mishkan/cache/go-build
+          GOMODCACHE: $workspace/.mishkan/cache/go-mod
         alternatives:
           - engine_id: go
             arguments: [build, ./...]
@@ -23,6 +30,9 @@ packs:
     commands:
       - action: test
         mode: job
+        path_engine_ids: [node, posix-shell]
+        environment:
+          npm_config_cache: $workspace/.mishkan/cache/npm
         alternatives:
           - engine_id: npm
             arguments: [test, --if-present]
@@ -34,7 +44,10 @@ packs:
             arguments: [test]
       - action: build
         mode: job
+        path_engine_ids: [node, posix-shell]
         declared_effects: [workspace.build.outputs]
+        environment:
+          npm_config_cache: $workspace/.mishkan/cache/npm
         alternatives:
           - engine_id: npm
             arguments: [run, build, --if-present]
@@ -51,6 +64,10 @@ packs:
     commands:
       - action: test
         mode: job
+        path_engine_ids: [java, posix-shell]
+        declared_effects: [workspace.build.outputs]
+        environment:
+          GRADLE_USER_HOME: $workspace/.mishkan/cache/gradle
         alternatives:
           - engine_id: maven
             arguments: [test]
@@ -58,7 +75,10 @@ packs:
             arguments: [test]
       - action: build
         mode: job
+        path_engine_ids: [java, posix-shell]
         declared_effects: [workspace.build.outputs]
+        environment:
+          GRADLE_USER_HOME: $workspace/.mishkan/cache/gradle
         alternatives:
           - engine_id: maven
             arguments: [package, -DskipTests]
@@ -71,12 +91,19 @@ packs:
     commands:
       - action: test
         mode: job
+        path_engine_ids: [java, posix-shell]
+        declared_effects: [workspace.build.outputs]
+        environment:
+          GRADLE_USER_HOME: $workspace/.mishkan/cache/gradle
         alternatives:
           - engine_id: gradle
             arguments: [test]
       - action: build
         mode: job
+        path_engine_ids: [java, posix-shell]
         declared_effects: [workspace.build.outputs]
+        environment:
+          GRADLE_USER_HOME: $workspace/.mishkan/cache/gradle
         alternatives:
           - engine_id: gradle
             arguments: [assembleDebug]
@@ -86,11 +113,17 @@ packs:
     commands:
       - action: validate
         mode: job
+        path_engine_ids: [python]
+        environment:
+          PYTHONPYCACHEPREFIX: $workspace/.mishkan/cache/python
         alternatives:
           - engine_id: python
             arguments: [-m, compileall, -q, .]
       - action: test
         mode: job
+        path_engine_ids: [python]
+        environment:
+          PYTHONPYCACHEPREFIX: $workspace/.mishkan/cache/python
         alternatives:
           - engine_id: python
             arguments: [-m, pytest]
@@ -100,12 +133,19 @@ packs:
     commands:
       - action: test
         mode: job
+        path_engine_ids: [c-toolchain, posix-shell]
+        environment:
+          CARGO_HOME: $workspace/.mishkan/cache/cargo
+          CARGO_TARGET_DIR: $workspace/.mishkan/cache/cargo-target
         alternatives:
           - engine_id: rust
             arguments: [test]
       - action: build
         mode: job
-        declared_effects: [workspace.build.outputs]
+        path_engine_ids: [c-toolchain, posix-shell]
+        environment:
+          CARGO_HOME: $workspace/.mishkan/cache/cargo
+          CARGO_TARGET_DIR: $workspace/.mishkan/cache/cargo-target
         alternatives:
           - engine_id: rust
             arguments: [build]
@@ -115,6 +155,7 @@ packs:
     commands:
       - action: build
         mode: job
+        path_engine_ids: [c-toolchain, posix-shell]
         declared_effects: [workspace.build.outputs]
         alternatives:
           - engine_id: cmake
@@ -127,12 +168,21 @@ packs:
     commands:
       - action: test
         mode: job
+        path_engine_ids: [c-toolchain]
+        declared_effects: [workspace.build.outputs]
+        environment:
+          CLANG_MODULE_CACHE_PATH: $workspace/.mishkan/cache/swift-clang
+          SWIFTPM_MODULECACHE_OVERRIDE: $workspace/.mishkan/cache/swift-modules
         alternatives:
           - engine_id: swift
             arguments: [test]
       - action: build
         mode: job
+        path_engine_ids: [c-toolchain]
         declared_effects: [workspace.build.outputs]
+        environment:
+          CLANG_MODULE_CACHE_PATH: $workspace/.mishkan/cache/swift-clang
+          SWIFTPM_MODULECACHE_OVERRIDE: $workspace/.mishkan/cache/swift-modules
         alternatives:
           - engine_id: swift
             arguments: [build]
@@ -143,6 +193,7 @@ packs:
     commands:
       - action: ui-test
         mode: job
+        path_engine_ids: [java, posix-shell]
         alternatives:
           - engine_id: maestro
             arguments: [test, .maestro]

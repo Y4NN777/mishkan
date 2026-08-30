@@ -62,6 +62,7 @@ class EnvironmentOperationPlanner:
                 details={"adapter": adapter.adapter_id, "operation": request.operation.value},
             )
         observation = self._repository.observation(str(binding.request.observation_id))
+        observed_engines = {item.engine_id: item for item in observation.engines}
         engine = next(
             (
                 item
@@ -78,6 +79,17 @@ class EnvironmentOperationPlanner:
             raise MishkanError(
                 ErrorCode.TOOL_UNAVAILABLE,
                 "environment adapter executable is not currently eligible",
+            )
+        path_engines = tuple(observed_engines.get(item) for item in definition.path_engine_ids)
+        if any(
+            dependency is None
+            or dependency.executable_path is None
+            or dependency.fact("eligible") is not AvailabilityState.TRUE
+            for dependency in path_engines
+        ):
+            raise MishkanError(
+                ErrorCode.TOOL_UNAVAILABLE,
+                "environment adapter path dependency is not currently eligible",
             )
         descriptor_set = self._descriptor_set(request, adapter)
         descriptor_path = self._descriptor_path(
@@ -140,6 +152,28 @@ class EnvironmentOperationPlanner:
             "declared_executables": (str(engine.executable_path),),
             "network_destinations": request.network_destinations,
             "declared_effects": definition.declared_effects,
+            "environment": {
+                **request.environment,
+                **(
+                    {
+                        "PATH": ":".join(
+                            dict.fromkeys(
+                                (
+                                    str(engine.executable_path.parent),
+                                    *(
+                                        str(dependency.executable_path.parent)
+                                        for dependency in path_engines
+                                        if dependency is not None
+                                        and dependency.executable_path is not None
+                                    ),
+                                )
+                            )
+                        )
+                    }
+                    if definition.path_engine_ids
+                    else {}
+                ),
+            },
             "output_policy": OutputPolicy(
                 preview_bytes=request.preview_bytes,
                 preserve_full_output_as_artifact=True,

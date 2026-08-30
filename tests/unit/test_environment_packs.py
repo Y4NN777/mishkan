@@ -39,7 +39,18 @@ def test_technical_packs_resolve_exact_commands_or_truthful_unavailability(
     _project(tmp_path)
     binaries = tmp_path / "bin"
     binaries.mkdir()
-    for name in ("go", "npm", "mvn", "python3", "cargo", "make"):
+    for name in (
+        "sh",
+        "go",
+        "node",
+        "npm",
+        "java",
+        "mvn",
+        "python3",
+        "cargo",
+        "cc",
+        "make",
+    ):
         executable = binaries / name
         executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
         executable.chmod(0o755)
@@ -89,9 +100,13 @@ def test_technical_packs_resolve_exact_commands_or_truthful_unavailability(
         timeout_seconds=60,
     )
     plan = service.plan(observation, request)
-    assert plan.execution.executable == str((binaries / "go").resolve())
+    assert plan.execution.executable == str((binaries / "go").absolute())
     assert plan.execution.args == ("test", "./...")
     assert plan.execution.cwd == "."
+    assert plan.execution.environment["GOCACHE"] == str(
+        tmp_path / ".mishkan" / "cache" / "go-build"
+    )
+    assert plan.execution.environment["PATH"] == str(binaries)
 
     with pytest.raises(MishkanError) as stale:
         service.plan(
