@@ -52,6 +52,14 @@ test process before closing I05.
 | Podman | unavailable |
 | Docker / Compose | Docker `29.7.2`; Compose `v5.4.0`; daemon reachable only outside the restricted task sandbox |
 
+The external Docker prerequisite was exercised outside the sandbox with a `FROM scratch` image and
+two Compose services. Image build produced
+`sha256:08d4ca9711c3efdf8f216afe7233e8cbc16886ca7145de7f53c39beacca53706`; both services reached
+`running`, `compose down` removed both containers and their network, and an identical second
+up/readiness/down cycle succeeded. The test image was then removed. This proves the provider and
+cleanup/re-run prerequisite, but it does not replace the still-required proof through MISHKAN's
+governed environment-operation/session boundary.
+
 ## Remaining gate evidence
 
 I05 is not accepted yet. The following normative acceptance evidence remains unobserved:
@@ -59,7 +67,8 @@ I05 is not accepted yet. The following normative acceptance evidence remains uno
 - a real compatible worker with Podman performing the Containerfile build, bounded run,
   interruption settlement, cleanup, and repeatability scenario;
 - a real Dev Container CLI reusing an existing definition and verifying materialization;
-- the Docker/Compose lifecycle fixture through the same governed operation/session boundary;
+- the already healthy Docker/Compose lifecycle repeated through the governed
+  environment-operation/session boundary;
 - the complete deterministic regression suite in an environment that permits its loopback HTTP/MCP
   fixtures;
 - the required Linux/macOS and Python 3.11–3.13 remote matrix and the scoped branch-coverage gate.
