@@ -108,7 +108,9 @@ the promotion correction and current local/remote gate are green at `3481ca5` as
 `VALIDATION/web-browser-mcp.md`. D-040 records the history-preserving promotion checkpoint `0534988`
 and green `develop` and `main` matrices. I04 is integrated and closed. D-041 accepts Implementation
 Plan 1.6 and authorizes I05 on its dedicated topic branch; the I05 gate remains open until observed
-acceptance evidence exists.
+acceptance evidence exists. The deterministic capability checkpoint is recorded in
+`VALIDATION/skills-engineering.md`; D-042 remains uncreated pending the real Podman, Dev Container,
+Compose, complete regression, coverage, and remote-matrix evidence named there.
 
 ## Review rules
 
