@@ -52,6 +52,11 @@ from mishkan.conversations.models import (
     MissionEscalation,
     MissionIntervention,
 )
+from mishkan.crewai.mission_governance import (
+    CTOMissionReview,
+    MissionGovernanceResult,
+    PMMissionProposal,
+)
 from mishkan.domain.errors import ErrorEnvelope
 from mishkan.domain.identity import DomainRecord
 from mishkan.edits.git import GitEffectRequest, GitEffectResult
@@ -189,6 +194,9 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "context-pack-materialization-v1.schema.json": ContextPackMaterialization,
     "contextual-recommendation-request-v1.schema.json": ContextualRecommendationRequest,
     "contextual-recommendation-v1.schema.json": ContextualRecommendation,
+    "crewai-cto-mission-review-v1.schema.json": CTOMissionReview,
+    "crewai-mission-governance-result-v1.schema.json": MissionGovernanceResult,
+    "crewai-pm-mission-proposal-v1.schema.json": PMMissionProposal,
     "conversation-channel-v1.schema.json": ConversationChannel,
     "conversation-message-v1.schema.json": ConversationMessage,
     "domain-record-v1.schema.json": DomainRecord,

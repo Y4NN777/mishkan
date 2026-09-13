@@ -85,6 +85,8 @@ class CrewAIRuntimeConfig(StrictConfigModel):
     plan_validation_retries: int = Field(default=2, ge=0, le=10)
     review_retries: int = Field(default=2, ge=0, le=10)
     structured_output_retries: int = Field(default=2, ge=0, le=10)
+    mission_pm_model_route: str = Field(default="planning", min_length=1)
+    mission_cto_model_route: str = Field(default="planning", min_length=1)
 
 
 class DaemonConfig(StrictConfigModel):

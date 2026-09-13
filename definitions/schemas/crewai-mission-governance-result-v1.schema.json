@@ -1,0 +1,757 @@
+{
+  "$defs": {
+    "CrewAssignmentKind": {
+      "enum": [
+        "production",
+        "contributor",
+        "evaluation",
+        "reporting",
+        "audit"
+      ],
+      "title": "CrewAssignmentKind",
+      "type": "string"
+    },
+    "CrewSelectionEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "availability_references": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Availability References",
+          "type": "array"
+        },
+        "competence_references": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Competence References",
+          "type": "array"
+        },
+        "conflict_assessment": {
+          "maxLength": 2048,
+          "minLength": 3,
+          "title": "Conflict Assessment",
+          "type": "string"
+        },
+        "independence_references": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Independence References",
+          "type": "array"
+        },
+        "project_references": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Project References",
+          "type": "array"
+        },
+        "risk_coverage": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Risk Coverage",
+          "type": "array"
+        }
+      },
+      "required": [
+        "project_references",
+        "competence_references",
+        "availability_references",
+        "conflict_assessment",
+        "risk_coverage",
+        "independence_references"
+      ],
+      "title": "CrewSelectionEvidence",
+      "type": "object"
+    },
+    "ExecutiveConfirmation": {
+      "additionalProperties": false,
+      "properties": {
+        "confirmation_id": {
+          "format": "uuid",
+          "title": "Confirmation Id",
+          "type": "string"
+        },
+        "confirmed_at": {
+          "format": "date-time",
+          "title": "Confirmed At",
+          "type": "string"
+        },
+        "coverage": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Coverage",
+          "type": "array"
+        },
+        "disposition": {
+          "enum": [
+            "confirmed",
+            "rejected"
+          ],
+          "title": "Disposition",
+          "type": "string"
+        },
+        "evidence_references": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Evidence References",
+          "type": "array"
+        },
+        "identity_id": {
+          "enum": [
+            "PM",
+            "CTO"
+          ],
+          "title": "Identity Id",
+          "type": "string"
+        },
+        "rationale": {
+          "maxLength": 4096,
+          "minLength": 3,
+          "title": "Rationale",
+          "type": "string"
+        }
+      },
+      "required": [
+        "identity_id",
+        "disposition",
+        "rationale",
+        "evidence_references",
+        "coverage"
+      ],
+      "title": "ExecutiveConfirmation",
+      "type": "object"
+    },
+    "MissionBrief": {
+      "additionalProperties": false,
+      "properties": {
+        "acceptance_criteria": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Acceptance Criteria",
+          "type": "array"
+        },
+        "authority_scope": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Authority Scope",
+          "type": "array"
+        },
+        "brief_id": {
+          "format": "uuid",
+          "title": "Brief Id",
+          "type": "string"
+        },
+        "constraints": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Constraints",
+          "type": "array"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "cto_confirmation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExecutiveConfirmation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "desired_outcome": {
+          "maxLength": 8192,
+          "minLength": 3,
+          "title": "Desired Outcome",
+          "type": "string"
+        },
+        "environment_intent": {
+          "$ref": "#/$defs/MissionEnvironmentIntent"
+        },
+        "escalation_conditions": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Escalation Conditions",
+          "type": "array"
+        },
+        "evidence_requirements": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Evidence Requirements",
+          "type": "array"
+        },
+        "exclusions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Exclusions",
+          "type": "array"
+        },
+        "mission_id": {
+          "format": "uuid",
+          "title": "Mission Id",
+          "type": "string"
+        },
+        "objective": {
+          "maxLength": 8192,
+          "minLength": 3,
+          "title": "Objective",
+          "type": "string"
+        },
+        "organization_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Organization Id",
+          "type": "string"
+        },
+        "organization_version": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Organization Version",
+          "type": "string"
+        },
+        "pm_confirmation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExecutiveConfirmation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "problem": {
+          "maxLength": 8192,
+          "minLength": 3,
+          "title": "Problem",
+          "type": "string"
+        },
+        "proposed_crew": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 2,
+          "title": "Proposed Crew",
+          "type": "array"
+        },
+        "risks": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Risks",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "scope": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Scope",
+          "type": "array"
+        },
+        "status": {
+          "$ref": "#/$defs/MissionBriefStatus"
+        },
+        "version": {
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "mission_id",
+        "version",
+        "organization_id",
+        "organization_version",
+        "status",
+        "objective",
+        "problem",
+        "desired_outcome",
+        "scope",
+        "exclusions",
+        "acceptance_criteria",
+        "constraints",
+        "risks",
+        "authority_scope",
+        "proposed_crew",
+        "evidence_requirements",
+        "escalation_conditions",
+        "environment_intent"
+      ],
+      "title": "MissionBrief",
+      "type": "object"
+    },
+    "MissionBriefStatus": {
+      "enum": [
+        "clarifying",
+        "awaiting_confirmation",
+        "confirmed",
+        "rejected"
+      ],
+      "title": "MissionBriefStatus",
+      "type": "string"
+    },
+    "MissionCrewMember": {
+      "additionalProperties": false,
+      "properties": {
+        "assignment_kind": {
+          "$ref": "#/$defs/CrewAssignmentKind"
+        },
+        "identity_id": {
+          "maxLength": 128,
+          "minLength": 2,
+          "title": "Identity Id",
+          "type": "string"
+        },
+        "responsibility": {
+          "maxLength": 2048,
+          "minLength": 3,
+          "title": "Responsibility",
+          "type": "string"
+        },
+        "selection_evidence": {
+          "$ref": "#/$defs/CrewSelectionEvidence"
+        }
+      },
+      "required": [
+        "identity_id",
+        "assignment_kind",
+        "responsibility",
+        "selection_evidence"
+      ],
+      "title": "MissionCrewMember",
+      "type": "object"
+    },
+    "MissionCrewRevision": {
+      "additionalProperties": false,
+      "properties": {
+        "brief_version": {
+          "minimum": 1,
+          "title": "Brief Version",
+          "type": "integer"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "crew_id": {
+          "format": "uuid",
+          "title": "Crew Id",
+          "type": "string"
+        },
+        "cto_coverage_confirmation_id": {
+          "format": "uuid",
+          "title": "Cto Coverage Confirmation Id",
+          "type": "string"
+        },
+        "members": {
+          "items": {
+            "$ref": "#/$defs/MissionCrewMember"
+          },
+          "minItems": 2,
+          "title": "Members",
+          "type": "array"
+        },
+        "mission_id": {
+          "format": "uuid",
+          "title": "Mission Id",
+          "type": "string"
+        },
+        "mission_lead_id": {
+          "maxLength": 128,
+          "minLength": 2,
+          "title": "Mission Lead Id",
+          "type": "string"
+        },
+        "organization_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Organization Id",
+          "type": "string"
+        },
+        "organization_version": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Organization Version",
+          "type": "string"
+        },
+        "pm_composition_confirmation_id": {
+          "format": "uuid",
+          "title": "Pm Composition Confirmation Id",
+          "type": "string"
+        },
+        "revision_reason": {
+          "maxLength": 4096,
+          "minLength": 3,
+          "title": "Revision Reason",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "version": {
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "mission_id",
+        "version",
+        "organization_id",
+        "organization_version",
+        "brief_version",
+        "mission_lead_id",
+        "members",
+        "pm_composition_confirmation_id",
+        "cto_coverage_confirmation_id",
+        "revision_reason"
+      ],
+      "title": "MissionCrewRevision",
+      "type": "object"
+    },
+    "MissionEnvironmentIntent": {
+      "additionalProperties": false,
+      "properties": {
+        "credential_references": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Credential References",
+          "type": "array"
+        },
+        "environment_dependent": {
+          "title": "Environment Dependent",
+          "type": "boolean"
+        },
+        "existing_definition_references": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Existing Definition References",
+          "type": "array"
+        },
+        "isolation_requirements": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Isolation Requirements",
+          "type": "array"
+        },
+        "known_locations": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Known Locations",
+          "type": "array"
+        },
+        "known_unknowns": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Known Unknowns",
+          "type": "array"
+        },
+        "network_requirements": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Network Requirements",
+          "type": "array"
+        },
+        "required_evidence": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Evidence",
+          "type": "array"
+        },
+        "resource_constraints": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Resource Constraints",
+          "type": "array"
+        },
+        "target_architectures": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Target Architectures",
+          "type": "array"
+        },
+        "target_platforms": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Target Platforms",
+          "type": "array"
+        }
+      },
+      "required": [
+        "environment_dependent"
+      ],
+      "title": "MissionEnvironmentIntent",
+      "type": "object"
+    },
+    "MissionOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "actor_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Actor Id",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/MissionOriginKind"
+        },
+        "objective": {
+          "maxLength": 8192,
+          "minLength": 3,
+          "title": "Objective",
+          "type": "string"
+        },
+        "origin_id": {
+          "format": "uuid",
+          "title": "Origin Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "source_references": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Source References",
+          "type": "array"
+        },
+        "template_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Template Id"
+        }
+      },
+      "required": [
+        "kind",
+        "actor_id",
+        "objective"
+      ],
+      "title": "MissionOrigin",
+      "type": "object"
+    },
+    "MissionOriginKind": {
+      "enum": [
+        "ceo",
+        "pm",
+        "cto",
+        "incident",
+        "project_evidence",
+        "independent_finding",
+        "dependency",
+        "maintenance",
+        "organizational_proposal"
+      ],
+      "title": "MissionOriginKind",
+      "type": "string"
+    },
+    "MissionRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "current_brief_version": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Current Brief Version"
+        },
+        "current_crew_version": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Current Crew Version"
+        },
+        "mission_id": {
+          "format": "uuid",
+          "title": "Mission Id",
+          "type": "string"
+        },
+        "organization_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Organization Id",
+          "type": "string"
+        },
+        "organization_version": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Organization Version",
+          "type": "string"
+        },
+        "origin": {
+          "$ref": "#/$defs/MissionOrigin"
+        },
+        "revision": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/$defs/MissionState",
+          "default": "proposed"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "origin",
+        "organization_id",
+        "organization_version"
+      ],
+      "title": "MissionRecord",
+      "type": "object"
+    },
+    "MissionState": {
+      "enum": [
+        "proposed",
+        "clarifying",
+        "planned",
+        "active",
+        "paused",
+        "blocked",
+        "evaluating",
+        "remediating",
+        "completed",
+        "failed",
+        "cancelled"
+      ],
+      "title": "MissionState",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "brief": {
+      "$ref": "#/$defs/MissionBrief"
+    },
+    "crew": {
+      "$ref": "#/$defs/MissionCrewRevision"
+    },
+    "cto_output_fingerprint": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Cto Output Fingerprint",
+      "type": "string"
+    },
+    "mission": {
+      "$ref": "#/$defs/MissionRecord"
+    },
+    "pm_output_fingerprint": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Pm Output Fingerprint",
+      "type": "string"
+    }
+  },
+  "required": [
+    "mission",
+    "brief",
+    "crew",
+    "pm_output_fingerprint",
+    "cto_output_fingerprint"
+  ],
+  "title": "MissionGovernanceResult",
+  "type": "object"
+}

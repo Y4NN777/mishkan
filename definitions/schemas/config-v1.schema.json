@@ -263,6 +263,18 @@
           "title": "Max Agent Iterations",
           "type": "integer"
         },
+        "mission_cto_model_route": {
+          "default": "planning",
+          "minLength": 1,
+          "title": "Mission Cto Model Route",
+          "type": "string"
+        },
+        "mission_pm_model_route": {
+          "default": "planning",
+          "minLength": 1,
+          "title": "Mission Pm Model Route",
+          "type": "string"
+        },
         "model_max_output_tokens": {
           "default": 2048,
           "maximum": 131072,
