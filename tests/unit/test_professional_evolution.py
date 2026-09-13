@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
@@ -25,6 +25,7 @@ from mishkan.organization import (
     ProfessionalPromotionRequest,
     load_canonical_organization,
 )
+from mishkan.organization import evolution_repository as evolution_repository_module
 from mishkan.organization.evolution_repository import SQLiteProfessionalEvolutionRepository
 from mishkan.persistence.migration import SchemaManager
 
@@ -169,6 +170,67 @@ def test_stale_or_non_demonstrated_evidence_cannot_authorize_promotion(
             reason="This attempted promotion lacks demonstrated evidence",
         )
     assert error.value.envelope.code is ErrorCode.AUTHORIZATION_MISSING
+
+
+def test_competence_scope_expires_without_erasing_promotion_history(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = _repositories(tmp_path)
+    observed_at = datetime(2026, 1, 1, tzinfo=UTC)
+    evidence = repository.record_evidence(
+        _evidence(outcome=ProfessionalEvidenceOutcome.DEMONSTRATED).model_copy(
+            update={
+                "observed_at": observed_at,
+                "fresh_until": observed_at + timedelta(days=1),
+            }
+        )
+    )
+    request = ProfessionalPromotionRequest(
+        identity_id=evidence.identity_id,
+        kind=evidence.kind,
+        subject=evidence.subject,
+        source_scope=evidence.scope,
+        target_scope=_scope(LearningScopeLevel.PROJECT, "project:api"),
+        supporting_evidence_ids=(evidence.evidence_id,),
+        requested_by="PM",
+        rationale="Promote only while attributable support remains fresh",
+    )
+    monkeypatch.setattr(
+        evolution_repository_module,
+        "utc_now",
+        lambda: observed_at + timedelta(hours=1),
+    )
+    decision = repository.decide_promotion(
+        request,
+        disposition=ProfessionalPromotionDisposition.ACCEPTED,
+        decided_by="CTO",
+        policy_fingerprint="c" * 64,
+        reason="The demonstrated evidence is fresh at decision time",
+    )
+    fresh = repository.competence_state(
+        evidence.identity_id,
+        kind=evidence.kind,
+        subject=evidence.subject,
+    )
+    monkeypatch.setattr(
+        evolution_repository_module,
+        "utc_now",
+        lambda: observed_at + timedelta(days=2),
+    )
+    stale = repository.competence_state(
+        evidence.identity_id,
+        kind=evidence.kind,
+        subject=evidence.subject,
+    )
+
+    assert fresh.effective_scope == request.target_scope
+    assert fresh.fresh_supporting_evidence_ids == (evidence.evidence_id,)
+    assert stale.effective_scope is None
+    assert stale.fresh_supporting_evidence_ids == ()
+    assert stale.stale_supporting_evidence_ids == (evidence.evidence_id,)
+    assert stale.latest_decision_id == decision.decision_id
+    assert stale.supporting_evidence_ids == (evidence.evidence_id,)
+    assert repository.promotion_history(evidence.identity_id) == (decision,)
 
 
 def test_promotion_scope_must_expand_in_explicit_order() -> None:

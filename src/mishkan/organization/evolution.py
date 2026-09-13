@@ -145,13 +145,21 @@ class ProfessionalPromotionDecision(ProfessionalEvolutionModel):
 
 
 class ProfessionalCompetenceState(ProfessionalEvolutionModel):
-    schema_version: Literal["1.0"] = "1.0"
+    schema_version: Literal["1.1"] = "1.1"
     identity_id: str
     kind: ProfessionalEvidenceKind
     subject: str
     effective_scope: ProfessionalLearningScope | None
     revision: int = Field(ge=0)
     latest_decision_id: UUID | None
+    freshness_evaluated_at: datetime
     supporting_evidence_ids: tuple[UUID, ...]
+    fresh_supporting_evidence_ids: tuple[UUID, ...]
+    stale_supporting_evidence_ids: tuple[UUID, ...]
     contradictory_evidence_ids: tuple[UUID, ...]
     failure_evidence_ids: tuple[UUID, ...]
+
+    @field_validator("freshness_evaluated_at")
+    @classmethod
+    def evaluation_time_is_aware(cls, value: datetime) -> datetime:
+        return require_aware(value)

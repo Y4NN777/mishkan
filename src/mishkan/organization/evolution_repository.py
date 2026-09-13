@@ -238,6 +238,23 @@ class SQLiteProfessionalEvolutionRepository:
                 if latest is not None
                 else None
             )
+            freshness_evaluated_at = utc_now()
+            demonstrated = tuple(
+                item for item in records if item.outcome is ProfessionalEvidenceOutcome.DEMONSTRATED
+            )
+            fresh_support = tuple(
+                item.evidence_id
+                for item in demonstrated
+                if item.fresh_until > freshness_evaluated_at
+            )
+            stale_support = tuple(
+                item.evidence_id
+                for item in demonstrated
+                if item.fresh_until <= freshness_evaluated_at
+            )
+            decision_has_fresh_support = decision is not None and bool(
+                set(decision.supporting_evidence_ids).intersection(fresh_support)
+            )
             return ProfessionalCompetenceState(
                 identity_id=identity_id,
                 kind=kind,
@@ -246,15 +263,15 @@ class SQLiteProfessionalEvolutionRepository:
                     decision.request.target_scope
                     if decision is not None
                     and decision.disposition is ProfessionalPromotionDisposition.ACCEPTED
+                    and decision_has_fresh_support
                     else None
                 ),
                 revision=decision.revision if decision is not None else 0,
                 latest_decision_id=decision.decision_id if decision is not None else None,
-                supporting_evidence_ids=tuple(
-                    item.evidence_id
-                    for item in records
-                    if item.outcome is ProfessionalEvidenceOutcome.DEMONSTRATED
-                ),
+                freshness_evaluated_at=freshness_evaluated_at,
+                supporting_evidence_ids=tuple(item.evidence_id for item in demonstrated),
+                fresh_supporting_evidence_ids=fresh_support,
+                stale_supporting_evidence_ids=stale_support,
                 contradictory_evidence_ids=tuple(
                     item.evidence_id
                     for item in records
