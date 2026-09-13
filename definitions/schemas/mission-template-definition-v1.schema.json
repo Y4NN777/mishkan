@@ -1,0 +1,165 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "applicability_exclusions": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Applicability Exclusions",
+      "type": "array"
+    },
+    "applicability_signals": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Applicability Signals",
+      "type": "array"
+    },
+    "compatible_organization_versions": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Compatible Organization Versions",
+      "type": "array"
+    },
+    "completion_guidance": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Completion Guidance",
+      "type": "array"
+    },
+    "constraint_guidance": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Constraint Guidance",
+      "type": "array"
+    },
+    "declared_configuration_conditions": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Declared Configuration Conditions",
+      "type": "array"
+    },
+    "declared_execution_conditions": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Declared Execution Conditions",
+      "type": "array"
+    },
+    "declared_skill_conditions": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Declared Skill Conditions",
+      "type": "array"
+    },
+    "declared_tool_conditions": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Declared Tool Conditions",
+      "type": "array"
+    },
+    "evidence_guidance": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Evidence Guidance",
+      "type": "array"
+    },
+    "objective_guidance": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Objective Guidance",
+      "type": "array"
+    },
+    "provenance": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Provenance",
+      "type": "array"
+    },
+    "reporting_expectations": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Reporting Expectations",
+      "type": "array"
+    },
+    "required_responsibility_classes": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Required Responsibility Classes",
+      "type": "array"
+    },
+    "risk_guidance": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Risk Guidance",
+      "type": "array"
+    },
+    "source": {
+      "maxLength": 2048,
+      "minLength": 1,
+      "title": "Source",
+      "type": "string"
+    },
+    "template_id": {
+      "pattern": "^[a-z][a-z0-9_.-]{1,127}$",
+      "title": "Template Id",
+      "type": "string"
+    },
+    "validation_expectations": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Validation Expectations",
+      "type": "array"
+    },
+    "version": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "template_id",
+    "version",
+    "source",
+    "provenance",
+    "applicability_signals",
+    "objective_guidance",
+    "evidence_guidance",
+    "completion_guidance",
+    "compatible_organization_versions",
+    "validation_expectations",
+    "reporting_expectations"
+  ],
+  "title": "MissionTemplateDefinition",
+  "type": "object"
+}

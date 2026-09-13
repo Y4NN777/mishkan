@@ -1,6 +1,6 @@
 # MISHKAN
 
-[![CI](https://github.com/Y4NN777/mishkan/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Y4NN777/mishkan/actions/workflows/ci.yml)
+[![CI](https://github.com/Y7-Labs/mishkan/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Y7-Labs/mishkan/actions/workflows/ci.yml)
 
 **Delegate engineering missions, not isolated coding sessions.**
 
@@ -10,9 +10,8 @@ execution, preserves decisions and evidence, and returns independently reviewed 
 retain authority over consequential actions.
 
 > **Pre-release:** MISHKAN is under active development and currently installs from source. The
-> implemented product is a local, single-daemon system for Linux and macOS. The full persistent
-> organization, knowledge stack, scheduler, distributed workers, and operational TUI remain
-> roadmap work.
+> implemented product is a local, single-daemon system for Linux and macOS. The knowledge stack,
+> scheduler, distributed workers, and operational TUI remain roadmap work.
 
 ## Organization model
 
@@ -102,6 +101,7 @@ CLI · Python SDK · HTTP/SSE · MCP bridge
 
 | Area | Implemented surface |
 |---|---|
+| Organization and missions | 59 versioned professional identities, contextual Mission Crews, PM/CTO governance, accountable assignments, independent assurance, durable conversations, scoped escalations, governed CEO interventions, and evidence-based professional evolution |
 | Repository work | Scoped file reads and search, direct processes, Bash, exact change sets, and governed Git effects |
 | Long-running work | PTY sessions and managed jobs with cursors, signals, cancellation, settlement, and recovery evidence |
 | Control plane | Loopback HTTP API, idempotent commands, SQLite/WAL, explicit Alembic migrations, snapshots, JSONL export, and resumable SSE |
@@ -132,7 +132,7 @@ are not required to start the daemon.
 ### 1. Install from source
 
 ```bash
-git clone https://github.com/Y4NN777/mishkan.git
+git clone https://github.com/Y7-Labs/mishkan.git
 cd mishkan
 uv sync --locked --dev
 uv run mishkan --help
@@ -211,6 +211,9 @@ Run `uv run mishkan --help` for the authoritative command tree.
 | `skill`, `context` | Inspect, invoke, learn, evolve, and resolve procedural skills and confirmed project/engineer context |
 | `environment` | Observe engines, resolve compatible bindings, validate descriptors, execute adapters, and inspect settlement evidence |
 | `telemetry` | Inspect configured disclosure and import attributable non-authoritative evaluation evidence |
+| `org`, `mission` | Inspect the persistent organization, contextual Mission Briefs, crews, assignments, environments, runs, and evidence |
+| `conversation`, `intervention` | Use durable channels and submit governed comments, escalation answers, pauses, resumptions, reassignments, stops, and risk acceptances |
+| `advisory` | Inspect contextual community candidates without activating them automatically |
 
 The package also installs:
 

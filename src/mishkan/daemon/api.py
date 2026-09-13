@@ -51,7 +51,21 @@ from mishkan.context import (
     EngineerProfile,
     EngineerProfileLoader,
 )
+from mishkan.conversations import (
+    ConversationChannel,
+    EscalationState,
+    SQLiteConversationRepository,
+)
 from mishkan.crewai.credentials import CredentialPoolResolver
+from mishkan.crewai.mission_environment import (
+    CrewAIMissionEnvironmentPlanningRunner,
+    MissionEnvironmentPlanningRunner,
+)
+from mishkan.crewai.mission_governance import (
+    CrewAIMissionGovernanceRunner,
+    MissionGovernanceResult,
+    MissionGovernanceRunner,
+)
 from mishkan.crewai.skill_learning import CrewAISkillLearningRunner
 from mishkan.daemon.auth import TokenFile, TokenRecord
 from mishkan.daemon.bootstrap import DaemonPaths
@@ -75,6 +89,7 @@ from mishkan.environment import (
     EnvironmentObserver,
     EnvironmentOperationPlan,
     EnvironmentOperationPlanner,
+    EnvironmentProfile,
     EnvironmentResolver,
     EnvironmentVerification,
     TechnicalPackLoader,
@@ -103,9 +118,49 @@ from mishkan.mcp import (
     McpServiceRunner,
 )
 from mishkan.mcp.sdk import McpStdioCommandBuilder
+from mishkan.missions import (
+    MissionBrief,
+    MissionCompletionReadiness,
+    MissionCrewRevision,
+    MissionEnvironmentReadiness,
+    MissionEnvironmentReadinessService,
+    MissionRecord,
+    MissionRunBinding,
+    MissionState,
+    MissionTaskClaimService,
+    MissionTaskEligibility,
+    MissionTemplateLoader,
+    MissionTemplateService,
+    SQLiteMissionRepository,
+)
+from mishkan.missions.environment import (
+    MissionEnvironmentPlanAcceptance,
+    MissionEnvironmentPlanValidator,
+)
+from mishkan.missions.inspection import MissionInspectionService
+from mishkan.notifications import (
+    NotificationDelivery,
+    NotificationPage,
+    NotificationService,
+    NotificationSeverity,
+)
+from mishkan.organization import (
+    ProfessionalCompetenceState,
+    ProfessionalEvidenceKind,
+    ProfessionalEvidenceRecord,
+    ProfessionalPromotionDecision,
+    load_canonical_organization,
+)
+from mishkan.organization.evolution_repository import SQLiteProfessionalEvolutionRepository
 from mishkan.persistence import LocalRunRepository, SchemaManager, SQLiteApplicationRepository
 from mishkan.policy import Decision
 from mishkan.policy.models import EffectivePolicy
+from mishkan.repository import (
+    ProspectiveWorkspaceBinding,
+    ProspectiveWorkspaceInspector,
+    RepositoryEstablishment,
+    RepositoryInspector,
+)
 from mishkan.runtime import TaskReviewRejection
 from mishkan.skills import SkillInspectionProfileLoader, SkillPackageInspector
 from mishkan.skills.catalog import validate_skill_metadata_document
@@ -305,6 +360,8 @@ def create_app(
     *,
     mcp_stdio_commands: Mapping[str, McpStdioCommandBuilder] | None = None,
     skill_learning_runner: SkillLearningRunner | None = None,
+    mission_governance_runner: MissionGovernanceRunner | None = None,
+    mission_environment_runner: MissionEnvironmentPlanningRunner | None = None,
     telemetry_exporter_factory: Callable[[], TelemetryExporter] | None = None,
 ) -> FastAPI:
     paths = DaemonPaths.from_config(config)
@@ -357,6 +414,7 @@ def create_app(
     environment_operation_planner: EnvironmentOperationPlanner | None = None
     environment_evidence_service: EnvironmentEvidenceService | None = None
     technical_pack_service: TechnicalPackService | None = None
+    environment_profile: EnvironmentProfile | None = None
     if config.engineering_profile is not None:
         environment_profile = load_environment_profile(
             config.engineering_profile,
@@ -522,6 +580,51 @@ def create_app(
     community_recommendations = ContextualRecommendationService(
         CommunityCandidateLoader().load(config.community_candidate_sources, paths.workspace)
     )
+    mission_repository = SQLiteMissionRepository(
+        paths.database,
+        busy_timeout_ms=persistence.busy_timeout_ms,
+    )
+    # Loading the daemon must not advance the public event cursor. The immutable
+    # roster is persisted as reference data; explicit roster changes remain events.
+    mission_repository.record_organization(load_canonical_organization(), emit_event=False)
+    conversation_repository = SQLiteConversationRepository(
+        paths.database,
+        busy_timeout_ms=persistence.busy_timeout_ms,
+    )
+    professional_evolution = SQLiteProfessionalEvolutionRepository(
+        paths.database,
+        busy_timeout_ms=persistence.busy_timeout_ms,
+    )
+    mission_templates = MissionTemplateService(
+        MissionTemplateLoader().load(config.mission_template_sources, paths.workspace)
+    )
+    mission_governance = mission_governance_runner or CrewAIMissionGovernanceRunner(
+        config, mission_templates=mission_templates
+    )
+    mission_environment_planning = (
+        mission_environment_runner or CrewAIMissionEnvironmentPlanningRunner(config)
+    )
+    mission_readiness = MissionEnvironmentReadinessService(
+        mission_repository,
+        environment_repository,
+    )
+    mission_task_claims = MissionTaskClaimService(
+        mission_repository,
+        conversation_repository,
+        mission_readiness,
+        run_repository,
+    )
+    mission_inspections = MissionInspectionService(
+        organization=load_canonical_organization(),
+        missions=mission_repository,
+        conversations=conversation_repository,
+        application=repository,
+        runs=run_repository,
+        artifacts=artifacts,
+        readiness=mission_readiness,
+        task_claims=mission_task_claims,
+    )
+    notification_service = NotificationService(config.notifications)
     telemetry_tasks: set[asyncio.Task[object]] = set()
 
     def project_telemetry(
@@ -797,6 +900,7 @@ def create_app(
                                 command_authority.policy,
                                 supervisor,
                                 run_repository,
+                                paths.workspace,
                                 mcp_runner,
                                 mcp_config,
                                 resolved_credentials,
@@ -815,6 +919,13 @@ def create_app(
                                 technical_pack_service,
                                 telemetry_evaluation_service,
                                 community_recommendations,
+                                mission_repository,
+                                conversation_repository,
+                                mission_governance,
+                                mission_environment_planning,
+                                environment_profile,
+                                professional_evolution,
+                                mission_task_claims,
                             )
                         except MishkanError as error:
                             result = repository.fail_reserved(
@@ -891,6 +1002,16 @@ def create_app(
             execute_command,
             schema_revision=schema_revision,
             event_page_limit=daemon.event_page_limit,
+            organization=load_canonical_organization(),
+            missions=mission_repository,
+            conversations=conversation_repository,
+            professional_evolution=professional_evolution,
+            mission_templates=mission_templates,
+            advisory=community_recommendations,
+            readiness=mission_readiness,
+            mission_task_claims=mission_task_claims,
+            mission_inspections=mission_inspections,
+            notifications=notification_service,
         )
         mcp_http = McpHttpFacade(
             router,
@@ -993,6 +1114,303 @@ def create_app(
             "activation_authorized": False,
         }
 
+    @app.get("/v1/organization", response_model=None)
+    async def organization(
+        _principal: TokenRecord = authenticated,
+    ) -> dict[str, object]:
+        roster = load_canonical_organization()
+        return roster.model_dump(mode="json")
+
+    @app.get("/v1/organization/inspection", response_model=None)
+    async def organization_inspection(
+        _principal: TokenRecord = authenticated,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
+    ) -> dict[str, object]:
+        return await _thread_call(mission_inspections.organization, limit=limit)
+
+    @app.get("/v1/organization/branches/{branch_id}/inspection", response_model=None)
+    async def organization_branch_inspection(
+        branch_id: str,
+        _principal: TokenRecord = authenticated,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
+    ) -> dict[str, object]:
+        return await _thread_call(mission_inspections.branch, branch_id, limit=limit)
+
+    @app.get(
+        "/v1/organization/profiles/{identity_id}/competence",
+        response_model=ProfessionalCompetenceState,
+    )
+    async def professional_competence_get(
+        identity_id: str,
+        kind: ProfessionalEvidenceKind,
+        subject: Annotated[str, Query(min_length=1, max_length=512)],
+        _principal: TokenRecord = authenticated,
+    ) -> ProfessionalCompetenceState:
+        return await _thread_call(
+            professional_evolution.competence_state,
+            identity_id,
+            kind=kind,
+            subject=subject,
+        )
+
+    @app.get(
+        "/v1/organization/profiles/{identity_id}/evidence",
+        response_model=None,
+    )
+    async def professional_evidence_list(
+        identity_id: str,
+        _principal: TokenRecord = authenticated,
+        kind: ProfessionalEvidenceKind | None = None,
+        subject: Annotated[str | None, Query(min_length=1, max_length=512)] = None,
+        offset: Annotated[int, Query(ge=0)] = 0,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
+    ) -> tuple[dict[str, object], ...]:
+        records: tuple[ProfessionalEvidenceRecord, ...] = await _thread_call(
+            professional_evolution.evidence,
+            identity_id,
+            kind=kind,
+            subject=subject,
+            offset=offset,
+            limit=limit,
+        )
+        return tuple(record.model_dump(mode="json") for record in records)
+
+    @app.get(
+        "/v1/organization/profiles/{identity_id}/promotions",
+        response_model=None,
+    )
+    async def professional_promotion_list(
+        identity_id: str,
+        _principal: TokenRecord = authenticated,
+        kind: ProfessionalEvidenceKind | None = None,
+        subject: Annotated[str | None, Query(min_length=1, max_length=512)] = None,
+        offset: Annotated[int, Query(ge=0)] = 0,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
+    ) -> tuple[dict[str, object], ...]:
+        records: tuple[ProfessionalPromotionDecision, ...] = await _thread_call(
+            professional_evolution.promotion_history,
+            identity_id,
+            kind=kind,
+            subject=subject,
+            offset=offset,
+            limit=limit,
+        )
+        return tuple(record.model_dump(mode="json") for record in records)
+
+    @app.get("/v1/missions", response_model=None)
+    async def mission_list(
+        _principal: TokenRecord = authenticated,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
+    ) -> tuple[dict[str, object], ...]:
+        records = await _thread_call(mission_repository.list_missions, limit=limit)
+        return tuple(record.model_dump(mode="json") for record in records)
+
+    @app.get("/v1/mission-templates", response_model=None)
+    async def mission_template_list(
+        _principal: TokenRecord = authenticated,
+        signal: Annotated[list[str] | None, Query()] = None,
+        organization_version: str = "1",
+    ) -> tuple[dict[str, object], ...]:
+        records = (
+            mission_templates.catalogue.templates
+            if signal is None
+            else mission_templates.applicable(
+                tuple(signal), organization_version=organization_version
+            )
+        )
+        return tuple(record.model_dump(mode="json") for record in records)
+
+    @app.get("/v1/missions/{mission_id}", response_model=MissionRecord)
+    async def mission_get(
+        mission_id: UUID,
+        _principal: TokenRecord = authenticated,
+    ) -> MissionRecord:
+        return await _thread_call(mission_repository.mission, str(mission_id))
+
+    @app.get("/v1/missions/{mission_id}/brief", response_model=MissionBrief)
+    async def mission_brief_get(
+        mission_id: UUID,
+        _principal: TokenRecord = authenticated,
+        version: Annotated[int | None, Query(ge=1)] = None,
+    ) -> MissionBrief:
+        return await _thread_call(mission_repository.brief, str(mission_id), version)
+
+    @app.get("/v1/missions/{mission_id}/crew", response_model=MissionCrewRevision)
+    async def mission_crew_get(
+        mission_id: UUID,
+        _principal: TokenRecord = authenticated,
+        version: Annotated[int | None, Query(ge=1)] = None,
+    ) -> MissionCrewRevision:
+        return await _thread_call(mission_repository.crew, str(mission_id), version)
+
+    @app.get(
+        "/v1/missions/{mission_id}/environment-plan",
+        response_model=MissionEnvironmentPlanAcceptance,
+    )
+    async def mission_environment_plan_get(
+        mission_id: UUID,
+        _principal: TokenRecord = authenticated,
+        version: Annotated[int | None, Query(ge=1)] = None,
+    ) -> MissionEnvironmentPlanAcceptance:
+        return await _thread_call(
+            mission_repository.environment_plan,
+            str(mission_id),
+            version,
+        )
+
+    @app.get(
+        "/v1/missions/{mission_id}/readiness",
+        response_model=MissionEnvironmentReadiness,
+    )
+    async def mission_environment_readiness(
+        mission_id: UUID,
+        _principal: TokenRecord = authenticated,
+    ) -> MissionEnvironmentReadiness:
+        return await _thread_call(mission_readiness.inspect, str(mission_id))
+
+    @app.get(
+        "/v1/missions/{mission_id}/tasks/{task_id}/eligibility",
+        response_model=MissionTaskEligibility,
+    )
+    async def mission_task_eligibility(
+        mission_id: UUID,
+        task_id: str,
+        _principal: TokenRecord = authenticated,
+    ) -> MissionTaskEligibility:
+        return await _thread_call(mission_task_claims.inspect, str(mission_id), task_id)
+
+    @app.get(
+        "/v1/missions/{mission_id}/completion-readiness",
+        response_model=MissionCompletionReadiness,
+    )
+    async def mission_completion_readiness(
+        mission_id: UUID,
+        _principal: TokenRecord = authenticated,
+    ) -> MissionCompletionReadiness:
+        return await _thread_call(mission_task_claims.inspect_completion, str(mission_id))
+
+    @app.get("/v1/missions/{mission_id}/assignments", response_model=None)
+    async def mission_assignments(
+        mission_id: UUID,
+        _principal: TokenRecord = authenticated,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 1_000,
+    ) -> tuple[dict[str, object], ...]:
+        records = await _thread_call(mission_repository.assignments, str(mission_id), limit=limit)
+        return tuple(record.model_dump(mode="json") for record in records)
+
+    @app.get("/v1/missions/{mission_id}/run-bindings", response_model=None)
+    async def mission_run_bindings(
+        mission_id: UUID,
+        _principal: TokenRecord = authenticated,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 1_000,
+    ) -> tuple[dict[str, object], ...]:
+        records = await _thread_call(
+            mission_repository.run_bindings,
+            str(mission_id),
+            limit=limit,
+        )
+        return tuple(record.model_dump(mode="json") for record in records)
+
+    @app.get("/v1/missions/{mission_id}/run-reports", response_model=None)
+    async def mission_run_reports(
+        mission_id: UUID,
+        _principal: TokenRecord = authenticated,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 1_000,
+    ) -> tuple[dict[str, object], ...]:
+        records = await _thread_call(
+            mission_repository.run_reports,
+            str(mission_id),
+            limit=limit,
+        )
+        return tuple(record.model_dump(mode="json") for record in records)
+
+    @app.get("/v1/missions/{mission_id}/transitions", response_model=None)
+    async def mission_transitions(
+        mission_id: UUID,
+        _principal: TokenRecord = authenticated,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 1_000,
+    ) -> tuple[dict[str, object], ...]:
+        records = await _thread_call(mission_repository.transitions, str(mission_id), limit=limit)
+        return tuple(record.model_dump(mode="json") for record in records)
+
+    @app.get("/v1/conversations", response_model=None)
+    async def conversation_list(
+        _principal: TokenRecord = authenticated,
+        mission_id: UUID | None = None,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
+    ) -> tuple[dict[str, object], ...]:
+        records = await _thread_call(
+            conversation_repository.channels,
+            mission_id=str(mission_id) if mission_id is not None else None,
+            limit=limit,
+        )
+        return tuple(record.model_dump(mode="json") for record in records)
+
+    @app.get("/v1/conversations/{conversation_id}", response_model=ConversationChannel)
+    async def conversation_get(
+        conversation_id: UUID,
+        _principal: TokenRecord = authenticated,
+    ) -> ConversationChannel:
+        return await _thread_call(conversation_repository.channel, str(conversation_id))
+
+    @app.get("/v1/conversations/{conversation_id}/messages", response_model=None)
+    async def conversation_messages(
+        conversation_id: UUID,
+        _principal: TokenRecord = authenticated,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
+    ) -> tuple[dict[str, object], ...]:
+        records = await _thread_call(
+            conversation_repository.messages, str(conversation_id), limit=limit
+        )
+        return tuple(record.model_dump(mode="json") for record in records)
+
+    @app.get("/v1/missions/{mission_id}/escalations", response_model=None)
+    async def mission_escalations(
+        mission_id: UUID,
+        _principal: TokenRecord = authenticated,
+        state: EscalationState | None = None,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
+    ) -> tuple[dict[str, object], ...]:
+        records = await _thread_call(
+            conversation_repository.escalations,
+            str(mission_id),
+            state=state,
+            limit=limit,
+        )
+        return tuple(record.model_dump(mode="json") for record in records)
+
+    @app.get("/v1/missions/{mission_id}/decisions", response_model=None)
+    async def mission_decisions(
+        mission_id: UUID,
+        _principal: TokenRecord = authenticated,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
+    ) -> tuple[dict[str, object], ...]:
+        records = await _thread_call(
+            conversation_repository.decisions,
+            str(mission_id),
+            limit=limit,
+        )
+        return tuple(record.model_dump(mode="json") for record in records)
+
+    @app.get("/v1/missions/{mission_id}/interventions", response_model=None)
+    async def mission_interventions(
+        mission_id: UUID,
+        _principal: TokenRecord = authenticated,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
+    ) -> tuple[dict[str, object], ...]:
+        records = await _thread_call(
+            conversation_repository.interventions, str(mission_id), limit=limit
+        )
+        return tuple(record.model_dump(mode="json") for record in records)
+
+    @app.get("/v1/missions/{mission_id}/inspection", response_model=None)
+    async def mission_inspection(
+        mission_id: UUID,
+        _principal: TokenRecord = authenticated,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
+    ) -> dict[str, object]:
+        return await _thread_call(mission_inspections.mission, str(mission_id), limit=limit)
+
     @app.get("/v1/tools/registry")
     async def tool_registry(
         _principal: TokenRecord = authenticated,
@@ -1034,6 +1452,25 @@ def create_app(
             occurred_after=occurred_after,
             occurred_before=occurred_before,
             security_relevant=security_relevant,
+        )
+
+    @app.get("/v1/notifications", response_model=NotificationPage)
+    async def notifications(
+        _principal: TokenRecord = authenticated,
+        after: Annotated[int, Query(ge=0)] = 0,
+        limit: Annotated[int | None, Query(ge=1, le=1_000)] = None,
+        severity: Annotated[list[NotificationSeverity] | None, Query()] = None,
+        delivery: Annotated[list[NotificationDelivery] | None, Query()] = None,
+    ) -> NotificationPage:
+        event_page = await _thread_call(
+            repository.events,
+            after_cursor=after,
+            limit=limit or config.notifications.page_limit,
+        )
+        return notification_service.project(
+            event_page,
+            severities=frozenset(severity or ()),
+            deliveries=frozenset(delivery or ()),
         )
 
     @app.get("/v1/events/holds")
@@ -1556,6 +1993,7 @@ def _dispatch(
     effective_policy: EffectivePolicy,
     supervisor: SessionSupervisor,
     runs: LocalRunRepository,
+    workspace: Path,
     mcp_runner: McpServiceRunner | None,
     mcp_config: McpConfig | None,
     resolved_credentials: dict[str, str],
@@ -1574,10 +2012,69 @@ def _dispatch(
     technical_pack_service: TechnicalPackService | None,
     telemetry_evaluation_service: TelemetryEvaluationService,
     community_recommendations: ContextualRecommendationService,
+    mission_repository: SQLiteMissionRepository,
+    conversation_repository: SQLiteConversationRepository,
+    mission_governance: MissionGovernanceRunner,
+    mission_environment_planning: MissionEnvironmentPlanningRunner,
+    environment_profile: EnvironmentProfile | None,
+    professional_evolution: SQLiteProfessionalEvolutionRepository,
+    mission_task_claims: MissionTaskClaimService,
 ) -> tuple[str, dict[str, object]]:
     payload = command.payload
     if command.command_type == "system.checkpoint" and command.target_type == "system":
         return "system.checkpoint_recorded", {"recorded": True}
+    if command.command_type == "run.prospective.create":
+        prospective_request = authorized.prospective_run_request
+        if prospective_request is None:
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT,
+                "authorized prospective run request is absent",
+            )
+        discovery = ProspectiveWorkspaceInspector().inspect(
+            workspace,
+            workspace_id=prospective_request.workspace_id,
+        )
+        snapshot = runs.start_or_resume(
+            discovery,
+            prospective_request.objective,
+            prospective_request.outcome_id,
+        )
+        return "run.prospective_created", {
+            "run_id": snapshot.run_id,
+            "resumed": snapshot.resumed,
+            "execution_context": snapshot.execution_context.model_dump(mode="json"),
+        }
+    if command.command_type == "run.repository.establish" and command.target_id is not None:
+        establishment_request = authorized.repository_establishment_request
+        if establishment_request is None:
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT,
+                "authorized repository establishment request is absent",
+            )
+        discovery = ProspectiveWorkspaceInspector().inspect(
+            workspace,
+            workspace_id=establishment_request.prospective_workspace_id,
+        )
+        if discovery.binding.context_revision != establishment_request.discovery_revision:
+            raise MishkanError(
+                ErrorCode.REVISION_MISMATCH,
+                "prospective workspace discovery revision changed before establishment",
+            )
+        if not isinstance(discovery.binding, ProspectiveWorkspaceBinding):
+            raise MishkanError(ErrorCode.PROJECT, "prospective workspace binding is invalid")
+        establishment = RepositoryEstablishment(
+            run_id=command.target_id,
+            prospective_workspace=discovery.binding,
+            repository=RepositoryInspector().bind(workspace),
+            evidence_references=establishment_request.evidence_references,
+            established_by=command.actor_id,
+        )
+        snapshot = runs.record_repository_establishment(establishment)
+        return "run.repository_established", {
+            "run_id": snapshot.run_id,
+            "execution_context": snapshot.execution_context.model_dump(mode="json"),
+            "repository_establishment": establishment.model_dump(mode="json"),
+        }
     if command.command_type == "telemetry.evaluation.import":
         evaluation_request = authorized.telemetry_evaluation
         if evaluation_request is None:
@@ -1602,6 +2099,331 @@ def _dispatch(
             recommendation_request
         )
         return "context.recommendation_generated", recommendation.model_dump(mode="json")
+    if command.command_type == "mission.create":
+        record = authorized.mission_record
+        if record is None:
+            raise MishkanError(ErrorCode.OUTPUT_CONTRACT, "authorized mission record is absent")
+        created = mission_repository.create_mission(record)
+        return "mission.created", created.model_dump(mode="json")
+    if command.command_type == "mission.brief.record":
+        brief = authorized.mission_brief
+        if brief is None or command.expected_revision is None:
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT,
+                "Mission Brief command requires a record and expected mission revision",
+            )
+        recorded_brief = mission_repository.record_brief(
+            brief,
+            expected_revision=command.expected_revision,
+        )
+        return "mission.brief_recorded", recorded_brief.model_dump(mode="json")
+    if command.command_type == "mission.crew.record":
+        crew = authorized.mission_crew
+        if crew is None or command.expected_revision is None:
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT,
+                "Mission Crew command requires a revision and expected mission revision",
+            )
+        recorded_crew = mission_repository.record_crew(
+            crew,
+            expected_revision=command.expected_revision,
+        )
+        return "mission.crew_recorded", recorded_crew.model_dump(mode="json")
+    if command.command_type == "conversation.create":
+        channel = authorized.conversation_channel
+        if channel is None:
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT, "authorized conversation channel is absent"
+            )
+        created_channel = conversation_repository.create_channel(channel)
+        return "conversation.created", created_channel.model_dump(mode="json")
+    if command.command_type == "conversation.message.post":
+        message = authorized.conversation_message
+        if message is None:
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT, "authorized conversation message is absent"
+            )
+        posted = conversation_repository.post_message(message)
+        return "conversation.message_posted", posted.model_dump(mode="json")
+    if command.command_type == "mission.decision.record":
+        mission_decision_record = authorized.mission_decision
+        if mission_decision_record is None:
+            raise MishkanError(ErrorCode.OUTPUT_CONTRACT, "authorized mission decision is absent")
+        recorded_decision = conversation_repository.record_decision(mission_decision_record)
+        return "mission.decision_recorded", recorded_decision.model_dump(mode="json")
+    if command.command_type == "mission.escalation.open":
+        escalation = authorized.mission_escalation
+        if escalation is None:
+            raise MishkanError(ErrorCode.OUTPUT_CONTRACT, "authorized mission escalation is absent")
+        opened = conversation_repository.create_escalation(escalation)
+        return "mission.escalation_opened", opened.model_dump(mode="json")
+    if command.command_type == "mission.intervention.apply":
+        intervention = authorized.mission_intervention
+        if intervention is None or command.expected_revision is None:
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT,
+                "mission intervention requires an authorized record and expected revision",
+            )
+        applied = conversation_repository.apply_intervention(
+            intervention, expected_revision=command.expected_revision
+        )
+        return "mission.intervention_applied", applied.model_dump(mode="json")
+    if command.command_type == "mission.assignment.record":
+        assignment = authorized.mission_assignment
+        if assignment is None:
+            raise MishkanError(ErrorCode.OUTPUT_CONTRACT, "authorized mission assignment is absent")
+        recorded_assignment = mission_repository.record_assignment(assignment)
+        return "mission.task_assigned", recorded_assignment.model_dump(mode="json")
+    if command.command_type == "mission.run-binding.record":
+        run_binding = authorized.mission_run_binding
+        if run_binding is None:
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT,
+                "authorized mission run binding is absent",
+            )
+        recorded_run_binding: MissionRunBinding = mission_repository.record_run_binding(run_binding)
+        return "mission.run_bound", recorded_run_binding.model_dump(mode="json")
+    if command.command_type == "mission.run-report.record":
+        run_report = authorized.mission_run_report
+        if run_report is None:
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT,
+                "authorized mission run report is absent",
+            )
+        recorded_report = mission_repository.record_run_report(run_report)
+        return "mission.run_reported", recorded_report.model_dump(mode="json")
+    if command.command_type == "mission.task.claim":
+        claim_request = authorized.mission_task_claim
+        if claim_request is None:
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT,
+                "authorized mission task claim is absent",
+            )
+        claim = mission_task_claims.claim(claim_request)
+        return "mission.task_claimed", claim.model_dump(mode="json")
+    if command.command_type == "mission.transition":
+        transition = authorized.mission_transition
+        if transition is None or command.expected_revision is None:
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT,
+                "mission transition requires an authorized record and expected revision",
+            )
+        if transition.to_state is MissionState.COMPLETED:
+            mission_task_claims.require_completion_ready(str(transition.mission_id))
+        recorded_transition = mission_repository.transition(
+            transition, expected_revision=command.expected_revision
+        )
+        return "mission.state_transitioned", recorded_transition.model_dump(mode="json")
+    if command.command_type == "mission.governance.propose":
+        governance_request = authorized.mission_governance_request
+        if governance_request is None:
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT, "authorized mission governance request is absent"
+            )
+        mission = mission_repository.mission(str(governance_request.mission_id))
+        if mission.revision != governance_request.mission_revision:
+            raise MishkanError(
+                ErrorCode.REVISION_MISMATCH,
+                "mission changed after the governance request was authored",
+                details={
+                    "expected": mission.revision,
+                    "received": governance_request.mission_revision,
+                },
+            )
+        proposal: MissionGovernanceResult = mission_governance.propose(
+            mission, governance_request.evidence
+        )
+        if proposal.mission != mission:
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT,
+                "CrewAI governance proposal returned a different mission snapshot",
+            )
+        return "mission.governance_proposed", proposal.model_dump(mode="json")
+    if command.command_type == "mission.environment.propose":
+        planning_request = authorized.mission_environment_planning_request
+        if planning_request is None or environment_repository is None:
+            raise MishkanError(
+                ErrorCode.REQUIRED_DEPENDENCY,
+                "mission environment planning is not configured",
+            )
+        mission = mission_repository.mission(str(planning_request.mission_id))
+        brief = mission_repository.brief(str(mission.mission_id))
+        crew = mission_repository.crew(str(mission.mission_id))
+        assignments = mission_repository.assignments(str(mission.mission_id))
+        observations = tuple(
+            environment_repository.observation(str(context.observation_id))
+            for context in planning_request.contexts
+        )
+        MissionEnvironmentPlanValidator.validate_request(
+            planning_request,
+            mission=mission,
+            brief=brief,
+            crew=crew,
+            assignments=assignments,
+            observations=observations,
+            profile=environment_profile,
+        )
+        proposed_environment_plan = mission_environment_planning.propose(
+            planning_request,
+            mission=mission,
+            brief=brief,
+            crew=crew,
+            observations=observations,
+            plan_version=(mission.current_environment_plan_version or 0) + 1,
+        )
+        if (
+            proposed_environment_plan.mission_id != mission.mission_id
+            or proposed_environment_plan.source_request_id != planning_request.request_id
+            or proposed_environment_plan.owner_identity != planning_request.owner_identity
+            or proposed_environment_plan.contexts != planning_request.contexts
+        ):
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT,
+                "CrewAI environment proposal changed its authoritative planning input",
+            )
+        MissionEnvironmentPlanValidator.validate_plan(
+            proposed_environment_plan,
+            mission=mission,
+            brief=brief,
+            crew=crew,
+            assignments=assignments,
+            observations=observations,
+            profile=environment_profile,
+        )
+        return (
+            "mission.environment_plan_proposed",
+            proposed_environment_plan.model_dump(mode="json"),
+        )
+    if command.command_type == "mission.environment.accept":
+        accepted_environment_plan = authorized.mission_environment_plan
+        if (
+            accepted_environment_plan is None
+            or command.expected_revision is None
+            or environment_repository is None
+        ):
+            raise MishkanError(
+                ErrorCode.REQUIRED_DEPENDENCY,
+                "mission environment plan acceptance is not configured",
+            )
+        mission = mission_repository.mission(str(accepted_environment_plan.mission_id))
+        brief = mission_repository.brief(str(accepted_environment_plan.mission_id))
+        crew = mission_repository.crew(str(accepted_environment_plan.mission_id))
+        assignments = mission_repository.assignments(str(accepted_environment_plan.mission_id))
+        observations = tuple(
+            environment_repository.observation(str(context.observation_id))
+            for context in accepted_environment_plan.contexts
+        )
+        MissionEnvironmentPlanValidator.validate_plan(
+            accepted_environment_plan,
+            mission=mission,
+            brief=brief,
+            crew=crew,
+            assignments=assignments,
+            observations=observations,
+            profile=environment_profile,
+        )
+        consequential_ids = {
+            decision.consequential_decision_id
+            for decision in accepted_environment_plan.decisions
+            if decision.consequential_decision_id is not None
+        }
+        MissionEnvironmentPlanValidator.validate_consequential_decisions(
+            accepted_environment_plan,
+            {
+                decision_id: conversation_repository.decision(str(decision_id))
+                for decision_id in consequential_ids
+            },
+        )
+        if not repository.has_accepted_result_for_target(
+            command_type="mission.environment.propose",
+            target_type="mission_environment_planning_request",
+            target_id=str(accepted_environment_plan.source_request_id),
+            result_payload=accepted_environment_plan.model_dump(mode="json"),
+        ):
+            raise MishkanError(
+                ErrorCode.PLAN,
+                "environment plan was not produced by its accepted CrewAI proposal command",
+            )
+        acceptance = MissionEnvironmentPlanAcceptance(
+            plan=accepted_environment_plan,
+            accepted_by=command.actor_id,
+            policy_fingerprint=authorized.decision.policy_fingerprint,
+        )
+        recorded_environment_acceptance = mission_repository.accept_environment_plan(
+            acceptance,
+            expected_revision=command.expected_revision,
+        )
+        return (
+            "mission.environment_plan_accepted",
+            recorded_environment_acceptance.model_dump(mode="json"),
+        )
+    if command.command_type == "mission.environment.resolve":
+        if (
+            command.target_id is None
+            or environment_repository is None
+            or environment_resolver is None
+        ):
+            raise MishkanError(
+                ErrorCode.REQUIRED_DEPENDENCY,
+                "mission environment resolution is not configured",
+            )
+        acceptance = mission_repository.environment_plan_by_id(command.target_id)
+        mission = mission_repository.mission(str(acceptance.plan.mission_id))
+        if mission.current_environment_plan_version != acceptance.plan.version:
+            raise MishkanError(
+                ErrorCode.REVISION_MISMATCH,
+                "only the current accepted mission environment plan can be resolved",
+            )
+        context_id = str(payload["context_id"])
+        mission_environment_binding_request = acceptance.plan.binding_request(
+            context_id,
+            policy_fingerprint=authorized.decision.policy_fingerprint,
+        )
+        observation = environment_repository.observation(
+            str(mission_environment_binding_request.observation_id)
+        )
+        binding = environment_resolver.resolve(
+            mission_environment_binding_request,
+            observation,
+        )
+        recorded_binding = environment_repository.record_binding(binding)
+        return (
+            f"mission.environment_binding_{recorded_binding.state.value}",
+            recorded_binding.model_dump(mode="json"),
+        )
+    if command.command_type == "organization.evidence.record":
+        professional_evidence = authorized.professional_evidence
+        if professional_evidence is None:
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT,
+                "authorized professional evidence record is absent",
+            )
+        recorded_professional_evidence = professional_evolution.record_evidence(
+            professional_evidence
+        )
+        return (
+            "organization.professional_evidence_recorded",
+            recorded_professional_evidence.model_dump(mode="json"),
+        )
+    if command.command_type == "organization.promotion.decide":
+        promotion_request = authorized.professional_promotion_request
+        promotion_disposition = authorized.professional_promotion_disposition
+        if promotion_request is None or promotion_disposition is None:
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT,
+                "authorized professional promotion decision is incomplete",
+            )
+        promotion_decision: ProfessionalPromotionDecision = professional_evolution.decide_promotion(
+            promotion_request,
+            disposition=promotion_disposition,
+            decided_by=command.actor_id,
+            policy_fingerprint=authorized.decision.policy_fingerprint,
+            reason=str(payload["reason"]),
+        )
+        return (
+            f"organization.professional_promotion_{promotion_decision.disposition.value}",
+            promotion_decision.model_dump(mode="json"),
+        )
     if command.command_type == "artifact.upload.open":
         upload = artifacts.open_upload(
             expected_size=int(payload["expected_size"]),
@@ -1721,8 +2543,8 @@ def _dispatch(
         effective_request = session_request.model_copy(
             update={"policy_fingerprint": authorized.decision.policy_fingerprint}
         )
-        record = supervisor.start(effective_request, credential_values=resolved_credentials)
-        return "session.started", record.model_dump(mode="json")
+        session_record = supervisor.start(effective_request, credential_values=resolved_credentials)
+        return "session.started", session_record.model_dump(mode="json")
     if command.command_type == "session.write" and command.target_id is not None:
         content = base64.b64decode(str(payload["content_base64"]), validate=True)
         written = supervisor.write(
@@ -1738,14 +2560,14 @@ def _dispatch(
         )
         return "session.resized", {"rows": int(payload["rows"]), "columns": int(payload["columns"])}
     if command.command_type == "session.signal" and command.target_id is not None:
-        record = supervisor.signal(UUID(command.target_id), str(payload["signal"]))
-        return "session.signalled", record.model_dump(mode="json")
+        session_record = supervisor.signal(UUID(command.target_id), str(payload["signal"]))
+        return "session.signalled", session_record.model_dump(mode="json")
     if command.command_type == "session.cancel" and command.target_id is not None:
-        record = supervisor.cancel(UUID(command.target_id))
-        return "session.cancelled", record.model_dump(mode="json")
+        session_record = supervisor.cancel(UUID(command.target_id))
+        return "session.cancelled", session_record.model_dump(mode="json")
     if command.command_type == "session.settle" and command.target_id is not None:
-        record = supervisor.settle(UUID(command.target_id))
-        return "session.settled", record.model_dump(mode="json")
+        session_record = supervisor.settle(UUID(command.target_id))
+        return "session.settled", session_record.model_dump(mode="json")
     if command.command_type == "run.cancel" and command.target_id is not None:
         snapshot = runs.cancel_run(command.target_id)
         return "run.cancellation_requested", {"run_id": snapshot.run_id}

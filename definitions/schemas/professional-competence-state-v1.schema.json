@@ -1,0 +1,153 @@
+{
+  "$defs": {
+    "LearningScopeLevel": {
+      "enum": [
+        "mission",
+        "project",
+        "agent",
+        "branch",
+        "organization"
+      ],
+      "title": "LearningScopeLevel",
+      "type": "string"
+    },
+    "ProfessionalEvidenceKind": {
+      "enum": [
+        "project_knowledge",
+        "tool_mastery",
+        "skill_association",
+        "demonstrated_competence"
+      ],
+      "title": "ProfessionalEvidenceKind",
+      "type": "string"
+    },
+    "ProfessionalLearningScope": {
+      "additionalProperties": false,
+      "properties": {
+        "level": {
+          "$ref": "#/$defs/LearningScopeLevel"
+        },
+        "scope_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Scope Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "level",
+        "scope_id"
+      ],
+      "title": "ProfessionalLearningScope",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "contradictory_evidence_ids": {
+      "items": {
+        "format": "uuid",
+        "type": "string"
+      },
+      "title": "Contradictory Evidence Ids",
+      "type": "array"
+    },
+    "effective_scope": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ProfessionalLearningScope"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "failure_evidence_ids": {
+      "items": {
+        "format": "uuid",
+        "type": "string"
+      },
+      "title": "Failure Evidence Ids",
+      "type": "array"
+    },
+    "fresh_supporting_evidence_ids": {
+      "items": {
+        "format": "uuid",
+        "type": "string"
+      },
+      "title": "Fresh Supporting Evidence Ids",
+      "type": "array"
+    },
+    "freshness_evaluated_at": {
+      "format": "date-time",
+      "title": "Freshness Evaluated At",
+      "type": "string"
+    },
+    "identity_id": {
+      "title": "Identity Id",
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/ProfessionalEvidenceKind"
+    },
+    "latest_decision_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Latest Decision Id"
+    },
+    "revision": {
+      "minimum": 0,
+      "title": "Revision",
+      "type": "integer"
+    },
+    "schema_version": {
+      "const": "1.1",
+      "default": "1.1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "stale_supporting_evidence_ids": {
+      "items": {
+        "format": "uuid",
+        "type": "string"
+      },
+      "title": "Stale Supporting Evidence Ids",
+      "type": "array"
+    },
+    "subject": {
+      "title": "Subject",
+      "type": "string"
+    },
+    "supporting_evidence_ids": {
+      "items": {
+        "format": "uuid",
+        "type": "string"
+      },
+      "title": "Supporting Evidence Ids",
+      "type": "array"
+    }
+  },
+  "required": [
+    "identity_id",
+    "kind",
+    "subject",
+    "effective_scope",
+    "revision",
+    "latest_decision_id",
+    "freshness_evaluated_at",
+    "supporting_evidence_ids",
+    "fresh_supporting_evidence_ids",
+    "stale_supporting_evidence_ids",
+    "contradictory_evidence_ids",
+    "failure_evidence_ids"
+  ],
+  "title": "ProfessionalCompetenceState",
+  "type": "object"
+}

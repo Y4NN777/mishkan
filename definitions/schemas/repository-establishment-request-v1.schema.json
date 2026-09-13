@@ -1,0 +1,39 @@
+{
+  "additionalProperties": false,
+  "description": "Verify and record repository establishment without replacing the source context.",
+  "properties": {
+    "discovery_revision": {
+      "maxLength": 128,
+      "minLength": 7,
+      "title": "Discovery Revision",
+      "type": "string"
+    },
+    "evidence_references": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Evidence References",
+      "type": "array"
+    },
+    "prospective_workspace_id": {
+      "maxLength": 256,
+      "minLength": 12,
+      "title": "Prospective Workspace Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "prospective_workspace_id",
+    "discovery_revision",
+    "evidence_references"
+  ],
+  "title": "RepositoryEstablishmentRequest",
+  "type": "object"
+}

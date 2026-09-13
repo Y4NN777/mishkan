@@ -1,0 +1,40 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "assignment_revision": {
+      "minimum": 1,
+      "title": "Assignment Revision",
+      "type": "integer"
+    },
+    "mission_id": {
+      "format": "uuid",
+      "title": "Mission Id",
+      "type": "string"
+    },
+    "mission_revision": {
+      "minimum": 1,
+      "title": "Mission Revision",
+      "type": "integer"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "task_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Task Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "mission_id",
+    "mission_revision",
+    "task_id",
+    "assignment_revision"
+  ],
+  "title": "MissionTaskClaimRequest",
+  "type": "object"
+}

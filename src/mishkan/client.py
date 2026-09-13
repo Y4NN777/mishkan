@@ -11,10 +11,17 @@ from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
+from uuid import UUID
 
 import httpx
 
-from mishkan.application import ApplicationCommand, CommandResult, SnapshotEnvelope
+from mishkan.application import (
+    ApplicationCommand,
+    CommandResult,
+    ProspectiveRunRequest,
+    RepositoryEstablishmentRequest,
+    SnapshotEnvelope,
+)
 from mishkan.artifacts import (
     ArtifactCollection,
     ArtifactManifest,
@@ -31,6 +38,18 @@ from mishkan.context import (
     ContextualRecommendation,
     ContextualRecommendationRequest,
     EngineerProfile,
+)
+from mishkan.conversations import (
+    ConversationChannel,
+    ConversationMessage,
+    EscalationState,
+    MissionDecision,
+    MissionEscalation,
+    MissionIntervention,
+)
+from mishkan.crewai.mission_governance import (
+    MissionGovernanceRequest,
+    MissionGovernanceResult,
 )
 from mishkan.daemon.auth import TokenFile
 from mishkan.edits import ChangeSetResult
@@ -63,6 +82,36 @@ from mishkan.events import (
     EventHold as EventEvidenceHold,
 )
 from mishkan.execution import CursorRead, ExecutionSession
+from mishkan.missions import (
+    MissionBrief,
+    MissionCompletionReadiness,
+    MissionCrewRevision,
+    MissionEnvironmentReadiness,
+    MissionRecord,
+    MissionRunBinding,
+    MissionRunReport,
+    MissionTaskAssignment,
+    MissionTaskClaim,
+    MissionTaskClaimRequest,
+    MissionTaskEligibility,
+    MissionTemplateDefinition,
+    MissionTransition,
+)
+from mishkan.missions.environment import (
+    MissionEnvironmentPlan,
+    MissionEnvironmentPlanAcceptance,
+    MissionEnvironmentPlanningRequest,
+)
+from mishkan.notifications import NotificationDelivery, NotificationPage, NotificationSeverity
+from mishkan.organization import (
+    OrganizationRosterDefinition,
+    ProfessionalCompetenceState,
+    ProfessionalEvidenceKind,
+    ProfessionalEvidenceRecord,
+    ProfessionalPromotionDecision,
+    ProfessionalPromotionDisposition,
+    ProfessionalPromotionRequest,
+)
 from mishkan.skills.models import (
     SkillCurationProposal,
     SkillInvocationEvidence,
@@ -178,6 +227,619 @@ class Mishkan:
         response.raise_for_status()
         return SnapshotEnvelope.model_validate(response.json())
 
+    def organization(self) -> OrganizationRosterDefinition:
+        response = self._client.get("/v1/organization", headers=self._headers())
+        response.raise_for_status()
+        return OrganizationRosterDefinition.model_validate(response.json())
+
+    def organization_inspection(self, *, limit: int = 100) -> dict[str, object]:
+        response = self._client.get(
+            "/v1/organization/inspection",
+            headers=self._headers(),
+            params={"limit": limit},
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise TypeError("organization inspection response must be an object")
+        return payload
+
+    def organization_branch_inspection(
+        self,
+        branch_id: str,
+        *,
+        limit: int = 100,
+    ) -> dict[str, object]:
+        response = self._client.get(
+            f"/v1/organization/branches/{quote(branch_id, safe='')}/inspection",
+            headers=self._headers(),
+            params={"limit": limit},
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise TypeError("organization branch inspection response must be an object")
+        return payload
+
+    def record_professional_evidence(
+        self,
+        evidence: ProfessionalEvidenceRecord,
+    ) -> ProfessionalEvidenceRecord:
+        result = self.command(
+            ApplicationCommand(
+                command_type="organization.evidence.record",
+                actor_id=self.principal_id,
+                target_type="professional_evidence",
+                target_id=str(evidence.evidence_id),
+                payload={"evidence": evidence.model_dump(mode="json")},
+            )
+        )
+        return ProfessionalEvidenceRecord.model_validate(result.payload)
+
+    def decide_professional_promotion(
+        self,
+        request: ProfessionalPromotionRequest,
+        *,
+        disposition: ProfessionalPromotionDisposition,
+        reason: str,
+    ) -> ProfessionalPromotionDecision:
+        result = self.command(
+            ApplicationCommand(
+                command_type="organization.promotion.decide",
+                actor_id=self.principal_id,
+                target_type="professional_promotion_request",
+                target_id=str(request.request_id),
+                payload={
+                    "request": request.model_dump(mode="json"),
+                    "disposition": disposition.value,
+                    "reason": reason,
+                },
+            )
+        )
+        return ProfessionalPromotionDecision.model_validate(result.payload)
+
+    def professional_competence(
+        self,
+        identity_id: str,
+        *,
+        kind: ProfessionalEvidenceKind,
+        subject: str,
+    ) -> ProfessionalCompetenceState:
+        identity = quote(identity_id, safe="")
+        response = self._client.get(
+            f"/v1/organization/profiles/{identity}/competence",
+            headers=self._headers(),
+            params={"kind": kind.value, "subject": subject},
+        )
+        response.raise_for_status()
+        return ProfessionalCompetenceState.model_validate(response.json())
+
+    def professional_evidence(
+        self,
+        identity_id: str,
+        *,
+        kind: ProfessionalEvidenceKind | None = None,
+        subject: str | None = None,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> tuple[ProfessionalEvidenceRecord, ...]:
+        identity = quote(identity_id, safe="")
+        params: dict[str, str | int] = {"offset": offset, "limit": limit}
+        if kind is not None:
+            params["kind"] = kind.value
+        if subject is not None:
+            params["subject"] = subject
+        response = self._client.get(
+            f"/v1/organization/profiles/{identity}/evidence",
+            headers=self._headers(),
+            params=params,
+        )
+        response.raise_for_status()
+        return tuple(ProfessionalEvidenceRecord.model_validate(item) for item in response.json())
+
+    def professional_promotions(
+        self,
+        identity_id: str,
+        *,
+        kind: ProfessionalEvidenceKind | None = None,
+        subject: str | None = None,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> tuple[ProfessionalPromotionDecision, ...]:
+        identity = quote(identity_id, safe="")
+        params: dict[str, str | int] = {"offset": offset, "limit": limit}
+        if kind is not None:
+            params["kind"] = kind.value
+        if subject is not None:
+            params["subject"] = subject
+        response = self._client.get(
+            f"/v1/organization/profiles/{identity}/promotions",
+            headers=self._headers(),
+            params=params,
+        )
+        response.raise_for_status()
+        return tuple(ProfessionalPromotionDecision.model_validate(item) for item in response.json())
+
+    def create_mission(self, record: MissionRecord) -> MissionRecord:
+        result = self.command(
+            ApplicationCommand(
+                command_type="mission.create",
+                actor_id=self.principal_id,
+                target_type="mission",
+                target_id=str(record.mission_id),
+                expected_revision=0,
+                payload={"record": record.model_dump(mode="json")},
+            )
+        )
+        return MissionRecord.model_validate(result.payload)
+
+    def propose_mission_governance(
+        self, request: MissionGovernanceRequest
+    ) -> MissionGovernanceResult:
+        result = self.command(
+            ApplicationCommand(
+                command_type="mission.governance.propose",
+                actor_id=self.principal_id,
+                target_type="mission_governance_request",
+                target_id=str(request.request_id),
+                expected_revision=0,
+                payload={"request": request.model_dump(mode="json")},
+            )
+        )
+        return MissionGovernanceResult.model_validate(result.payload)
+
+    def open_mission_governance_escalation(
+        self,
+        proposal: MissionGovernanceResult,
+        conversation_id: str,
+    ) -> MissionEscalation:
+        return self.open_mission_escalation(proposal.escalation(UUID(conversation_id)))
+
+    def propose_mission_environment(
+        self,
+        request: MissionEnvironmentPlanningRequest,
+    ) -> MissionEnvironmentPlan:
+        result = self.command(
+            ApplicationCommand(
+                command_type="mission.environment.propose",
+                actor_id=self.principal_id,
+                target_type="mission_environment_planning_request",
+                target_id=str(request.request_id),
+                expected_revision=0,
+                payload={"request": request.model_dump(mode="json")},
+            )
+        )
+        return MissionEnvironmentPlan.model_validate(result.payload)
+
+    def accept_mission_environment(
+        self,
+        plan: MissionEnvironmentPlan,
+        *,
+        expected_revision: int,
+    ) -> MissionEnvironmentPlanAcceptance:
+        result = self.command(
+            ApplicationCommand(
+                command_type="mission.environment.accept",
+                actor_id=self.principal_id,
+                target_type="mission",
+                target_id=str(plan.mission_id),
+                expected_revision=expected_revision,
+                payload={"plan": plan.model_dump(mode="json")},
+            )
+        )
+        return MissionEnvironmentPlanAcceptance.model_validate(result.payload)
+
+    def resolve_mission_environment(
+        self,
+        plan_id: str,
+        context_id: str,
+    ) -> EnvironmentBinding:
+        result = self.command(
+            ApplicationCommand(
+                command_type="mission.environment.resolve",
+                actor_id=self.principal_id,
+                target_type="mission_environment_plan",
+                target_id=plan_id,
+                payload={"context_id": context_id},
+            )
+        )
+        return EnvironmentBinding.model_validate(result.payload)
+
+    def mission_environment_plan(
+        self,
+        mission_id: str,
+        *,
+        version: int | None = None,
+    ) -> MissionEnvironmentPlanAcceptance:
+        identity = quote(mission_id, safe="")
+        response = self._client.get(
+            f"/v1/missions/{identity}/environment-plan",
+            headers=self._headers(),
+            params={"version": version} if version is not None else None,
+        )
+        response.raise_for_status()
+        return MissionEnvironmentPlanAcceptance.model_validate(response.json())
+
+    def mission_environment_readiness(self, mission_id: str) -> MissionEnvironmentReadiness:
+        identity = quote(mission_id, safe="")
+        response = self._client.get(
+            f"/v1/missions/{identity}/readiness",
+            headers=self._headers(),
+        )
+        response.raise_for_status()
+        return MissionEnvironmentReadiness.model_validate(response.json())
+
+    def mission_task_eligibility(self, mission_id: str, task_id: str) -> MissionTaskEligibility:
+        mission_identity = quote(mission_id, safe="")
+        task_identity = quote(task_id, safe="")
+        response = self._client.get(
+            f"/v1/missions/{mission_identity}/tasks/{task_identity}/eligibility",
+            headers=self._headers(),
+        )
+        response.raise_for_status()
+        return MissionTaskEligibility.model_validate(response.json())
+
+    def mission_completion_readiness(self, mission_id: str) -> MissionCompletionReadiness:
+        identity = quote(mission_id, safe="")
+        response = self._client.get(
+            f"/v1/missions/{identity}/completion-readiness",
+            headers=self._headers(),
+        )
+        response.raise_for_status()
+        return MissionCompletionReadiness.model_validate(response.json())
+
+    def claim_mission_task(self, request: MissionTaskClaimRequest) -> MissionTaskClaim:
+        result = self.command(
+            ApplicationCommand(
+                command_type="mission.task.claim",
+                actor_id=self.principal_id,
+                target_type="mission_task",
+                target_id=f"{request.mission_id}:{request.task_id}",
+                payload={"request": request.model_dump(mode="json")},
+            )
+        )
+        return MissionTaskClaim.model_validate(result.payload)
+
+    def record_mission_brief(
+        self,
+        brief: MissionBrief,
+        *,
+        expected_revision: int,
+    ) -> MissionBrief:
+        result = self.command(
+            ApplicationCommand(
+                command_type="mission.brief.record",
+                actor_id=self.principal_id,
+                target_type="mission",
+                target_id=str(brief.mission_id),
+                expected_revision=expected_revision,
+                payload={"brief": brief.model_dump(mode="json")},
+            )
+        )
+        return MissionBrief.model_validate(result.payload)
+
+    def record_mission_crew(
+        self,
+        crew: MissionCrewRevision,
+        *,
+        expected_revision: int,
+    ) -> MissionCrewRevision:
+        result = self.command(
+            ApplicationCommand(
+                command_type="mission.crew.record",
+                actor_id=self.principal_id,
+                target_type="mission",
+                target_id=str(crew.mission_id),
+                expected_revision=expected_revision,
+                payload={"crew": crew.model_dump(mode="json")},
+            )
+        )
+        return MissionCrewRevision.model_validate(result.payload)
+
+    def record_mission_assignment(self, assignment: MissionTaskAssignment) -> MissionTaskAssignment:
+        result = self.command(
+            ApplicationCommand(
+                command_type="mission.assignment.record",
+                actor_id=self.principal_id,
+                target_type="mission_assignment",
+                target_id=str(assignment.assignment_id),
+                expected_revision=0,
+                payload={"assignment": assignment.model_dump(mode="json")},
+            )
+        )
+        return MissionTaskAssignment.model_validate(result.payload)
+
+    def record_mission_run_binding(self, binding: MissionRunBinding) -> MissionRunBinding:
+        result = self.command(
+            ApplicationCommand(
+                command_type="mission.run-binding.record",
+                actor_id=self.principal_id,
+                target_type="mission_run_binding",
+                target_id=str(binding.binding_id),
+                expected_revision=0,
+                payload={"binding": binding.model_dump(mode="json")},
+            )
+        )
+        return MissionRunBinding.model_validate(result.payload)
+
+    def record_mission_run_report(self, report: MissionRunReport) -> MissionRunReport:
+        result = self.command(
+            ApplicationCommand(
+                command_type="mission.run-report.record",
+                actor_id=self.principal_id,
+                target_type="mission_run_report",
+                target_id=str(report.report_id),
+                expected_revision=0,
+                payload={"report": report.model_dump(mode="json")},
+            )
+        )
+        return MissionRunReport.model_validate(result.payload)
+
+    def transition_mission(
+        self,
+        transition: MissionTransition,
+        *,
+        expected_revision: int,
+    ) -> MissionTransition:
+        result = self.command(
+            ApplicationCommand(
+                command_type="mission.transition",
+                actor_id=self.principal_id,
+                target_type="mission",
+                target_id=str(transition.mission_id),
+                expected_revision=expected_revision,
+                payload={"transition": transition.model_dump(mode="json")},
+            )
+        )
+        return MissionTransition.model_validate(result.payload)
+
+    def missions(self, *, limit: int = 100) -> tuple[MissionRecord, ...]:
+        response = self._client.get(
+            "/v1/missions",
+            headers=self._headers(),
+            params={"limit": limit},
+        )
+        response.raise_for_status()
+        return tuple(MissionRecord.model_validate(item) for item in response.json())
+
+    def mission_templates(
+        self,
+        *,
+        signals: tuple[str, ...] | None = None,
+        organization_version: str = "1",
+    ) -> tuple[MissionTemplateDefinition, ...]:
+        params: dict[str, str | tuple[str, ...]] = {"organization_version": organization_version}
+        if signals is not None:
+            params["signal"] = signals
+        response = self._client.get("/v1/mission-templates", headers=self._headers(), params=params)
+        response.raise_for_status()
+        return tuple(MissionTemplateDefinition.model_validate(item) for item in response.json())
+
+    def mission(self, mission_id: str) -> MissionRecord:
+        response = self._client.get(f"/v1/missions/{mission_id}", headers=self._headers())
+        response.raise_for_status()
+        return MissionRecord.model_validate(response.json())
+
+    def mission_inspection(self, mission_id: str, *, limit: int = 100) -> dict[str, object]:
+        response = self._client.get(
+            f"/v1/missions/{quote(mission_id, safe='')}/inspection",
+            headers=self._headers(),
+            params={"limit": limit},
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise TypeError("mission inspection response must be an object")
+        return payload
+
+    def mission_brief(self, mission_id: str, *, version: int | None = None) -> MissionBrief:
+        params = {} if version is None else {"version": version}
+        response = self._client.get(
+            f"/v1/missions/{mission_id}/brief",
+            headers=self._headers(),
+            params=params,
+        )
+        response.raise_for_status()
+        return MissionBrief.model_validate(response.json())
+
+    def mission_crew(
+        self,
+        mission_id: str,
+        *,
+        version: int | None = None,
+    ) -> MissionCrewRevision:
+        params = {} if version is None else {"version": version}
+        response = self._client.get(
+            f"/v1/missions/{mission_id}/crew",
+            headers=self._headers(),
+            params=params,
+        )
+        response.raise_for_status()
+        return MissionCrewRevision.model_validate(response.json())
+
+    def mission_assignments(
+        self, mission_id: str, *, limit: int = 1_000
+    ) -> tuple[MissionTaskAssignment, ...]:
+        response = self._client.get(
+            f"/v1/missions/{mission_id}/assignments",
+            headers=self._headers(),
+            params={"limit": limit},
+        )
+        response.raise_for_status()
+        return tuple(MissionTaskAssignment.model_validate(item) for item in response.json())
+
+    def mission_run_bindings(
+        self, mission_id: str, *, limit: int = 1_000
+    ) -> tuple[MissionRunBinding, ...]:
+        response = self._client.get(
+            f"/v1/missions/{mission_id}/run-bindings",
+            headers=self._headers(),
+            params={"limit": limit},
+        )
+        response.raise_for_status()
+        return tuple(MissionRunBinding.model_validate(item) for item in response.json())
+
+    def mission_run_reports(
+        self, mission_id: str, *, limit: int = 1_000
+    ) -> tuple[MissionRunReport, ...]:
+        response = self._client.get(
+            f"/v1/missions/{mission_id}/run-reports",
+            headers=self._headers(),
+            params={"limit": limit},
+        )
+        response.raise_for_status()
+        return tuple(MissionRunReport.model_validate(item) for item in response.json())
+
+    def mission_transitions(
+        self, mission_id: str, *, limit: int = 1_000
+    ) -> tuple[MissionTransition, ...]:
+        response = self._client.get(
+            f"/v1/missions/{mission_id}/transitions",
+            headers=self._headers(),
+            params={"limit": limit},
+        )
+        response.raise_for_status()
+        return tuple(MissionTransition.model_validate(item) for item in response.json())
+
+    def create_conversation(self, channel: ConversationChannel) -> ConversationChannel:
+        result = self.command(
+            ApplicationCommand(
+                command_type="conversation.create",
+                actor_id=self.principal_id,
+                target_type="conversation",
+                target_id=str(channel.conversation_id),
+                expected_revision=0,
+                payload={"channel": channel.model_dump(mode="json")},
+            )
+        )
+        return ConversationChannel.model_validate(result.payload)
+
+    def post_message(self, message: ConversationMessage) -> ConversationMessage:
+        result = self.command(
+            ApplicationCommand(
+                command_type="conversation.message.post",
+                actor_id=self.principal_id,
+                target_type="conversation_message",
+                target_id=str(message.message_id),
+                expected_revision=0,
+                payload={"message": message.model_dump(mode="json")},
+            )
+        )
+        return ConversationMessage.model_validate(result.payload)
+
+    def record_mission_decision(self, decision: MissionDecision) -> MissionDecision:
+        result = self.command(
+            ApplicationCommand(
+                command_type="mission.decision.record",
+                actor_id=self.principal_id,
+                target_type="mission_decision",
+                target_id=str(decision.decision_id),
+                expected_revision=0,
+                payload={"decision": decision.model_dump(mode="json")},
+            )
+        )
+        return MissionDecision.model_validate(result.payload)
+
+    def open_mission_escalation(self, escalation: MissionEscalation) -> MissionEscalation:
+        result = self.command(
+            ApplicationCommand(
+                command_type="mission.escalation.open",
+                actor_id=self.principal_id,
+                target_type="mission_escalation",
+                target_id=str(escalation.escalation_id),
+                expected_revision=0,
+                payload={"escalation": escalation.model_dump(mode="json")},
+            )
+        )
+        return MissionEscalation.model_validate(result.payload)
+
+    def apply_mission_intervention(
+        self,
+        intervention: MissionIntervention,
+        *,
+        expected_revision: int,
+    ) -> MissionIntervention:
+        result = self.command(
+            ApplicationCommand(
+                command_type="mission.intervention.apply",
+                actor_id=self.principal_id,
+                target_type="mission",
+                target_id=str(intervention.mission_id),
+                expected_revision=expected_revision,
+                payload={"intervention": intervention.model_dump(mode="json")},
+            )
+        )
+        return MissionIntervention.model_validate(result.payload)
+
+    def conversations(
+        self,
+        *,
+        mission_id: str | None = None,
+        limit: int = 100,
+    ) -> tuple[ConversationChannel, ...]:
+        params: dict[str, str | int] = {"limit": limit}
+        if mission_id is not None:
+            params["mission_id"] = mission_id
+        response = self._client.get("/v1/conversations", headers=self._headers(), params=params)
+        response.raise_for_status()
+        return tuple(ConversationChannel.model_validate(item) for item in response.json())
+
+    def conversation(self, conversation_id: str) -> ConversationChannel:
+        response = self._client.get(f"/v1/conversations/{conversation_id}", headers=self._headers())
+        response.raise_for_status()
+        return ConversationChannel.model_validate(response.json())
+
+    def conversation_messages(
+        self, conversation_id: str, *, limit: int = 100
+    ) -> tuple[ConversationMessage, ...]:
+        response = self._client.get(
+            f"/v1/conversations/{conversation_id}/messages",
+            headers=self._headers(),
+            params={"limit": limit},
+        )
+        response.raise_for_status()
+        return tuple(ConversationMessage.model_validate(item) for item in response.json())
+
+    def mission_escalations(
+        self,
+        mission_id: str,
+        *,
+        state: EscalationState | None = None,
+        limit: int = 100,
+    ) -> tuple[MissionEscalation, ...]:
+        params: dict[str, str | int] = {"limit": limit}
+        if state is not None:
+            params["state"] = state.value
+        response = self._client.get(
+            f"/v1/missions/{mission_id}/escalations",
+            headers=self._headers(),
+            params=params,
+        )
+        response.raise_for_status()
+        return tuple(MissionEscalation.model_validate(item) for item in response.json())
+
+    def mission_decisions(
+        self, mission_id: str, *, limit: int = 100
+    ) -> tuple[MissionDecision, ...]:
+        response = self._client.get(
+            f"/v1/missions/{mission_id}/decisions",
+            headers=self._headers(),
+            params={"limit": limit},
+        )
+        response.raise_for_status()
+        return tuple(MissionDecision.model_validate(item) for item in response.json())
+
+    def mission_interventions(
+        self, mission_id: str, *, limit: int = 100
+    ) -> tuple[MissionIntervention, ...]:
+        response = self._client.get(
+            f"/v1/missions/{mission_id}/interventions",
+            headers=self._headers(),
+            params={"limit": limit},
+        )
+        response.raise_for_status()
+        return tuple(MissionIntervention.model_validate(item) for item in response.json())
+
     def telemetry_status(self) -> TelemetryStatus:
         response = self._client.get("/v1/telemetry/status", headers=self._headers())
         response.raise_for_status()
@@ -258,6 +920,27 @@ class Mishkan:
         response = self._client.get("/v1/events", headers=self._headers(), params=params)
         response.raise_for_status()
         return EventPage.model_validate(response.json())
+
+    def notifications(
+        self,
+        *,
+        after: int = 0,
+        limit: int | None = None,
+        severities: tuple[NotificationSeverity, ...] = (),
+        deliveries: tuple[NotificationDelivery, ...] = (),
+    ) -> NotificationPage:
+        params: list[tuple[str, str | int | float | bool | None]] = [("after", after)]
+        if limit is not None:
+            params.append(("limit", limit))
+        params.extend(("severity", item.value) for item in severities)
+        params.extend(("delivery", item.value) for item in deliveries)
+        response = self._client.get(
+            "/v1/notifications",
+            headers=self._headers(),
+            params=params,
+        )
+        response.raise_for_status()
+        return NotificationPage.model_validate(response.json())
 
     def stream_events(
         self,
@@ -530,6 +1213,54 @@ class Mishkan:
         )
         response.raise_for_status()
         return tuple(dict(item) for item in response.json())
+
+    def create_prospective_run(
+        self,
+        *,
+        workspace_id: str,
+        objective: str,
+        outcome_id: str,
+    ) -> dict[str, object]:
+        """Create a run bound to observed pre-repository workspace identity."""
+        request = ProspectiveRunRequest(
+            workspace_id=workspace_id,
+            objective=objective,
+            outcome_id=outcome_id,
+        )
+        result = self.command(
+            ApplicationCommand(
+                command_type="run.prospective.create",
+                actor_id=self.principal_id,
+                target_type="run",
+                payload=request.model_dump(mode="json"),
+            )
+        )
+        return dict(result.payload)
+
+    def establish_repository(
+        self,
+        run_id: str,
+        *,
+        prospective_workspace_id: str,
+        discovery_revision: str,
+        evidence_references: tuple[str, ...],
+    ) -> dict[str, object]:
+        """Record proven repository establishment without rewriting run lineage."""
+        request = RepositoryEstablishmentRequest(
+            prospective_workspace_id=prospective_workspace_id,
+            discovery_revision=discovery_revision,
+            evidence_references=evidence_references,
+        )
+        result = self.command(
+            ApplicationCommand(
+                command_type="run.repository.establish",
+                actor_id=self.principal_id,
+                target_type="run",
+                target_id=run_id,
+                payload=request.model_dump(mode="json"),
+            )
+        )
+        return dict(result.payload)
 
     def tasks(
         self,

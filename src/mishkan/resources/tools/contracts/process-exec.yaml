@@ -23,30 +23,35 @@ input_schema:
     - declared_effects
     - output_policy
   properties:
-    mode: {type: string, const: process}
+    mode: {type: string, const: process, default: process}
     executable: {type: string, pattern: "^/[^\\u0000]*$"}
     args: {type: array, maxItems: 4096, items: {type: string}}
-    cwd: {type: string, minLength: 1}
+    cwd: {type: string, minLength: 1, default: "."}
     environment:
       type: object
+      default: {}
       propertyNames: {pattern: "^[A-Za-z_][A-Za-z0-9_]*$"}
       additionalProperties: {type: string}
     credential_environment:
       type: object
+      default: {}
       propertyNames: {pattern: "^[A-Za-z_][A-Za-z0-9_]*$"}
       additionalProperties: {type: string, minLength: 1}
-    stdin: {type: [string, "null"]}
-    timeout_seconds: {type: integer, minimum: 1, maximum: 86400}
+    stdin: {type: [string, "null"], default: null}
+    timeout_seconds: {type: integer, minimum: 1, maximum: 86400, default: 30}
     expected_exit_codes:
       type: array
+      default: [0]
       uniqueItems: true
       items: {type: integer}
     declared_effects:
       type: array
+      default: []
       uniqueItems: true
       items: {type: string, minLength: 1}
     output_policy:
       type: object
+      default: {preview_bytes: 8192, preserve_full_output_as_artifact: false}
       additionalProperties: false
       required: [preview_bytes, preserve_full_output_as_artifact]
       properties:

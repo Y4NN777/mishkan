@@ -1,0 +1,348 @@
+{
+  "$defs": {
+    "ExecutiveConfirmation": {
+      "additionalProperties": false,
+      "properties": {
+        "confirmation_id": {
+          "format": "uuid",
+          "title": "Confirmation Id",
+          "type": "string"
+        },
+        "confirmed_at": {
+          "format": "date-time",
+          "title": "Confirmed At",
+          "type": "string"
+        },
+        "coverage": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Coverage",
+          "type": "array"
+        },
+        "disposition": {
+          "enum": [
+            "confirmed",
+            "rejected"
+          ],
+          "title": "Disposition",
+          "type": "string"
+        },
+        "evidence_references": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Evidence References",
+          "type": "array"
+        },
+        "identity_id": {
+          "enum": [
+            "PM",
+            "CTO"
+          ],
+          "title": "Identity Id",
+          "type": "string"
+        },
+        "rationale": {
+          "maxLength": 4096,
+          "minLength": 3,
+          "title": "Rationale",
+          "type": "string"
+        }
+      },
+      "required": [
+        "identity_id",
+        "disposition",
+        "rationale",
+        "evidence_references",
+        "coverage"
+      ],
+      "title": "ExecutiveConfirmation",
+      "type": "object"
+    },
+    "MissionBriefStatus": {
+      "enum": [
+        "clarifying",
+        "awaiting_confirmation",
+        "confirmed",
+        "rejected"
+      ],
+      "title": "MissionBriefStatus",
+      "type": "string"
+    },
+    "MissionEnvironmentIntent": {
+      "additionalProperties": false,
+      "properties": {
+        "credential_references": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Credential References",
+          "type": "array"
+        },
+        "environment_dependent": {
+          "title": "Environment Dependent",
+          "type": "boolean"
+        },
+        "existing_definition_references": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Existing Definition References",
+          "type": "array"
+        },
+        "isolation_requirements": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Isolation Requirements",
+          "type": "array"
+        },
+        "known_locations": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Known Locations",
+          "type": "array"
+        },
+        "known_unknowns": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Known Unknowns",
+          "type": "array"
+        },
+        "network_requirements": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Network Requirements",
+          "type": "array"
+        },
+        "required_evidence": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Evidence",
+          "type": "array"
+        },
+        "resource_constraints": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Resource Constraints",
+          "type": "array"
+        },
+        "target_architectures": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Target Architectures",
+          "type": "array"
+        },
+        "target_platforms": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Target Platforms",
+          "type": "array"
+        }
+      },
+      "required": [
+        "environment_dependent"
+      ],
+      "title": "MissionEnvironmentIntent",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "acceptance_criteria": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Acceptance Criteria",
+      "type": "array"
+    },
+    "authority_scope": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Authority Scope",
+      "type": "array"
+    },
+    "brief_id": {
+      "format": "uuid",
+      "title": "Brief Id",
+      "type": "string"
+    },
+    "constraints": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Constraints",
+      "type": "array"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "cto_confirmation": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ExecutiveConfirmation"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "desired_outcome": {
+      "maxLength": 8192,
+      "minLength": 3,
+      "title": "Desired Outcome",
+      "type": "string"
+    },
+    "environment_intent": {
+      "$ref": "#/$defs/MissionEnvironmentIntent"
+    },
+    "escalation_conditions": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Escalation Conditions",
+      "type": "array"
+    },
+    "evidence_requirements": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Evidence Requirements",
+      "type": "array"
+    },
+    "exclusions": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Exclusions",
+      "type": "array"
+    },
+    "mission_id": {
+      "format": "uuid",
+      "title": "Mission Id",
+      "type": "string"
+    },
+    "objective": {
+      "maxLength": 8192,
+      "minLength": 3,
+      "title": "Objective",
+      "type": "string"
+    },
+    "organization_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Organization Id",
+      "type": "string"
+    },
+    "organization_version": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Organization Version",
+      "type": "string"
+    },
+    "pm_confirmation": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ExecutiveConfirmation"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "problem": {
+      "maxLength": 8192,
+      "minLength": 3,
+      "title": "Problem",
+      "type": "string"
+    },
+    "proposed_crew": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 2,
+      "title": "Proposed Crew",
+      "type": "array"
+    },
+    "risks": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Risks",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "scope": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Scope",
+      "type": "array"
+    },
+    "status": {
+      "$ref": "#/$defs/MissionBriefStatus"
+    },
+    "version": {
+      "minimum": 1,
+      "title": "Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "mission_id",
+    "version",
+    "organization_id",
+    "organization_version",
+    "status",
+    "objective",
+    "problem",
+    "desired_outcome",
+    "scope",
+    "exclusions",
+    "acceptance_criteria",
+    "constraints",
+    "risks",
+    "authority_scope",
+    "proposed_crew",
+    "evidence_requirements",
+    "escalation_conditions",
+    "environment_intent"
+  ],
+  "title": "MissionBrief",
+  "type": "object"
+}

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
@@ -12,7 +13,6 @@ from mishkan.config.loader import ConfigLoader
 from mishkan.crewai.coordinator import CrewAIInitializationCoordinator
 from mishkan.crewai.environment import configure_crewai_environment
 from mishkan.organization import load_initialization_definitions
-from mishkan.planning.models import PlanCandidate, PlanTask
 from mishkan.repository import RepositoryInspector
 
 
@@ -51,26 +51,31 @@ def test_same_outcome_generates_different_graphs_from_repository_evidence(
     )
 
     def generated_kickoff(crew: Crew, *_args: Any, **_kwargs: Any) -> SimpleNamespace:
+        assert crew.tasks[0].output_pydantic is not None
+        assert set(crew.tasks[0].output_pydantic.model_fields) == {"tasks"}
         description = crew.tasks[0].description
         is_python = "pyproject.toml" in description
-        revision_marker = "Repository revision: "
-        revision = description.split(revision_marker, 1)[1].splitlines()[0]
-        candidate = PlanCandidate(
-            objective="Initialize repository",
-            outcome_id="mishkan.init",
-            repository_revision=revision,
-            tasks=(
-                PlanTask(
-                    task_id="inspect-python" if is_python else "inspect-go",
-                    title="Inspect Python manifest" if is_python else "Inspect Go module",
-                    purpose="Ground the plan in the detected project manifest.",
-                    assigned_role="Repository_Investigator",
-                    tools=("repository.read_file",),
-                    evidence_paths=("pyproject.toml" if is_python else "go.mod",),
-                ),
-            ),
-        )
-        return SimpleNamespace(pydantic=candidate, raw=candidate.model_dump_json())
+        evidence_path = "pyproject.toml" if is_python else "go.mod"
+        proposal = {
+            "tasks": [
+                {
+                    "task_id": "inspect-python" if is_python else "inspect-go",
+                    "title": "Inspect Python manifest" if is_python else "Inspect Go module",
+                    "purpose": "Ground the plan in the detected project manifest.",
+                    "assigned_role": "Repository_Investigator",
+                    "tool_calls": [
+                        {
+                            "call_id": "read-project-manifest",
+                            "tool_id": "repository.read_file",
+                            "arguments": {"path": evidence_path},
+                        }
+                    ],
+                    "evidence_paths": [evidence_path],
+                    "depends_on": [],
+                }
+            ]
+        }
+        return SimpleNamespace(pydantic=None, raw=json.dumps(proposal))
 
     monkeypatch.setattr(Crew, "kickoff", generated_kickoff)
     config = ConfigLoader().load([Path("tests/fixtures/config/local-valid.yaml")]).value
@@ -93,3 +98,8 @@ def test_same_outcome_generates_different_graphs_from_repository_evidence(
     assert [task.task_id for task in python_plan.tasks] == ["inspect-python"]
     assert [task.task_id for task in go_plan.tasks] == ["inspect-go"]
     assert python_plan.tasks != go_plan.tasks
+    assert python_plan.schema_version == go_plan.schema_version == "1.1"
+    assert python_plan.objective == go_plan.objective == "Initialize repository"
+    assert python_plan.outcome_id == go_plan.outcome_id == "mishkan.init"
+    assert python_plan.execution_context is go_plan.execution_context is None
+    assert python_plan.tasks[0].tools == go_plan.tasks[0].tools == ("repository.read_file",)

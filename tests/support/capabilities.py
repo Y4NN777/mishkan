@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from mishkan.planning import PlanValidator
+from mishkan.planning import PlanTask, PlanValidator
 from mishkan.policy import (
     Decision,
     EffectivePolicy,
@@ -17,6 +17,7 @@ from mishkan.policy.models import ResourceRequest, canonical_fingerprint
 from mishkan.tools.catalog import ToolCatalog
 from mishkan.tools.gateway_models import AdapterResult, InvocationContext
 from mishkan.tools.inspection import ContentInspector, InspectionProfileLoader
+from mishkan.tools.models import RegistrySnapshot, ToolBinding
 
 CATALOG_URI = "package://mishkan.resources.tools/core-catalog.yaml"
 MECHANISM_CATALOG_URI = str(
@@ -193,6 +194,34 @@ def context_for(
         ),
         isolation_profile=isolation_profile,
     )
+
+
+def resolved_tool_lineage(
+    root: Path,
+    tasks: tuple[PlanTask, ...],
+) -> tuple[RegistrySnapshot, tuple[ToolBinding, ...]]:
+    """Build the same immutable identity/version lineage used by accepted plans."""
+
+    catalog = ToolCatalog(
+        (CATALOG_URI,),
+        root,
+        available_dependencies=frozenset({"rg", "git", "bash", "playwright"}),
+        available_adapters=TEST_ADAPTERS,
+    )
+    requested = tuple(dict.fromkeys(tool for task in tasks for tool in task.tools))
+    snapshot = catalog.snapshot(requested)
+    bindings = tuple(
+        catalog.bind(
+            snapshot,
+            task.task_id,
+            task.assigned_role,
+            tool_id,
+            task.evidence_paths,
+        )
+        for task in tasks
+        for tool_id in task.tools
+    )
+    return snapshot, bindings
 
 
 def inspector(root: Path) -> ContentInspector:

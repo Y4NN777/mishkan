@@ -8,7 +8,11 @@ import yaml
 from pydantic import BaseModel
 
 from mishkan.domain.schema import SchemaRegistry
-from mishkan.organization.models import OrganizationDefinition, OutcomeDefinition
+from mishkan.organization.models import (
+    OrganizationDefinition,
+    OrganizationRosterDefinition,
+    OutcomeDefinition,
+)
 
 DefinitionT = TypeVar("DefinitionT", bound=BaseModel)
 
@@ -38,3 +42,19 @@ def load_initialization_definitions(
     if missing:
         raise ValueError(f"outcome references unknown roles: {missing}")
     return organization, outcome
+
+
+def load_canonical_organization(source: Path | None = None) -> OrganizationRosterDefinition:
+    """Load the exact public version-1 roster without deriving a crew or authority from it."""
+
+    organization = _load(source, "organization-v1.yaml", OrganizationRosterDefinition)
+    SchemaRegistry.require_supported("mishkan.organization-roster", organization.schema_version)
+    bundled = _load(None, "organization-v1.yaml", OrganizationRosterDefinition)
+    if organization.organization_version == "1" and organization.fingerprint != bundled.fingerprint:
+        expected = {identity.identity_id for identity in bundled.identities}
+        received = {identity.identity_id for identity in organization.identities}
+        raise ValueError(
+            "organization version 1 must match the complete canonical definition; "
+            f"missing={sorted(expected - received)}, extra={sorted(received - expected)}"
+        )
+    return organization

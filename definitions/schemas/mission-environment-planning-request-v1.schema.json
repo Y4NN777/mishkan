@@ -1,0 +1,278 @@
+{
+  "$defs": {
+    "EnvironmentOutcome": {
+      "enum": [
+        "reuse_existing",
+        "host_native",
+        "generate",
+        "propose_project_change",
+        "unresolved"
+      ],
+      "title": "EnvironmentOutcome",
+      "type": "string"
+    },
+    "MissionEnvironmentAlternative": {
+      "additionalProperties": false,
+      "description": "One compatibility candidate exposed to planning without selecting it.",
+      "properties": {
+        "allowed_descriptor_formats": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Descriptor Formats",
+          "type": "array"
+        },
+        "alternative_id": {
+          "pattern": "^[a-z][a-z0-9_.-]{1,127}$",
+          "title": "Alternative Id",
+          "type": "string"
+        },
+        "consequential_decision_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Consequential Decision Id"
+        },
+        "consequential_option_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9-]{1,63}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Consequential Option Id"
+        },
+        "constraints": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Constraints",
+          "type": "array"
+        },
+        "eligible_engine_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Eligible Engine Ids",
+          "type": "array"
+        },
+        "evidence_references": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Evidence References",
+          "type": "array"
+        },
+        "requested_outcome": {
+          "$ref": "#/$defs/EnvironmentOutcome"
+        },
+        "required_engine_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Engine Ids",
+          "type": "array"
+        },
+        "required_semantics": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Semantics",
+          "type": "array"
+        },
+        "requires_consequential_decision": {
+          "default": false,
+          "title": "Requires Consequential Decision",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "alternative_id",
+        "requested_outcome",
+        "evidence_references"
+      ],
+      "title": "MissionEnvironmentAlternative",
+      "type": "object"
+    },
+    "MissionEnvironmentContextRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "affected_task_ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Affected Task Ids",
+          "type": "array"
+        },
+        "alternatives": {
+          "items": {
+            "$ref": "#/$defs/MissionEnvironmentAlternative"
+          },
+          "maxItems": 64,
+          "minItems": 1,
+          "title": "Alternatives",
+          "type": "array"
+        },
+        "context_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Context Id",
+          "type": "string"
+        },
+        "evidence_references": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Evidence References",
+          "type": "array"
+        },
+        "execution_location": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Execution Location",
+          "type": "string"
+        },
+        "observation_fingerprint": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Observation Fingerprint",
+          "type": "string"
+        },
+        "observation_id": {
+          "format": "uuid",
+          "title": "Observation Id",
+          "type": "string"
+        },
+        "observation_revision": {
+          "minimum": 1,
+          "title": "Observation Revision",
+          "type": "integer"
+        },
+        "target_architecture": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Target Architecture",
+          "type": "string"
+        },
+        "target_platform": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Target Platform",
+          "type": "string"
+        }
+      },
+      "required": [
+        "context_id",
+        "observation_id",
+        "observation_revision",
+        "observation_fingerprint",
+        "target_platform",
+        "target_architecture",
+        "execution_location",
+        "affected_task_ids",
+        "alternatives",
+        "evidence_references"
+      ],
+      "title": "MissionEnvironmentContextRequest",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "brief_version": {
+      "minimum": 1,
+      "title": "Brief Version",
+      "type": "integer"
+    },
+    "contexts": {
+      "items": {
+        "$ref": "#/$defs/MissionEnvironmentContextRequest"
+      },
+      "maxItems": 64,
+      "minItems": 1,
+      "title": "Contexts",
+      "type": "array"
+    },
+    "crew_version": {
+      "minimum": 1,
+      "title": "Crew Version",
+      "type": "integer"
+    },
+    "evidence_references": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Evidence References",
+      "type": "array"
+    },
+    "mission_id": {
+      "format": "uuid",
+      "title": "Mission Id",
+      "type": "string"
+    },
+    "mission_revision": {
+      "minimum": 1,
+      "title": "Mission Revision",
+      "type": "integer"
+    },
+    "owner_identity": {
+      "maxLength": 128,
+      "minLength": 2,
+      "title": "Owner Identity",
+      "type": "string"
+    },
+    "planning_task_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Planning Task Id",
+      "type": "string"
+    },
+    "request_id": {
+      "format": "uuid",
+      "title": "Request Id",
+      "type": "string"
+    },
+    "requested_at": {
+      "format": "date-time",
+      "title": "Requested At",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "mission_id",
+    "mission_revision",
+    "brief_version",
+    "crew_version",
+    "planning_task_id",
+    "owner_identity",
+    "contexts",
+    "evidence_references"
+  ],
+  "title": "MissionEnvironmentPlanningRequest",
+  "type": "object"
+}

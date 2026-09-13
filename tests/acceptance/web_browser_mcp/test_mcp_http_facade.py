@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
@@ -19,13 +20,6 @@ from mishkan.crewai.flow import CrewAIInitializationFlow
 from mishkan.daemon import DaemonBootstrap, create_app
 from mishkan.daemon.auth import TokenFile
 from mishkan.persistence import SQLiteApplicationRepository
-from mishkan.planning.models import (
-    InitializationResult,
-    PlanCandidate,
-    PlannedToolCall,
-    PlanTask,
-    ReviewDecision,
-)
 
 
 @pytest.fixture
@@ -108,17 +102,37 @@ async def test_official_sdk_uses_authenticated_stateless_daemon_facade(tmp_path:
         "system.snapshot",
         "events.list",
         "run.get",
+        "organization.get",
+        "organization.inspect",
+        "organization.branch.inspect",
+        "organization.competence.get",
+        "organization.evidence.list",
+        "organization.promotions.list",
+        "mission.list",
+        "mission.get",
+        "mission.inspect",
+        "mission.run-reports.list",
+        "mission.templates.list",
+        "conversation.list",
+        "conversation.get",
+        "advisory.candidates.list",
+        "notification.list",
         "command.submit",
     ]
     assert {str(item.uri) for item in resources.resources} == {
         "mishkan://snapshot",
         "mishkan://runs",
         "mishkan://events",
+        "mishkan://organization",
+        "mishkan://missions",
+        "mishkan://conversations",
+        "mishkan://advisory/candidates",
+        "mishkan://notifications",
     }
     assert health.isError is False
     assert health.structuredContent == {
         "status": "ready",
-        "schema": "i05_environment_verify_v1",
+        "schema": "organization_concurrency_v1",
     }
     assert result.isError is False
     assert result.structuredContent is not None
@@ -157,52 +171,44 @@ async def test_harness_objective_is_accepted_before_crewai_and_replay_is_idempot
         assert isinstance(receipt.payload.get("run_id"), str)
         task = crew.tasks[0]
         output_model = task.output_pydantic
-        if issubclass(output_model, PlanCandidate):
-            crew_calls.append("PlanCandidate")
-            revision = task.description.split("Repository revision: ", 1)[1].splitlines()[0]
-            value: PlanCandidate | InitializationResult | ReviewDecision = PlanCandidate(
-                schema_version="1.1",
-                objective="Inspect this repository through governed harness evidence",
-                outcome_id="mishkan.init",
-                repository_revision=revision,
-                tasks=(
-                    PlanTask(
-                        task_id="inspect-harness-readme",
-                        title="Inspect the harness repository overview",
-                        purpose="Ground the harness request in governed repository evidence.",
-                        assigned_role="Repository_Investigator",
-                        tools=("repository.read_file",),
-                        tool_calls=(
-                            PlannedToolCall(
-                                call_id="read-harness-readme",
-                                tool_id="repository.read_file",
-                                arguments={"path": "README.md"},
-                            ),
-                        ),
-                        evidence_paths=("README.md",),
-                    ),
-                ),
-            )
-        elif output_model is InitializationResult:
-            crew_calls.append("InitializationResult")
-            revision = task.description.split("Repository revision: ", 1)[1].splitlines()[0]
-            value = InitializationResult(
-                repository_revision=revision,
-                task_id="inspect-harness-readme",
-                summary="The governed harness repository overview was inspected.",
-                cited_paths=("README.md",),
-                findings=("The README identifies the harness governed repository.",),
-            )
+        output_fields = set(output_model.model_fields)
+        if output_fields == {"tasks"}:
+            crew_calls.append("PlanProposal")
+            value = {
+                "tasks": [
+                    {
+                        "task_id": "inspect-harness-readme",
+                        "title": "Inspect the harness repository overview",
+                        "purpose": "Ground the harness request in governed repository evidence.",
+                        "assigned_role": "Repository_Investigator",
+                        "tool_calls": [
+                            {
+                                "call_id": "read-harness-readme",
+                                "tool_id": "repository.read_file",
+                                "arguments": {"path": "README.md"},
+                            }
+                        ],
+                        "evidence_paths": ["README.md"],
+                        "depends_on": [],
+                    }
+                ]
+            }
+        elif output_fields == {"summary", "cited_paths", "findings"}:
+            crew_calls.append("InitializationSynthesis")
+            value = {
+                "summary": "The governed harness repository overview was inspected.",
+                "cited_paths": ["README.md"],
+                "findings": ["The README identifies the harness governed repository."],
+            }
         else:
-            assert output_model is ReviewDecision
-            crew_calls.append("ReviewDecision")
-            value = ReviewDecision(
-                task_id="inspect-harness-readme",
-                verdict="accepted",
-                summary="Independent evidence review accepted the harness result.",
-                checked_citations=("README.md",),
-            )
-        return SimpleNamespace(pydantic=value, raw=value.model_dump_json())
+            assert output_fields == {"verdict", "summary", "issues"}
+            crew_calls.append("IndependentReview")
+            value = {
+                "verdict": "accepted",
+                "summary": "Independent evidence review accepted the harness result.",
+                "issues": [],
+            }
+        return SimpleNamespace(pydantic=None, raw=json.dumps(value))
 
     monkeypatch.setattr(Crew, "kickoff", kickoff)
     monkeypatch.setattr(
@@ -246,7 +252,7 @@ async def test_harness_objective_is_accepted_before_crewai_and_replay_is_idempot
 
     assert result.isError is False
     assert replay.structuredContent == result.structuredContent
-    assert crew_calls == ["PlanCandidate", "InitializationResult", "ReviewDecision"]
+    assert crew_calls == ["PlanProposal", "InitializationSynthesis", "IndependentReview"]
     assert run.structuredContent is not None
     assert run.structuredContent["status"] == "completed"
     events = ledger.events(after_cursor=0, limit=100)

@@ -1,6 +1,6 @@
 schema_version: "1.0"
 source_id: bundled.local
-revision: "21"
+revision: "29"
 adoption_authority: MISHKAN release
 priority: 0
 rules:
@@ -38,7 +38,7 @@ rules:
       max_timeout_seconds: 120
       max_memory_mb: 512
       allow_network: false
-      max_concurrency: 1
+      max_concurrency: 2
   - rule_id: local.repository-probe.git-read
     priority: 110
     decision: allow
@@ -106,6 +106,8 @@ rules:
       outcomes:
         - system.checkpoint
         - run.initialize
+        - run.prospective.create
+        - run.repository.establish
         - run.cancel
         - run.recover
         - artifact.upload.open
@@ -165,10 +167,30 @@ rules:
         - environment.binding.invalidate
         - telemetry.evaluation.import
         - context.recommend
+        - mission.create
+        - mission.brief.record
+        - mission.crew.record
+        - conversation.create
+        - conversation.message.post
+        - mission.decision.record
+        - mission.escalation.open
+        - mission.intervention.apply
+        - mission.assignment.record
+        - mission.run-binding.record
+        - mission.run-report.record
+        - mission.task.claim
+        - mission.transition
+        - mission.governance.propose
+        - mission.environment.propose
+        - mission.environment.accept
+        - mission.environment.resolve
+        - organization.evidence.record
+        - organization.promotion.decide
       roles: [application-client]
       capabilities:
         - application.system.checkpoint
         - application.run.initialize
+        - application.run.context
         - application.run.control
         - application.artifact.upload
         - application.artifact.reference
@@ -202,6 +224,21 @@ rules:
         - application.environment.invalidate
         - application.telemetry.evaluation
         - application.context.recommend
+        - application.mission.lifecycle
+        - application.mission.brief
+        - application.mission.crew
+        - application.mission.environment
+        - application.organization.evolution
+        - application.conversation.lifecycle
+        - application.conversation.message
+        - application.mission.decision
+        - application.mission.escalation
+        - application.mission.intervention
+        - application.mission.assignment
+        - application.mission.run-binding
+        - application.mission.reporting
+        - application.mission.task
+        - application.mission.governance
       effect_classes: [read, control, coordination, artifact, filesystem, process, external, registry_lifecycle, skill_lifecycle]
       effects: ["*"]
       paths: ["*"]

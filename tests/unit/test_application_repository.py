@@ -124,12 +124,14 @@ def test_retention_rechecks_holds_and_protects_incomplete_runs(tmp_path: Path) -
             connection.execute(
                 text(
                     """
-                    INSERT INTO runs (
-                        id, resume_key, repository_id, repository_revision,
+                        INSERT INTO runs (
+                            id, resume_key, context_kind, context_id, context_revision,
+                            repository_id, repository_revision,
                         discovery_fingerprint, objective, outcome_id, status, revision,
                         cancellation_requested, created_at, updated_at
-                    ) VALUES (
-                        :id, :resume_key, 'repo', 'rev', :fingerprint, 'objective',
+                        ) VALUES (
+                            :id, :resume_key, 'repository', 'repo', 'rev',
+                            'repo', 'rev', :fingerprint, 'objective',
                         'outcome', :status, 0, 0, :created_at, :updated_at
                     )
                     """
@@ -217,6 +219,36 @@ def test_exact_command_retry_returns_original_result(tmp_path: Path) -> None:
 
     assert retried == first
     assert len(repository.events().events) == 1
+
+
+def test_exact_accepted_candidate_can_be_proved_from_its_command_target(tmp_path: Path) -> None:
+    repository = _repository(tmp_path)
+    command = ApplicationCommand(
+        command_type="mission.environment.propose",
+        actor_id="local-operator",
+        target_type="mission_environment_planning_request",
+        target_id="request-1",
+        payload={"request": "bounded"},
+    )
+    repository.accept(
+        command,
+        target_id="request-1",
+        event_type="mission.environment_plan_proposed",
+        result_payload={"plan_id": "plan-1", "outcome": "host_native"},
+    )
+
+    assert repository.has_accepted_result_for_target(
+        command_type="mission.environment.propose",
+        target_type="mission_environment_planning_request",
+        target_id="request-1",
+        result_payload={"plan_id": "plan-1", "outcome": "host_native"},
+    )
+    assert not repository.has_accepted_result_for_target(
+        command_type="mission.environment.propose",
+        target_type="mission_environment_planning_request",
+        target_id="request-1",
+        result_payload={"plan_id": "resolver-authored", "outcome": "host_native"},
+    )
 
 
 def test_reserved_precondition_is_rechecked_before_effect_dispatch(tmp_path: Path) -> None:

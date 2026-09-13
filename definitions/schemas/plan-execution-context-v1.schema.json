@@ -1,0 +1,88 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "context_id": {
+      "maxLength": 256,
+      "minLength": 12,
+      "title": "Context Id",
+      "type": "string"
+    },
+    "discovery_revision": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "minLength": 7,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Discovery Revision"
+    },
+    "kind": {
+      "enum": [
+        "repository",
+        "prospective_workspace"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "prospective_workspace_id": {
+      "anyOf": [
+        {
+          "maxLength": 256,
+          "minLength": 12,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Prospective Workspace Id"
+    },
+    "repository_id": {
+      "anyOf": [
+        {
+          "maxLength": 256,
+          "minLength": 12,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Repository Id"
+    },
+    "repository_revision": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "minLength": 7,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Repository Revision"
+    },
+    "revision": {
+      "maxLength": 128,
+      "minLength": 7,
+      "title": "Revision",
+      "type": "string"
+    }
+  },
+  "required": [
+    "kind",
+    "context_id",
+    "revision"
+  ],
+  "title": "PlanExecutionContext",
+  "type": "object"
+}

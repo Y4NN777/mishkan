@@ -215,6 +215,39 @@ def test_contract_without_an_installed_adapter_cannot_enter_snapshot(tmp_path: P
     }
 
 
+def test_tool_contract_materializes_only_public_input_defaults(tmp_path: Path) -> None:
+    contract = (
+        ToolCatalog(
+            (CATALOG_URI,),
+            tmp_path,
+            available_adapters=frozenset({"native.process.exec"}),
+        )
+        .snapshot(("core.process.exec",))
+        .require("core.process.exec")
+    )
+    supplied = {"executable": "/usr/bin/git", "args": ["show", "HEAD:README.md"]}
+
+    materialized = contract.materialize_input_defaults(supplied)
+
+    assert supplied == {"executable": "/usr/bin/git", "args": ["show", "HEAD:README.md"]}
+    assert materialized == {
+        "mode": "process",
+        "executable": "/usr/bin/git",
+        "args": ["show", "HEAD:README.md"],
+        "cwd": ".",
+        "environment": {},
+        "credential_environment": {},
+        "stdin": None,
+        "timeout_seconds": 30,
+        "expected_exit_codes": [0],
+        "declared_effects": [],
+        "output_policy": {
+            "preview_bytes": 8192,
+            "preserve_full_output_as_artifact": False,
+        },
+    }
+
+
 def test_contract_with_installed_adapter_enters_snapshot(tmp_path: Path) -> None:
     catalog = ToolCatalog(
         (CATALOG_URI,),

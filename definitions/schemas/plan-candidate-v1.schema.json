@@ -1,0 +1,253 @@
+{
+  "$defs": {
+    "PlanExecutionContext": {
+      "additionalProperties": false,
+      "properties": {
+        "context_id": {
+          "maxLength": 256,
+          "minLength": 12,
+          "title": "Context Id",
+          "type": "string"
+        },
+        "discovery_revision": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 7,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Discovery Revision"
+        },
+        "kind": {
+          "enum": [
+            "repository",
+            "prospective_workspace"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "prospective_workspace_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 12,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prospective Workspace Id"
+        },
+        "repository_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 12,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repository Id"
+        },
+        "repository_revision": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 7,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repository Revision"
+        },
+        "revision": {
+          "maxLength": 128,
+          "minLength": 7,
+          "title": "Revision",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "context_id",
+        "revision"
+      ],
+      "title": "PlanExecutionContext",
+      "type": "object"
+    },
+    "PlanTask": {
+      "additionalProperties": false,
+      "properties": {
+        "assigned_role": {
+          "minLength": 1,
+          "title": "Assigned Role",
+          "type": "string"
+        },
+        "depends_on": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Depends On",
+          "type": "array"
+        },
+        "evidence_paths": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Evidence Paths",
+          "type": "array"
+        },
+        "purpose": {
+          "maxLength": 2000,
+          "minLength": 3,
+          "title": "Purpose",
+          "type": "string"
+        },
+        "task_id": {
+          "pattern": "^[a-z][a-z0-9-]{1,63}$",
+          "title": "Task Id",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 160,
+          "minLength": 3,
+          "title": "Title",
+          "type": "string"
+        },
+        "tool_calls": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PlannedToolCall"
+          },
+          "title": "Tool Calls",
+          "type": "array"
+        },
+        "tools": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Tools",
+          "type": "array"
+        }
+      },
+      "required": [
+        "task_id",
+        "title",
+        "purpose",
+        "assigned_role",
+        "tools",
+        "evidence_paths"
+      ],
+      "title": "PlanTask",
+      "type": "object"
+    },
+    "PlannedToolCall": {
+      "additionalProperties": false,
+      "description": "One exact model-authored call accepted before task execution.",
+      "properties": {
+        "arguments": {
+          "additionalProperties": true,
+          "title": "Arguments",
+          "type": "object"
+        },
+        "call_id": {
+          "pattern": "^[a-z][a-z0-9-]{1,63}$",
+          "title": "Call Id",
+          "type": "string"
+        },
+        "tool_id": {
+          "pattern": "^[a-z][a-z0-9_.-]{2,127}$",
+          "title": "Tool Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "call_id",
+        "tool_id",
+        "arguments"
+      ],
+      "title": "PlannedToolCall",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "execution_context": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PlanExecutionContext"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "objective": {
+      "maxLength": 2000,
+      "minLength": 3,
+      "title": "Objective",
+      "type": "string"
+    },
+    "outcome_id": {
+      "minLength": 1,
+      "title": "Outcome Id",
+      "type": "string"
+    },
+    "repository_revision": {
+      "anyOf": [
+        {
+          "minLength": 7,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Repository Revision"
+    },
+    "schema_version": {
+      "default": "1.0",
+      "enum": [
+        "1.0",
+        "1.1",
+        "1.2"
+      ],
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "tasks": {
+      "items": {
+        "$ref": "#/$defs/PlanTask"
+      },
+      "maxItems": 12,
+      "minItems": 1,
+      "title": "Tasks",
+      "type": "array"
+    }
+  },
+  "required": [
+    "objective",
+    "outcome_id",
+    "tasks"
+  ],
+  "title": "PlanCandidate",
+  "type": "object"
+}

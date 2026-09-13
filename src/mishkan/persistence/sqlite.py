@@ -27,8 +27,17 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, rela
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.identity import new_id
 from mishkan.domain.time import utc_now
-from mishkan.planning.models import AcceptedPlan, InitializationResult, PlanTask, ReviewDecision
-from mishkan.repository.models import DiscoverySnapshot
+from mishkan.planning.models import (
+    AcceptedPlan,
+    InitializationResult,
+    PlanExecutionContext,
+    PlanTask,
+    ReviewDecision,
+)
+from mishkan.repository.models import (
+    DiscoverySnapshot,
+    RepositoryEstablishment,
+)
 from mishkan.runtime import RunState, TaskReviewRejection, TaskState
 from mishkan.tools.execution import EffectSettlement
 from mishkan.tools.gateway_models import AuditEvent, CallStatus, ToolResultEnvelope
@@ -69,8 +78,11 @@ class RunRow(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     resume_key: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
-    repository_id: Mapped[str] = mapped_column(String(64), nullable=False)
-    repository_revision: Mapped[str] = mapped_column(String(128), nullable=False)
+    context_kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    context_id: Mapped[str] = mapped_column(String(256), nullable=False)
+    context_revision: Mapped[str] = mapped_column(String(128), nullable=False)
+    repository_id: Mapped[str | None] = mapped_column(String(64))
+    repository_revision: Mapped[str | None] = mapped_column(String(128))
     discovery_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     objective: Mapped[str] = mapped_column(Text, nullable=False)
     outcome_id: Mapped[str] = mapped_column(String(160), nullable=False)
@@ -80,6 +92,19 @@ class RunRow(Base):
     created_at: Mapped[str] = mapped_column(String(40), nullable=False)
     updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
     plan: Mapped[PlanRow | None] = relationship(back_populates="run", uselist=False)
+
+
+class RepositoryEstablishmentRow(Base):
+    __tablename__ = "repository_establishments"
+
+    establishment_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id"), unique=True, nullable=False)
+    prospective_workspace_id: Mapped[str] = mapped_column(String(256), nullable=False)
+    discovery_revision: Mapped[str] = mapped_column(String(128), nullable=False)
+    repository_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    repository_revision: Mapped[str] = mapped_column(String(128), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    established_at: Mapped[str] = mapped_column(String(40), nullable=False)
 
 
 class PlanRow(Base):
@@ -650,6 +675,213 @@ class EnvironmentInvalidationRow(Base):
     recorded_at: Mapped[str] = mapped_column(String(40), nullable=False)
 
 
+class OrganizationRosterRow(Base):
+    __tablename__ = "organization_rosters"
+
+    organization_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    organization_version: Mapped[str] = mapped_column(String(64), primary_key=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    recorded_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class MissionRow(Base):
+    __tablename__ = "missions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    state: Mapped[str] = mapped_column(String(32), nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    organization_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    organization_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    current_brief_version: Mapped[int | None] = mapped_column(Integer)
+    current_crew_version: Mapped[int | None] = mapped_column(Integer)
+    current_environment_plan_version: Mapped[int | None] = mapped_column(Integer)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class MissionBriefRow(Base):
+    __tablename__ = "mission_briefs"
+    __table_args__ = (UniqueConstraint("mission_id", "version"),)
+
+    brief_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    mission_id: Mapped[str] = mapped_column(ForeignKey("missions.id"), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class MissionCrewRow(Base):
+    __tablename__ = "mission_crews"
+    __table_args__ = (UniqueConstraint("mission_id", "version"),)
+
+    crew_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    mission_id: Mapped[str] = mapped_column(ForeignKey("missions.id"), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    brief_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class ConversationChannelRow(Base):
+    __tablename__ = "conversation_channels"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    channel_class: Mapped[str] = mapped_column(String(32), nullable=False)
+    mission_id: Mapped[str | None] = mapped_column(ForeignKey("missions.id"))
+    branch_id: Mapped[str | None] = mapped_column(String(128))
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class ConversationMessageRow(Base):
+    __tablename__ = "conversation_messages"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    conversation_id: Mapped[str] = mapped_column(
+        ForeignKey("conversation_channels.id"), nullable=False
+    )
+    author_identity: Mapped[str] = mapped_column(String(256), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class MissionDecisionRow(Base):
+    __tablename__ = "mission_decisions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    mission_id: Mapped[str] = mapped_column(ForeignKey("missions.id"), nullable=False)
+    conversation_id: Mapped[str] = mapped_column(
+        ForeignKey("conversation_channels.id"), nullable=False
+    )
+    supersedes_decision_id: Mapped[str | None] = mapped_column(String(36))
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class MissionEscalationRow(Base):
+    __tablename__ = "mission_escalations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    mission_id: Mapped[str] = mapped_column(ForeignKey("missions.id"), nullable=False)
+    conversation_id: Mapped[str] = mapped_column(
+        ForeignKey("conversation_channels.id"), nullable=False
+    )
+    state: Mapped[str] = mapped_column(String(32), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class MissionInterventionRow(Base):
+    __tablename__ = "mission_interventions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    mission_id: Mapped[str] = mapped_column(ForeignKey("missions.id"), nullable=False)
+    conversation_id: Mapped[str] = mapped_column(
+        ForeignKey("conversation_channels.id"), nullable=False
+    )
+    kind: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class MissionAssignmentRow(Base):
+    __tablename__ = "mission_assignments"
+    __table_args__ = (UniqueConstraint("mission_id", "task_id", "assignment_revision"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    mission_id: Mapped[str] = mapped_column(ForeignKey("missions.id"), nullable=False)
+    task_id: Mapped[str] = mapped_column(String(256), nullable=False)
+    assignment_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    accountable_owner: Mapped[str] = mapped_column(String(128), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class MissionRunBindingRow(Base):
+    __tablename__ = "mission_run_bindings"
+    __table_args__ = (UniqueConstraint("mission_id", "binding_key", "binding_revision"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    mission_id: Mapped[str] = mapped_column(ForeignKey("missions.id"), nullable=False)
+    binding_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    binding_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id"), nullable=False)
+    acceptance: Mapped[str] = mapped_column(String(32), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class MissionRunReportRow(Base):
+    __tablename__ = "mission_run_reports"
+    __table_args__ = (UniqueConstraint("mission_id", "run_id"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    mission_id: Mapped[str] = mapped_column(ForeignKey("missions.id"), nullable=False)
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id"), nullable=False)
+    reporter_identity: Mapped[str] = mapped_column(String(128), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class MissionTransitionRow(Base):
+    __tablename__ = "mission_transitions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    mission_id: Mapped[str] = mapped_column(ForeignKey("missions.id"), nullable=False)
+    from_state: Mapped[str] = mapped_column(String(32), nullable=False)
+    to_state: Mapped[str] = mapped_column(String(32), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class MissionEnvironmentPlanRow(Base):
+    __tablename__ = "mission_environment_plans"
+    __table_args__ = (UniqueConstraint("mission_id", "version"),)
+
+    plan_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    mission_id: Mapped[str] = mapped_column(ForeignKey("missions.id"), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    fingerprint: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    owner_identity: Mapped[str] = mapped_column(String(128), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    accepted_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class ProfessionalEvidenceRow(Base):
+    __tablename__ = "professional_evidence"
+
+    evidence_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    identity_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    kind: Mapped[str] = mapped_column(String(64), nullable=False)
+    subject: Mapped[str] = mapped_column(String(512), nullable=False)
+    scope_level: Mapped[str] = mapped_column(String(32), nullable=False)
+    outcome: Mapped[str] = mapped_column(String(32), nullable=False)
+    fresh_until: Mapped[str] = mapped_column(String(40), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    observed_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class ProfessionalPromotionRow(Base):
+    __tablename__ = "professional_promotions"
+    __table_args__ = (UniqueConstraint("identity_id", "kind", "subject", "revision"),)
+
+    decision_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    request_id: Mapped[str] = mapped_column(String(36), unique=True, nullable=False)
+    identity_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    kind: Mapped[str] = mapped_column(String(64), nullable=False)
+    subject: Mapped[str] = mapped_column(String(512), nullable=False)
+    disposition: Mapped[str] = mapped_column(String(32), nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    decided_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
 @dataclass(frozen=True, slots=True)
 class RunSnapshot:
     run_id: str
@@ -657,6 +889,8 @@ class RunSnapshot:
     plan: AcceptedPlan | None
     results: tuple[InitializationResult, ...]
     reviews: tuple[ReviewDecision, ...]
+    execution_context: PlanExecutionContext
+    repository_establishment: RepositoryEstablishment | None
 
     @property
     def completed_task_ids(self) -> frozenset[str]:
@@ -697,11 +931,15 @@ class LocalRunRepository:
             resumed = run is not None
             if run is None:
                 now = utc_now().isoformat()
+                context = PlanExecutionContext.from_binding(discovery.binding)
                 run = RunRow(
                     id=str(new_id()),
                     resume_key=resume_key,
-                    repository_id=discovery.binding.repository_id,
-                    repository_revision=discovery.binding.base_revision,
+                    context_kind=context.kind,
+                    context_id=context.context_id,
+                    context_revision=context.revision,
+                    repository_id=context.repository_id,
+                    repository_revision=context.repository_revision,
                     discovery_fingerprint=discovery.fingerprint,
                     objective=objective,
                     outcome_id=outcome_id,
@@ -715,15 +953,41 @@ class LocalRunRepository:
                     session,
                     run.id,
                     "run.started",
-                    {"repository_revision": discovery.binding.base_revision},
+                    {"execution_context": context.model_dump(mode="json")},
                 )
             session.flush()
             return self._snapshot(session, run, resumed=resumed)
+
+    def snapshot(self, run_id: str) -> RunSnapshot:
+        """Read one exact durable run without changing its lifecycle."""
+        with Session(self._engine) as session:
+            run = self._require_run(session, run_id)
+            return self._snapshot(session, run, resumed=True)
+
+    def task_count(self, run_id: str) -> int:
+        """Return the exact task count from the immutable accepted run plan."""
+        with Session(self._engine) as session:
+            self._require_run(session, run_id)
+            plan = session.scalar(select(PlanRow).where(PlanRow.run_id == run_id))
+            if plan is None:
+                return 0
+            return len(AcceptedPlan.model_validate_json(plan.payload).tasks)
 
     def accept_plan(self, run_id: str, plan: AcceptedPlan) -> RunSnapshot:
         self._require_safe_content(plan.model_dump_json())
         with Session(self._engine) as session, session.begin():
             run = self._require_run(session, run_id)
+            expected_context = self._run_execution_context(run)
+            if plan.schema_version == "1.2" and plan.execution_context != expected_context:
+                raise MishkanError(
+                    ErrorCode.REVISION_MISMATCH,
+                    "accepted plan execution context differs from its run",
+                )
+            if plan.schema_version != "1.2" and run.context_kind != "repository":
+                raise MishkanError(
+                    ErrorCode.PLAN,
+                    "prospective workspace run requires an explicit plan 1.2 context",
+                )
             existing = session.scalar(select(PlanRow).where(PlanRow.run_id == run_id))
             payload = plan.model_dump_json()
             if existing is not None:
@@ -800,6 +1064,75 @@ class LocalRunRepository:
                         },
                     )
             self._add_event(session, run_id, "run.queued", {})
+            session.flush()
+            return self._snapshot(session, run, resumed=False)
+
+    def record_repository_establishment(
+        self,
+        establishment: RepositoryEstablishment,
+    ) -> RunSnapshot:
+        from mishkan.repository.inspector import RepositoryInspector
+
+        observed = RepositoryInspector().bind(establishment.repository.root)
+        if observed != establishment.repository:
+            raise MishkanError(
+                ErrorCode.REVISION_MISMATCH,
+                "repository establishment does not match the currently observed repository",
+            )
+        if establishment.prospective_workspace.root.resolve() != observed.root.resolve():
+            raise MishkanError(
+                ErrorCode.PROJECT,
+                "repository was not established at the prospective workspace root",
+            )
+        self._require_safe_content(establishment.model_dump_json())
+        with Session(self._engine) as session, session.begin():
+            run = self._require_run(session, establishment.run_id)
+            if run.context_kind != "prospective_workspace" or (
+                run.context_id != establishment.prospective_workspace.workspace_id
+                or run.context_revision != establishment.prospective_workspace.discovery_revision
+            ):
+                raise MishkanError(
+                    ErrorCode.REVISION_MISMATCH,
+                    "repository establishment does not descend from the run context",
+                )
+            existing = session.scalar(
+                select(RepositoryEstablishmentRow).where(
+                    RepositoryEstablishmentRow.run_id == run.id
+                )
+            )
+            payload = establishment.model_dump_json()
+            if existing is not None:
+                if existing.payload != payload:
+                    raise MishkanError(
+                        ErrorCode.DUPLICATE_RESULT,
+                        "prospective run already established a different repository",
+                    )
+                return self._snapshot(session, run, resumed=True)
+            session.add(
+                RepositoryEstablishmentRow(
+                    establishment_id=str(establishment.establishment_id),
+                    run_id=run.id,
+                    prospective_workspace_id=(establishment.prospective_workspace.workspace_id),
+                    discovery_revision=(establishment.prospective_workspace.discovery_revision),
+                    repository_id=establishment.repository.repository_id,
+                    repository_revision=establishment.repository.base_revision,
+                    payload=payload,
+                    established_at=establishment.established_at.isoformat(),
+                )
+            )
+            self._add_event(
+                session,
+                run.id,
+                "run.repository_established",
+                {
+                    "prospective_workspace_id": (establishment.prospective_workspace.workspace_id),
+                    "discovery_revision": (establishment.prospective_workspace.discovery_revision),
+                    "repository_id": establishment.repository.repository_id,
+                    "repository_revision": establishment.repository.base_revision,
+                    "establishment_id": str(establishment.establishment_id),
+                    "evidence_references": list(establishment.evidence_references),
+                },
+            )
             session.flush()
             return self._snapshot(session, run, resumed=False)
 
@@ -905,7 +1238,7 @@ class LocalRunRepository:
                     ErrorCode.OUTPUT_CONTRACT,
                     "rejection evidence does not match the validating task",
                 )
-            if result.repository_revision != run.repository_revision:
+            if not self._result_matches_run_context(result, run):
                 raise MishkanError(
                     ErrorCode.REVISION_MISMATCH,
                     "rejected result revision differs from the run base revision",
@@ -1378,6 +1711,11 @@ class LocalRunRepository:
             ).all()
             return {row.task_key: row.status for row in rows}
 
+    def task_contract(self, run_id: str, task_id: str) -> PlanTask:
+        with Session(self._engine) as session:
+            task = self._require_task(session, run_id, task_id)
+            return PlanTask.model_validate_json(task.contract)
+
     def run_state(self, run_id: str) -> str:
         with Session(self._engine) as session:
             return self._require_run(session, run_id).status
@@ -1403,7 +1741,7 @@ class LocalRunRepository:
                     "result does not identify an accepted task",
                     details={"run_id": run_id, "task_id": result.task_id},
                 )
-            if result.repository_revision != run.repository_revision:
+            if not self._result_matches_run_context(result, run):
                 raise MishkanError(
                     ErrorCode.REVISION_MISMATCH,
                     "result revision differs from the run base revision",
@@ -1467,6 +1805,18 @@ class LocalRunRepository:
                     ErrorCode.OUTPUT_CONTRACT,
                     "rejected review cannot become a durable task acceptance",
                 )
+            if review.schema_version == "1.1":
+                contract = PlanTask.model_validate_json(task.contract)
+                if review.producer_identity != contract.assigned_role:
+                    raise MishkanError(
+                        ErrorCode.ROLE_CONFLICT,
+                        "review producer identity differs from the accepted task owner",
+                        details={
+                            "task_id": result.task_id,
+                            "expected": contract.assigned_role,
+                            "received": review.producer_identity,
+                        },
+                    )
 
             result_id = str(new_id())
             accepted_at = utc_now().isoformat()
@@ -1579,8 +1929,9 @@ class LocalRunRepository:
     ) -> str:
         source = "\0".join(
             (
-                discovery.binding.repository_id,
-                discovery.binding.base_revision,
+                discovery.binding.context_kind,
+                discovery.binding.context_id,
+                discovery.binding.context_revision,
                 discovery.fingerprint,
                 objective,
                 outcome_id,
@@ -1598,6 +1949,39 @@ class LocalRunRepository:
                 details={"run_id": run_id},
             )
         return run
+
+    @staticmethod
+    def _result_matches_run_context(result: InitializationResult, run: RunRow) -> bool:
+        if result.schema_version == "1.1":
+            context = result.execution_context
+            return context is not None and (
+                context.kind == run.context_kind
+                and context.context_id == run.context_id
+                and context.revision == run.context_revision
+                and context.repository_id == run.repository_id
+                and context.repository_revision == run.repository_revision
+            )
+        return run.context_kind == "repository" and (
+            result.repository_revision == run.repository_revision
+        )
+
+    @staticmethod
+    def _run_execution_context(run: RunRow) -> PlanExecutionContext:
+        return PlanExecutionContext.model_validate(
+            {
+                "kind": run.context_kind,
+                "context_id": run.context_id,
+                "revision": run.context_revision,
+                "repository_id": run.repository_id,
+                "repository_revision": run.repository_revision,
+                "prospective_workspace_id": (
+                    run.context_id if run.context_kind == "prospective_workspace" else None
+                ),
+                "discovery_revision": (
+                    run.context_revision if run.context_kind == "prospective_workspace" else None
+                ),
+            }
+        )
 
     @staticmethod
     def _require_task(session: Session, run_id: str, task_id: str) -> TaskRow:
@@ -1654,6 +2038,9 @@ class LocalRunRepository:
             .order_by(AcceptanceRow.accepted_at)
         ).all()
         plan = AcceptedPlan.model_validate_json(plan_row.payload) if plan_row is not None else None
+        establishment_row = session.scalar(
+            select(RepositoryEstablishmentRow).where(RepositoryEstablishmentRow.run_id == run.id)
+        )
         results = tuple(
             InitializationResult.model_validate_json(row.payload) for row in result_rows
         )
@@ -1666,6 +2053,12 @@ class LocalRunRepository:
             plan=plan,
             results=results,
             reviews=reviews,
+            execution_context=LocalRunRepository._run_execution_context(run),
+            repository_establishment=(
+                RepositoryEstablishment.model_validate_json(establishment_row.payload)
+                if establishment_row is not None
+                else None
+            ),
         )
 
     @staticmethod

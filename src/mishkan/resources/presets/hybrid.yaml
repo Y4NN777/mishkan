@@ -3,6 +3,28 @@ mode: hybrid
 engineering_profile: package://mishkan.resources.environment/default.yaml
 engineering_pack_sources:
   - package://mishkan.resources.environment/technical-packs.yaml
+notifications:
+  default_severity: information
+  default_delivery: feed
+  page_limit: 100
+  rules:
+    - rule_id: mission-escalation
+      event_types: [mission.escalation_opened]
+      sources: [mishkan.conversations]
+      severity: urgent
+      delivery: feed
+    - rule_id: mission-action-required
+      event_types: [mission.environment_binding_incompatible, mission.environment_binding_unresolved]
+      severity: action_required
+      delivery: feed
+    - rule_id: mission-attention
+      event_types: [mission.*, organization.professional_promotion_rejected]
+      severity: attention
+      delivery: feed
+    - rule_id: routine-telemetry
+      event_types: [telemetry.*]
+      severity: information
+      delivery: silent
 telemetry:
   disclosure: "off"
   metadata_attributes:
@@ -185,8 +207,36 @@ mcp:
   connections: {}
   exposure_profiles:
     governed-harness:
-      operations: [system.health, system.snapshot, events.list, run.get, command.submit]
-      resources: [mishkan://snapshot, mishkan://runs, mishkan://events]
+      operations:
+        - system.health
+        - system.snapshot
+        - events.list
+        - run.get
+        - organization.get
+        - organization.inspect
+        - organization.branch.inspect
+        - organization.competence.get
+        - organization.evidence.list
+        - organization.promotions.list
+        - mission.list
+        - mission.get
+        - mission.inspect
+        - mission.run-reports.list
+        - mission.templates.list
+        - conversation.list
+        - conversation.get
+        - advisory.candidates.list
+        - notification.list
+        - command.submit
+      resources:
+        - mishkan://snapshot
+        - mishkan://runs
+        - mishkan://events
+        - mishkan://organization
+        - mishkan://missions
+        - mishkan://conversations
+        - mishkan://advisory/candidates
+        - mishkan://notifications
       prompts: []
   facade:
     enabled: true

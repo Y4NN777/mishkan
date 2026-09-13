@@ -3,14 +3,27 @@
 import hashlib
 import json
 from pathlib import Path
+from uuid import UUID
 
 from jsonschema import Draft202012Validator  # type: ignore[import-untyped]
 from jsonschema.exceptions import SchemaError, ValidationError  # type: ignore[import-untyped]
 
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.schema import SchemaRegistry
-from mishkan.organization.models import OrganizationDefinition, OutcomeDefinition
-from mishkan.planning.models import AcceptedPlan, PlanCandidate, PlannedToolCall
+from mishkan.organization import load_canonical_organization
+from mishkan.organization.models import (
+    OrganizationDefinition,
+    OrganizationRosterDefinition,
+    OutcomeDefinition,
+)
+from mishkan.planning.models import (
+    AcceptedPlan,
+    MissionTemplateReference,
+    PlanCandidate,
+    PlanExecutionContext,
+    PlannedToolCall,
+    PlanOrganizationBinding,
+)
 from mishkan.policy import ApprovalEvidence, AuthorizationRequest, Decision, EffectivePolicy
 from mishkan.policy.evaluator import PolicyAuthority
 from mishkan.repository.models import DiscoverySnapshot
@@ -33,12 +46,14 @@ class PlanValidator:
         authority: PolicyAuthority,
         inspector: ContentInspector | None = None,
         max_agent_iterations: int | None = None,
+        organization_roster: OrganizationRosterDefinition | None = None,
     ) -> None:
         self._catalog = catalog
         self._policy = policy
         self._authority = authority
         self._inspector = inspector
         self._max_agent_iterations = max_agent_iterations
+        self._organization_roster = organization_roster or load_canonical_organization()
 
     def accept(
         self,
@@ -47,10 +62,20 @@ class PlanValidator:
         organization: OrganizationDefinition,
         outcome: OutcomeDefinition,
         approvals: tuple[ApprovalEvidence, ...] = (),
+        *,
+        mission_id: UUID | None = None,
+        mission_origin_id: UUID | None = None,
+        mission_template_reference: MissionTemplateReference | None = None,
     ) -> AcceptedPlan:
         SchemaRegistry.require_supported("mishkan.plan", candidate.schema_version)
         violations: list[str] = []
-        if candidate.repository_revision != discovery.binding.base_revision:
+        discovered_context = PlanExecutionContext.from_binding(discovery.binding)
+        if candidate.schema_version == "1.2":
+            if candidate.execution_context != discovered_context:
+                violations.append("execution context does not match discovery")
+        elif discovered_context.kind != "repository":
+            violations.append("prospective workspace requires plan schema 1.2")
+        elif candidate.repository_revision != discovered_context.repository_revision:
             violations.append("repository revision does not match discovery")
         if candidate.outcome_id != outcome.outcome_id:
             violations.append("outcome identifier does not match requested outcome")
@@ -116,8 +141,17 @@ class PlanValidator:
         if violations:
             self._refuse(violations)
         bindings = self._bindings(candidate, organization, outcome, registry)
+        organization_binding = PlanOrganizationBinding(
+            organization_id=self._organization_roster.organization_id,
+            organization_version=self._organization_roster.organization_version,
+            organization_fingerprint=self._organization_roster.fingerprint,
+            mission_id=mission_id,
+            mission_origin_id=mission_origin_id,
+            mission_template_reference=mission_template_reference,
+        )
         payload = candidate.model_dump(mode="json")
         payload["discovery_fingerprint"] = discovery.fingerprint
+        payload["organization_binding"] = organization_binding.model_dump(mode="json")
         payload["registry_fingerprint"] = registry.fingerprint
         payload["tool_bindings"] = [binding.model_dump(mode="json") for binding in bindings]
         fingerprint = hashlib.sha256(
@@ -188,6 +222,7 @@ class PlanValidator:
             policy_fingerprint=self._policy.fingerprint,
             approvals=approvals,
             authorizations=tuple(authorizations),
+            organization_binding=organization_binding,
         )
 
     @classmethod
@@ -214,6 +249,8 @@ class PlanValidator:
     def _violation_categories(violations: list[str]) -> list[str]:
         matchers = (
             ("repository revision", "repository_revision"),
+            ("execution context", "execution_context"),
+            ("prospective workspace", "execution_context"),
             ("outcome identifier", "outcome_identifier"),
             ("task count", "task_count"),
             ("task identifiers", "task_identifier"),
@@ -286,7 +323,7 @@ class PlanValidator:
             plan_fingerprint=plan_fingerprint,
             identity=f"role:{binding.role}",
             objective_class=outcome.objective_class,
-            repository=discovery.binding.repository_id,
+            repository=discovery.binding.context_id,
             outcome=outcome.outcome_id,
             role=binding.role,
             capability=binding.tool_id,
@@ -321,7 +358,7 @@ class PlanValidator:
                 plan_fingerprint=plan_fingerprint,
                 identity=f"role:{binding.role}",
                 objective_class=outcome.objective_class,
-                repository=discovery.binding.repository_id,
+                repository=discovery.binding.context_id,
                 outcome=outcome.outcome_id,
                 role=binding.role,
                 capability=binding.tool_id,

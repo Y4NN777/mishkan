@@ -12,6 +12,17 @@
           "title": "Cited Paths",
           "type": "array"
         },
+        "execution_context": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PlanExecutionContext"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "findings": {
           "description": "Factual findings directly supported by the cited repository paths.",
           "items": {
@@ -22,12 +33,24 @@
           "type": "array"
         },
         "repository_revision": {
-          "minLength": 7,
-          "title": "Repository Revision",
-          "type": "string"
+          "anyOf": [
+            {
+              "minLength": 7,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repository Revision"
         },
         "schema_version": {
           "default": "1.0",
+          "enum": [
+            "1.0",
+            "1.1"
+          ],
           "title": "Schema Version",
           "type": "string"
         },
@@ -44,13 +67,100 @@
         }
       },
       "required": [
-        "repository_revision",
         "task_id",
         "summary",
         "cited_paths",
         "findings"
       ],
       "title": "InitializationResult",
+      "type": "object"
+    },
+    "PlanExecutionContext": {
+      "additionalProperties": false,
+      "properties": {
+        "context_id": {
+          "maxLength": 256,
+          "minLength": 12,
+          "title": "Context Id",
+          "type": "string"
+        },
+        "discovery_revision": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 7,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Discovery Revision"
+        },
+        "kind": {
+          "enum": [
+            "repository",
+            "prospective_workspace"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "prospective_workspace_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 12,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prospective Workspace Id"
+        },
+        "repository_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 12,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repository Id"
+        },
+        "repository_revision": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 7,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repository Revision"
+        },
+        "revision": {
+          "maxLength": 128,
+          "minLength": 7,
+          "title": "Revision",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "context_id",
+        "revision"
+      ],
+      "title": "PlanExecutionContext",
       "type": "object"
     },
     "ReviewDecision": {
@@ -65,6 +175,20 @@
           "title": "Checked Citations",
           "type": "array"
         },
+        "evaluator_identity": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 2,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Evaluator Identity"
+        },
         "issues": {
           "default": [],
           "description": "Concrete evidence or contract defects; empty when the verdict is accepted.",
@@ -74,8 +198,26 @@
           "title": "Issues",
           "type": "array"
         },
+        "producer_identity": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 2,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Producer Identity"
+        },
         "schema_version": {
           "default": "1.0",
+          "enum": [
+            "1.0",
+            "1.1"
+          ],
           "title": "Schema Version",
           "type": "string"
         },

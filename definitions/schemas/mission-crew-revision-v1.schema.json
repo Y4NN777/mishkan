@@ -1,0 +1,197 @@
+{
+  "$defs": {
+    "CrewAssignmentKind": {
+      "enum": [
+        "production",
+        "contributor",
+        "evaluation",
+        "reporting",
+        "audit"
+      ],
+      "title": "CrewAssignmentKind",
+      "type": "string"
+    },
+    "CrewSelectionEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "availability_references": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Availability References",
+          "type": "array"
+        },
+        "competence_references": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Competence References",
+          "type": "array"
+        },
+        "conflict_assessment": {
+          "maxLength": 2048,
+          "minLength": 3,
+          "title": "Conflict Assessment",
+          "type": "string"
+        },
+        "independence_references": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Independence References",
+          "type": "array"
+        },
+        "project_references": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Project References",
+          "type": "array"
+        },
+        "risk_coverage": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Risk Coverage",
+          "type": "array"
+        }
+      },
+      "required": [
+        "project_references",
+        "competence_references",
+        "availability_references",
+        "conflict_assessment",
+        "risk_coverage",
+        "independence_references"
+      ],
+      "title": "CrewSelectionEvidence",
+      "type": "object"
+    },
+    "MissionCrewMember": {
+      "additionalProperties": false,
+      "properties": {
+        "assignment_kind": {
+          "$ref": "#/$defs/CrewAssignmentKind"
+        },
+        "identity_id": {
+          "maxLength": 128,
+          "minLength": 2,
+          "title": "Identity Id",
+          "type": "string"
+        },
+        "responsibility": {
+          "maxLength": 2048,
+          "minLength": 3,
+          "title": "Responsibility",
+          "type": "string"
+        },
+        "selection_evidence": {
+          "$ref": "#/$defs/CrewSelectionEvidence"
+        }
+      },
+      "required": [
+        "identity_id",
+        "assignment_kind",
+        "responsibility",
+        "selection_evidence"
+      ],
+      "title": "MissionCrewMember",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "brief_version": {
+      "minimum": 1,
+      "title": "Brief Version",
+      "type": "integer"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "crew_id": {
+      "format": "uuid",
+      "title": "Crew Id",
+      "type": "string"
+    },
+    "cto_coverage_confirmation_id": {
+      "format": "uuid",
+      "title": "Cto Coverage Confirmation Id",
+      "type": "string"
+    },
+    "members": {
+      "items": {
+        "$ref": "#/$defs/MissionCrewMember"
+      },
+      "minItems": 2,
+      "title": "Members",
+      "type": "array"
+    },
+    "mission_id": {
+      "format": "uuid",
+      "title": "Mission Id",
+      "type": "string"
+    },
+    "mission_lead_id": {
+      "maxLength": 128,
+      "minLength": 2,
+      "title": "Mission Lead Id",
+      "type": "string"
+    },
+    "organization_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Organization Id",
+      "type": "string"
+    },
+    "organization_version": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Organization Version",
+      "type": "string"
+    },
+    "pm_composition_confirmation_id": {
+      "format": "uuid",
+      "title": "Pm Composition Confirmation Id",
+      "type": "string"
+    },
+    "revision_reason": {
+      "maxLength": 4096,
+      "minLength": 3,
+      "title": "Revision Reason",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "version": {
+      "minimum": 1,
+      "title": "Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "mission_id",
+    "version",
+    "organization_id",
+    "organization_version",
+    "brief_version",
+    "mission_lead_id",
+    "members",
+    "pm_composition_confirmation_id",
+    "cto_coverage_confirmation_id",
+    "revision_reason"
+  ],
+  "title": "MissionCrewRevision",
+  "type": "object"
+}

@@ -66,6 +66,7 @@ def _python_type(schema: dict[str, Any]) -> Any:
 
 
 class GatewayCrewAITool(BaseTool):
+    _contract: ToolContract = PrivateAttr()
     _gateway: CapabilityGateway = PrivateAttr()
     _context: InvocationContext = PrivateAttr()
     _targets: TargetBuilder = PrivateAttr()
@@ -89,6 +90,7 @@ class GatewayCrewAITool(BaseTool):
             description=contract.summary,
             args_schema=arguments_model(contract),
         )
+        self._contract = contract
         self._gateway = gateway
         self._context = context
         self._targets = target_builder or (
@@ -112,6 +114,18 @@ class GatewayCrewAITool(BaseTool):
     @property
     def completed_call_fingerprints(self) -> frozenset[str]:
         return frozenset(self._completed_call_fingerprints)
+
+    def _validate_kwargs(self, kwargs: dict[str, Any]) -> dict[str, Any]:
+        """Keep omitted optional fields absent while applying public contract defaults."""
+
+        normalized = self._contract.materialize_input_defaults(kwargs)
+        if self.args_schema is None or not self.args_schema.model_fields:
+            return normalized
+        try:
+            validated = self.args_schema.model_validate(normalized)
+        except Exception as exc:
+            raise ValueError(f"Tool {self.name!r} arguments validation failed") from exc
+        return validated.model_dump(exclude_unset=True)
 
     def _run(self, **kwargs: Any) -> str:
         fingerprint = argument_fingerprint(kwargs)

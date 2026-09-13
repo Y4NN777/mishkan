@@ -7,10 +7,11 @@ import os
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, TypeVar
 
 import typer
 import yaml
+from pydantic import BaseModel
 
 from mishkan.config.editor import set_value
 from mishkan.config.loader import ConfigLoader, EffectiveConfig
@@ -37,6 +38,11 @@ skill_app = typer.Typer(help="Inspect and govern procedural skill versions throu
 environment_app = typer.Typer(help="Observe and resolve engineering environments truthfully.")
 telemetry_app = typer.Typer(help="Inspect telemetry and import attributed evaluation evidence.")
 context_app = typer.Typer(help="Inspect confirmed portable and observed engineering context.")
+org_app = typer.Typer(help="Inspect the organization and govern professional evolution.")
+mission_app = typer.Typer(help="Create, inspect, plan, and govern contextual missions.")
+conversation_app = typer.Typer(help="Use durable Executive, Mission, Branch, and Direct channels.")
+intervention_app = typer.Typer(help="Inspect escalations and apply governed mission interventions.")
+advisory_app = typer.Typer(help="Inspect evidence-based contextual recommendations.")
 app.add_typer(config_app, name="config")
 app.add_typer(schema_app, name="schema")
 app.add_typer(daemon_app, name="daemon")
@@ -54,6 +60,729 @@ app.add_typer(skill_app, name="skill")
 app.add_typer(environment_app, name="environment")
 app.add_typer(telemetry_app, name="telemetry")
 app.add_typer(context_app, name="context")
+app.add_typer(org_app, name="org")
+app.add_typer(mission_app, name="mission")
+app.add_typer(conversation_app, name="conversation")
+app.add_typer(intervention_app, name="intervention")
+app.add_typer(advisory_app, name="advisory")
+
+ModelT = TypeVar("ModelT", bound=BaseModel)
+
+
+def _read_contract(path: Path, model: type[ModelT], option: str) -> ModelT:
+    try:
+        return model.model_validate_json(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter(f"{option} must contain a valid {model.__name__}") from exc
+
+
+def _dump_models(values: tuple[BaseModel, ...]) -> list[dict[str, Any]]:
+    return [value.model_dump(mode="json") for value in values]
+
+
+@org_app.command("show")
+def show_organization(ctx: typer.Context) -> None:
+    """Show the canonical organization and its 59 professional identities."""
+    with _daemon_client(ctx) as client:
+        roster = client.organization()
+    _emit(roster.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@org_app.command("inspect")
+def inspect_organization(
+    ctx: typer.Context,
+    limit: Annotated[int, typer.Option(min=1, max=1_000)] = 100,
+) -> None:
+    """Inspect the bounded non-authoritative organization and branch status."""
+    with _daemon_client(ctx) as client:
+        projection = client.organization_inspection(limit=limit)
+    _emit(projection, as_json=_state(ctx).json_output)
+
+
+@org_app.command("branch")
+def inspect_organization_branch(
+    ctx: typer.Context,
+    branch_id: str,
+    limit: Annotated[int, typer.Option(min=1, max=1_000)] = 100,
+) -> None:
+    """Drill into one branch, its agents, pools, missions, and conversations."""
+    with _daemon_client(ctx) as client:
+        projection = client.organization_branch_inspection(branch_id, limit=limit)
+    _emit(projection, as_json=_state(ctx).json_output)
+
+
+@org_app.command("competence")
+def show_professional_competence(
+    ctx: typer.Context,
+    identity_id: str,
+    kind: Annotated[str, typer.Option("--kind")],
+    subject: Annotated[str, typer.Option("--subject")],
+) -> None:
+    """Show attributable evidence and accepted promotion for one competence."""
+    from mishkan.organization import ProfessionalEvidenceKind
+
+    try:
+        evidence_kind = ProfessionalEvidenceKind(kind)
+    except ValueError as exc:
+        raise typer.BadParameter("--kind must name a ProfessionalEvidenceKind") from exc
+    with _daemon_client(ctx) as client:
+        state = client.professional_competence(identity_id, kind=evidence_kind, subject=subject)
+    _emit(state.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@org_app.command("evidence-record")
+def record_professional_evidence(
+    ctx: typer.Context,
+    evidence_file: Annotated[Path, typer.Option("--evidence")],
+) -> None:
+    """Record immutable professional evidence; it never changes agent authority."""
+    from mishkan.organization import ProfessionalEvidenceRecord
+
+    evidence = _read_contract(evidence_file, ProfessionalEvidenceRecord, "--evidence")
+    with _daemon_client(ctx) as client:
+        result = client.record_professional_evidence(evidence)
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@org_app.command("evidence")
+def list_professional_evidence(
+    ctx: typer.Context,
+    identity_id: str,
+    kind: Annotated[str | None, typer.Option("--kind")] = None,
+    subject: Annotated[str | None, typer.Option("--subject")] = None,
+    offset: Annotated[int, typer.Option(min=0)] = 0,
+    limit: Annotated[int, typer.Option(min=1, max=1_000)] = 100,
+) -> None:
+    """List immutable evidence behind one professional profile."""
+    from mishkan.organization import ProfessionalEvidenceKind
+
+    try:
+        evidence_kind = ProfessionalEvidenceKind(kind) if kind is not None else None
+    except ValueError as exc:
+        raise typer.BadParameter("--kind must name a ProfessionalEvidenceKind") from exc
+    with _daemon_client(ctx) as client:
+        records = client.professional_evidence(
+            identity_id,
+            kind=evidence_kind,
+            subject=subject,
+            offset=offset,
+            limit=limit,
+        )
+    _emit(_dump_models(records), as_json=_state(ctx).json_output)
+
+
+@org_app.command("promotions")
+def list_professional_promotions(
+    ctx: typer.Context,
+    identity_id: str,
+    kind: Annotated[str | None, typer.Option("--kind")] = None,
+    subject: Annotated[str | None, typer.Option("--subject")] = None,
+    offset: Annotated[int, typer.Option(min=0)] = 0,
+    limit: Annotated[int, typer.Option(min=1, max=1_000)] = 100,
+) -> None:
+    """List accepted and rejected professional promotion decisions."""
+    from mishkan.organization import ProfessionalEvidenceKind
+
+    try:
+        evidence_kind = ProfessionalEvidenceKind(kind) if kind is not None else None
+    except ValueError as exc:
+        raise typer.BadParameter("--kind must name a ProfessionalEvidenceKind") from exc
+    with _daemon_client(ctx) as client:
+        records = client.professional_promotions(
+            identity_id,
+            kind=evidence_kind,
+            subject=subject,
+            offset=offset,
+            limit=limit,
+        )
+    _emit(_dump_models(records), as_json=_state(ctx).json_output)
+
+
+@org_app.command("promotion-decide")
+def decide_professional_promotion(
+    ctx: typer.Context,
+    request_file: Annotated[Path, typer.Option("--request")],
+    disposition: Annotated[str, typer.Option("--disposition")],
+    reason: Annotated[str, typer.Option("--reason")],
+) -> None:
+    """Accept or reject a broader competence promotion from attributable evidence."""
+    from mishkan.organization import (
+        ProfessionalPromotionDisposition,
+        ProfessionalPromotionRequest,
+    )
+
+    request = _read_contract(request_file, ProfessionalPromotionRequest, "--request")
+    try:
+        selected_disposition = ProfessionalPromotionDisposition(disposition)
+    except ValueError as exc:
+        raise typer.BadParameter(
+            "--disposition must name a ProfessionalPromotionDisposition"
+        ) from exc
+    with _daemon_client(ctx) as client:
+        result = client.decide_professional_promotion(
+            request,
+            disposition=selected_disposition,
+            reason=reason,
+        )
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@mission_app.command("list")
+def list_missions(
+    ctx: typer.Context,
+    limit: Annotated[int, typer.Option(min=1, max=1_000)] = 100,
+) -> None:
+    """List durable missions."""
+    with _daemon_client(ctx) as client:
+        records = client.missions(limit=limit)
+    _emit(_dump_models(records), as_json=_state(ctx).json_output)
+
+
+@mission_app.command("show")
+def show_mission(ctx: typer.Context, mission_id: str) -> None:
+    """Show one durable mission."""
+    with _daemon_client(ctx) as client:
+        record = client.mission(mission_id)
+    _emit(record.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@mission_app.command("inspect")
+def inspect_mission(
+    ctx: typer.Context,
+    mission_id: str,
+    limit: Annotated[int, typer.Option(min=1, max=1_000)] = 100,
+) -> None:
+    """Inspect the bounded, non-authoritative projection for one mission."""
+    with _daemon_client(ctx) as client:
+        projection = client.mission_inspection(mission_id, limit=limit)
+    _emit(projection, as_json=_state(ctx).json_output)
+
+
+@mission_app.command("templates")
+def list_mission_templates(
+    ctx: typer.Context,
+    signal: Annotated[list[str] | None, typer.Option("--signal")] = None,
+    organization_version: Annotated[str, typer.Option("--organization-version")] = "1",
+) -> None:
+    """List optional mission guidance matching explicit signals."""
+    with _daemon_client(ctx) as client:
+        templates = client.mission_templates(
+            signals=tuple(signal) if signal else None,
+            organization_version=organization_version,
+        )
+    _emit(_dump_models(templates), as_json=_state(ctx).json_output)
+
+
+@mission_app.command("create")
+def create_mission(
+    ctx: typer.Context,
+    record_file: Annotated[Path, typer.Option("--record")],
+) -> None:
+    """Create a mission from its versioned public record."""
+    from mishkan.missions import MissionRecord
+
+    record = _read_contract(record_file, MissionRecord, "--record")
+    with _daemon_client(ctx) as client:
+        result = client.create_mission(record)
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@mission_app.command("governance-propose")
+def propose_mission_governance(
+    ctx: typer.Context,
+    request_file: Annotated[Path, typer.Option("--request")],
+) -> None:
+    """Run the PM/CTO CrewAI turn and return a proposal without implicit mutation."""
+    from mishkan.crewai import MissionGovernanceRequest
+
+    request = _read_contract(request_file, MissionGovernanceRequest, "--request")
+    with _daemon_client(ctx) as client:
+        result = client.propose_mission_governance(request)
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@mission_app.command("governance-escalate")
+def escalate_mission_governance(
+    ctx: typer.Context,
+    proposal_file: Annotated[Path, typer.Option("--proposal")],
+    conversation_id: Annotated[str, typer.Option("--conversation")],
+) -> None:
+    """Explicitly open the actionable escalation from a PM/CTO disagreement."""
+    from mishkan.crewai import MissionGovernanceResult
+
+    proposal = _read_contract(proposal_file, MissionGovernanceResult, "--proposal")
+    with _daemon_client(ctx) as client:
+        escalation = client.open_mission_governance_escalation(proposal, conversation_id)
+    _emit(escalation.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@mission_app.command("brief")
+def show_mission_brief(
+    ctx: typer.Context,
+    mission_id: str,
+    version: Annotated[int | None, typer.Option(min=1)] = None,
+) -> None:
+    """Show the current or requested Mission Brief revision."""
+    with _daemon_client(ctx) as client:
+        brief = client.mission_brief(mission_id, version=version)
+    _emit(brief.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@mission_app.command("brief-record")
+def record_mission_brief(
+    ctx: typer.Context,
+    brief_file: Annotated[Path, typer.Option("--brief")],
+    expected_revision: Annotated[int, typer.Option("--expected-revision", min=0)],
+) -> None:
+    """Record an explicitly reviewed Mission Brief revision."""
+    from mishkan.missions import MissionBrief
+
+    brief = _read_contract(brief_file, MissionBrief, "--brief")
+    with _daemon_client(ctx) as client:
+        result = client.record_mission_brief(brief, expected_revision=expected_revision)
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@mission_app.command("crew")
+def show_mission_crew(
+    ctx: typer.Context,
+    mission_id: str,
+    version: Annotated[int | None, typer.Option(min=1)] = None,
+) -> None:
+    """Show the current or requested contextual Mission Crew."""
+    with _daemon_client(ctx) as client:
+        crew = client.mission_crew(mission_id, version=version)
+    _emit(crew.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@mission_app.command("crew-record")
+def record_mission_crew(
+    ctx: typer.Context,
+    crew_file: Annotated[Path, typer.Option("--crew")],
+    expected_revision: Annotated[int, typer.Option("--expected-revision", min=0)],
+) -> None:
+    """Record an explicitly selected contextual Mission Crew revision."""
+    from mishkan.missions import MissionCrewRevision
+
+    crew = _read_contract(crew_file, MissionCrewRevision, "--crew")
+    with _daemon_client(ctx) as client:
+        result = client.record_mission_crew(crew, expected_revision=expected_revision)
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@mission_app.command("assignments")
+def list_mission_assignments(
+    ctx: typer.Context,
+    mission_id: str,
+    limit: Annotated[int, typer.Option(min=1, max=10_000)] = 1_000,
+) -> None:
+    """List durable task assignments and their independent assurance roles."""
+    with _daemon_client(ctx) as client:
+        assignments = client.mission_assignments(mission_id, limit=limit)
+    _emit(_dump_models(assignments), as_json=_state(ctx).json_output)
+
+
+@mission_app.command("assignment-record")
+def record_mission_assignment(
+    ctx: typer.Context,
+    assignment_file: Annotated[Path, typer.Option("--assignment")],
+) -> None:
+    """Record one versioned mission task assignment."""
+    from mishkan.missions import MissionTaskAssignment
+
+    assignment = _read_contract(assignment_file, MissionTaskAssignment, "--assignment")
+    with _daemon_client(ctx) as client:
+        result = client.record_mission_assignment(assignment)
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@mission_app.command("run-bindings")
+def list_mission_run_bindings(
+    ctx: typer.Context,
+    mission_id: str,
+    limit: Annotated[int, typer.Option(min=1, max=10_000)] = 1_000,
+) -> None:
+    """List exact durable mission-to-run bindings and their acceptance state."""
+    with _daemon_client(ctx) as client:
+        bindings = client.mission_run_bindings(mission_id, limit=limit)
+    _emit(_dump_models(bindings), as_json=_state(ctx).json_output)
+
+
+@mission_app.command("run-binding-record")
+def record_mission_run_binding(
+    ctx: typer.Context,
+    binding_file: Annotated[Path, typer.Option("--binding")],
+) -> None:
+    """Bind a mission task to one exact run context and durable result state."""
+    from mishkan.missions import MissionRunBinding
+
+    binding = _read_contract(binding_file, MissionRunBinding, "--binding")
+    with _daemon_client(ctx) as client:
+        result = client.record_mission_run_binding(binding)
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@mission_app.command("run-reports")
+def list_mission_run_reports(
+    ctx: typer.Context,
+    mission_id: str,
+    limit: Annotated[int, typer.Option(min=1, max=10_000)] = 1_000,
+) -> None:
+    """List versioned reports for completed multi-task mission runs."""
+    with _daemon_client(ctx) as client:
+        reports = client.mission_run_reports(mission_id, limit=limit)
+    _emit(_dump_models(reports), as_json=_state(ctx).json_output)
+
+
+@mission_app.command("run-report-record")
+def record_mission_run_report(
+    ctx: typer.Context,
+    report_file: Annotated[Path, typer.Option("--report")],
+) -> None:
+    """Record one attributable report after all run results are accepted."""
+    from mishkan.missions import MissionRunReport
+
+    report = _read_contract(report_file, MissionRunReport, "--report")
+    with _daemon_client(ctx) as client:
+        result = client.record_mission_run_report(report)
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@mission_app.command("transitions")
+def list_mission_transitions(
+    ctx: typer.Context,
+    mission_id: str,
+    limit: Annotated[int, typer.Option(min=1, max=10_000)] = 1_000,
+) -> None:
+    """List the durable mission lifecycle history."""
+    with _daemon_client(ctx) as client:
+        transitions = client.mission_transitions(mission_id, limit=limit)
+    _emit(_dump_models(transitions), as_json=_state(ctx).json_output)
+
+
+@mission_app.command("transition")
+def transition_mission(
+    ctx: typer.Context,
+    transition_file: Annotated[Path, typer.Option("--transition")],
+    expected_revision: Annotated[int, typer.Option("--expected-revision", min=0)],
+) -> None:
+    """Apply one governed mission lifecycle transition."""
+    from mishkan.missions import MissionTransition
+
+    transition = _read_contract(transition_file, MissionTransition, "--transition")
+    with _daemon_client(ctx) as client:
+        result = client.transition_mission(transition, expected_revision=expected_revision)
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@mission_app.command("decisions")
+def list_mission_decisions(
+    ctx: typer.Context,
+    mission_id: str,
+    limit: Annotated[int, typer.Option(min=1, max=1_000)] = 100,
+) -> None:
+    """List durable decisions governing one mission."""
+    with _daemon_client(ctx) as client:
+        decisions = client.mission_decisions(mission_id, limit=limit)
+    _emit(_dump_models(decisions), as_json=_state(ctx).json_output)
+
+
+@mission_app.command("environment-plan")
+def show_mission_environment_plan(
+    ctx: typer.Context,
+    mission_id: str,
+    version: Annotated[int | None, typer.Option(min=1)] = None,
+) -> None:
+    """Show an accepted agent-authored environment plan."""
+    with _daemon_client(ctx) as client:
+        plan = client.mission_environment_plan(mission_id, version=version)
+    _emit(plan.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@mission_app.command("readiness")
+def show_mission_readiness(ctx: typer.Context, mission_id: str) -> None:
+    """Show which task environment dependencies are proved ready or blocked."""
+    with _daemon_client(ctx) as client:
+        readiness = client.mission_environment_readiness(mission_id)
+    _emit(readiness.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@mission_app.command("task-eligibility")
+def show_mission_task_eligibility(
+    ctx: typer.Context,
+    mission_id: str,
+    task_id: str,
+) -> None:
+    """Show the exact mission, environment, escalation, and run claim gate."""
+    with _daemon_client(ctx) as client:
+        eligibility = client.mission_task_eligibility(mission_id, task_id)
+    _emit(eligibility.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@mission_app.command("completion-readiness")
+def show_mission_completion_readiness(ctx: typer.Context, mission_id: str) -> None:
+    """Show whether every governed mission result is durably accepted."""
+    with _daemon_client(ctx) as client:
+        readiness = client.mission_completion_readiness(mission_id)
+    _emit(readiness.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@mission_app.command("task-claim")
+def claim_mission_task(
+    ctx: typer.Context,
+    request_file: Annotated[Path, typer.Option("--request")],
+) -> None:
+    """Atomically request execution of a currently eligible mission task."""
+    from mishkan.missions import MissionTaskClaimRequest
+
+    request = _read_contract(request_file, MissionTaskClaimRequest, "--request")
+    with _daemon_client(ctx) as client:
+        claim = client.claim_mission_task(request)
+    _emit(claim.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@mission_app.command("environment-propose")
+def propose_mission_environment(
+    ctx: typer.Context,
+    request_file: Annotated[Path, typer.Option("--request")],
+) -> None:
+    """Ask the assigned CrewAI agent for an environment plan without mutating the mission."""
+    from mishkan.missions import MissionEnvironmentPlanningRequest
+
+    request = _read_contract(request_file, MissionEnvironmentPlanningRequest, "--request")
+    with _daemon_client(ctx) as client:
+        plan = client.propose_mission_environment(request)
+    _emit(plan.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@mission_app.command("environment-accept")
+def accept_mission_environment(
+    ctx: typer.Context,
+    plan_file: Annotated[Path, typer.Option("--plan")],
+    expected_revision: Annotated[int, typer.Option("--expected-revision", min=0)],
+) -> None:
+    """Accept an agent-authored environment plan at an explicit mission revision."""
+    from mishkan.missions import MissionEnvironmentPlan
+
+    plan = _read_contract(plan_file, MissionEnvironmentPlan, "--plan")
+    with _daemon_client(ctx) as client:
+        accepted = client.accept_mission_environment(plan, expected_revision=expected_revision)
+    _emit(accepted.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@mission_app.command("environment-resolve")
+def resolve_mission_environment(
+    ctx: typer.Context,
+    plan_id: str,
+    context_id: str,
+) -> None:
+    """Bind one exact accepted environment outcome; the resolver cannot choose another."""
+    with _daemon_client(ctx) as client:
+        binding = client.resolve_mission_environment(plan_id, context_id)
+    _emit(binding.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@conversation_app.command("list")
+def list_conversations(
+    ctx: typer.Context,
+    mission_id: Annotated[str | None, typer.Option("--mission")] = None,
+    limit: Annotated[int, typer.Option(min=1, max=1_000)] = 100,
+) -> None:
+    """List durable channels, optionally scoped to one mission."""
+    with _daemon_client(ctx) as client:
+        channels = client.conversations(mission_id=mission_id, limit=limit)
+    _emit(_dump_models(channels), as_json=_state(ctx).json_output)
+
+
+@conversation_app.command("show")
+def show_conversation(ctx: typer.Context, conversation_id: str) -> None:
+    """Show one durable conversation channel."""
+    with _daemon_client(ctx) as client:
+        channel = client.conversation(conversation_id)
+    _emit(channel.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@conversation_app.command("messages")
+def list_conversation_messages(
+    ctx: typer.Context,
+    conversation_id: str,
+    limit: Annotated[int, typer.Option(min=1, max=10_000)] = 100,
+) -> None:
+    """List attributable messages in deterministic channel order."""
+    with _daemon_client(ctx) as client:
+        messages = client.conversation_messages(conversation_id, limit=limit)
+    _emit(_dump_models(messages), as_json=_state(ctx).json_output)
+
+
+@conversation_app.command("create")
+def create_conversation(
+    ctx: typer.Context,
+    channel_file: Annotated[Path, typer.Option("--channel")],
+) -> None:
+    """Create a versioned Executive, Mission, Branch, or Direct channel."""
+    from mishkan.conversations import ConversationChannel
+
+    channel = _read_contract(channel_file, ConversationChannel, "--channel")
+    with _daemon_client(ctx) as client:
+        result = client.create_conversation(channel)
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@conversation_app.command("post")
+def post_conversation_message(
+    ctx: typer.Context,
+    message_file: Annotated[Path, typer.Option("--message")],
+) -> None:
+    """Post an attributable durable message without turning it into a command."""
+    from mishkan.conversations import ConversationMessage
+
+    message = _read_contract(message_file, ConversationMessage, "--message")
+    with _daemon_client(ctx) as client:
+        result = client.post_message(message)
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@app.command("chat")
+def chat(
+    ctx: typer.Context,
+    conversation_id: Annotated[str, typer.Option("--conversation")],
+    author: Annotated[str, typer.Option("--author")],
+    message: Annotated[str, typer.Option("--message")],
+    reply_to: Annotated[str | None, typer.Option("--reply-to")] = None,
+    evidence: Annotated[list[str] | None, typer.Option("--evidence")] = None,
+) -> None:
+    """Post one durable message through the same governed daemon contract."""
+    from uuid import UUID
+
+    from mishkan.conversations import ConversationMessage
+
+    try:
+        record = ConversationMessage(
+            conversation_id=UUID(conversation_id),
+            author_identity=author,
+            body=message,
+            reply_to_message_id=UUID(reply_to) if reply_to is not None else None,
+            evidence_references=tuple(evidence or ()),
+        )
+    except ValueError as exc:
+        raise typer.BadParameter("conversation and reply identities must be UUIDs") from exc
+    with _daemon_client(ctx) as client:
+        result = client.post_message(record)
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@intervention_app.command("escalations")
+def list_mission_escalations(
+    ctx: typer.Context,
+    mission_id: str,
+    state: Annotated[str | None, typer.Option("--state")] = None,
+    limit: Annotated[int, typer.Option(min=1, max=1_000)] = 100,
+) -> None:
+    """List explicit mission escalations."""
+    from mishkan.conversations import EscalationState
+
+    try:
+        selected_state = EscalationState(state) if state is not None else None
+    except ValueError as exc:
+        raise typer.BadParameter("--state must name an EscalationState") from exc
+    with _daemon_client(ctx) as client:
+        escalations = client.mission_escalations(
+            mission_id,
+            state=selected_state,
+            limit=limit,
+        )
+    _emit(_dump_models(escalations), as_json=_state(ctx).json_output)
+
+
+@intervention_app.command("interventions")
+def list_mission_interventions(
+    ctx: typer.Context,
+    mission_id: str,
+    limit: Annotated[int, typer.Option(min=1, max=1_000)] = 100,
+) -> None:
+    """List governed interventions and their effects."""
+    with _daemon_client(ctx) as client:
+        interventions = client.mission_interventions(mission_id, limit=limit)
+    _emit(_dump_models(interventions), as_json=_state(ctx).json_output)
+
+
+@intervention_app.command("decision-record")
+def record_mission_decision(
+    ctx: typer.Context,
+    decision_file: Annotated[Path, typer.Option("--decision")],
+) -> None:
+    """Record a durable decision distinct from messages and commands."""
+    from mishkan.conversations import MissionDecision
+
+    decision = _read_contract(decision_file, MissionDecision, "--decision")
+    with _daemon_client(ctx) as client:
+        result = client.record_mission_decision(decision)
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@intervention_app.command("escalation-open")
+def open_mission_escalation(
+    ctx: typer.Context,
+    escalation_file: Annotated[Path, typer.Option("--escalation")],
+) -> None:
+    """Open an attributable escalation with an explicit decision owner."""
+    from mishkan.conversations import MissionEscalation
+
+    escalation = _read_contract(escalation_file, MissionEscalation, "--escalation")
+    with _daemon_client(ctx) as client:
+        result = client.open_mission_escalation(escalation)
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@intervention_app.command("apply")
+def apply_mission_intervention(
+    ctx: typer.Context,
+    intervention_file: Annotated[Path, typer.Option("--intervention")],
+    expected_revision: Annotated[int, typer.Option("--expected-revision", min=0)],
+) -> None:
+    """Apply a policy-governed comment, pause, resume, reassign, stop, or risk acceptance."""
+    from mishkan.conversations import MissionIntervention
+
+    intervention = _read_contract(intervention_file, MissionIntervention, "--intervention")
+    with _daemon_client(ctx) as client:
+        result = client.apply_mission_intervention(
+            intervention,
+            expected_revision=expected_revision,
+        )
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@advisory_app.command("candidates")
+def show_advisory_candidates(ctx: typer.Context) -> None:
+    """Show configured community candidates without activating any of them."""
+    with _daemon_client(ctx) as client:
+        candidates = client.community_candidates()
+    _emit(
+        {
+            "candidates": _dump_models(candidates),
+            "count": len(candidates),
+            "activation_authorized": False,
+        },
+        as_json=_state(ctx).json_output,
+    )
+
+
+@advisory_app.command("recommend")
+def recommend_advisory_candidate(
+    ctx: typer.Context,
+    request_file: Annotated[Path, typer.Option("--request")],
+) -> None:
+    """Rank configured candidates against project evidence without activating them."""
+    from mishkan.context import ContextualRecommendationRequest
+
+    request = _read_contract(request_file, ContextualRecommendationRequest, "--request")
+    with _daemon_client(ctx) as client:
+        if request.owner_identity != client.principal_id:
+            raise typer.BadParameter(
+                "request owner_identity must match the authenticated daemon principal"
+            )
+        result = client.recommend_community_candidate(request)
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
 
 
 @context_app.command("engineer-profile")
@@ -466,6 +1195,36 @@ def list_events(
         _emit_error(error, as_json=state.json_output)
         raise typer.Exit(code=2) from error
     _emit(page.model_dump(mode="json"), as_json=state.json_output)
+
+
+@events_app.command("notifications")
+def list_notifications(
+    ctx: typer.Context,
+    after: Annotated[int, typer.Option(min=0)] = 0,
+    limit: Annotated[int | None, typer.Option(min=1, max=1_000)] = None,
+    severity: Annotated[list[str] | None, typer.Option("--severity")] = None,
+    delivery: Annotated[list[str] | None, typer.Option("--delivery")] = None,
+) -> None:
+    """Project configured severity and delivery without hiding source events."""
+    from mishkan.notifications import NotificationDelivery, NotificationSeverity
+
+    try:
+        severities = tuple(NotificationSeverity(item) for item in (severity or ()))
+        deliveries = tuple(NotificationDelivery(item) for item in (delivery or ()))
+    except ValueError as exc:
+        raise typer.BadParameter("notification severity or delivery is invalid") from exc
+    try:
+        with _daemon_client(ctx) as client:
+            page = client.notifications(
+                after=after,
+                limit=limit,
+                severities=severities,
+                deliveries=deliveries,
+            )
+    except MishkanError as error:
+        _emit_error(error, as_json=_state(ctx).json_output)
+        raise typer.Exit(code=2) from error
+    _emit(page.model_dump(mode="json"), as_json=_state(ctx).json_output)
 
 
 @events_app.command("tail")
@@ -1293,6 +2052,44 @@ def list_run_tasks(
     with _daemon_client(ctx) as client:
         values = client.tasks(run_id, offset=offset, limit=limit)
     _emit(values, as_json=_state(ctx).json_output)
+
+
+@run_app.command("prospective-create")
+def create_prospective_run(
+    ctx: typer.Context,
+    workspace_id: Annotated[str, typer.Option("--workspace-id")],
+    objective: Annotated[str, typer.Option("--objective")],
+    outcome_id: Annotated[str, typer.Option("--outcome-id")],
+) -> None:
+    """Create a run for the configured workspace before a repository exists."""
+    with _daemon_client(ctx) as client:
+        value = client.create_prospective_run(
+            workspace_id=workspace_id,
+            objective=objective,
+            outcome_id=outcome_id,
+        )
+    _emit(value, as_json=_state(ctx).json_output)
+
+
+@run_app.command("repository-establish")
+def establish_run_repository(
+    ctx: typer.Context,
+    run_id: str,
+    workspace_id: Annotated[str, typer.Option("--workspace-id")],
+    discovery_revision: Annotated[str, typer.Option("--discovery-revision")],
+    evidence: Annotated[list[str], typer.Option("--evidence")],
+) -> None:
+    """Record an explicitly proven repository for a prospective run."""
+    if not evidence:
+        raise typer.BadParameter("at least one --evidence reference is required")
+    with _daemon_client(ctx) as client:
+        value = client.establish_repository(
+            run_id,
+            prospective_workspace_id=workspace_id,
+            discovery_revision=discovery_revision,
+            evidence_references=tuple(evidence),
+        )
+    _emit(value, as_json=_state(ctx).json_output)
 
 
 @run_app.command("cancel")

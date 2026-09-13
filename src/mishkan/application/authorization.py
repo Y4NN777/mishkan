@@ -18,7 +18,12 @@ from uuid import UUID
 
 from pydantic import ValidationError
 
-from mishkan.application.contracts import ApplicationCommand, RunInitializationRequest
+from mishkan.application.contracts import (
+    ApplicationCommand,
+    ProspectiveRunRequest,
+    RepositoryEstablishmentRequest,
+    RunInitializationRequest,
+)
 from mishkan.config.models import (
     CredentialReference,
     McpConfig,
@@ -27,6 +32,14 @@ from mishkan.config.models import (
     MishkanConfig,
 )
 from mishkan.context import ContextualRecommendationRequest
+from mishkan.conversations import (
+    ConversationChannel,
+    ConversationMessage,
+    MissionDecision,
+    MissionEscalation,
+    MissionIntervention,
+)
+from mishkan.crewai.mission_governance import MissionGovernanceRequest
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.time import utc_now
 from mishkan.edits import ChangeSet
@@ -43,6 +56,25 @@ from mishkan.environment import (
     EnvironmentVerificationRequest,
 )
 from mishkan.execution import ExecutionRequest, ExecutionSession
+from mishkan.missions import (
+    MissionBrief,
+    MissionCrewRevision,
+    MissionRecord,
+    MissionRunBinding,
+    MissionRunReport,
+    MissionTaskAssignment,
+    MissionTaskClaimRequest,
+    MissionTransition,
+)
+from mishkan.missions.environment import (
+    MissionEnvironmentPlan,
+    MissionEnvironmentPlanningRequest,
+)
+from mishkan.organization import (
+    ProfessionalEvidenceRecord,
+    ProfessionalPromotionDisposition,
+    ProfessionalPromotionRequest,
+)
 from mishkan.policy import (
     AuthorizationDecision,
     AuthorizationRequest,
@@ -92,6 +124,12 @@ COMMAND_SEMANTICS = MappingProxyType(
         ),
         "run.initialize": CommandSemantics(
             "application.run.initialize", "coordination", ("run.initialize",), True
+        ),
+        "run.prospective.create": CommandSemantics(
+            "application.run.context", "coordination", ("run.prospective.create",)
+        ),
+        "run.repository.establish": CommandSemantics(
+            "application.run.context", "coordination", ("run.repository.establish",)
         ),
         "run.cancel": CommandSemantics("application.run.control", "coordination", ("run.cancel",)),
         "run.recover": CommandSemantics(
@@ -260,6 +298,77 @@ COMMAND_SEMANTICS = MappingProxyType(
         "context.recommend": CommandSemantics(
             "application.context.recommend", "read", ("context.recommend",)
         ),
+        "mission.create": CommandSemantics(
+            "application.mission.lifecycle", "coordination", ("mission.create",)
+        ),
+        "mission.brief.record": CommandSemantics(
+            "application.mission.brief", "coordination", ("mission.brief.record",)
+        ),
+        "mission.crew.record": CommandSemantics(
+            "application.mission.crew", "coordination", ("mission.crew.record",)
+        ),
+        "conversation.create": CommandSemantics(
+            "application.conversation.lifecycle", "coordination", ("conversation.create",)
+        ),
+        "conversation.message.post": CommandSemantics(
+            "application.conversation.message", "coordination", ("conversation.message.post",)
+        ),
+        "mission.decision.record": CommandSemantics(
+            "application.mission.decision", "coordination", ("mission.decision.record",)
+        ),
+        "mission.escalation.open": CommandSemantics(
+            "application.mission.escalation", "coordination", ("mission.escalation.open",)
+        ),
+        "mission.intervention.apply": CommandSemantics(
+            "application.mission.intervention", "coordination", ("mission.intervention.apply",)
+        ),
+        "mission.assignment.record": CommandSemantics(
+            "application.mission.assignment", "coordination", ("mission.assignment.record",)
+        ),
+        "mission.run-binding.record": CommandSemantics(
+            "application.mission.run-binding",
+            "coordination",
+            ("mission.run-binding.record",),
+        ),
+        "mission.run-report.record": CommandSemantics(
+            "application.mission.reporting",
+            "coordination",
+            ("mission.run-report.record",),
+        ),
+        "mission.task.claim": CommandSemantics(
+            "application.mission.task", "coordination", ("mission.task.claim",)
+        ),
+        "mission.transition": CommandSemantics(
+            "application.mission.lifecycle", "coordination", ("mission.transition",)
+        ),
+        "mission.governance.propose": CommandSemantics(
+            "application.mission.governance", "coordination", ("mission.governance.propose",)
+        ),
+        "mission.environment.propose": CommandSemantics(
+            "application.mission.environment",
+            "coordination",
+            ("mission.environment.propose",),
+        ),
+        "mission.environment.accept": CommandSemantics(
+            "application.mission.environment",
+            "coordination",
+            ("mission.environment.accept",),
+        ),
+        "mission.environment.resolve": CommandSemantics(
+            "application.mission.environment",
+            "coordination",
+            ("mission.environment.resolve",),
+        ),
+        "organization.evidence.record": CommandSemantics(
+            "application.organization.evolution",
+            "coordination",
+            ("organization.evidence.record",),
+        ),
+        "organization.promotion.decide": CommandSemantics(
+            "application.organization.evolution",
+            "coordination",
+            ("organization.promotion.decide",),
+        ),
         **{
             f"registry.entry.{action.value}": CommandSemantics(
                 "application.registry.lifecycle",
@@ -275,6 +384,8 @@ _COMMAND_TARGETS = MappingProxyType(
     {
         "system.checkpoint": ("system", "optional"),
         "run.initialize": ("run", "absent"),
+        "run.prospective.create": ("run", "absent"),
+        "run.repository.establish": ("run", "required"),
         "run.cancel": ("run", "required"),
         "run.recover": ("run", "required"),
         "artifact.upload.open": ("artifact_service", "absent"),
@@ -330,6 +441,25 @@ _COMMAND_TARGETS = MappingProxyType(
         "environment.binding.invalidate": ("environment_binding", "uuid"),
         "telemetry.evaluation.import": ("telemetry_evaluation", "uuid"),
         "context.recommend": ("context_recommendation", "uuid"),
+        "mission.create": ("mission", "uuid"),
+        "mission.brief.record": ("mission", "uuid"),
+        "mission.crew.record": ("mission", "uuid"),
+        "conversation.create": ("conversation", "uuid"),
+        "conversation.message.post": ("conversation_message", "uuid"),
+        "mission.decision.record": ("mission_decision", "uuid"),
+        "mission.escalation.open": ("mission_escalation", "uuid"),
+        "mission.intervention.apply": ("mission", "uuid"),
+        "mission.assignment.record": ("mission_assignment", "uuid"),
+        "mission.run-binding.record": ("mission_run_binding", "uuid"),
+        "mission.run-report.record": ("mission_run_report", "uuid"),
+        "mission.task.claim": ("mission_task", "required"),
+        "mission.transition": ("mission", "uuid"),
+        "mission.governance.propose": ("mission_governance_request", "uuid"),
+        "mission.environment.propose": ("mission_environment_planning_request", "uuid"),
+        "mission.environment.accept": ("mission", "uuid"),
+        "mission.environment.resolve": ("mission_environment_plan", "uuid"),
+        "organization.evidence.record": ("professional_evidence", "uuid"),
+        "organization.promotion.decide": ("professional_promotion_request", "uuid"),
         **{
             f"registry.entry.{action.value}": ("registry_entry", "required")
             for action in RegistryLifecycleAction
@@ -341,6 +471,20 @@ _COMMAND_PAYLOAD_FIELDS = MappingProxyType(
     {
         "system.checkpoint": (frozenset(), frozenset({"checkpoint", "index"})),
         "run.initialize": (frozenset({"objective"}), frozenset({"schema_version"})),
+        "run.prospective.create": (
+            frozenset({"workspace_id", "objective", "outcome_id"}),
+            frozenset({"schema_version"}),
+        ),
+        "run.repository.establish": (
+            frozenset(
+                {
+                    "prospective_workspace_id",
+                    "discovery_revision",
+                    "evidence_references",
+                }
+            ),
+            frozenset({"schema_version"}),
+        ),
         "run.cancel": (frozenset(), frozenset()),
         "run.recover": (frozenset(), frozenset()),
         "artifact.upload.open": (
@@ -426,6 +570,28 @@ _COMMAND_PAYLOAD_FIELDS = MappingProxyType(
         "environment.binding.invalidate": (frozenset({"invalidation"}), frozenset()),
         "telemetry.evaluation.import": (frozenset({"request"}), frozenset()),
         "context.recommend": (frozenset({"request"}), frozenset()),
+        "mission.create": (frozenset({"record"}), frozenset()),
+        "mission.brief.record": (frozenset({"brief"}), frozenset()),
+        "mission.crew.record": (frozenset({"crew"}), frozenset()),
+        "conversation.create": (frozenset({"channel"}), frozenset()),
+        "conversation.message.post": (frozenset({"message"}), frozenset()),
+        "mission.decision.record": (frozenset({"decision"}), frozenset()),
+        "mission.escalation.open": (frozenset({"escalation"}), frozenset()),
+        "mission.intervention.apply": (frozenset({"intervention"}), frozenset()),
+        "mission.assignment.record": (frozenset({"assignment"}), frozenset()),
+        "mission.run-binding.record": (frozenset({"binding"}), frozenset()),
+        "mission.run-report.record": (frozenset({"report"}), frozenset()),
+        "mission.task.claim": (frozenset({"request"}), frozenset()),
+        "mission.transition": (frozenset({"transition"}), frozenset()),
+        "mission.governance.propose": (frozenset({"request"}), frozenset()),
+        "mission.environment.propose": (frozenset({"request"}), frozenset()),
+        "mission.environment.accept": (frozenset({"plan"}), frozenset()),
+        "mission.environment.resolve": (frozenset({"context_id"}), frozenset()),
+        "organization.evidence.record": (frozenset({"evidence"}), frozenset()),
+        "organization.promotion.decide": (
+            frozenset({"request", "disposition", "reason"}),
+            frozenset(),
+        ),
         "registry.entry.add": (frozenset({"entry_kind", "definition"}), frozenset()),
         "registry.entry.enable": (frozenset({"entry_kind"}), frozenset()),
         "registry.entry.disable": (frozenset({"entry_kind"}), frozenset()),
@@ -444,6 +610,8 @@ class AuthorizedApplicationCommand:
     command: ApplicationCommand
     request: AuthorizationRequest
     decision: AuthorizationDecision
+    prospective_run_request: ProspectiveRunRequest | None = None
+    repository_establishment_request: RepositoryEstablishmentRequest | None = None
     session_request: ExecutionRequest | None = None
     git_request: GitEffectRequest | None = None
     registry_mutation: RegistryMutation | None = None
@@ -463,6 +631,25 @@ class AuthorizedApplicationCommand:
     environment_invalidation: EnvironmentInvalidation | None = None
     telemetry_evaluation: LangSmithFeedbackImportRequest | None = None
     context_recommendation: ContextualRecommendationRequest | None = None
+    mission_record: MissionRecord | None = None
+    mission_brief: MissionBrief | None = None
+    mission_crew: MissionCrewRevision | None = None
+    conversation_channel: ConversationChannel | None = None
+    conversation_message: ConversationMessage | None = None
+    mission_decision: MissionDecision | None = None
+    mission_escalation: MissionEscalation | None = None
+    mission_intervention: MissionIntervention | None = None
+    mission_assignment: MissionTaskAssignment | None = None
+    mission_run_binding: MissionRunBinding | None = None
+    mission_run_report: MissionRunReport | None = None
+    mission_task_claim: MissionTaskClaimRequest | None = None
+    mission_transition: MissionTransition | None = None
+    mission_governance_request: MissionGovernanceRequest | None = None
+    mission_environment_planning_request: MissionEnvironmentPlanningRequest | None = None
+    mission_environment_plan: MissionEnvironmentPlan | None = None
+    professional_evidence: ProfessionalEvidenceRecord | None = None
+    professional_promotion_request: ProfessionalPromotionRequest | None = None
+    professional_promotion_disposition: ProfessionalPromotionDisposition | None = None
 
 
 class ApplicationCommandAuthority:
@@ -530,11 +717,52 @@ class ApplicationCommandAuthority:
         environment_invalidation: EnvironmentInvalidation | None = None
         telemetry_evaluation: LangSmithFeedbackImportRequest | None = None
         context_recommendation: ContextualRecommendationRequest | None = None
+        mission_record: MissionRecord | None = None
+        mission_brief: MissionBrief | None = None
+        mission_crew: MissionCrewRevision | None = None
+        conversation_channel: ConversationChannel | None = None
+        conversation_message: ConversationMessage | None = None
+        mission_decision: MissionDecision | None = None
+        mission_escalation: MissionEscalation | None = None
+        mission_intervention: MissionIntervention | None = None
+        mission_assignment: MissionTaskAssignment | None = None
+        mission_run_binding: MissionRunBinding | None = None
+        mission_run_report: MissionRunReport | None = None
+        mission_task_claim: MissionTaskClaimRequest | None = None
+        mission_transition: MissionTransition | None = None
+        mission_governance_request: MissionGovernanceRequest | None = None
+        mission_environment_planning_request: MissionEnvironmentPlanningRequest | None = None
+        mission_environment_plan: MissionEnvironmentPlan | None = None
+        professional_evidence: ProfessionalEvidenceRecord | None = None
+        professional_promotion_request: ProfessionalPromotionRequest | None = None
+        professional_promotion_disposition: ProfessionalPromotionDisposition | None = None
+        prospective_run_request: ProspectiveRunRequest | None = None
+        repository_establishment_request: RepositoryEstablishmentRequest | None = None
 
         try:
             if normalized.command_type == "run.initialize":
                 RunInitializationRequest.model_validate(normalized.payload)
                 timeout = self._config.crewai.model_timeout_seconds
+            elif normalized.command_type == "run.prospective.create":
+                prospective_run_request = ProspectiveRunRequest.model_validate(normalized.payload)
+                paths = (str(self._workspace),)
+                external_resources = (
+                    f"prospective-workspace:{prospective_run_request.workspace_id}",
+                )
+            elif normalized.command_type == "run.repository.establish":
+                repository_establishment_request = RepositoryEstablishmentRequest.model_validate(
+                    normalized.payload
+                )
+                paths = (str(self._workspace),)
+                external_resources = (
+                    f"run:{normalized.target_id}",
+                    "repository:configured-workspace",
+                    f"prospective-workspace:{repository_establishment_request.prospective_workspace_id}",
+                    *(
+                        f"evidence:{reference}"
+                        for reference in repository_establishment_request.evidence_references
+                    ),
+                )
             elif normalized.command_type == "change.plan":
                 change_set = ChangeSet.model_validate(normalized.payload["change_set"])
                 if normalized.target_id != str(change_set.id):
@@ -980,6 +1208,454 @@ class ApplicationCommandAuthority:
                     *(f"candidate:{item}" for item in context_recommendation.candidate_ids),
                     *(f"evidence:{item}" for item in context_recommendation.project_evidence),
                 )
+            elif normalized.command_type == "mission.create":
+                mission_record = MissionRecord.model_validate(normalized.payload["record"])
+                if normalized.target_id != str(mission_record.mission_id):
+                    raise ValueError("mission target differs from its immutable identity")
+                if normalized.expected_revision not in {None, 0} or mission_record.revision != 0:
+                    raise ValueError("new mission must begin at revision zero")
+                external_resources = (
+                    f"organization:{mission_record.organization_id}"
+                    f"@{mission_record.organization_version}",
+                    f"mission-origin:{mission_record.origin.origin_id}",
+                )
+            elif normalized.command_type == "mission.brief.record":
+                mission_brief = MissionBrief.model_validate(normalized.payload["brief"])
+                if normalized.target_id != str(mission_brief.mission_id):
+                    raise ValueError("Mission Brief target differs from its mission identity")
+                if normalized.expected_revision is None:
+                    raise ValueError("Mission Brief command requires expected mission revision")
+                external_resources = (
+                    f"mission:{mission_brief.mission_id}",
+                    f"organization:{mission_brief.organization_id}"
+                    f"@{mission_brief.organization_version}",
+                )
+            elif normalized.command_type == "mission.crew.record":
+                mission_crew = MissionCrewRevision.model_validate(normalized.payload["crew"])
+                if normalized.target_id != str(mission_crew.mission_id):
+                    raise ValueError("Mission Crew target differs from its mission identity")
+                if normalized.expected_revision is None:
+                    raise ValueError("Mission Crew command requires expected mission revision")
+                external_resources = (
+                    f"mission:{mission_crew.mission_id}",
+                    f"mission-brief:{mission_crew.mission_id}:{mission_crew.brief_version}",
+                    *(f"identity:{member.identity_id}" for member in mission_crew.members),
+                )
+            elif normalized.command_type == "conversation.create":
+                conversation_channel = ConversationChannel.model_validate(
+                    normalized.payload["channel"]
+                )
+                if normalized.target_id != str(conversation_channel.conversation_id):
+                    raise ValueError("conversation target differs from its immutable identity")
+                if normalized.expected_revision not in {None, 0}:
+                    raise ValueError("new conversation must begin at revision zero")
+                external_resources = tuple(
+                    dict.fromkeys(
+                        (
+                            f"conversation-class:{conversation_channel.channel_class.value}",
+                            *(f"identity:{item}" for item in conversation_channel.participants),
+                            *(
+                                (f"mission:{conversation_channel.mission_id}",)
+                                if conversation_channel.mission_id is not None
+                                else ()
+                            ),
+                            *(
+                                (f"branch:{conversation_channel.branch_id}",)
+                                if conversation_channel.branch_id is not None
+                                else ()
+                            ),
+                        )
+                    )
+                )
+            elif normalized.command_type == "conversation.message.post":
+                conversation_message = ConversationMessage.model_validate(
+                    normalized.payload["message"]
+                )
+                if normalized.target_id != str(conversation_message.message_id):
+                    raise ValueError("message target differs from its immutable identity")
+                external_resources = (
+                    f"conversation:{conversation_message.conversation_id}",
+                    f"identity:{conversation_message.author_identity}",
+                    f"message-purpose:{conversation_message.purpose.value}",
+                    *(
+                        (f"message:{conversation_message.reply_to_message_id}",)
+                        if conversation_message.reply_to_message_id is not None
+                        else ()
+                    ),
+                )
+            elif normalized.command_type == "mission.decision.record":
+                mission_decision = MissionDecision.model_validate(normalized.payload["decision"])
+                if normalized.target_id != str(mission_decision.decision_id):
+                    raise ValueError("decision target differs from its immutable identity")
+                if mission_decision.actor_id != normalized.actor_id:
+                    raise MishkanError(
+                        ErrorCode.AUTHORITY_NOT_GRANTED,
+                        "decision actor must match the authenticated command actor",
+                    )
+                external_resources = (
+                    f"mission:{mission_decision.mission_id}",
+                    f"conversation:{mission_decision.conversation_id}",
+                    f"authority:{mission_decision.authority_reference}",
+                    *(f"evidence:{item}" for item in mission_decision.evidence_references),
+                    *(
+                        (f"decision:{mission_decision.supersedes_decision_id}",)
+                        if mission_decision.supersedes_decision_id is not None
+                        else ()
+                    ),
+                )
+                if mission_decision.decision_status is not None:
+                    effects = tuple(
+                        sorted(
+                            {
+                                *effects,
+                                f"mission.decision.{mission_decision.decision_status.value}",
+                                *(
+                                    ("mission.decision.authority-change",)
+                                    if mission_decision.changes_durable_authority
+                                    else ()
+                                ),
+                            }
+                        )
+                    )
+            elif normalized.command_type == "mission.escalation.open":
+                mission_escalation = MissionEscalation.model_validate(
+                    normalized.payload["escalation"]
+                )
+                if normalized.target_id != str(mission_escalation.escalation_id):
+                    raise ValueError("escalation target differs from its immutable identity")
+                external_resources = (
+                    f"mission:{mission_escalation.mission_id}",
+                    f"conversation:{mission_escalation.conversation_id}",
+                    *(f"evidence:{item}" for item in mission_escalation.evidence_references),
+                )
+            elif normalized.command_type == "mission.intervention.apply":
+                mission_intervention = MissionIntervention.model_validate(
+                    normalized.payload["intervention"]
+                )
+                if normalized.target_id != str(mission_intervention.mission_id):
+                    raise ValueError("intervention target differs from its mission identity")
+                if normalized.expected_revision is None:
+                    raise ValueError("mission intervention requires expected mission revision")
+                external_resources = tuple(
+                    dict.fromkeys(
+                        (
+                            f"mission:{mission_intervention.mission_id}",
+                            f"conversation:{mission_intervention.conversation_id}",
+                            f"authority:{mission_intervention.authority_reference}",
+                            (
+                                f"{mission_intervention.target_kind.value}:"
+                                f"{mission_intervention.target_id}"
+                            ),
+                            *(
+                                f"evidence:{item}"
+                                for item in mission_intervention.evidence_references
+                            ),
+                            *(
+                                (f"escalation:{mission_intervention.escalation_id}",)
+                                if mission_intervention.escalation_id is not None
+                                else ()
+                            ),
+                        )
+                    )
+                )
+                effects = tuple(
+                    sorted(
+                        {
+                            *effects,
+                            f"mission.intervention.{mission_intervention.kind.value}",
+                        }
+                    )
+                )
+            elif normalized.command_type == "mission.assignment.record":
+                mission_assignment = MissionTaskAssignment.model_validate(
+                    normalized.payload["assignment"]
+                )
+                if normalized.target_id != str(mission_assignment.assignment_id):
+                    raise ValueError("assignment target differs from its immutable identity")
+                if (
+                    mission_assignment.change is not None
+                    and mission_assignment.change.requested_by_identity != normalized.actor_id
+                ):
+                    raise MishkanError(
+                        ErrorCode.AUTHORITY_NOT_GRANTED,
+                        "assignment change requester must match the authenticated command actor",
+                    )
+                external_resources = (
+                    f"mission:{mission_assignment.mission_id}",
+                    f"task:{mission_assignment.task_id}",
+                    f"identity:{mission_assignment.accountable_owner}",
+                    *(f"identity:{item}" for item in mission_assignment.contributors),
+                    *(f"tool:{item}" for item in mission_assignment.exact_tools),
+                    *(f"path:{item}" for item in mission_assignment.path_scopes),
+                    *(
+                        (
+                            f"assignment:{mission_assignment.change.prior_assignment_id}",
+                            f"authority:{mission_assignment.change.authority_reference}",
+                            *(
+                                f"evidence:{item}"
+                                for item in mission_assignment.change.evidence_references
+                            ),
+                        )
+                        if mission_assignment.change is not None
+                        else ()
+                    ),
+                )
+                effects = tuple(
+                    sorted(
+                        {
+                            *effects,
+                            (
+                                "mission.assignment.initial"
+                                if mission_assignment.change is None
+                                else "mission.assignment."
+                                f"{mission_assignment.change.change_kind.value}"
+                            ),
+                        }
+                    )
+                )
+            elif normalized.command_type == "mission.run-binding.record":
+                mission_run_binding = MissionRunBinding.model_validate(
+                    normalized.payload["binding"]
+                )
+                if normalized.target_id != str(mission_run_binding.binding_id):
+                    raise ValueError("mission run binding target differs from its identity")
+                if mission_run_binding.recorded_by != normalized.actor_id:
+                    raise MishkanError(
+                        ErrorCode.AUTHORITY_NOT_GRANTED,
+                        "mission run binding recorder must match the authenticated actor",
+                    )
+                external_resources = tuple(
+                    dict.fromkeys(
+                        (
+                            f"mission:{mission_run_binding.mission_id}",
+                            f"run:{mission_run_binding.run_id}",
+                            f"task:{mission_run_binding.mission_task_id}",
+                            f"task:{mission_run_binding.execution_task_id}",
+                            f"mission-run-binding:{mission_run_binding.binding_key}",
+                            f"identity:{mission_run_binding.recorded_by}",
+                            *(
+                                f"mission-run-binding:{dependency}"
+                                for dependency in mission_run_binding.depends_on_binding_keys
+                            ),
+                            *(f"evidence:{item}" for item in mission_run_binding.result_references),
+                            *(
+                                f"acceptance:{item}"
+                                for item in mission_run_binding.acceptance_references
+                            ),
+                        )
+                    )
+                )
+                effects = tuple(
+                    sorted(
+                        {
+                            *effects,
+                            f"mission.run-binding.{mission_run_binding.acceptance.value}",
+                        }
+                    )
+                )
+            elif normalized.command_type == "mission.run-report.record":
+                mission_run_report = MissionRunReport.model_validate(normalized.payload["report"])
+                if normalized.target_id != str(mission_run_report.report_id):
+                    raise ValueError("mission run report target differs from its identity")
+                external_resources = tuple(
+                    dict.fromkeys(
+                        (
+                            f"mission:{mission_run_report.mission_id}",
+                            f"run:{mission_run_report.run_id}",
+                            f"identity:{mission_run_report.reporter_identity}",
+                            *(
+                                f"task:{item.mission_task_id}"
+                                for item in mission_run_report.task_results
+                            ),
+                            *(
+                                f"task:{item.execution_task_id}"
+                                for item in mission_run_report.task_results
+                            ),
+                            *(
+                                f"evidence:{reference}"
+                                for item in mission_run_report.task_results
+                                for reference in item.evidence_references
+                            ),
+                            *(
+                                f"result:{reference}"
+                                for item in mission_run_report.task_results
+                                for reference in item.result_references
+                            ),
+                            *(
+                                f"acceptance:{reference}"
+                                for item in mission_run_report.task_results
+                                for reference in item.acceptance_references
+                            ),
+                        )
+                    )
+                )
+            elif normalized.command_type == "mission.task.claim":
+                mission_task_claim = MissionTaskClaimRequest.model_validate(
+                    normalized.payload["request"]
+                )
+                expected_target = f"{mission_task_claim.mission_id}:{mission_task_claim.task_id}"
+                if normalized.target_id != expected_target:
+                    raise ValueError("mission task claim target differs from its request")
+                external_resources = (
+                    f"mission:{mission_task_claim.mission_id}",
+                    f"task:{mission_task_claim.task_id}",
+                )
+            elif normalized.command_type == "mission.transition":
+                mission_transition = MissionTransition.model_validate(
+                    normalized.payload["transition"]
+                )
+                if normalized.target_id != str(mission_transition.mission_id):
+                    raise ValueError("transition target differs from its mission identity")
+                if normalized.expected_revision is None:
+                    raise ValueError("mission transition requires expected mission revision")
+                external_resources = (
+                    f"mission:{mission_transition.mission_id}",
+                    *(f"evidence:{item}" for item in mission_transition.evidence_references),
+                    *(
+                        (f"decision:{mission_transition.decision_id}",)
+                        if mission_transition.decision_id is not None
+                        else ()
+                    ),
+                )
+                effects = tuple(
+                    sorted({*effects, f"mission.transition.{mission_transition.to_state.value}"})
+                )
+            elif normalized.command_type == "mission.governance.propose":
+                mission_governance_request = MissionGovernanceRequest.model_validate(
+                    normalized.payload["request"]
+                )
+                if normalized.target_id != str(mission_governance_request.request_id):
+                    raise ValueError("governance request target differs from its identity")
+                external_resources = (
+                    f"mission:{mission_governance_request.mission_id}",
+                    *(f"evidence:{item.reference}" for item in mission_governance_request.evidence),
+                )
+            elif normalized.command_type == "mission.environment.propose":
+                mission_environment_planning_request = (
+                    MissionEnvironmentPlanningRequest.model_validate(normalized.payload["request"])
+                )
+                if normalized.target_id != str(mission_environment_planning_request.request_id):
+                    raise ValueError("environment planning target differs from its request")
+                external_resources = tuple(
+                    dict.fromkeys(
+                        (
+                            f"mission:{mission_environment_planning_request.mission_id}",
+                            f"identity:{mission_environment_planning_request.owner_identity}",
+                            f"task:{mission_environment_planning_request.planning_task_id}",
+                            *(
+                                f"environment-context:{context.context_id}"
+                                for context in mission_environment_planning_request.contexts
+                            ),
+                            *(
+                                f"environment-observation:{context.observation_id}"
+                                for context in mission_environment_planning_request.contexts
+                            ),
+                        )
+                    )
+                )
+                timeout = self._config.crewai.model_timeout_seconds
+            elif normalized.command_type == "mission.environment.accept":
+                mission_environment_plan = MissionEnvironmentPlan.model_validate(
+                    normalized.payload["plan"]
+                )
+                if normalized.target_id != str(mission_environment_plan.mission_id):
+                    raise ValueError("environment plan target differs from its mission identity")
+                if normalized.expected_revision is None:
+                    raise ValueError("environment plan acceptance requires mission revision")
+                external_resources = tuple(
+                    dict.fromkeys(
+                        (
+                            f"mission:{mission_environment_plan.mission_id}",
+                            f"identity:{mission_environment_plan.owner_identity}",
+                            *(
+                                f"environment-context:{context.context_id}"
+                                for context in mission_environment_plan.contexts
+                            ),
+                            *(
+                                f"engine:{engine_id}"
+                                for decision in mission_environment_plan.decisions
+                                for engine_id in decision.eligible_engine_ids
+                            ),
+                            *(
+                                f"decision:{decision.consequential_decision_id}"
+                                for decision in mission_environment_plan.decisions
+                                if decision.consequential_decision_id is not None
+                            ),
+                        )
+                    )
+                )
+            elif normalized.command_type == "mission.environment.resolve":
+                if normalized.target_id is None:
+                    raise ValueError("environment plan resolution requires a plan identity")
+                context_id = str(normalized.payload["context_id"])
+                if not context_id or len(context_id) > 256:
+                    raise ValueError("environment plan context identity is invalid")
+                external_resources = (
+                    f"mission-environment-plan:{normalized.target_id}",
+                    f"environment-context:{context_id}",
+                )
+            elif normalized.command_type == "organization.evidence.record":
+                professional_evidence = ProfessionalEvidenceRecord.model_validate(
+                    normalized.payload["evidence"]
+                )
+                if normalized.target_id != str(professional_evidence.evidence_id):
+                    raise ValueError("professional evidence target differs from its identity")
+                if professional_evidence.recorded_by != normalized.actor_id:
+                    raise MishkanError(
+                        ErrorCode.AUTHORITY_NOT_GRANTED,
+                        "professional evidence recorder must match the authenticated actor",
+                    )
+                external_resources = (
+                    f"identity:{professional_evidence.identity_id}",
+                    f"identity:{professional_evidence.evaluator_identity}",
+                    f"professional-subject:{professional_evidence.subject}",
+                    *(
+                        f"evidence:{reference}"
+                        for reference in professional_evidence.source_references
+                    ),
+                    *(
+                        f"evaluation:{reference}"
+                        for reference in professional_evidence.evaluation_references
+                    ),
+                )
+                effects = tuple(
+                    sorted(
+                        {
+                            *effects,
+                            f"organization.evidence.{professional_evidence.outcome.value}",
+                        }
+                    )
+                )
+            elif normalized.command_type == "organization.promotion.decide":
+                professional_promotion_request = ProfessionalPromotionRequest.model_validate(
+                    normalized.payload["request"]
+                )
+                professional_promotion_disposition = ProfessionalPromotionDisposition(
+                    normalized.payload["disposition"]
+                )
+                if normalized.target_id != str(professional_promotion_request.request_id):
+                    raise ValueError("professional promotion target differs from its request")
+                if professional_promotion_request.requested_by != normalized.actor_id:
+                    raise MishkanError(
+                        ErrorCode.AUTHORITY_NOT_GRANTED,
+                        "professional promotion requester must match the authenticated actor",
+                    )
+                external_resources = (
+                    f"identity:{professional_promotion_request.identity_id}",
+                    f"professional-subject:{professional_promotion_request.subject}",
+                    *(
+                        f"professional-evidence:{evidence_id}"
+                        for evidence_id in professional_promotion_request.supporting_evidence_ids
+                    ),
+                )
+                effects = tuple(
+                    sorted(
+                        {
+                            *effects,
+                            f"organization.promotion.{professional_promotion_disposition.value}",
+                        }
+                    )
+                )
             elif normalized.target_id is not None:
                 external_resources = (f"{normalized.target_type}:{normalized.target_id}",)
         except (KeyError, TypeError, ValueError, ValidationError) as exc:
@@ -1037,6 +1713,27 @@ class ApplicationCommandAuthority:
             environment_invalidation=environment_invalidation,
             telemetry_evaluation=telemetry_evaluation,
             context_recommendation=context_recommendation,
+            mission_record=mission_record,
+            mission_brief=mission_brief,
+            mission_crew=mission_crew,
+            conversation_channel=conversation_channel,
+            conversation_message=conversation_message,
+            mission_decision=mission_decision,
+            mission_escalation=mission_escalation,
+            mission_intervention=mission_intervention,
+            mission_assignment=mission_assignment,
+            mission_run_binding=mission_run_binding,
+            mission_run_report=mission_run_report,
+            mission_task_claim=mission_task_claim,
+            mission_transition=mission_transition,
+            mission_governance_request=mission_governance_request,
+            mission_environment_planning_request=mission_environment_planning_request,
+            mission_environment_plan=mission_environment_plan,
+            professional_evidence=professional_evidence,
+            professional_promotion_request=professional_promotion_request,
+            professional_promotion_disposition=professional_promotion_disposition,
+            prospective_run_request=prospective_run_request,
+            repository_establishment_request=repository_establishment_request,
         )
 
     @staticmethod

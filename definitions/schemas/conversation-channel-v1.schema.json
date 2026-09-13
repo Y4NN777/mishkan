@@ -1,0 +1,105 @@
+{
+  "$defs": {
+    "ChannelClass": {
+      "enum": [
+        "executive",
+        "mission",
+        "branch",
+        "direct"
+      ],
+      "title": "ChannelClass",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "branch_id": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Branch Id"
+    },
+    "channel_class": {
+      "$ref": "#/$defs/ChannelClass"
+    },
+    "conversation_id": {
+      "format": "uuid",
+      "title": "Conversation Id",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "created_by": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Created By",
+      "type": "string"
+    },
+    "direct_authorization_reference": {
+      "anyOf": [
+        {
+          "maxLength": 512,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Direct Authorization Reference"
+    },
+    "mission_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Mission Id"
+    },
+    "participants": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 2,
+      "title": "Participants",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "title": {
+      "maxLength": 512,
+      "minLength": 3,
+      "title": "Title",
+      "type": "string"
+    }
+  },
+  "required": [
+    "channel_class",
+    "title",
+    "participants",
+    "created_by"
+  ],
+  "title": "ConversationChannel",
+  "type": "object"
+}

@@ -1,0 +1,221 @@
+{
+  "$defs": {
+    "EnvironmentContextReadiness": {
+      "additionalProperties": false,
+      "properties": {
+        "binding_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Binding Id"
+        },
+        "binding_revision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Binding Revision"
+        },
+        "context_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Context Id",
+          "type": "string"
+        },
+        "plan_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Plan Id"
+        },
+        "plan_version": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Plan Version"
+        },
+        "reason": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/$defs/EnvironmentReadinessState"
+        },
+        "verification_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Verification Id"
+        }
+      },
+      "required": [
+        "context_id",
+        "state",
+        "reason"
+      ],
+      "title": "EnvironmentContextReadiness",
+      "type": "object"
+    },
+    "EnvironmentReadinessState": {
+      "enum": [
+        "not_required",
+        "awaiting_plan",
+        "unresolved",
+        "service_unavailable",
+        "awaiting_binding",
+        "incompatible",
+        "stale",
+        "awaiting_verification",
+        "verification_failed",
+        "verification_uncertain",
+        "eligible"
+      ],
+      "title": "EnvironmentReadinessState",
+      "type": "string"
+    },
+    "MissionTaskEnvironmentReadiness": {
+      "additionalProperties": false,
+      "properties": {
+        "assignment_revision": {
+          "minimum": 1,
+          "title": "Assignment Revision",
+          "type": "integer"
+        },
+        "blockers": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Blockers",
+          "type": "array"
+        },
+        "contexts": {
+          "items": {
+            "$ref": "#/$defs/EnvironmentContextReadiness"
+          },
+          "title": "Contexts",
+          "type": "array"
+        },
+        "environment_ready": {
+          "title": "Environment Ready",
+          "type": "boolean"
+        },
+        "state": {
+          "$ref": "#/$defs/EnvironmentReadinessState"
+        },
+        "task_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Task Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "task_id",
+        "assignment_revision",
+        "state",
+        "environment_ready",
+        "contexts",
+        "blockers"
+      ],
+      "title": "MissionTaskEnvironmentReadiness",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "blocked_task_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Blocked Task Ids",
+      "type": "array"
+    },
+    "environment_plan_version": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Environment Plan Version"
+    },
+    "mission_id": {
+      "format": "uuid",
+      "title": "Mission Id",
+      "type": "string"
+    },
+    "mission_revision": {
+      "minimum": 0,
+      "title": "Mission Revision",
+      "type": "integer"
+    },
+    "ready_task_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Ready Task Ids",
+      "type": "array"
+    },
+    "schema_version": {
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "tasks": {
+      "items": {
+        "$ref": "#/$defs/MissionTaskEnvironmentReadiness"
+      },
+      "title": "Tasks",
+      "type": "array"
+    }
+  },
+  "required": [
+    "mission_id",
+    "mission_revision",
+    "tasks",
+    "ready_task_ids",
+    "blocked_task_ids"
+  ],
+  "title": "MissionEnvironmentReadiness",
+  "type": "object"
+}
