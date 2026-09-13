@@ -241,6 +241,7 @@ class MissionRecord(MissionModel):
     organization_version: str = Field(min_length=1, max_length=64)
     current_brief_version: int | None = Field(default=None, ge=1)
     current_crew_version: int | None = Field(default=None, ge=1)
+    current_environment_plan_version: int | None = Field(default=None, ge=1)
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
 

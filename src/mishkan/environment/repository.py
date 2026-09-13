@@ -114,6 +114,19 @@ class SQLiteEnvironmentRepository:
                     ErrorCode.REVISION_MISMATCH,
                     "environment observation changed before binding persistence",
                 )
+            same_request = session.scalar(
+                select(EnvironmentBindingRow).where(
+                    EnvironmentBindingRow.request_id == str(record.request.request_id)
+                )
+            )
+            if same_request is not None:
+                existing_record = EnvironmentBinding.model_validate_json(same_request.payload)
+                if existing_record.request != record.request:
+                    raise MishkanError(
+                        ErrorCode.DUPLICATE_RESULT,
+                        "environment binding request identity contains different content",
+                    )
+                return existing_record
             existing = session.get(EnvironmentBindingRow, str(record.binding_id))
             if existing is not None:
                 return self._idempotent(existing.payload, payload, record)

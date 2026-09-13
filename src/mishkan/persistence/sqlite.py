@@ -670,6 +670,7 @@ class MissionRow(Base):
     organization_version: Mapped[str] = mapped_column(String(64), nullable=False)
     current_brief_version: Mapped[int | None] = mapped_column(Integer)
     current_crew_version: Mapped[int | None] = mapped_column(Integer)
+    current_environment_plan_version: Mapped[int | None] = mapped_column(Integer)
     payload: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[str] = mapped_column(String(40), nullable=False)
     updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
@@ -785,6 +786,19 @@ class MissionTransitionRow(Base):
     to_state: Mapped[str] = mapped_column(String(32), nullable=False)
     payload: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class MissionEnvironmentPlanRow(Base):
+    __tablename__ = "mission_environment_plans"
+    __table_args__ = (UniqueConstraint("mission_id", "version"),)
+
+    plan_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    mission_id: Mapped[str] = mapped_column(ForeignKey("missions.id"), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    fingerprint: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    owner_identity: Mapped[str] = mapped_column(String(128), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    accepted_at: Mapped[str] = mapped_column(String(40), nullable=False)
 
 
 @dataclass(frozen=True, slots=True)

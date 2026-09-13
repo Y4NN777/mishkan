@@ -52,6 +52,7 @@ from mishkan.conversations.models import (
     MissionEscalation,
     MissionIntervention,
 )
+from mishkan.crewai.mission_environment import MissionEnvironmentPlanningOutput
 from mishkan.crewai.mission_governance import (
     CTOMissionReview,
     MissionGovernanceRequest,
@@ -101,6 +102,11 @@ from mishkan.mcp.models import (
     McpDiscoverySnapshot,
     McpPrimitiveDescriptor,
     McpProgressEvent,
+)
+from mishkan.missions.environment import (
+    MissionEnvironmentPlan,
+    MissionEnvironmentPlanAcceptance,
+    MissionEnvironmentPlanningRequest,
 )
 from mishkan.missions.models import (
     ExecutiveConfirmation,
@@ -200,6 +206,7 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "crewai-mission-governance-result-v1.schema.json": MissionGovernanceResult,
     "crewai-mission-governance-request-v1.schema.json": MissionGovernanceRequest,
     "crewai-pm-mission-proposal-v1.schema.json": PMMissionProposal,
+    "crewai-mission-environment-output-v1.schema.json": MissionEnvironmentPlanningOutput,
     "conversation-channel-v1.schema.json": ConversationChannel,
     "conversation-message-v1.schema.json": ConversationMessage,
     "domain-record-v1.schema.json": DomainRecord,
@@ -241,6 +248,9 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "mission-brief-v1.schema.json": MissionBrief,
     "mission-crew-revision-v1.schema.json": MissionCrewRevision,
     "mission-environment-intent-v1.schema.json": MissionEnvironmentIntent,
+    "mission-environment-plan-v1.schema.json": MissionEnvironmentPlan,
+    "mission-environment-plan-acceptance-v1.schema.json": MissionEnvironmentPlanAcceptance,
+    "mission-environment-planning-request-v1.schema.json": MissionEnvironmentPlanningRequest,
     "mission-executive-confirmation-v1.schema.json": ExecutiveConfirmation,
     "mission-origin-v1.schema.json": MissionOrigin,
     "mission-decision-v1.schema.json": MissionDecision,

@@ -58,6 +58,10 @@ from mishkan.missions import (
     MissionTaskAssignment,
     MissionTransition,
 )
+from mishkan.missions.environment import (
+    MissionEnvironmentPlan,
+    MissionEnvironmentPlanningRequest,
+)
 from mishkan.policy import (
     AuthorizationDecision,
     AuthorizationRequest,
@@ -308,6 +312,21 @@ COMMAND_SEMANTICS = MappingProxyType(
         "mission.governance.propose": CommandSemantics(
             "application.mission.governance", "coordination", ("mission.governance.propose",)
         ),
+        "mission.environment.propose": CommandSemantics(
+            "application.mission.environment",
+            "coordination",
+            ("mission.environment.propose",),
+        ),
+        "mission.environment.accept": CommandSemantics(
+            "application.mission.environment",
+            "coordination",
+            ("mission.environment.accept",),
+        ),
+        "mission.environment.resolve": CommandSemantics(
+            "application.mission.environment",
+            "coordination",
+            ("mission.environment.resolve",),
+        ),
         **{
             f"registry.entry.{action.value}": CommandSemantics(
                 "application.registry.lifecycle",
@@ -389,6 +408,9 @@ _COMMAND_TARGETS = MappingProxyType(
         "mission.assignment.record": ("mission_assignment", "uuid"),
         "mission.transition": ("mission", "uuid"),
         "mission.governance.propose": ("mission_governance_request", "uuid"),
+        "mission.environment.propose": ("mission_environment_planning_request", "uuid"),
+        "mission.environment.accept": ("mission", "uuid"),
+        "mission.environment.resolve": ("mission_environment_plan", "uuid"),
         **{
             f"registry.entry.{action.value}": ("registry_entry", "required")
             for action in RegistryLifecycleAction
@@ -496,6 +518,9 @@ _COMMAND_PAYLOAD_FIELDS = MappingProxyType(
         "mission.assignment.record": (frozenset({"assignment"}), frozenset()),
         "mission.transition": (frozenset({"transition"}), frozenset()),
         "mission.governance.propose": (frozenset({"request"}), frozenset()),
+        "mission.environment.propose": (frozenset({"request"}), frozenset()),
+        "mission.environment.accept": (frozenset({"plan"}), frozenset()),
+        "mission.environment.resolve": (frozenset({"context_id"}), frozenset()),
         "registry.entry.add": (frozenset({"entry_kind", "definition"}), frozenset()),
         "registry.entry.enable": (frozenset({"entry_kind"}), frozenset()),
         "registry.entry.disable": (frozenset({"entry_kind"}), frozenset()),
@@ -544,6 +569,8 @@ class AuthorizedApplicationCommand:
     mission_assignment: MissionTaskAssignment | None = None
     mission_transition: MissionTransition | None = None
     mission_governance_request: MissionGovernanceRequest | None = None
+    mission_environment_planning_request: MissionEnvironmentPlanningRequest | None = None
+    mission_environment_plan: MissionEnvironmentPlan | None = None
 
 
 class ApplicationCommandAuthority:
@@ -622,6 +649,8 @@ class ApplicationCommandAuthority:
         mission_assignment: MissionTaskAssignment | None = None
         mission_transition: MissionTransition | None = None
         mission_governance_request: MissionGovernanceRequest | None = None
+        mission_environment_planning_request: MissionEnvironmentPlanningRequest | None = None
+        mission_environment_plan: MissionEnvironmentPlan | None = None
 
         try:
             if normalized.command_type == "run.initialize":
@@ -1203,6 +1232,65 @@ class ApplicationCommandAuthority:
                         for index, item in enumerate(mission_governance_request.evidence)
                     ),
                 )
+            elif normalized.command_type == "mission.environment.propose":
+                mission_environment_planning_request = (
+                    MissionEnvironmentPlanningRequest.model_validate(normalized.payload["request"])
+                )
+                if normalized.target_id != str(mission_environment_planning_request.request_id):
+                    raise ValueError("environment planning target differs from its request")
+                external_resources = tuple(
+                    dict.fromkeys(
+                        (
+                            f"mission:{mission_environment_planning_request.mission_id}",
+                            f"identity:{mission_environment_planning_request.owner_identity}",
+                            f"task:{mission_environment_planning_request.planning_task_id}",
+                            *(
+                                f"environment-context:{context.context_id}"
+                                for context in mission_environment_planning_request.contexts
+                            ),
+                            *(
+                                f"environment-observation:{context.observation_id}"
+                                for context in mission_environment_planning_request.contexts
+                            ),
+                        )
+                    )
+                )
+                timeout = self._config.crewai.model_timeout_seconds
+            elif normalized.command_type == "mission.environment.accept":
+                mission_environment_plan = MissionEnvironmentPlan.model_validate(
+                    normalized.payload["plan"]
+                )
+                if normalized.target_id != str(mission_environment_plan.mission_id):
+                    raise ValueError("environment plan target differs from its mission identity")
+                if normalized.expected_revision is None:
+                    raise ValueError("environment plan acceptance requires mission revision")
+                external_resources = tuple(
+                    dict.fromkeys(
+                        (
+                            f"mission:{mission_environment_plan.mission_id}",
+                            f"identity:{mission_environment_plan.owner_identity}",
+                            *(
+                                f"environment-context:{context.context_id}"
+                                for context in mission_environment_plan.contexts
+                            ),
+                            *(
+                                f"engine:{engine_id}"
+                                for decision in mission_environment_plan.decisions
+                                for engine_id in decision.eligible_engine_ids
+                            ),
+                        )
+                    )
+                )
+            elif normalized.command_type == "mission.environment.resolve":
+                if normalized.target_id is None:
+                    raise ValueError("environment plan resolution requires a plan identity")
+                context_id = str(normalized.payload["context_id"])
+                if not context_id or len(context_id) > 256:
+                    raise ValueError("environment plan context identity is invalid")
+                external_resources = (
+                    f"mission-environment-plan:{normalized.target_id}",
+                    f"environment-context:{context_id}",
+                )
             elif normalized.target_id is not None:
                 external_resources = (f"{normalized.target_type}:{normalized.target_id}",)
         except (KeyError, TypeError, ValueError, ValidationError) as exc:
@@ -1271,6 +1359,8 @@ class ApplicationCommandAuthority:
             mission_assignment=mission_assignment,
             mission_transition=mission_transition,
             mission_governance_request=mission_governance_request,
+            mission_environment_planning_request=mission_environment_planning_request,
+            mission_environment_plan=mission_environment_plan,
         )
 
     @staticmethod

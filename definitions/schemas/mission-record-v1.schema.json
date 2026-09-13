@@ -131,6 +131,19 @@
       "default": null,
       "title": "Current Crew Version"
     },
+    "current_environment_plan_version": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Current Environment Plan Version"
+    },
     "mission_id": {
       "format": "uuid",
       "title": "Mission Id",

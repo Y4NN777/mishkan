@@ -87,6 +87,7 @@ class CrewAIRuntimeConfig(StrictConfigModel):
     structured_output_retries: int = Field(default=2, ge=0, le=10)
     mission_pm_model_route: str = Field(default="planning", min_length=1)
     mission_cto_model_route: str = Field(default="planning", min_length=1)
+    mission_environment_model_route: str = Field(default="planning", min_length=1)
 
 
 class DaemonConfig(StrictConfigModel):
@@ -759,8 +760,14 @@ class MishkanConfig(StrictConfigModel):
             raise ValueError(f"model routes reference unknown providers: {missing_providers}")
 
         missing_routes = sorted(
-            {route for route in self.agent_routes.values() if route not in self.model_routes}
+            {
+                *self.agent_routes.values(),
+                self.crewai.mission_pm_model_route,
+                self.crewai.mission_cto_model_route,
+                self.crewai.mission_environment_model_route,
+            }
+            - set(self.model_routes)
         )
         if missing_routes:
-            raise ValueError(f"agent overrides reference unknown routes: {missing_routes}")
+            raise ValueError(f"CrewAI routing references unknown model routes: {missing_routes}")
         return self

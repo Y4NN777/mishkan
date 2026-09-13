@@ -14,6 +14,9 @@ from sqlalchemy.orm import Session
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.identity import new_id
 from mishkan.domain.time import utc_now
+from mishkan.missions.environment import (
+    MissionEnvironmentPlanAcceptance,
+)
 from mishkan.missions.models import (
     CrewAssignmentKind,
     MissionBrief,
@@ -30,6 +33,7 @@ from mishkan.persistence.sqlite import (
     MissionAssignmentRow,
     MissionBriefRow,
     MissionCrewRow,
+    MissionEnvironmentPlanRow,
     MissionRow,
     MissionTransitionRow,
     OrganizationRosterRow,
@@ -151,6 +155,7 @@ class SQLiteMissionRepository:
                     organization_version=durable.organization_version,
                     current_brief_version=None,
                     current_crew_version=None,
+                    current_environment_plan_version=None,
                     payload=payload,
                     created_at=durable.created_at.isoformat(),
                     updated_at=durable.updated_at.isoformat(),
@@ -562,6 +567,156 @@ class SQLiteMissionRepository:
             )
             return tuple(MissionTransition.model_validate_json(row.payload) for row in rows)
 
+    def accept_environment_plan(
+        self,
+        acceptance: MissionEnvironmentPlanAcceptance,
+        *,
+        expected_revision: int,
+    ) -> MissionEnvironmentPlanAcceptance:
+        plan = acceptance.plan
+        payload = self._json(acceptance)
+        with Session(self._engine) as session, session.begin():
+            existing = session.get(MissionEnvironmentPlanRow, str(plan.plan_id))
+            if existing is not None:
+                return self._idempotent(existing.payload, payload, acceptance)
+            mission_row = self._require_mission_row(session, str(plan.mission_id))
+            mission = MissionRecord.model_validate_json(mission_row.payload)
+            self._require_revision(mission, expected_revision)
+            if plan.mission_revision != mission.revision:
+                raise MishkanError(
+                    ErrorCode.REVISION_MISMATCH,
+                    "environment plan was authored against a stale mission revision",
+                )
+            if (
+                plan.brief_version != mission.current_brief_version
+                or plan.crew_version != mission.current_crew_version
+            ):
+                raise MishkanError(
+                    ErrorCode.REVISION_MISMATCH,
+                    "environment plan does not reference the current Brief and crew",
+                )
+            expected_version = (mission.current_environment_plan_version or 0) + 1
+            if plan.version != expected_version:
+                raise MishkanError(
+                    ErrorCode.REVISION_MISMATCH,
+                    "environment plan version is stale or skips a revision",
+                    details={"expected": expected_version, "received": plan.version},
+                )
+            crew = self._crew_row(session, str(plan.mission_id), plan.crew_version)
+            members = {item.identity_id: item for item in crew.members}
+            owner = members.get(plan.owner_identity)
+            if owner is None or owner.assignment_kind in {
+                CrewAssignmentKind.EVALUATION,
+                CrewAssignmentKind.REPORTING,
+                CrewAssignmentKind.AUDIT,
+            }:
+                raise MishkanError(
+                    ErrorCode.ROLE_CONFLICT,
+                    "environment plan owner is not an eligible current crew member",
+                )
+            assignment_rows = session.scalars(
+                select(MissionAssignmentRow).where(
+                    MissionAssignmentRow.mission_id == str(plan.mission_id)
+                )
+            ).all()
+            latest: dict[str, MissionTaskAssignment] = {}
+            for row in assignment_rows:
+                assignment = MissionTaskAssignment.model_validate_json(row.payload)
+                current = latest.get(assignment.task_id)
+                if current is None or (
+                    assignment.assignment_revision > current.assignment_revision
+                ):
+                    latest[assignment.task_id] = assignment
+            planning = latest.get(plan.planning_task_id)
+            if planning is None or planning.accountable_owner != plan.owner_identity:
+                raise MishkanError(
+                    ErrorCode.ROLE_CONFLICT,
+                    "environment planning assignment does not belong to the plan owner",
+                )
+            affected = {
+                task_id for context in plan.contexts for task_id in context.affected_task_ids
+            }
+            if unknown := affected - set(latest):
+                raise MishkanError(
+                    ErrorCode.PLAN,
+                    "environment plan references unassigned dependent tasks",
+                    details={"unknown_task_ids": sorted(unknown)},
+                )
+            duplicate = session.scalar(
+                select(MissionEnvironmentPlanRow).where(
+                    MissionEnvironmentPlanRow.mission_id == str(plan.mission_id),
+                    MissionEnvironmentPlanRow.version == plan.version,
+                )
+            )
+            if duplicate is not None:
+                raise MishkanError(
+                    ErrorCode.DUPLICATE_RESULT,
+                    "environment plan version already has another immutable identity",
+                )
+            session.add(
+                MissionEnvironmentPlanRow(
+                    plan_id=str(plan.plan_id),
+                    mission_id=str(plan.mission_id),
+                    version=plan.version,
+                    fingerprint=plan.fingerprint,
+                    owner_identity=plan.owner_identity,
+                    payload=payload,
+                    accepted_at=acceptance.accepted_at.isoformat(),
+                )
+            )
+            updated = mission.model_copy(
+                update={
+                    "revision": mission.revision + 1,
+                    "current_environment_plan_version": plan.version,
+                    "updated_at": utc_now(),
+                }
+            )
+            self._update_mission_row(mission_row, updated)
+            self._event(
+                session,
+                aggregate_id=str(plan.mission_id),
+                entity_type="mission",
+                event_type="mission.environment_plan_accepted",
+                payload={
+                    "plan_id": str(plan.plan_id),
+                    "plan_version": plan.version,
+                    "fingerprint": plan.fingerprint,
+                    "owner_identity": plan.owner_identity,
+                    "context_ids": [item.context_id for item in plan.contexts],
+                    "revision": updated.revision,
+                },
+            )
+        return acceptance
+
+    def environment_plan(
+        self,
+        mission_id: str,
+        version: int | None = None,
+    ) -> MissionEnvironmentPlanAcceptance:
+        with Session(self._engine) as session:
+            mission = MissionRecord.model_validate_json(
+                self._require_mission_row(session, mission_id).payload
+            )
+            selected = version or mission.current_environment_plan_version
+            if selected is None:
+                raise MishkanError(ErrorCode.MISSION, "mission has no accepted environment plan")
+            row = session.scalar(
+                select(MissionEnvironmentPlanRow).where(
+                    MissionEnvironmentPlanRow.mission_id == mission_id,
+                    MissionEnvironmentPlanRow.version == selected,
+                )
+            )
+            if row is None:
+                raise MishkanError(ErrorCode.MISSION, "environment plan revision does not exist")
+            return MissionEnvironmentPlanAcceptance.model_validate_json(row.payload)
+
+    def environment_plan_by_id(self, plan_id: str) -> MissionEnvironmentPlanAcceptance:
+        with Session(self._engine) as session:
+            row = session.get(MissionEnvironmentPlanRow, plan_id)
+            if row is None:
+                raise MishkanError(ErrorCode.MISSION, "accepted environment plan does not exist")
+            return MissionEnvironmentPlanAcceptance.model_validate_json(row.payload)
+
     def mission(self, mission_id: str) -> MissionRecord:
         with Session(self._engine) as session:
             return MissionRecord.model_validate_json(
@@ -681,6 +836,7 @@ class SQLiteMissionRepository:
         row.revision = record.revision
         row.current_brief_version = record.current_brief_version
         row.current_crew_version = record.current_crew_version
+        row.current_environment_plan_version = record.current_environment_plan_version
         row.payload = SQLiteMissionRepository._json(record)
         row.updated_at = record.updated_at.isoformat()
 

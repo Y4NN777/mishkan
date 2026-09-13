@@ -57,6 +57,10 @@ from mishkan.conversations import (
     SQLiteConversationRepository,
 )
 from mishkan.crewai.credentials import CredentialPoolResolver
+from mishkan.crewai.mission_environment import (
+    CrewAIMissionEnvironmentPlanningRunner,
+    MissionEnvironmentPlanningRunner,
+)
 from mishkan.crewai.mission_governance import (
     CrewAIMissionGovernanceRunner,
     MissionGovernanceResult,
@@ -85,6 +89,7 @@ from mishkan.environment import (
     EnvironmentObserver,
     EnvironmentOperationPlan,
     EnvironmentOperationPlanner,
+    EnvironmentProfile,
     EnvironmentResolver,
     EnvironmentVerification,
     TechnicalPackLoader,
@@ -120,6 +125,10 @@ from mishkan.missions import (
     MissionTemplateLoader,
     MissionTemplateService,
     SQLiteMissionRepository,
+)
+from mishkan.missions.environment import (
+    MissionEnvironmentPlanAcceptance,
+    MissionEnvironmentPlanValidator,
 )
 from mishkan.organization import load_canonical_organization
 from mishkan.persistence import LocalRunRepository, SchemaManager, SQLiteApplicationRepository
@@ -325,6 +334,7 @@ def create_app(
     mcp_stdio_commands: Mapping[str, McpStdioCommandBuilder] | None = None,
     skill_learning_runner: SkillLearningRunner | None = None,
     mission_governance_runner: MissionGovernanceRunner | None = None,
+    mission_environment_runner: MissionEnvironmentPlanningRunner | None = None,
     telemetry_exporter_factory: Callable[[], TelemetryExporter] | None = None,
 ) -> FastAPI:
     paths = DaemonPaths.from_config(config)
@@ -377,6 +387,7 @@ def create_app(
     environment_operation_planner: EnvironmentOperationPlanner | None = None
     environment_evidence_service: EnvironmentEvidenceService | None = None
     technical_pack_service: TechnicalPackService | None = None
+    environment_profile: EnvironmentProfile | None = None
     if config.engineering_profile is not None:
         environment_profile = load_environment_profile(
             config.engineering_profile,
@@ -554,6 +565,9 @@ def create_app(
         busy_timeout_ms=persistence.busy_timeout_ms,
     )
     mission_governance = mission_governance_runner or CrewAIMissionGovernanceRunner(config)
+    mission_environment_planning = (
+        mission_environment_runner or CrewAIMissionEnvironmentPlanningRunner(config)
+    )
     mission_templates = MissionTemplateService(
         MissionTemplateLoader().load(config.mission_template_sources, paths.workspace)
     )
@@ -853,6 +867,8 @@ def create_app(
                                 mission_repository,
                                 conversation_repository,
                                 mission_governance,
+                                mission_environment_planning,
+                                environment_profile,
                             )
                         except MishkanError as error:
                             result = repository.fail_reserved(
@@ -1083,6 +1099,21 @@ def create_app(
         version: Annotated[int | None, Query(ge=1)] = None,
     ) -> MissionCrewRevision:
         return await _thread_call(mission_repository.crew, str(mission_id), version)
+
+    @app.get(
+        "/v1/missions/{mission_id}/environment-plan",
+        response_model=MissionEnvironmentPlanAcceptance,
+    )
+    async def mission_environment_plan_get(
+        mission_id: UUID,
+        _principal: TokenRecord = authenticated,
+        version: Annotated[int | None, Query(ge=1)] = None,
+    ) -> MissionEnvironmentPlanAcceptance:
+        return await _thread_call(
+            mission_repository.environment_plan,
+            str(mission_id),
+            version,
+        )
 
     @app.get("/v1/missions/{mission_id}/assignments", response_model=None)
     async def mission_assignments(
@@ -1743,6 +1774,8 @@ def _dispatch(
     mission_repository: SQLiteMissionRepository,
     conversation_repository: SQLiteConversationRepository,
     mission_governance: MissionGovernanceRunner,
+    mission_environment_planning: MissionEnvironmentPlanningRunner,
+    environment_profile: EnvironmentProfile | None,
 ) -> tuple[str, dict[str, object]]:
     payload = command.payload
     if command.command_type == "system.checkpoint" and command.target_type == "system":
@@ -1882,6 +1915,136 @@ def _dispatch(
                 "CrewAI governance proposal returned a different mission snapshot",
             )
         return "mission.governance_proposed", proposal.model_dump(mode="json")
+    if command.command_type == "mission.environment.propose":
+        planning_request = authorized.mission_environment_planning_request
+        if planning_request is None or environment_repository is None:
+            raise MishkanError(
+                ErrorCode.REQUIRED_DEPENDENCY,
+                "mission environment planning is not configured",
+            )
+        mission = mission_repository.mission(str(planning_request.mission_id))
+        brief = mission_repository.brief(str(mission.mission_id))
+        crew = mission_repository.crew(str(mission.mission_id))
+        assignments = mission_repository.assignments(str(mission.mission_id))
+        observations = tuple(
+            environment_repository.observation(str(context.observation_id))
+            for context in planning_request.contexts
+        )
+        MissionEnvironmentPlanValidator.validate_request(
+            planning_request,
+            mission=mission,
+            brief=brief,
+            crew=crew,
+            assignments=assignments,
+            observations=observations,
+            profile=environment_profile,
+        )
+        proposed_environment_plan = mission_environment_planning.propose(
+            planning_request,
+            mission=mission,
+            brief=brief,
+            crew=crew,
+            observations=observations,
+            plan_version=(mission.current_environment_plan_version or 0) + 1,
+        )
+        if (
+            proposed_environment_plan.mission_id != mission.mission_id
+            or proposed_environment_plan.source_request_id != planning_request.request_id
+            or proposed_environment_plan.owner_identity != planning_request.owner_identity
+            or proposed_environment_plan.contexts != planning_request.contexts
+        ):
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT,
+                "CrewAI environment proposal changed its authoritative planning input",
+            )
+        MissionEnvironmentPlanValidator.validate_plan(
+            proposed_environment_plan,
+            mission=mission,
+            brief=brief,
+            crew=crew,
+            assignments=assignments,
+            observations=observations,
+            profile=environment_profile,
+        )
+        return (
+            "mission.environment_plan_proposed",
+            proposed_environment_plan.model_dump(mode="json"),
+        )
+    if command.command_type == "mission.environment.accept":
+        accepted_environment_plan = authorized.mission_environment_plan
+        if (
+            accepted_environment_plan is None
+            or command.expected_revision is None
+            or environment_repository is None
+        ):
+            raise MishkanError(
+                ErrorCode.REQUIRED_DEPENDENCY,
+                "mission environment plan acceptance is not configured",
+            )
+        mission = mission_repository.mission(str(accepted_environment_plan.mission_id))
+        brief = mission_repository.brief(str(accepted_environment_plan.mission_id))
+        crew = mission_repository.crew(str(accepted_environment_plan.mission_id))
+        assignments = mission_repository.assignments(str(accepted_environment_plan.mission_id))
+        observations = tuple(
+            environment_repository.observation(str(context.observation_id))
+            for context in accepted_environment_plan.contexts
+        )
+        MissionEnvironmentPlanValidator.validate_plan(
+            accepted_environment_plan,
+            mission=mission,
+            brief=brief,
+            crew=crew,
+            assignments=assignments,
+            observations=observations,
+            profile=environment_profile,
+        )
+        acceptance = MissionEnvironmentPlanAcceptance(
+            plan=accepted_environment_plan,
+            accepted_by=command.actor_id,
+            policy_fingerprint=authorized.decision.policy_fingerprint,
+        )
+        recorded_environment_acceptance = mission_repository.accept_environment_plan(
+            acceptance,
+            expected_revision=command.expected_revision,
+        )
+        return (
+            "mission.environment_plan_accepted",
+            recorded_environment_acceptance.model_dump(mode="json"),
+        )
+    if command.command_type == "mission.environment.resolve":
+        if (
+            command.target_id is None
+            or environment_repository is None
+            or environment_resolver is None
+        ):
+            raise MishkanError(
+                ErrorCode.REQUIRED_DEPENDENCY,
+                "mission environment resolution is not configured",
+            )
+        acceptance = mission_repository.environment_plan_by_id(command.target_id)
+        mission = mission_repository.mission(str(acceptance.plan.mission_id))
+        if mission.current_environment_plan_version != acceptance.plan.version:
+            raise MishkanError(
+                ErrorCode.REVISION_MISMATCH,
+                "only the current accepted mission environment plan can be resolved",
+            )
+        context_id = str(payload["context_id"])
+        mission_environment_binding_request = acceptance.plan.binding_request(
+            context_id,
+            policy_fingerprint=authorized.decision.policy_fingerprint,
+        )
+        observation = environment_repository.observation(
+            str(mission_environment_binding_request.observation_id)
+        )
+        binding = environment_resolver.resolve(
+            mission_environment_binding_request,
+            observation,
+        )
+        recorded_binding = environment_repository.record_binding(binding)
+        return (
+            f"mission.environment_binding_{recorded_binding.state.value}",
+            recorded_binding.model_dump(mode="json"),
+        )
     if command.command_type == "artifact.upload.open":
         upload = artifacts.open_upload(
             expected_size=int(payload["expected_size"]),

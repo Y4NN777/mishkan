@@ -1,0 +1,117 @@
+{
+  "$defs": {
+    "MissionEnvironmentDecisionOutput": {
+      "additionalProperties": false,
+      "properties": {
+        "alternatives_considered": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Alternatives Considered",
+          "type": "array"
+        },
+        "cleanup_criteria": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Cleanup Criteria",
+          "type": "array"
+        },
+        "constraints": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Constraints",
+          "type": "array"
+        },
+        "context_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Context Id",
+          "type": "string"
+        },
+        "declared_effects": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Declared Effects",
+          "type": "array"
+        },
+        "evidence_references": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Evidence References",
+          "type": "array"
+        },
+        "rationale": {
+          "maxLength": 8192,
+          "minLength": 3,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "requested_outcome": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Requested Outcome",
+          "type": "string"
+        },
+        "selected_alternative_id": {
+          "pattern": "^[a-z][a-z0-9_.-]{1,127}$",
+          "title": "Selected Alternative Id",
+          "type": "string"
+        },
+        "unknowns": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Unknowns",
+          "type": "array"
+        },
+        "verification_checks": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Verification Checks",
+          "type": "array"
+        }
+      },
+      "required": [
+        "context_id",
+        "selected_alternative_id",
+        "requested_outcome",
+        "rationale",
+        "constraints",
+        "declared_effects",
+        "verification_checks",
+        "cleanup_criteria",
+        "alternatives_considered",
+        "unknowns",
+        "evidence_references"
+      ],
+      "title": "MissionEnvironmentDecisionOutput",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "decisions": {
+      "items": {
+        "$ref": "#/$defs/MissionEnvironmentDecisionOutput"
+      },
+      "maxItems": 64,
+      "minItems": 1,
+      "title": "Decisions",
+      "type": "array"
+    }
+  },
+  "required": [
+    "decisions"
+  ],
+  "title": "MissionEnvironmentPlanningOutput",
+  "type": "object"
+}

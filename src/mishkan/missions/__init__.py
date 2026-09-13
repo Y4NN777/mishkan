@@ -1,5 +1,15 @@
 """Mission governance contracts and durable services."""
 
+from mishkan.missions.environment import (
+    CrewAIPlanningLineage,
+    MissionEnvironmentAlternative,
+    MissionEnvironmentContextRequest,
+    MissionEnvironmentDecision,
+    MissionEnvironmentPlan,
+    MissionEnvironmentPlanAcceptance,
+    MissionEnvironmentPlanningRequest,
+    MissionEnvironmentPlanValidator,
+)
 from mishkan.missions.models import (
     CrewAssignmentKind,
     CrewSelectionEvidence,
@@ -26,6 +36,7 @@ from mishkan.missions.templates import (
 )
 
 __all__ = [
+    "CrewAIPlanningLineage",
     "CrewAssignmentKind",
     "CrewSelectionEvidence",
     "ExecutiveConfirmation",
@@ -33,7 +44,14 @@ __all__ = [
     "MissionBriefStatus",
     "MissionCrewMember",
     "MissionCrewRevision",
+    "MissionEnvironmentAlternative",
+    "MissionEnvironmentContextRequest",
+    "MissionEnvironmentDecision",
     "MissionEnvironmentIntent",
+    "MissionEnvironmentPlan",
+    "MissionEnvironmentPlanAcceptance",
+    "MissionEnvironmentPlanValidator",
+    "MissionEnvironmentPlanningRequest",
     "MissionOrigin",
     "MissionOriginKind",
     "MissionRecord",

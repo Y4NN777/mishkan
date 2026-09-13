@@ -269,6 +269,12 @@
           "title": "Mission Cto Model Route",
           "type": "string"
         },
+        "mission_environment_model_route": {
+          "default": "planning",
+          "minLength": 1,
+          "title": "Mission Environment Model Route",
+          "type": "string"
+        },
         "mission_pm_model_route": {
           "default": "planning",
           "minLength": 1,

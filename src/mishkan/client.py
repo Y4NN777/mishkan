@@ -83,6 +83,11 @@ from mishkan.missions import (
     MissionTemplateDefinition,
     MissionTransition,
 )
+from mishkan.missions.environment import (
+    MissionEnvironmentPlan,
+    MissionEnvironmentPlanAcceptance,
+    MissionEnvironmentPlanningRequest,
+)
 from mishkan.organization import OrganizationRosterDefinition
 from mishkan.skills.models import (
     SkillCurationProposal,
@@ -231,6 +236,71 @@ class Mishkan:
             )
         )
         return MissionGovernanceResult.model_validate(result.payload)
+
+    def propose_mission_environment(
+        self,
+        request: MissionEnvironmentPlanningRequest,
+    ) -> MissionEnvironmentPlan:
+        result = self.command(
+            ApplicationCommand(
+                command_type="mission.environment.propose",
+                actor_id=self.principal_id,
+                target_type="mission_environment_planning_request",
+                target_id=str(request.request_id),
+                expected_revision=0,
+                payload={"request": request.model_dump(mode="json")},
+            )
+        )
+        return MissionEnvironmentPlan.model_validate(result.payload)
+
+    def accept_mission_environment(
+        self,
+        plan: MissionEnvironmentPlan,
+        *,
+        expected_revision: int,
+    ) -> MissionEnvironmentPlanAcceptance:
+        result = self.command(
+            ApplicationCommand(
+                command_type="mission.environment.accept",
+                actor_id=self.principal_id,
+                target_type="mission",
+                target_id=str(plan.mission_id),
+                expected_revision=expected_revision,
+                payload={"plan": plan.model_dump(mode="json")},
+            )
+        )
+        return MissionEnvironmentPlanAcceptance.model_validate(result.payload)
+
+    def resolve_mission_environment(
+        self,
+        plan_id: str,
+        context_id: str,
+    ) -> EnvironmentBinding:
+        result = self.command(
+            ApplicationCommand(
+                command_type="mission.environment.resolve",
+                actor_id=self.principal_id,
+                target_type="mission_environment_plan",
+                target_id=plan_id,
+                payload={"context_id": context_id},
+            )
+        )
+        return EnvironmentBinding.model_validate(result.payload)
+
+    def mission_environment_plan(
+        self,
+        mission_id: str,
+        *,
+        version: int | None = None,
+    ) -> MissionEnvironmentPlanAcceptance:
+        identity = quote(mission_id, safe="")
+        response = self._client.get(
+            f"/v1/missions/{identity}/environment-plan",
+            headers=self._headers(),
+            params={"version": version} if version is not None else None,
+        )
+        response.raise_for_status()
+        return MissionEnvironmentPlanAcceptance.model_validate(response.json())
 
     def record_mission_brief(
         self,
