@@ -21,7 +21,18 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from mishkan.application import ApplicationCommand
 from mishkan.daemon.auth import TokenFile
 from mishkan.domain.errors import ErrorCode, MishkanError
-from mishkan.mcp.facade import EventQuery, McpFacadePort, McpFacadeRouter, RunQuery
+from mishkan.mcp.facade import (
+    ConversationListQuery,
+    ConversationQuery,
+    EventQuery,
+    LimitQuery,
+    McpFacadePort,
+    McpFacadeRouter,
+    MissionQuery,
+    MissionTemplateQuery,
+    ProfessionalCompetenceQuery,
+    RunQuery,
+)
 
 _principal: ContextVar[str | None] = ContextVar("mishkan_mcp_principal", default=None)
 
@@ -128,6 +139,15 @@ class McpProtocolFacade:
                 "system.snapshot": "Read a bounded, cursor-consistent daemon snapshot.",
                 "events.list": "Read a bounded page of durable application events.",
                 "run.get": "Read one durable run projection by identifier.",
+                "organization.get": "Read the canonical organization roster.",
+                "organization.competence.get": "Read attributable competence evidence.",
+                "mission.list": "List bounded durable mission projections.",
+                "mission.get": "Read one durable mission projection.",
+                "mission.inspect": "Inspect one mission and its bounded related records.",
+                "mission.templates.list": "List optional contextual mission guidance.",
+                "conversation.list": "List bounded durable conversation channels.",
+                "conversation.get": "Read one channel and its bounded message history.",
+                "advisory.candidates.list": "List candidates without granting activation.",
                 "command.submit": "Submit one governed, idempotent application command.",
             }
             return [
@@ -166,6 +186,10 @@ class McpProtocolFacade:
                 "mishkan://snapshot": "MISHKAN snapshot",
                 "mishkan://runs": "MISHKAN runs",
                 "mishkan://events": "MISHKAN events",
+                "mishkan://organization": "MISHKAN organization",
+                "mishkan://missions": "MISHKAN missions",
+                "mishkan://conversations": "MISHKAN conversations",
+                "mishkan://advisory/candidates": "MISHKAN advisory candidates",
             }
             return [
                 types.Resource(
@@ -206,5 +230,14 @@ class McpProtocolFacade:
             "system.snapshot": empty,
             "events.list": EventQuery.model_json_schema(),
             "run.get": RunQuery.model_json_schema(),
+            "organization.get": empty,
+            "organization.competence.get": ProfessionalCompetenceQuery.model_json_schema(),
+            "mission.list": LimitQuery.model_json_schema(),
+            "mission.get": MissionQuery.model_json_schema(),
+            "mission.inspect": MissionQuery.model_json_schema(),
+            "mission.templates.list": MissionTemplateQuery.model_json_schema(),
+            "conversation.list": ConversationListQuery.model_json_schema(),
+            "conversation.get": ConversationQuery.model_json_schema(),
+            "advisory.candidates.list": empty,
             "command.submit": ApplicationCommand.model_json_schema(),
         }

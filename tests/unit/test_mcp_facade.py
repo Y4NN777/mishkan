@@ -53,6 +53,15 @@ async def test_facade_exposes_only_implemented_allowlisted_operations(tmp_path: 
         "system.snapshot",
         "events.list",
         "run.get",
+        "organization.get",
+        "organization.competence.get",
+        "mission.list",
+        "mission.get",
+        "mission.inspect",
+        "mission.templates.list",
+        "conversation.list",
+        "conversation.get",
+        "advisory.candidates.list",
         "command.submit",
     )
     assert await router.invoke("system.health", {}, principal_id="harness") == {

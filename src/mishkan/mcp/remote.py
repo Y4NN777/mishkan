@@ -11,7 +11,16 @@ from mishkan.application import ApplicationCommand
 from mishkan.config.models import DaemonConfig, McpConfig
 from mishkan.daemon.auth import TokenFile
 from mishkan.domain.errors import ErrorCode, MishkanError
-from mishkan.mcp.facade import EventQuery, RunQuery
+from mishkan.mcp.facade import (
+    ConversationListQuery,
+    ConversationQuery,
+    EventQuery,
+    LimitQuery,
+    MissionQuery,
+    MissionTemplateQuery,
+    ProfessionalCompetenceQuery,
+    RunQuery,
+)
 
 
 class DaemonMcpFacade:
@@ -56,16 +65,16 @@ class DaemonMcpFacade:
             return await self._request_object("GET", "/v1/snapshot")
         if operation == "events.list":
             query = self._validate(EventQuery, arguments)
-            params: list[tuple[str, str | int]] = [
+            event_params: list[tuple[str, str | int]] = [
                 ("after", query.after),
                 ("limit", query.limit),
             ]
-            params.extend(("event_type", value) for value in query.event_types)
+            event_params.extend(("event_type", value) for value in query.event_types)
             if query.entity_type is not None:
-                params.append(("entity_type", query.entity_type))
+                event_params.append(("entity_type", query.entity_type))
             if query.entity_id is not None:
-                params.append(("entity_id", query.entity_id))
-            return await self._request_object("GET", "/v1/events", params=params)
+                event_params.append(("entity_id", query.entity_id))
+            return await self._request_object("GET", "/v1/events", params=event_params)
         if operation == "run.get":
             query = self._validate(RunQuery, arguments)
             runs = await self._request("GET", "/v1/runs", params={"offset": 0, "limit": 1000})
@@ -82,6 +91,64 @@ class DaemonMcpFacade:
             if found is None:
                 raise MishkanError(ErrorCode.MISSION, "requested run does not exist")
             return dict(found)
+        if operation == "organization.get":
+            self._require_empty(arguments)
+            return await self._request_object("GET", "/v1/organization")
+        if operation == "organization.competence.get":
+            query = self._validate(ProfessionalCompetenceQuery, arguments)
+            return await self._request_object(
+                "GET",
+                f"/v1/organization/profiles/{query.identity_id}/competence",
+                params={"kind": query.kind.value, "subject": query.subject},
+            )
+        if operation == "mission.list":
+            query = self._validate(LimitQuery, arguments)
+            missions = await self._request("GET", "/v1/missions", params={"limit": query.limit})
+            return {"missions": self._require_list(missions, "mission")}
+        if operation == "mission.get":
+            query = self._validate(MissionQuery, arguments)
+            return await self._request_object("GET", f"/v1/missions/{query.mission_id}")
+        if operation == "mission.inspect":
+            query = self._validate(MissionQuery, arguments)
+            return await self._request_object(
+                "GET",
+                f"/v1/missions/{query.mission_id}/inspection",
+                params={"limit": query.limit},
+            )
+        if operation == "mission.templates.list":
+            query = self._validate(MissionTemplateQuery, arguments)
+            template_params: list[tuple[str, str]] = [
+                ("organization_version", query.organization_version)
+            ]
+            template_params.extend(("signal", signal) for signal in query.signals)
+            templates = await self._request("GET", "/v1/mission-templates", params=template_params)
+            return {"templates": self._require_list(templates, "mission template")}
+        if operation == "conversation.list":
+            query = self._validate(ConversationListQuery, arguments)
+            conversation_params: dict[str, str | int] = {"limit": query.limit}
+            if query.mission_id is not None:
+                conversation_params["mission_id"] = query.mission_id
+            conversations = await self._request(
+                "GET", "/v1/conversations", params=conversation_params
+            )
+            return {"conversations": self._require_list(conversations, "conversation")}
+        if operation == "conversation.get":
+            query = self._validate(ConversationQuery, arguments)
+            channel = await self._request_object(
+                "GET", f"/v1/conversations/{query.conversation_id}"
+            )
+            messages = await self._request(
+                "GET",
+                f"/v1/conversations/{query.conversation_id}/messages",
+                params={"limit": query.limit},
+            )
+            return {
+                "conversation": channel,
+                "messages": self._require_list(messages, "conversation message"),
+            }
+        if operation == "advisory.candidates.list":
+            self._require_empty(arguments)
+            return await self._request_object("GET", "/v1/context/community-candidates")
         command = self._validate(ApplicationCommand, arguments)
         if command.actor_id != principal_id:
             raise MishkanError(
@@ -102,7 +169,16 @@ class DaemonMcpFacade:
         if uri == "mishkan://runs":
             runs = await self._request("GET", "/v1/runs", params={"offset": 0, "limit": 100})
             return {"runs": runs}
-        return await self.invoke("events.list", {"limit": 100}, principal_id=principal_id)
+        operation_by_uri = {
+            "mishkan://events": "events.list",
+            "mishkan://organization": "organization.get",
+            "mishkan://missions": "mission.list",
+            "mishkan://conversations": "conversation.list",
+            "mishkan://advisory/candidates": "advisory.candidates.list",
+        }
+        operation = operation_by_uri[uri]
+        arguments = {"limit": 100} if operation in {"mission.list", "conversation.list"} else {}
+        return await self.invoke(operation, arguments, principal_id=principal_id)
 
     async def _request(
         self,
@@ -149,6 +225,12 @@ class DaemonMcpFacade:
         if not isinstance(result, dict):
             raise MishkanError(ErrorCode.MCP, "daemon returned an invalid object response")
         return dict(result)
+
+    @staticmethod
+    def _require_list(result: Any, kind: str) -> list[Any]:
+        if not isinstance(result, list):
+            raise MishkanError(ErrorCode.MCP, f"daemon returned an invalid {kind} collection")
+        return result
 
     @staticmethod
     def _raise_daemon_error(response: httpx.Response) -> None:

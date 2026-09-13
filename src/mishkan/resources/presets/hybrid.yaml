@@ -185,8 +185,29 @@ mcp:
   connections: {}
   exposure_profiles:
     governed-harness:
-      operations: [system.health, system.snapshot, events.list, run.get, command.submit]
-      resources: [mishkan://snapshot, mishkan://runs, mishkan://events]
+      operations:
+        - system.health
+        - system.snapshot
+        - events.list
+        - run.get
+        - organization.get
+        - organization.competence.get
+        - mission.list
+        - mission.get
+        - mission.inspect
+        - mission.templates.list
+        - conversation.list
+        - conversation.get
+        - advisory.candidates.list
+        - command.submit
+      resources:
+        - mishkan://snapshot
+        - mishkan://runs
+        - mishkan://events
+        - mishkan://organization
+        - mishkan://missions
+        - mishkan://conversations
+        - mishkan://advisory/candidates
       prompts: []
   facade:
     enabled: true

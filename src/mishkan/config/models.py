@@ -483,10 +483,33 @@ class McpConnectionConfig(StrictConfigModel):
 
 
 SUPPORTED_MCP_FACADE_OPERATIONS = frozenset(
-    {"system.health", "system.snapshot", "events.list", "run.get", "command.submit"}
+    {
+        "system.health",
+        "system.snapshot",
+        "events.list",
+        "run.get",
+        "organization.get",
+        "organization.competence.get",
+        "mission.list",
+        "mission.get",
+        "mission.inspect",
+        "mission.templates.list",
+        "conversation.list",
+        "conversation.get",
+        "advisory.candidates.list",
+        "command.submit",
+    }
 )
 SUPPORTED_MCP_FACADE_RESOURCES = frozenset(
-    {"mishkan://snapshot", "mishkan://runs", "mishkan://events"}
+    {
+        "mishkan://snapshot",
+        "mishkan://runs",
+        "mishkan://events",
+        "mishkan://organization",
+        "mishkan://missions",
+        "mishkan://conversations",
+        "mishkan://advisory/candidates",
+    }
 )
 
 

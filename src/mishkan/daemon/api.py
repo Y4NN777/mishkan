@@ -956,6 +956,12 @@ def create_app(
             execute_command,
             schema_revision=schema_revision,
             event_page_limit=daemon.event_page_limit,
+            organization=load_canonical_organization(),
+            missions=mission_repository,
+            conversations=conversation_repository,
+            professional_evolution=professional_evolution,
+            mission_templates=mission_templates,
+            advisory=community_recommendations,
         )
         mcp_http = McpHttpFacade(
             router,
@@ -1217,6 +1223,50 @@ def create_app(
             conversation_repository.interventions, str(mission_id), limit=limit
         )
         return tuple(record.model_dump(mode="json") for record in records)
+
+    @app.get("/v1/missions/{mission_id}/inspection", response_model=None)
+    async def mission_inspection(
+        mission_id: UUID,
+        _principal: TokenRecord = authenticated,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
+    ) -> dict[str, object]:
+        identity = str(mission_id)
+        mission = await _thread_call(mission_repository.mission, identity)
+        brief = (
+            await _thread_call(mission_repository.brief, identity)
+            if mission.current_brief_version is not None
+            else None
+        )
+        crew = (
+            await _thread_call(mission_repository.crew, identity)
+            if mission.current_crew_version is not None
+            else None
+        )
+        environment_plan = (
+            await _thread_call(mission_repository.environment_plan, identity)
+            if mission.current_environment_plan_version is not None
+            else None
+        )
+        assignments, transitions, channels, escalations, interventions = await asyncio.gather(
+            _thread_call(mission_repository.assignments, identity, limit=limit),
+            _thread_call(mission_repository.transitions, identity, limit=limit),
+            _thread_call(conversation_repository.channels, mission_id=identity, limit=limit),
+            _thread_call(conversation_repository.escalations, identity, limit=limit),
+            _thread_call(conversation_repository.interventions, identity, limit=limit),
+        )
+        return {
+            "mission": mission.model_dump(mode="json"),
+            "brief": brief.model_dump(mode="json") if brief is not None else None,
+            "crew": crew.model_dump(mode="json") if crew is not None else None,
+            "environment_plan": (
+                environment_plan.model_dump(mode="json") if environment_plan is not None else None
+            ),
+            "assignments": [item.model_dump(mode="json") for item in assignments],
+            "transitions": [item.model_dump(mode="json") for item in transitions],
+            "conversations": [item.model_dump(mode="json") for item in channels],
+            "escalations": [item.model_dump(mode="json") for item in escalations],
+            "interventions": [item.model_dump(mode="json") for item in interventions],
+        }
 
     @app.get("/v1/tools/registry")
     async def tool_registry(

@@ -13,6 +13,8 @@ from mishkan.daemon import DaemonBootstrap, create_app
 from mishkan.daemon.auth import TokenFile
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.mcp import DaemonMcpFacade
+from mishkan.missions import MissionOrigin, MissionOriginKind, MissionRecord
+from mishkan.organization import load_canonical_organization
 
 
 @pytest.fixture
@@ -49,18 +51,67 @@ async def test_remote_facade_forwards_queries_commands_and_resources(tmp_path: P
         expected_revision=0,
         payload={"checkpoint": "remote-facade"},
     )
+    roster = load_canonical_organization()
+    mission = MissionRecord(
+        origin=MissionOrigin(
+            kind=MissionOriginKind.CEO,
+            actor_id=token.principal_id,
+            objective="Inspect a mission through the governed MCP facade",
+        ),
+        organization_id=roster.organization_id,
+        organization_version=roster.organization_version,
+    )
+    mission_command = ApplicationCommand(
+        command_type="mission.create",
+        actor_id=token.principal_id,
+        target_type="mission",
+        target_id=str(mission.mission_id),
+        expected_revision=0,
+        payload={"record": mission.model_dump(mode="json")},
+    )
 
     health = await facade.invoke("system.health", {}, principal_id=token.principal_id)
+    organization = await facade.invoke("organization.get", {}, principal_id=token.principal_id)
+    missions = await facade.read_resource("mishkan://missions", principal_id=token.principal_id)
+    conversations = await facade.read_resource(
+        "mishkan://conversations", principal_id=token.principal_id
+    )
+    advisory = await facade.read_resource(
+        "mishkan://advisory/candidates", principal_id=token.principal_id
+    )
     result = await facade.invoke(
         "command.submit",
         command.model_dump(mode="json"),
         principal_id=token.principal_id,
     )
+    mission_result = await facade.invoke(
+        "command.submit",
+        mission_command.model_dump(mode="json"),
+        principal_id=token.principal_id,
+    )
+    mission_projection = await facade.invoke(
+        "mission.get",
+        {"mission_id": str(mission.mission_id)},
+        principal_id=token.principal_id,
+    )
+    mission_inspection = await facade.invoke(
+        "mission.inspect",
+        {"mission_id": str(mission.mission_id), "limit": 10},
+        principal_id=token.principal_id,
+    )
     events = await facade.read_resource("mishkan://events", principal_id=token.principal_id)
 
     assert health == {"status": "ready", "schema": "professional_evolution_v1"}
+    assert len(organization["identities"]) == 59
+    assert missions == {"missions": []}
+    assert conversations == {"conversations": []}
+    assert advisory["activation_authorized"] is False
     assert result["status"] == "accepted"
-    assert len(events["events"]) == 1
+    assert mission_result["status"] == "accepted"
+    assert mission_projection["mission_id"] == str(mission.mission_id)
+    assert mission_inspection["mission"] == mission_projection
+    assert mission_inspection["brief"] is None
+    assert len(events["events"]) == 3
 
 
 @pytest.mark.anyio
