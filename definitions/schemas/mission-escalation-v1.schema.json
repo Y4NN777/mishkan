@@ -44,9 +44,7 @@
     "EscalationState": {
       "enum": [
         "open",
-        "answered",
-        "resolved",
-        "withdrawn"
+        "answered"
       ],
       "title": "EscalationState",
       "type": "string"

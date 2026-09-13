@@ -419,6 +419,30 @@ def test_executive_conversation_and_message_survive_repository_restart(tmp_path:
     assert reopened.messages(str(channel.conversation_id)) == (message,)
 
 
+def test_only_one_executive_conversation_can_exist(tmp_path: Path) -> None:
+    _missions, conversations, _mission = _setup(tmp_path)
+    conversations.create_channel(
+        ConversationChannel(
+            channel_class=ChannelClass.EXECUTIVE,
+            title="CEO PM CTO executive conversation",
+            participants=("CEO", "PM", "CTO"),
+            created_by="CEO",
+        )
+    )
+
+    with pytest.raises(MishkanError, match="already has a durable Executive") as duplicate:
+        conversations.create_channel(
+            ConversationChannel(
+                channel_class=ChannelClass.EXECUTIVE,
+                title="Conflicting executive conversation",
+                participants=("CEO", "PM", "CTO"),
+                created_by="PM",
+            )
+        )
+
+    assert duplicate.value.envelope.code is ErrorCode.DUPLICATE_RESULT
+
+
 def test_channels_require_known_people_and_real_organization_branches(tmp_path: Path) -> None:
     _missions, conversations, _mission = _setup(tmp_path)
     unknown_person = ConversationChannel(

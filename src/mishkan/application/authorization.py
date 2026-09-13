@@ -1249,13 +1249,23 @@ class ApplicationCommandAuthority:
                     raise ValueError("conversation target differs from its immutable identity")
                 if normalized.expected_revision not in {None, 0}:
                     raise ValueError("new conversation must begin at revision zero")
-                external_resources = (
-                    *(f"identity:{item}" for item in conversation_channel.participants),
-                    *(
-                        (f"mission:{conversation_channel.mission_id}",)
-                        if conversation_channel.mission_id is not None
-                        else ()
-                    ),
+                external_resources = tuple(
+                    dict.fromkeys(
+                        (
+                            f"conversation-class:{conversation_channel.channel_class.value}",
+                            *(f"identity:{item}" for item in conversation_channel.participants),
+                            *(
+                                (f"mission:{conversation_channel.mission_id}",)
+                                if conversation_channel.mission_id is not None
+                                else ()
+                            ),
+                            *(
+                                (f"branch:{conversation_channel.branch_id}",)
+                                if conversation_channel.branch_id is not None
+                                else ()
+                            ),
+                        )
+                    )
                 )
             elif normalized.command_type == "conversation.message.post":
                 conversation_message = ConversationMessage.model_validate(
@@ -1266,6 +1276,12 @@ class ApplicationCommandAuthority:
                 external_resources = (
                     f"conversation:{conversation_message.conversation_id}",
                     f"identity:{conversation_message.author_identity}",
+                    f"message-purpose:{conversation_message.purpose.value}",
+                    *(
+                        (f"message:{conversation_message.reply_to_message_id}",)
+                        if conversation_message.reply_to_message_id is not None
+                        else ()
+                    ),
                 )
             elif normalized.command_type == "mission.decision.record":
                 mission_decision = MissionDecision.model_validate(normalized.payload["decision"])
@@ -1287,6 +1303,20 @@ class ApplicationCommandAuthority:
                         else ()
                     ),
                 )
+                if mission_decision.decision_status is not None:
+                    effects = tuple(
+                        sorted(
+                            {
+                                *effects,
+                                f"mission.decision.{mission_decision.decision_status.value}",
+                                *(
+                                    ("mission.decision.authority-change",)
+                                    if mission_decision.changes_durable_authority
+                                    else ()
+                                ),
+                            }
+                        )
+                    )
             elif normalized.command_type == "mission.escalation.open":
                 mission_escalation = MissionEscalation.model_validate(
                     normalized.payload["escalation"]
@@ -1306,11 +1336,35 @@ class ApplicationCommandAuthority:
                     raise ValueError("intervention target differs from its mission identity")
                 if normalized.expected_revision is None:
                     raise ValueError("mission intervention requires expected mission revision")
-                external_resources = (
-                    f"mission:{mission_intervention.mission_id}",
-                    f"conversation:{mission_intervention.conversation_id}",
-                    f"authority:{mission_intervention.authority_reference}",
-                    *(f"evidence:{item}" for item in mission_intervention.evidence_references),
+                external_resources = tuple(
+                    dict.fromkeys(
+                        (
+                            f"mission:{mission_intervention.mission_id}",
+                            f"conversation:{mission_intervention.conversation_id}",
+                            f"authority:{mission_intervention.authority_reference}",
+                            (
+                                f"{mission_intervention.target_kind.value}:"
+                                f"{mission_intervention.target_id}"
+                            ),
+                            *(
+                                f"evidence:{item}"
+                                for item in mission_intervention.evidence_references
+                            ),
+                            *(
+                                (f"escalation:{mission_intervention.escalation_id}",)
+                                if mission_intervention.escalation_id is not None
+                                else ()
+                            ),
+                        )
+                    )
+                )
+                effects = tuple(
+                    sorted(
+                        {
+                            *effects,
+                            f"mission.intervention.{mission_intervention.kind.value}",
+                        }
+                    )
                 )
             elif normalized.command_type == "mission.assignment.record":
                 mission_assignment = MissionTaskAssignment.model_validate(
@@ -1328,6 +1382,7 @@ class ApplicationCommandAuthority:
                     )
                 external_resources = (
                     f"mission:{mission_assignment.mission_id}",
+                    f"task:{mission_assignment.task_id}",
                     f"identity:{mission_assignment.accountable_owner}",
                     *(f"identity:{item}" for item in mission_assignment.contributors),
                     *(f"tool:{item}" for item in mission_assignment.exact_tools),
@@ -1345,6 +1400,19 @@ class ApplicationCommandAuthority:
                         else ()
                     ),
                 )
+                effects = tuple(
+                    sorted(
+                        {
+                            *effects,
+                            (
+                                "mission.assignment.initial"
+                                if mission_assignment.change is None
+                                else "mission.assignment."
+                                f"{mission_assignment.change.change_kind.value}"
+                            ),
+                        }
+                    )
+                )
             elif normalized.command_type == "mission.run-binding.record":
                 mission_run_binding = MissionRunBinding.model_validate(
                     normalized.payload["binding"]
@@ -1356,41 +1424,70 @@ class ApplicationCommandAuthority:
                         ErrorCode.AUTHORITY_NOT_GRANTED,
                         "mission run binding recorder must match the authenticated actor",
                     )
-                external_resources = (
-                    f"mission:{mission_run_binding.mission_id}",
-                    f"run:{mission_run_binding.run_id}",
-                    f"task:{mission_run_binding.execution_task_id}",
-                    f"identity:{mission_run_binding.recorded_by}",
-                    *(
-                        f"mission-run-binding:{dependency}"
-                        for dependency in mission_run_binding.depends_on_binding_keys
-                    ),
-                    *(f"evidence:{item}" for item in mission_run_binding.result_references),
-                    *(f"acceptance:{item}" for item in mission_run_binding.acceptance_references),
+                external_resources = tuple(
+                    dict.fromkeys(
+                        (
+                            f"mission:{mission_run_binding.mission_id}",
+                            f"run:{mission_run_binding.run_id}",
+                            f"task:{mission_run_binding.mission_task_id}",
+                            f"task:{mission_run_binding.execution_task_id}",
+                            f"mission-run-binding:{mission_run_binding.binding_key}",
+                            f"identity:{mission_run_binding.recorded_by}",
+                            *(
+                                f"mission-run-binding:{dependency}"
+                                for dependency in mission_run_binding.depends_on_binding_keys
+                            ),
+                            *(f"evidence:{item}" for item in mission_run_binding.result_references),
+                            *(
+                                f"acceptance:{item}"
+                                for item in mission_run_binding.acceptance_references
+                            ),
+                        )
+                    )
+                )
+                effects = tuple(
+                    sorted(
+                        {
+                            *effects,
+                            f"mission.run-binding.{mission_run_binding.acceptance.value}",
+                        }
+                    )
                 )
             elif normalized.command_type == "mission.run-report.record":
                 mission_run_report = MissionRunReport.model_validate(normalized.payload["report"])
                 if normalized.target_id != str(mission_run_report.report_id):
                     raise ValueError("mission run report target differs from its identity")
-                external_resources = (
-                    f"mission:{mission_run_report.mission_id}",
-                    f"run:{mission_run_report.run_id}",
-                    f"identity:{mission_run_report.reporter_identity}",
-                    *(
-                        f"evidence:{reference}"
-                        for item in mission_run_report.task_results
-                        for reference in item.evidence_references
-                    ),
-                    *(
-                        f"result:{reference}"
-                        for item in mission_run_report.task_results
-                        for reference in item.result_references
-                    ),
-                    *(
-                        f"acceptance:{reference}"
-                        for item in mission_run_report.task_results
-                        for reference in item.acceptance_references
-                    ),
+                external_resources = tuple(
+                    dict.fromkeys(
+                        (
+                            f"mission:{mission_run_report.mission_id}",
+                            f"run:{mission_run_report.run_id}",
+                            f"identity:{mission_run_report.reporter_identity}",
+                            *(
+                                f"task:{item.mission_task_id}"
+                                for item in mission_run_report.task_results
+                            ),
+                            *(
+                                f"task:{item.execution_task_id}"
+                                for item in mission_run_report.task_results
+                            ),
+                            *(
+                                f"evidence:{reference}"
+                                for item in mission_run_report.task_results
+                                for reference in item.evidence_references
+                            ),
+                            *(
+                                f"result:{reference}"
+                                for item in mission_run_report.task_results
+                                for reference in item.result_references
+                            ),
+                            *(
+                                f"acceptance:{reference}"
+                                for item in mission_run_report.task_results
+                                for reference in item.acceptance_references
+                            ),
+                        )
+                    )
                 )
             elif normalized.command_type == "mission.task.claim":
                 mission_task_claim = MissionTaskClaimRequest.model_validate(
@@ -1414,6 +1511,14 @@ class ApplicationCommandAuthority:
                 external_resources = (
                     f"mission:{mission_transition.mission_id}",
                     *(f"evidence:{item}" for item in mission_transition.evidence_references),
+                    *(
+                        (f"decision:{mission_transition.decision_id}",)
+                        if mission_transition.decision_id is not None
+                        else ()
+                    ),
+                )
+                effects = tuple(
+                    sorted({*effects, f"mission.transition.{mission_transition.to_state.value}"})
                 )
             elif normalized.command_type == "mission.governance.propose":
                 mission_governance_request = MissionGovernanceRequest.model_validate(
@@ -1513,6 +1618,14 @@ class ApplicationCommandAuthority:
                         for reference in professional_evidence.evaluation_references
                     ),
                 )
+                effects = tuple(
+                    sorted(
+                        {
+                            *effects,
+                            f"organization.evidence.{professional_evidence.outcome.value}",
+                        }
+                    )
+                )
             elif normalized.command_type == "organization.promotion.decide":
                 professional_promotion_request = ProfessionalPromotionRequest.model_validate(
                     normalized.payload["request"]
@@ -1534,6 +1647,14 @@ class ApplicationCommandAuthority:
                         f"professional-evidence:{evidence_id}"
                         for evidence_id in professional_promotion_request.supporting_evidence_ids
                     ),
+                )
+                effects = tuple(
+                    sorted(
+                        {
+                            *effects,
+                            f"organization.promotion.{professional_promotion_disposition.value}",
+                        }
+                    )
                 )
             elif normalized.target_id is not None:
                 external_resources = (f"{normalized.target_type}:{normalized.target_id}",)

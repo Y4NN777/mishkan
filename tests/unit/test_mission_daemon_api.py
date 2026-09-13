@@ -1134,6 +1134,105 @@ async def test_conversation_escalation_and_intervention_share_daemon_semantics(
 
 
 @pytest.mark.anyio
+async def test_policy_can_distinguish_comment_from_stop_interventions(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    policy = tmp_path / "intervention-policy.yaml"
+    policy.write_text(
+        """\
+schema_version: "1.0"
+source_id: test.interventions
+revision: "1"
+adoption_authority: test
+priority: 100
+rules:
+  - rule_id: test.deny-stop
+    priority: 200
+    decision: deny
+    scope:
+      identities: [local-operator]
+      objective_classes: [application-command]
+      repositories: ["*"]
+      outcomes: [mission.intervention.apply]
+      roles: [application-client]
+      capabilities: [application.mission.intervention]
+      effect_classes: [coordination]
+      effects: [mission.intervention.apply, mission.intervention.stop]
+  - rule_id: test.allow-intervention
+    priority: 100
+    decision: allow
+    scope:
+      identities: [local-operator]
+      objective_classes: [application-command]
+      repositories: ["*"]
+      outcomes: [mission.intervention.apply]
+      roles: [application-client]
+      capabilities: [application.mission.intervention]
+      effect_classes: [coordination]
+      effects: ["*"]
+      external_resources: ["*"]
+""",
+        encoding="utf-8",
+    )
+    config = config.model_copy(update={"policy_sources": (str(policy),)})
+    paths = DaemonBootstrap().setup(config)
+    token = TokenFile(paths.token_file).read()
+    mission_id = uuid4()
+    conversation_id = uuid4()
+
+    def command(kind: InterventionKind) -> ApplicationCommand:
+        lifecycle = kind is InterventionKind.STOP
+        intervention = MissionIntervention(
+            schema_version="1.1",
+            mission_id=mission_id,
+            conversation_id=conversation_id,
+            actor_id="CEO",
+            kind=kind,
+            target_kind=InterventionTargetKind.MISSION,
+            target_id=str(mission_id),
+            reason="Exercise the exact public intervention policy effect",
+            scope=("mission:all",),
+            confirmation="Confirm this exact governed intervention",
+            authority_reference="authority:ceo",
+            evidence_references=("evidence:policy-test",),
+            effect="Record the requested intervention only when policy permits it",
+            resulting_target_state=(
+                InterventionResultState.CANCELLED
+                if lifecycle
+                else InterventionResultState.UNCHANGED
+            ),
+            resulting_mission_state=MissionState.CANCELLED if lifecycle else None,
+        )
+        return ApplicationCommand(
+            command_type="mission.intervention.apply",
+            actor_id=token.principal_id,
+            target_type="mission",
+            target_id=str(mission_id),
+            expected_revision=0,
+            payload={"intervention": intervention.model_dump(mode="json")},
+        )
+
+    transport = httpx.ASGITransport(app=create_app(config))
+    headers = {"Authorization": f"Bearer {token.token}"}
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        stopped = await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=command(InterventionKind.STOP).model_dump(mode="json"),
+        )
+        commented = await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=command(InterventionKind.COMMENT).model_dump(mode="json"),
+        )
+
+    assert stopped.json()["status"] == "refused"
+    assert stopped.json()["error"]["code"] == ErrorCode.AUTHORITY_NOT_GRANTED
+    assert commented.status_code == 200, commented.json()
+    assert commented.json()["status"] == "refused"
+    assert commented.json()["error"]["code"] == ErrorCode.MISSION
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize("reporter_acceptance_conflict", [False, True])
 async def test_mission_completion_requires_separated_accepted_task_chain(
     tmp_path: Path,

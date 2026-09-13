@@ -7,6 +7,7 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import IntegrityError
 
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.persistence import DatabaseState, SchemaManager
@@ -65,7 +66,7 @@ def test_explicit_upgrade_adds_skill_usage_without_changing_existing_events(
         assert connection.execute(text("SELECT count(*) FROM event_outbox")).scalar_one() == 1
         assert (
             connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            == "mission_run_reports_v1"
+            == "organization_concurrency_v1"
         )
         assert (
             connection.execute(
@@ -117,6 +118,69 @@ def test_execution_context_migration_backfills_repository_runs_and_allows_greenf
         )
 
     assert row == ("repository", "repository-1", "revision-1")
+
+
+def test_organization_concurrency_migration_enforces_single_settlements(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "pre-concurrency.db"
+    config = _migration_config(database)
+    command.upgrade(config, "mission_run_reports_v1")
+    staged_id = "11111111-1111-4111-8111-111111111111"
+    settlement_id = "22222222-2222-4222-8222-222222222222"
+    with create_engine(f"sqlite:///{database}").begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO mission_decisions "
+                "(id, mission_id, conversation_id, payload, created_at) VALUES "
+                "(:id, 'mission-1', 'conversation-1', :payload, :created_at)"
+            ),
+            {
+                "id": settlement_id,
+                "payload": '{"supersedes_decision_id":"' + staged_id + '"}',
+                "created_at": "2026-09-13T00:00:00+00:00",
+            },
+        )
+
+    command.upgrade(config, "head")
+
+    engine = create_engine(f"sqlite:///{database}")
+    with engine.connect() as connection:
+        assert (
+            connection.execute(
+                text("SELECT supersedes_decision_id FROM mission_decisions WHERE id = :id"),
+                {"id": settlement_id},
+            ).scalar_one()
+            == staged_id
+        )
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO conversation_channels "
+                "(id, channel_class, mission_id, branch_id, payload, created_at) VALUES "
+                "('executive-1', 'executive', NULL, NULL, '{}', :created_at)"
+            ),
+            {"created_at": "2026-09-13T00:00:00+00:00"},
+        )
+    with pytest.raises(IntegrityError), engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO conversation_channels "
+                "(id, channel_class, mission_id, branch_id, payload, created_at) VALUES "
+                "('executive-2', 'executive', NULL, NULL, '{}', :created_at)"
+            ),
+            {"created_at": "2026-09-13T00:00:01+00:00"},
+        )
+    with pytest.raises(IntegrityError), engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO mission_decisions "
+                "(id, mission_id, conversation_id, supersedes_decision_id, payload, created_at) "
+                "VALUES ('settlement-2', 'mission-1', 'conversation-1', :staged, '{}', :created_at)"
+            ),
+            {"staged": staged_id, "created_at": "2026-09-13T00:00:01+00:00"},
+        )
+    engine.dispose()
 
 
 def test_exact_legacy_database_is_backed_up_and_upgraded(tmp_path: Path) -> None:

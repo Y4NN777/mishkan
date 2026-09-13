@@ -8,6 +8,7 @@ from typing import TypeVar
 
 from pydantic import BaseModel
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from mishkan.conversations.models import (
@@ -90,7 +91,7 @@ class SQLiteConversationRepository:
                 )
                 if prior is not None:
                     raise MishkanError(
-                        ErrorCode.MISSION,
+                        ErrorCode.DUPLICATE_RESULT,
                         "the organization already has a durable Executive channel",
                         details={"conversation_id": prior.id},
                     )
@@ -117,6 +118,15 @@ class SQLiteConversationRepository:
                     ),
                 },
             )
+            try:
+                session.flush()
+            except IntegrityError as exc:
+                if channel.channel_class is ChannelClass.EXECUTIVE:
+                    raise MishkanError(
+                        ErrorCode.DUPLICATE_RESULT,
+                        "the organization already has a durable Executive channel",
+                    ) from exc
+                raise
         return channel
 
     def post_message(self, message: ConversationMessage) -> ConversationMessage:
@@ -163,29 +173,41 @@ class SQLiteConversationRepository:
         return message
 
     def record_decision(self, decision: MissionDecision) -> MissionDecision:
-        return self._record_mission_fact(
-            decision,
-            identity=str(decision.decision_id),
-            mission_id=str(decision.mission_id),
-            conversation_id=str(decision.conversation_id),
-            event_type="mission.decision_recorded",
-            event_payload={
-                "decision_id": str(decision.decision_id),
-                "actor_id": decision.actor_id,
-                "scope": list(decision.scope),
-                "decision_status": (
-                    decision.decision_status.value
-                    if decision.decision_status is not None
-                    else decision.disposition
-                ),
-                "supersedes_decision_id": (
-                    str(decision.supersedes_decision_id)
-                    if decision.supersedes_decision_id is not None
-                    else None
-                ),
-                "changes_durable_authority": decision.changes_durable_authority,
-            },
-        )
+        try:
+            return self._record_mission_fact(
+                decision,
+                identity=str(decision.decision_id),
+                mission_id=str(decision.mission_id),
+                conversation_id=str(decision.conversation_id),
+                event_type="mission.decision_recorded",
+                event_payload={
+                    "decision_id": str(decision.decision_id),
+                    "actor_id": decision.actor_id,
+                    "scope": list(decision.scope),
+                    "decision_status": (
+                        decision.decision_status.value
+                        if decision.decision_status is not None
+                        else decision.disposition
+                    ),
+                    "supersedes_decision_id": (
+                        str(decision.supersedes_decision_id)
+                        if decision.supersedes_decision_id is not None
+                        else None
+                    ),
+                    "changes_durable_authority": decision.changes_durable_authority,
+                },
+            )
+        except IntegrityError as exc:
+            with Session(self._engine) as session:
+                existing = session.get(MissionDecisionRow, str(decision.decision_id))
+                if existing is not None:
+                    return self._idempotent(existing.payload, self._json(decision), decision)
+            if decision.supersedes_decision_id is not None:
+                raise MishkanError(
+                    ErrorCode.DUPLICATE_RESULT,
+                    "staged recommendation already has a durable disposition",
+                ) from exc
+            raise
 
     def create_escalation(self, escalation: MissionEscalation) -> MissionEscalation:
         if escalation.state is not EscalationState.OPEN:
@@ -424,6 +446,11 @@ class SQLiteConversationRepository:
                     id=identity,
                     mission_id=mission_id,
                     conversation_id=conversation_id,
+                    supersedes_decision_id=(
+                        str(record.supersedes_decision_id)
+                        if record.supersedes_decision_id is not None
+                        else None
+                    ),
                     payload=payload,
                     created_at=record.created_at.isoformat(),
                 )

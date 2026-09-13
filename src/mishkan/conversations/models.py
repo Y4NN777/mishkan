@@ -37,8 +37,6 @@ class MessagePurpose(StrEnum):
 class EscalationState(StrEnum):
     OPEN = "open"
     ANSWERED = "answered"
-    RESOLVED = "resolved"
-    WITHDRAWN = "withdrawn"
 
 
 class DecisionEvidenceClass(StrEnum):
@@ -498,9 +496,7 @@ class MissionEscalation(ConversationModel):
             raise ValueError("executive recommendation must reference an available option")
         if self.state is EscalationState.OPEN and self.answer_intervention_id is not None:
             raise ValueError("open escalation cannot already reference an answer")
-        if self.state in {EscalationState.ANSWERED, EscalationState.RESOLVED} and (
-            self.answer_intervention_id is None
-        ):
+        if self.state is EscalationState.ANSWERED and self.answer_intervention_id is None:
             raise ValueError("answered escalation requires its intervention identity")
         if set(self.blocked_scope).intersection(self.independent_work_continuing):
             raise ValueError("blocked escalation scope cannot also be declared independent work")
