@@ -104,6 +104,19 @@ class InterventionTargetKind(StrEnum):
     ESCALATION = "escalation"
 
 
+class InterventionResultState(StrEnum):
+    UNCHANGED = "unchanged"
+    ANSWERED = "answered"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+    PAUSED = "paused"
+    ACTIVE = "active"
+    REASSIGNMENT_REQUESTED = "reassignment_requested"
+    REASSIGNMENT_CONFIRMED = "reassignment_confirmed"
+    CANCELLED = "cancelled"
+    RISK_ACCEPTED = "risk_accepted"
+
+
 class ConversationChannel(ConversationModel):
     schema_version: Literal["1.0"] = "1.0"
     conversation_id: UUID = Field(default_factory=new_id)
@@ -493,7 +506,7 @@ class MissionEscalation(ConversationModel):
 
 
 class MissionIntervention(ConversationModel):
-    schema_version: Literal["1.0"] = "1.0"
+    schema_version: Literal["1.0", "1.1"] = "1.0"
     intervention_id: UUID = Field(default_factory=new_id)
     mission_id: UUID
     conversation_id: UUID
@@ -507,7 +520,9 @@ class MissionIntervention(ConversationModel):
     authority_reference: str = Field(min_length=1, max_length=512)
     evidence_references: tuple[str, ...] = Field(min_length=1)
     escalation_id: UUID | None = None
+    selected_option_id: str | None = Field(default=None, min_length=1, max_length=128)
     effect: str = Field(min_length=3, max_length=4_096)
+    resulting_target_state: InterventionResultState | None = None
     resulting_mission_state: MissionState | None = None
     created_at: datetime = Field(default_factory=utc_now)
 
@@ -550,8 +565,27 @@ class MissionIntervention(ConversationModel):
         if self.kind is InterventionKind.ANSWER_ESCALATION:
             if self.escalation_id is None or self.target_id != str(self.escalation_id):
                 raise ValueError("escalation answer must target its exact escalation identity")
-        elif self.escalation_id is not None:
-            raise ValueError("only an escalation answer may carry an escalation identity")
+            if self.schema_version == "1.1" and self.selected_option_id is None:
+                raise ValueError("escalation answer must select one available option")
+        elif self.escalation_id is not None or self.selected_option_id is not None:
+            raise ValueError("only an escalation answer may carry escalation selection fields")
+        expected_target_state = {
+            InterventionKind.COMMENT: InterventionResultState.UNCHANGED,
+            InterventionKind.ANSWER_ESCALATION: InterventionResultState.ANSWERED,
+            InterventionKind.ACCEPT_PROPOSAL: InterventionResultState.ACCEPTED,
+            InterventionKind.REJECT_PROPOSAL: InterventionResultState.REJECTED,
+            InterventionKind.SUSPEND: InterventionResultState.PAUSED,
+            InterventionKind.RESUME: InterventionResultState.ACTIVE,
+            InterventionKind.REQUEST_REASSIGNMENT: (InterventionResultState.REASSIGNMENT_REQUESTED),
+            InterventionKind.CONFIRM_REASSIGNMENT: (InterventionResultState.REASSIGNMENT_CONFIRMED),
+            InterventionKind.STOP: InterventionResultState.CANCELLED,
+            InterventionKind.ACCEPT_RISK: InterventionResultState.RISK_ACCEPTED,
+        }[self.kind]
+        if self.schema_version == "1.0":
+            if self.resulting_target_state is not None or self.selected_option_id is not None:
+                raise ValueError("intervention 1.0 cannot carry 1.1 settlement fields")
+        elif self.resulting_target_state is not expected_target_state:
+            raise ValueError("intervention resulting target state does not match its kind")
         mission_result = {
             InterventionKind.SUSPEND: MissionState.PAUSED,
             InterventionKind.RESUME: MissionState.ACTIVE,

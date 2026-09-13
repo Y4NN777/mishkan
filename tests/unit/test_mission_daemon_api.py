@@ -16,6 +16,7 @@ from mishkan.conversations import (
     EscalationOption,
     ExecutiveRecommendation,
     InterventionKind,
+    InterventionResultState,
     InterventionTargetKind,
     MissionEscalation,
     MissionIntervention,
@@ -1025,6 +1026,7 @@ async def test_conversation_escalation_and_intervention_share_daemon_semantics(
         evidence_references=("evidence:joint-review",),
     )
     intervention = MissionIntervention(
+        schema_version="1.1",
         mission_id=mission.mission_id,
         conversation_id=channel.conversation_id,
         actor_id="CEO",
@@ -1037,7 +1039,9 @@ async def test_conversation_escalation_and_intervention_share_daemon_semantics(
         authority_reference="authority:ceo",
         evidence_references=("evidence:ceo-answer",),
         escalation_id=escalation.escalation_id,
+        selected_option_id="accept",
         effect="Answer the escalation without pausing independent work",
+        resulting_target_state=InterventionResultState.ANSWERED,
     )
     commands = (
         ApplicationCommand(

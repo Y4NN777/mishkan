@@ -16,6 +16,22 @@
       "title": "InterventionKind",
       "type": "string"
     },
+    "InterventionResultState": {
+      "enum": [
+        "unchanged",
+        "answered",
+        "accepted",
+        "rejected",
+        "paused",
+        "active",
+        "reassignment_requested",
+        "reassignment_confirmed",
+        "cancelled",
+        "risk_accepted"
+      ],
+      "title": "InterventionResultState",
+      "type": "string"
+    },
     "InterventionTargetKind": {
       "enum": [
         "mission",
@@ -132,9 +148,23 @@
       ],
       "default": null
     },
+    "resulting_target_state": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/InterventionResultState"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
     "schema_version": {
-      "const": "1.0",
       "default": "1.0",
+      "enum": [
+        "1.0",
+        "1.1"
+      ],
       "title": "Schema Version",
       "type": "string"
     },
@@ -145,6 +175,20 @@
       "minItems": 1,
       "title": "Scope",
       "type": "array"
+    },
+    "selected_option_id": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Selected Option Id"
     },
     "target_id": {
       "maxLength": 512,

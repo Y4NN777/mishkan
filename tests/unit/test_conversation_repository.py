@@ -24,6 +24,7 @@ from mishkan.conversations import (
     EscalationOption,
     ExecutiveRecommendation,
     InterventionKind,
+    InterventionResultState,
     InterventionTargetKind,
     MessagePurpose,
     MissionDecision,
@@ -269,6 +270,23 @@ def test_intervention_contract_rejects_kind_target_and_state_mismatches() -> Non
             evidence_references=("evidence:risk",),
             effect="Would incorrectly change mission governance",
         )
+    with pytest.raises(ValidationError, match="resulting target state"):
+        MissionIntervention(
+            schema_version="1.1",
+            mission_id=new_id(),
+            conversation_id=new_id(),
+            actor_id="CEO",
+            kind=InterventionKind.COMMENT,
+            target_kind=InterventionTargetKind.MISSION,
+            target_id="mission:one",
+            reason="Attempt an inconsistent settlement state",
+            scope=("mission:one",),
+            confirmation="Confirm the bounded comment",
+            authority_reference="authority:ceo",
+            evidence_references=("evidence:comment",),
+            effect="Record a comment without mutating mission state",
+            resulting_target_state=InterventionResultState.ACCEPTED,
+        )
     with pytest.raises(ValidationError):
         ConversationChannel(
             channel_class=ChannelClass.DIRECT,
@@ -418,6 +436,7 @@ def test_disagreement_preserves_independent_work_and_answer_is_attributed(
     channel = conversations.create_channel(_mission_channel(mission))
     escalation = conversations.create_escalation(_escalation(mission, channel))
     intervention = MissionIntervention(
+        schema_version="1.1",
         mission_id=mission.mission_id,
         conversation_id=channel.conversation_id,
         actor_id="CEO",
@@ -430,8 +449,27 @@ def test_disagreement_preserves_independent_work_and_answer_is_attributed(
         authority_reference="authority:ceo",
         evidence_references=("evidence:ceo-decision",),
         escalation_id=escalation.escalation_id,
+        selected_option_id="accept",
         effect="Resolve the escalation without changing unrelated mission work",
+        resulting_target_state=InterventionResultState.ANSWERED,
     )
+
+    legacy = intervention.model_copy(
+        update={
+            "schema_version": "1.0",
+            "selected_option_id": None,
+            "resulting_target_state": None,
+        }
+    )
+    with pytest.raises(MishkanError, match=r"settlement contract 1\.1") as old_contract:
+        conversations.apply_intervention(legacy, expected_revision=mission.revision)
+    assert old_contract.value.envelope.code is ErrorCode.VERSION
+
+    unknown_option = intervention.model_copy(
+        update={"intervention_id": new_id(), "selected_option_id": "invented"}
+    )
+    with pytest.raises(MishkanError, match="does not select an available option"):
+        conversations.apply_intervention(unknown_option, expected_revision=mission.revision)
 
     conversations.apply_intervention(intervention, expected_revision=mission.revision)
 
@@ -440,6 +478,7 @@ def test_disagreement_preserves_independent_work_and_answer_is_attributed(
     assert answered.state.value == "answered"
     assert answered.answer_intervention_id == intervention.intervention_id
     assert answered.independent_work_continuing == ("task:independent",)
+    assert conversations.interventions(str(mission.mission_id))[0].selected_option_id == "accept"
     assert durable.state is mission.state
     assert durable.revision == mission.revision + 1
 
@@ -450,6 +489,7 @@ def test_mission_pause_and_resume_are_explicit_revision_checked_interventions(
     missions, conversations, mission = _setup(tmp_path)
     channel = conversations.create_channel(_mission_channel(mission))
     pause = MissionIntervention(
+        schema_version="1.1",
         mission_id=mission.mission_id,
         conversation_id=channel.conversation_id,
         actor_id="CEO",
@@ -462,6 +502,7 @@ def test_mission_pause_and_resume_are_explicit_revision_checked_interventions(
         authority_reference="authority:ceo",
         evidence_references=("evidence:risk-finding",),
         effect="Stop new mission work until a governed resume",
+        resulting_target_state=InterventionResultState.PAUSED,
         resulting_mission_state=MissionState.PAUSED,
     )
     conversations.apply_intervention(pause, expected_revision=mission.revision)
@@ -476,6 +517,7 @@ def test_mission_pause_and_resume_are_explicit_revision_checked_interventions(
             "confirmation": "Resume the complete mission",
             "effect": "Allow mission work to become eligible again",
             "evidence_references": ("evidence:risk-settlement",),
+            "resulting_target_state": InterventionResultState.ACTIVE,
             "resulting_mission_state": MissionState.ACTIVE,
             "created_at": utc_now(),
         }
@@ -490,6 +532,7 @@ def test_mission_pause_and_resume_are_explicit_revision_checked_interventions(
             "reason": "Attempt a stale mission stop",
             "confirmation": "Stop the complete mission",
             "effect": "Cancel the mission",
+            "resulting_target_state": InterventionResultState.CANCELLED,
             "resulting_mission_state": MissionState.CANCELLED,
             "created_at": utc_now(),
         }
@@ -497,6 +540,10 @@ def test_mission_pause_and_resume_are_explicit_revision_checked_interventions(
     with pytest.raises(MishkanError) as stale:
         conversations.apply_intervention(stale_stop, expected_revision=paused.revision)
     assert stale.value.envelope.code is ErrorCode.REVISION_MISMATCH
+
+    current = missions.mission(str(mission.mission_id))
+    conversations.apply_intervention(stale_stop, expected_revision=current.revision)
+    assert missions.mission(str(mission.mission_id)).state is MissionState.CANCELLED
 
 
 def test_stopped_task_cannot_be_resumed_and_unrelated_work_is_unchanged(
@@ -506,6 +553,7 @@ def test_stopped_task_cannot_be_resumed_and_unrelated_work_is_unchanged(
     mission, assignment = _add_governed_task(missions, mission)
     channel = conversations.create_channel(_mission_channel(mission))
     suspend = MissionIntervention(
+        schema_version="1.1",
         mission_id=mission.mission_id,
         conversation_id=channel.conversation_id,
         actor_id="CEO",
@@ -518,6 +566,7 @@ def test_stopped_task_cannot_be_resumed_and_unrelated_work_is_unchanged(
         authority_reference="authority:ceo",
         evidence_references=("evidence:task-risk",),
         effect="Prevent new execution claims for this task",
+        resulting_target_state=InterventionResultState.PAUSED,
     )
     conversations.apply_intervention(suspend, expected_revision=mission.revision)
     current = missions.mission(str(mission.mission_id))
@@ -529,6 +578,7 @@ def test_stopped_task_cannot_be_resumed_and_unrelated_work_is_unchanged(
             "confirmation": "Resume only the suspended task",
             "effect": "Allow this task to become eligible again",
             "evidence_references": ("evidence:task-resolution",),
+            "resulting_target_state": InterventionResultState.ACTIVE,
             "created_at": utc_now(),
         }
     )
@@ -542,6 +592,7 @@ def test_stopped_task_cannot_be_resumed_and_unrelated_work_is_unchanged(
             "confirmation": "Stop only this task",
             "effect": "Prevent any later claim or resume for this task",
             "evidence_references": ("evidence:stop-decision",),
+            "resulting_target_state": InterventionResultState.CANCELLED,
             "created_at": utc_now(),
         }
     )
@@ -728,7 +779,16 @@ def _ceo_intervention(
     target_kind: InterventionTargetKind,
     target_id: str,
 ) -> MissionIntervention:
+    result_states = {
+        InterventionKind.COMMENT: InterventionResultState.UNCHANGED,
+        InterventionKind.ACCEPT_PROPOSAL: InterventionResultState.ACCEPTED,
+        InterventionKind.REJECT_PROPOSAL: InterventionResultState.REJECTED,
+        InterventionKind.REQUEST_REASSIGNMENT: InterventionResultState.REASSIGNMENT_REQUESTED,
+        InterventionKind.CONFIRM_REASSIGNMENT: InterventionResultState.REASSIGNMENT_CONFIRMED,
+        InterventionKind.ACCEPT_RISK: InterventionResultState.RISK_ACCEPTED,
+    }
     return MissionIntervention(
+        schema_version="1.1",
         mission_id=mission.mission_id,
         conversation_id=channel.conversation_id,
         actor_id="CEO",
@@ -741,6 +801,7 @@ def _ceo_intervention(
         authority_reference="authority:ceo",
         evidence_references=("evidence:ceo-intervention",),
         effect=f"Record the governed {kind.value} disposition",
+        resulting_target_state=result_states[kind],
     )
 
 
@@ -763,7 +824,7 @@ def test_proposal_intervention_requires_and_settles_one_durable_proposal(
         conversations.apply_intervention(accepted, expected_revision=mission.revision) == accepted
     )
     current = missions.mission(str(mission.mission_id))
-    rejected = _ceo_intervention(
+    duplicate_rejection = _ceo_intervention(
         current,
         channel,
         kind=InterventionKind.REJECT_PROPOSAL,
@@ -771,9 +832,24 @@ def test_proposal_intervention_requires_and_settles_one_durable_proposal(
         target_id=str(staged.decision_id),
     )
     with pytest.raises(MishkanError, match="already has a durable CEO disposition") as duplicate:
-        conversations.apply_intervention(rejected, expected_revision=current.revision)
+        conversations.apply_intervention(duplicate_rejection, expected_revision=current.revision)
     assert duplicate.value.envelope.code is ErrorCode.DUPLICATE_RESULT
 
+    second_staged = staged.model_copy(
+        update={"decision_id": new_id(), "subject": "A second bounded proposal"}
+    )
+    conversations.record_decision(second_staged)
+    rejected = _ceo_intervention(
+        current,
+        channel,
+        kind=InterventionKind.REJECT_PROPOSAL,
+        target_kind=InterventionTargetKind.PROPOSAL,
+        target_id=str(second_staged.decision_id),
+    )
+    conversations.apply_intervention(rejected, expected_revision=current.revision)
+    assert conversations.interventions(str(mission.mission_id))[-1] == rejected
+
+    current = missions.mission(str(mission.mission_id))
     missing = _ceo_intervention(
         current,
         channel,
@@ -783,6 +859,25 @@ def test_proposal_intervention_requires_and_settles_one_durable_proposal(
     )
     with pytest.raises(MishkanError, match="proposal is absent"):
         conversations.apply_intervention(missing, expected_revision=current.revision)
+
+
+def test_ceo_comment_is_durable_without_changing_mission_lifecycle(tmp_path: Path) -> None:
+    missions, conversations, mission = _setup(tmp_path)
+    channel = conversations.create_channel(_mission_channel(mission))
+    comment = _ceo_intervention(
+        mission,
+        channel,
+        kind=InterventionKind.COMMENT,
+        target_kind=InterventionTargetKind.MISSION,
+        target_id=str(mission.mission_id),
+    )
+
+    conversations.apply_intervention(comment, expected_revision=mission.revision)
+
+    current = missions.mission(str(mission.mission_id))
+    assert current.state is mission.state
+    assert current.revision == mission.revision + 1
+    assert conversations.interventions(str(mission.mission_id)) == (comment,)
 
 
 def test_risk_acceptance_targets_existing_durable_mission_risk(tmp_path: Path) -> None:

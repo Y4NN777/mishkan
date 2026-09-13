@@ -228,6 +228,11 @@ class SQLiteConversationRepository:
         *,
         expected_revision: int,
     ) -> MissionIntervention:
+        if intervention.schema_version != "1.1":
+            raise MishkanError(
+                ErrorCode.VERSION,
+                "new mission interventions require settlement contract 1.1",
+            )
         payload = self._json(intervention)
         with Session(self._engine) as session, session.begin():
             existing = session.get(MissionInterventionRow, str(intervention.intervention_id))
@@ -258,6 +263,13 @@ class SQLiteConversationRepository:
                 escalation = MissionEscalation.model_validate_json(escalation_row.payload)
                 if escalation.state is not EscalationState.OPEN:
                     raise MishkanError(ErrorCode.MISSION, "escalation is already settled")
+                if intervention.selected_option_id not in {
+                    option.option_id for option in escalation.options
+                }:
+                    raise MishkanError(
+                        ErrorCode.MISSION,
+                        "escalation answer does not select an available option",
+                    )
                 answered = escalation.model_copy(
                     update={
                         "state": EscalationState.ANSWERED,
@@ -269,6 +281,7 @@ class SQLiteConversationRepository:
                 escalation_row.payload = self._json(answered)
                 escalation_row.updated_at = answered.updated_at.isoformat()
             next_state = self._transition_state(mission, intervention)
+            assert intervention.resulting_target_state is not None
             updated = mission.model_copy(
                 update={
                     "state": next_state or mission.state,
@@ -301,6 +314,7 @@ class SQLiteConversationRepository:
                     "kind": intervention.kind.value,
                     "target_kind": intervention.target_kind.value,
                     "scope": list(intervention.scope),
+                    "resulting_target_state": intervention.resulting_target_state.value,
                     "resulting_mission_state": (
                         next_state.value if next_state is not None else mission.state.value
                     ),
