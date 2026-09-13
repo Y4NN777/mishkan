@@ -313,6 +313,31 @@ def test_messages_are_durable_records_and_never_implicit_commands(tmp_path: Path
     assert missions.mission(str(mission.mission_id)).revision == mission.revision
 
 
+def test_executive_conversation_and_message_survive_repository_restart(tmp_path: Path) -> None:
+    _missions, conversations, _mission = _setup(tmp_path)
+    channel = conversations.create_channel(
+        ConversationChannel(
+            channel_class=ChannelClass.EXECUTIVE,
+            title="CEO PM CTO executive conversation",
+            participants=("CEO", "PM", "CTO"),
+            created_by="CEO",
+        )
+    )
+    message = conversations.post_message(
+        ConversationMessage(
+            conversation_id=channel.conversation_id,
+            author_identity="CEO",
+            body="Preserve this executive context across disconnected clients.",
+            evidence_references=("evidence:executive-context",),
+        )
+    )
+
+    reopened = SQLiteConversationRepository(tmp_path / "mishkan.db")
+
+    assert reopened.channel(str(channel.conversation_id)) == channel
+    assert reopened.messages(str(channel.conversation_id)) == (message,)
+
+
 def test_channels_require_known_people_and_real_organization_branches(tmp_path: Path) -> None:
     _missions, conversations, _mission = _setup(tmp_path)
     unknown_person = ConversationChannel(
