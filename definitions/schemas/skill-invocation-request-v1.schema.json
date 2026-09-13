@@ -1,0 +1,101 @@
+{
+  "$defs": {
+    "SkillSelectionContext": {
+      "additionalProperties": false,
+      "properties": {
+        "available_tools": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Available Tools",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "consuming_identity": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Consuming Identity",
+          "type": "string"
+        },
+        "organization_version": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Organization Version",
+          "type": "string"
+        },
+        "platform": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Platform",
+          "type": "string"
+        },
+        "task_class": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Task Class",
+          "type": "string"
+        },
+        "task_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Task Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "task_id",
+        "task_class",
+        "consuming_identity",
+        "platform",
+        "organization_version"
+      ],
+      "title": "SkillSelectionContext",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "bundle_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z][a-z0-9_.-]{2,127}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Bundle Id"
+    },
+    "context": {
+      "$ref": "#/$defs/SkillSelectionContext"
+    },
+    "requested_name": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Requested Name"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "context"
+  ],
+  "title": "SkillInvocationRequest",
+  "type": "object"
+}

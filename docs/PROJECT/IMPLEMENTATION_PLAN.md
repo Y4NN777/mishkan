@@ -1,7 +1,7 @@
 # MISHKAN Implementation and Acceptance Plan
 
-**Status:** Accepted by D-037 on 2026-08-25
-**Version:** 1.5
+**Status:** Accepted by D-041 on 2026-08-29
+**Version:** 1.6
 **Derived from:** PRD 1.4, SRS 1.6, Contract 1.4, Responsibility Map 1.2, System Model 1.3, and
 Architecture 1.3 accepted by D-032–D-035 and D-037
 
@@ -13,9 +13,11 @@ framework stage.
 
 I00 and I01 remain accepted exactly as implemented and evidenced. Their code, historical commits,
 and validation records are not rewritten. D-032 through D-036 accepted the version 1.4 documentary
-baseline in order on 2026-08-25. D-036 resumes I02. D-037 accepts this version 1.5 detail of later
-mission-environment delivery without expanding current implementation authority; every later
-increment remains subject to its own dependencies, scope, and acceptance gate.
+baseline in order on 2026-08-25. D-036 resumes I02. D-037 accepted the version 1.5 detail of later
+mission-environment delivery. D-041 accepts this version 1.6 delivery amendment and authorizes I05.
+It adds an interpretable, content-addressed context-package work package and optional vendor-neutral
+telemetry export without changing the accepted requirements, system authority, CrewAI runtime
+boundary, or later increment gates.
 
 ## 2. Delivery laws
 
@@ -40,6 +42,13 @@ increment remains subject to its own dependencies, scope, and acceptance gate.
 10. Every environment-dependent mission records an explicit environment decision. Containerization
     is never assumed: reuse, authorized host-native execution, generation, proposed project change,
     and unresolved dependency are all truthful outcomes.
+11. Task context is a bounded, attributable projection of accepted state. A materialized context
+    package is portable input for CrewAI or an external harness, not a workflow, authorization
+    source, mutable state store, or replacement for durable artifacts.
+12. OpenTelemetry is the neutral telemetry boundary. LangSmith MAY be configured as an optional
+    derived observability and evaluation destination; it is disabled by default, receives only
+    policy-authorized sanitized data, and never owns run state, acceptance, prompts, skills, or
+    recovery.
 
 ## 3. Target repository boundaries
 
@@ -208,6 +217,20 @@ and truthfully materializes representative development environments.
   recommendations that never auto-activate;
 - implement SKILL.md packages, Level 0 catalogue, Level 1 instructions, Level 2 references, bundles,
   contextual selection, hit/partial/miss evidence, slash invocation, and `/learn`;
+- implement a versioned `ContextPack` manifest that projects exact identity, Mission Brief and plan
+  revisions when available, task contract, selected skills, attributed references, accepted input
+  artifacts, output contract, verification rules, token/size bounds, and source fingerprints;
+- materialize context packages deterministically from authoritative MISHKAN state and immutable
+  artifacts. Directory layout is an inspectable interchange form only: folder order MUST NOT become
+  scheduling state, edits MUST NOT grant authority, and generated packages MUST reproduce from the
+  same manifest and referenced bytes;
+- introduce a vendor-neutral OpenTelemetry observation port with explicit `off`, `metadata_only`,
+  and `sanitized` disclosure profiles. Add LangSmith only as an optional exporter selected through
+  public configuration and credential references; exporter failure is visible degradation and
+  cannot change mission settlement;
+- correlate derived spans and evaluation evidence by mission, run, task, agent, plan, binding, and
+  context-package fingerprints. External evaluations remain candidate evidence and MUST NOT bypass
+  MISHKAN validation, independent evaluation, or durable acceptance;
 - implement provenance, trust, configurable scans, quarantine, immediate/review/staged/deny policy,
   coherent live patch/edit, atomic activation, reset, archival, restoration, and crash recovery;
 - implement engine discovery, adapter justification, independent availability states, technical
@@ -253,6 +276,35 @@ multi-service or lifecycle fixture that either proves its selected Compose/Podma
 truthfully refuses it; one incompatible platform; one secret-reference case; one stale-base
 conflict; one build interruption with non-fabricated settlement; and one cleanup/re-run proving the
 declared reproducibility boundary.
+
+Context-package acceptance additionally proves deterministic rematerialization, exact source
+attribution, bounded layered loading, omission and staleness visibility, and rejection of a direct
+filesystem edit as authority. Telemetry acceptance proves that `off` emits nothing externally,
+`metadata_only` exports no prompt, result, credential, path content, or artifact body, `sanitized`
+passes the configured content inspector before export, and an unavailable or rate-limited exporter
+cannot block or alter the authoritative run. No LangSmith Prompt Hub object or remotely supplied
+serialized prompt becomes a skill, prompt, plan, or executable configuration in I05.
+
+#### I05 context and observability work packages
+
+These packages adopt the useful context-structure principles of Interpretable Context Methodology
+without adopting filesystem orchestration. They make the context boundary inspectable and
+reproducible while retaining MISHKAN state, policy, CrewAI coordination, and artifacts as the
+respective authorities.
+
+| Package | Depends on | Runnable deliverable | Required proof |
+|---|---|---|---|
+| I05-C01 — Context contract | I03 Artifact, accepted context and skill contracts | versioned `ContextPackManifest`, typed source references, disclosure and size budgets, output and verification contracts | schema round-trip; exact identity/revision provenance; duplicate logical paths and unresolved required sources refuse |
+| I05-C02 — Deterministic materialization | C01 plus File/Artifact reads | bounded materialized workspace with identity, task contract, stable references and per-run inputs separated by layer | same manifest and bytes reproduce the same digest; changed source invalidates it; direct edits do not change authoritative state |
+| I05-C03 — Layered consumption evidence | C01–C02 plus skill selection | progressive Level 0/1/2 load record and context hit/partial/miss evidence attached to the consuming task | only declared needed content loads; omissions, truncation, staleness and source lineage remain visible |
+| I05-C04 — Neutral telemetry | application events, CrewAI boundary and Content Inspector | optional OpenTelemetry span projection with bounded public disclosure profiles and stable MISHKAN correlation fields | exporter disabled by default; no secret canary crosses the exporter; exporter failure degrades without changing run state |
+| I05-C05 — LangSmith evaluation adapter | C04 | optional LangSmith OTLP/SDK destination for trace inspection and evaluation experiments, without prompt/configuration import | cloud test uses an explicit credential reference and disposable project; local fake proves payload contract; feedback imports only as attributable candidate evidence |
+
+C01–C03 complete before context packaging is offered to external harnesses. C04 is vendor-neutral;
+C05 is optional and MUST NOT become a dependency of local execution. The ContextPack manifest, not
+the presentation directory, is fingerprinted into task evidence. Knowledge retrieval introduced in
+I07 may contribute attributed source artifacts to this contract without changing it into a live,
+unbounded retrieval channel.
 
 #### I05 environment work packages
 

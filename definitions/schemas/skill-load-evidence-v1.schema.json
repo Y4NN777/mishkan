@@ -1,0 +1,127 @@
+{
+  "$defs": {
+    "SkillLoadedResource": {
+      "additionalProperties": false,
+      "properties": {
+        "fingerprint": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Fingerprint",
+          "type": "string"
+        },
+        "path": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "fingerprint",
+        "size_bytes"
+      ],
+      "title": "SkillLoadedResource",
+      "type": "object"
+    },
+    "SkillUseOutcome": {
+      "enum": [
+        "hit",
+        "partial",
+        "miss"
+      ],
+      "title": "SkillUseOutcome",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "consuming_identity": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Consuming Identity",
+      "type": "string"
+    },
+    "instruction_fingerprint": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Instruction Fingerprint"
+    },
+    "loaded_resources": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/SkillLoadedResource"
+      },
+      "title": "Loaded Resources",
+      "type": "array"
+    },
+    "outcome": {
+      "$ref": "#/$defs/SkillUseOutcome"
+    },
+    "package_fingerprint": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Package Fingerprint",
+      "type": "string"
+    },
+    "reason": {
+      "maxLength": 2048,
+      "minLength": 1,
+      "title": "Reason",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "skill_name": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Skill Name",
+      "type": "string"
+    },
+    "skill_version": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Skill Version",
+      "type": "string"
+    },
+    "task_class": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Task Class",
+      "type": "string"
+    },
+    "task_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Task Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "task_id",
+    "task_class",
+    "consuming_identity",
+    "skill_name",
+    "skill_version",
+    "package_fingerprint",
+    "outcome",
+    "reason"
+  ],
+  "title": "SkillLoadEvidence",
+  "type": "object"
+}

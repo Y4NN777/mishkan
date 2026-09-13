@@ -1,0 +1,81 @@
+{
+  "$defs": {
+    "TelemetryRecordStatus": {
+      "enum": [
+        "ok",
+        "error"
+      ],
+      "title": "TelemetryRecordStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "attributes": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "integer"
+          },
+          {
+            "type": "number"
+          }
+        ]
+      },
+      "maxProperties": 1000,
+      "title": "Attributes",
+      "type": "object"
+    },
+    "completed_at": {
+      "format": "date-time",
+      "title": "Completed At",
+      "type": "string"
+    },
+    "content_attribute_names": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Content Attribute Names",
+      "type": "array"
+    },
+    "name": {
+      "pattern": "^[a-z][a-z0-9_.-]{2,127}$",
+      "title": "Name",
+      "type": "string"
+    },
+    "record_id": {
+      "format": "uuid",
+      "title": "Record Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "started_at": {
+      "format": "date-time",
+      "title": "Started At",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/TelemetryRecordStatus"
+    }
+  },
+  "required": [
+    "name",
+    "started_at",
+    "completed_at",
+    "status"
+  ],
+  "title": "TelemetryRecord",
+  "type": "object"
+}

@@ -1,0 +1,45 @@
+schema_version: "1.0"
+profile_id: default-skill-inspection
+revision: "mishkan:skill-inspection@1"
+adoption_authority: project-security-policy
+quarantine_threshold: high
+max_scanned_files: 10000
+max_scanned_file_bytes: 16777216
+max_total_bytes: 268435456
+rules:
+  - rule_id: security.policy-bypass
+    category: security
+    severity: high
+    pattern: '(?i)\b(?:disable|bypass)\s+(?:policy|security)\b'
+    path_patterns: ["*"]
+    summary: Instruction appears to bypass configured policy or security controls.
+  - rule_id: privacy.sensitive-identifier
+    category: privacy
+    severity: medium
+    pattern: '(?i)\b(?:ssn|social[ ._-]?security[ ._-]?number|private[ ._-]?key)\b'
+    path_patterns: ["*"]
+    summary: Content contains a configured sensitive-identifier marker.
+  - rule_id: unicode.directional-control
+    category: unicode
+    severity: high
+    pattern: '[\u202A-\u202E\u2066-\u2069]'
+    path_patterns: ["*"]
+    summary: Content contains a bidirectional Unicode control character.
+  - rule_id: credential.assignment
+    category: credential
+    severity: critical
+    pattern: '(?i)(?:api[_-]?key|token|password|secret)\s*[:=]\s*["'']?[A-Za-z0-9_./+=-]{8,}'
+    path_patterns: ["*"]
+    summary: Content resembles an embedded credential assignment.
+  - rule_id: prompt-injection.instruction-override
+    category: prompt_injection
+    severity: high
+    pattern: '(?i)(?:ignore|override)\s+(?:all\s+)?(?:previous|system|developer)\s+instructions'
+    path_patterns: ["*"]
+    summary: Content attempts to override higher-authority instructions.
+  - rule_id: destructive.explicit-command
+    category: destructive_action
+    severity: high
+    pattern: '(?i)\b(?:rm\s+-rf|git\s+reset\s+--hard|drop\s+(?:table|database))\b'
+    path_patterns: ["*"]
+    summary: Content contains a configured destructive-command marker.

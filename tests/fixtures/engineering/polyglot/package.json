@@ -1,0 +1,7 @@
+{
+  "name": "mishkan-engineering-fixture",
+  "private": true,
+  "scripts": {
+    "test": "node -e \"process.stdout.write('javascript-typescript-ok\\n')\""
+  }
+}

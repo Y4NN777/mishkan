@@ -18,7 +18,7 @@ This index is the entry point for durable MISHKAN documentation.
 | [`PROJECT/PRD.md`](PROJECT/PRD.md) | Accepted 1.4 — D-032 | Product problem, free-form missions, mission-scoped environments, 59-identity organization, executive control, and contextual capabilities |
 | [`PROJECT/SRS.md`](PROJECT/SRS.md) | Accepted 1.6 — D-032 | Canonical verifiable requirements and complete PRD traceability |
 | [`PROJECT/DECISION_LOG.md`](PROJECT/DECISION_LOG.md) | Living | Central registry for accepted, open, and superseded decisions |
-| [`PROJECT/IMPLEMENTATION_PLAN.md`](PROJECT/IMPLEMENTATION_PLAN.md) | Accepted 1.5 — D-037 | I00/I01 retention, vertical I02–I11 delivery, detailed mission-environment work packages, acceptance, and Git-flow plan |
+| [`PROJECT/IMPLEMENTATION_PLAN.md`](PROJECT/IMPLEMENTATION_PLAN.md) | Accepted 1.6 — D-041 | I00/I01 retention, vertical I02–I11 delivery, I05 context/telemetry and mission-environment work packages, acceptance, and Git-flow plan |
 | [`SYSTEM/CONTRACT.md`](SYSTEM/CONTRACT.md) | Accepted 1.4 — D-033 | Sequence 03 promises, invariants, refusals, sessions, artifacts, and mediation |
 | [`SYSTEM/RESPONSIBILITIES.md`](SYSTEM/RESPONSIBILITIES.md) | Accepted 1.2 — D-034 | Sequence 04 exact primary ownership and handoffs for RSP-001–026 |
 | [`SYSTEM/MODEL.md`](SYSTEM/MODEL.md) | Accepted 1.3 — D-037 | Mission-centered Sequence 05 behavior, including agent-authored environment planning, binding lifecycle, and governed generation |
@@ -28,6 +28,7 @@ This index is the entry point for durable MISHKAN documentation.
 | [`VALIDATION/policy-tools.md`](VALIDATION/policy-tools.md) | Passed and integrated | Local, live-model, cloud, and remote evidence for the governed capability registry, public policy, Process, Bash, File, Search, and CrewAI gateway |
 | [`VALIDATION/durability.md`](VALIDATION/durability.md) | Passed — D-038 | Local, live CrewAI/Ollama, and remote Linux/macOS evidence for the durable daemon, mutations, artifacts, sessions, recovery, security, and performance |
 | [`VALIDATION/web-browser-mcp.md`](VALIDATION/web-browser-mcp.md) | Passed and integrated — D-040 | Original evidence, corrected local/remote conformance gate, and green `develop`/`main` integration matrices for Web, Browser, MCP, and governed harness clients |
+| [`VALIDATION/skills-engineering.md`](VALIDATION/skills-engineering.md) | Passed — D-042 | Complete local and remote evidence for skills, context packages, telemetry, recommendations, engineering environments, and real Docker/Compose/Dev Container/Podman adapters |
 
 ## Authority rules
 

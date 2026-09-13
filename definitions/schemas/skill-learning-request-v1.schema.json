@@ -1,0 +1,146 @@
+{
+  "$defs": {
+    "SkillLearningSource": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Content"
+        },
+        "kind": {
+          "$ref": "#/$defs/SkillLearningSourceKind"
+        },
+        "locator": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Locator",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "locator"
+      ],
+      "title": "SkillLearningSource",
+      "type": "object"
+    },
+    "SkillLearningSourceKind": {
+      "enum": [
+        "text",
+        "artifact",
+        "url",
+        "repository_evidence",
+        "execution_evidence"
+      ],
+      "title": "SkillLearningSourceKind",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "available_tools": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Available Tools",
+      "type": "array",
+      "uniqueItems": true
+    },
+    "consuming_identity": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Consuming Identity",
+      "type": "string"
+    },
+    "organization_version": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Organization Version",
+      "type": "string"
+    },
+    "platform": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Platform",
+      "type": "string"
+    },
+    "reason": {
+      "maxLength": 2048,
+      "minLength": 1,
+      "title": "Reason",
+      "type": "string"
+    },
+    "request_id": {
+      "format": "uuid",
+      "title": "Request Id",
+      "type": "string"
+    },
+    "requested_at": {
+      "format": "date-time",
+      "title": "Requested At",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "sources": {
+      "items": {
+        "$ref": "#/$defs/SkillLearningSource"
+      },
+      "maxItems": 128,
+      "minItems": 1,
+      "title": "Sources",
+      "type": "array"
+    },
+    "suggested_name": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Suggested Name"
+    },
+    "task_class": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Task Class",
+      "type": "string"
+    },
+    "task_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Task Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "task_id",
+    "task_class",
+    "consuming_identity",
+    "sources",
+    "platform",
+    "organization_version",
+    "reason"
+  ],
+  "title": "SkillLearningRequest",
+  "type": "object"
+}

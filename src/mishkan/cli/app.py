@@ -33,6 +33,10 @@ terminal_app = typer.Typer(help="Open and control daemon-owned PTY sessions.")
 job_app = typer.Typer(help="Start and control daemon-owned managed jobs.")
 run_app = typer.Typer(help="Inspect, cancel, and recover durable runs.")
 mcp_app = typer.Typer(help="Connect and inspect governed MCP peers through mishkand.")
+skill_app = typer.Typer(help="Inspect and govern procedural skill versions through mishkand.")
+environment_app = typer.Typer(help="Observe and resolve engineering environments truthfully.")
+telemetry_app = typer.Typer(help="Inspect telemetry and import attributed evaluation evidence.")
+context_app = typer.Typer(help="Inspect confirmed portable and observed engineering context.")
 app.add_typer(config_app, name="config")
 app.add_typer(schema_app, name="schema")
 app.add_typer(daemon_app, name="daemon")
@@ -46,6 +50,97 @@ app.add_typer(terminal_app, name="terminal")
 app.add_typer(job_app, name="job")
 app.add_typer(run_app, name="run")
 app.add_typer(mcp_app, name="mcp")
+app.add_typer(skill_app, name="skill")
+app.add_typer(environment_app, name="environment")
+app.add_typer(telemetry_app, name="telemetry")
+app.add_typer(context_app, name="context")
+
+
+@context_app.command("engineer-profile")
+def show_engineer_profile(ctx: typer.Context) -> None:
+    """Show only explicitly confirmed portable profile facts."""
+    with _daemon_client(ctx) as client:
+        profile = client.engineer_profile()
+    _emit(profile.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@context_app.command("community-candidates")
+def show_community_candidates(ctx: typer.Context) -> None:
+    """Show configured candidates; discovery never grants activation authority."""
+    with _daemon_client(ctx) as client:
+        candidates = client.community_candidates()
+    _emit(
+        {
+            "candidates": [candidate.model_dump(mode="json") for candidate in candidates],
+            "count": len(candidates),
+            "activation_authorized": False,
+        },
+        as_json=_state(ctx).json_output,
+    )
+
+
+@context_app.command("recommend")
+def recommend_community_candidate(
+    ctx: typer.Context,
+    request_file: Annotated[
+        Path,
+        typer.Option("--request", help="JSON ContextualRecommendationRequest."),
+    ],
+) -> None:
+    """Rank configured candidates against explicit evidence and criteria."""
+    from mishkan.context import ContextualRecommendationRequest
+
+    try:
+        request = ContextualRecommendationRequest.model_validate_json(
+            request_file.read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter(
+            "--request must contain a valid ContextualRecommendationRequest"
+        ) from exc
+    with _daemon_client(ctx) as client:
+        if request.owner_identity != client.principal_id:
+            raise typer.BadParameter(
+                "request owner_identity must match the authenticated daemon principal"
+            )
+        result = client.recommend_community_candidate(request)
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@telemetry_app.command("status")
+def telemetry_status(ctx: typer.Context) -> None:
+    """Show the optional exporter state without making telemetry authoritative."""
+    with _daemon_client(ctx) as client:
+        status = client.telemetry_status()
+    _emit(status.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@telemetry_app.command("import-langsmith-feedback")
+def import_langsmith_feedback(
+    ctx: typer.Context,
+    request_file: Annotated[
+        Path,
+        typer.Option("--request", help="JSON LangSmithFeedbackImportRequest."),
+    ],
+) -> None:
+    """Store LangSmith feedback as immutable candidate-only evidence."""
+    from mishkan.telemetry import LangSmithFeedbackImportRequest
+
+    try:
+        request = LangSmithFeedbackImportRequest.model_validate_json(
+            request_file.read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter(
+            "--request must contain a valid LangSmithFeedbackImportRequest"
+        ) from exc
+    with _daemon_client(ctx) as client:
+        if request.owner_identity != client.principal_id:
+            raise typer.BadParameter(
+                "request owner_identity must match the authenticated daemon principal"
+            )
+        result = client.import_langsmith_feedback(request)
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1247,6 +1342,899 @@ def _run_effect(
             )
         )
     _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@skill_app.command("list")
+def list_skills(
+    ctx: typer.Context,
+    name: Annotated[str | None, typer.Option(help="Filter by exact skill identity.")] = None,
+    offset: Annotated[int, typer.Option(min=0)] = 0,
+    limit: Annotated[int, typer.Option(min=1, max=1_000)] = 100,
+) -> None:
+    """List bounded immutable skill versions and their lifecycle state."""
+    with _daemon_client(ctx) as client:
+        values = client.skills(name=name, offset=offset, limit=limit)
+    _emit(
+        [value.model_dump(mode="json") for value in values],
+        as_json=_state(ctx).json_output,
+    )
+
+
+@skill_app.command("active")
+def active_skill(
+    ctx: typer.Context,
+    name: Annotated[str, typer.Argument(help="Exact skill identity.")],
+) -> None:
+    """Show the active immutable version, if one exists."""
+    with _daemon_client(ctx) as client:
+        value = client.active_skill(name)
+    _emit(
+        None if value is None else value.model_dump(mode="json"),
+        as_json=_state(ctx).json_output,
+    )
+
+
+@skill_app.command("invoke")
+def invoke_skill(
+    ctx: typer.Context,
+    task_id: Annotated[str, typer.Argument(help="Durable task identity.")],
+    task_class: Annotated[str, typer.Argument(help="Exact task class.")],
+    selector: Annotated[
+        str | None,
+        typer.Argument(help="Slash skill selector such as /code-review."),
+    ] = None,
+    bundle: Annotated[
+        str | None,
+        typer.Option(help="Configured bundle identity; mutually exclusive with selector."),
+    ] = None,
+    organization_version: Annotated[
+        str,
+        typer.Option(help="Organization definition revision used by the task."),
+    ] = "*",
+    platform: Annotated[
+        str | None,
+        typer.Option(help="Observed target platform; defaults to the current Python platform."),
+    ] = None,
+    available_tool: Annotated[
+        list[str] | None,
+        typer.Option("--available-tool", help="Actually available tool identity; repeatable."),
+    ] = None,
+) -> None:
+    """Resolve explicit `/skill`, bundle, or automatic skills and return exact evidence."""
+    import sys
+
+    from mishkan.skills import SkillInvocationRequest, SkillSelectionContext
+
+    requested_name: str | None = None
+    if selector is not None:
+        if not selector.startswith("/") or len(selector) == 1:
+            raise typer.BadParameter("selector must use slash form, for example /code-review")
+        requested_name = selector[1:]
+    if requested_name is not None and bundle is not None:
+        raise typer.BadParameter("selector and --bundle are mutually exclusive")
+    with _daemon_client(ctx) as client:
+        request = SkillInvocationRequest(
+            requested_name=requested_name,
+            bundle_id=bundle,
+            context=SkillSelectionContext(
+                task_id=task_id,
+                task_class=task_class,
+                consuming_identity=client.principal_id,
+                platform=platform or sys.platform,
+                organization_version=organization_version,
+                available_tools=frozenset(available_tool or ()),
+            ),
+        )
+        evidence = client.invoke_skill(request)
+    _emit(evidence.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@skill_app.command("learn")
+def learn_skill(
+    ctx: typer.Context,
+    source: Annotated[
+        str,
+        typer.Argument(help="Text, local file, HTTP(S) URL, or artifact reference."),
+    ],
+    task_id: Annotated[str, typer.Option(help="Durable task identity.")],
+    task_class: Annotated[str, typer.Option(help="Exact task class to improve.")],
+    reason: Annotated[str, typer.Option(help="Why this procedural learning is requested.")],
+    name: Annotated[
+        str | None,
+        typer.Option(help="Exact existing or proposed skill name; required when no match exists."),
+    ] = None,
+    source_kind: Annotated[
+        str,
+        typer.Option(
+            "--kind",
+            help="auto, text, file, url, artifact, repository_evidence, or execution_evidence.",
+        ),
+    ] = "auto",
+    organization_version: Annotated[str, typer.Option()] = "*",
+    platform: Annotated[str | None, typer.Option()] = None,
+    available_tool: Annotated[
+        list[str] | None,
+        typer.Option("--available-tool", help="Observed available tool; repeatable."),
+    ] = None,
+) -> None:
+    """Run `/learn <source>` as governed Research work and return a staged candidate or refusal."""
+    import sys
+
+    from mishkan.artifacts import ArtifactProvenance
+    from mishkan.domain.identity import new_id
+    from mishkan.skills import (
+        SkillLearningRequest,
+        SkillLearningSource,
+        SkillLearningSourceKind,
+    )
+
+    effective = _load_or_exit(ctx).value
+    if effective.skills is None or effective.artifacts is None:
+        raise typer.BadParameter("skills and artifacts must be configured")
+    request_id = new_id()
+    inferred = source_kind
+    candidate_path = Path(source)
+    if inferred == "auto":
+        if source.startswith(("https://", "http://")):
+            inferred = "url"
+        elif source.startswith("artifact:"):
+            inferred = "artifact"
+        elif candidate_path.is_file():
+            inferred = "file"
+        else:
+            inferred = "text"
+    with _daemon_client(ctx) as client:
+        if inferred == "file":
+            try:
+                content = candidate_path.read_bytes()
+            except OSError as exc:
+                raise typer.BadParameter("learning source file cannot be read") from exc
+            if len(content) > effective.skills.learning_max_source_bytes:
+                raise typer.BadParameter("learning source file exceeds the configured byte bound")
+            manifest = client.put_artifact(
+                content,
+                media_type="application/octet-stream",
+                provenance=ArtifactProvenance(
+                    producer_identity=client.principal_id,
+                    run_id=f"skill-learning:{request_id}",
+                    task_attempt_id=task_id,
+                    call_id=f"source:{request_id}",
+                    capability="skill.learn.source",
+                    channel="learning-source",
+                ),
+                chunk_bytes=effective.artifacts.chunk_bytes,
+                retention="skill-lineage",
+            )
+            learning_source = SkillLearningSource(
+                kind=SkillLearningSourceKind.ARTIFACT,
+                locator=manifest.reference,
+            )
+        else:
+            try:
+                selected_kind = SkillLearningSourceKind(inferred)
+            except ValueError as exc:
+                raise typer.BadParameter("unsupported learning source kind") from exc
+            learning_source = SkillLearningSource(
+                kind=selected_kind,
+                locator="inline:cli" if selected_kind is SkillLearningSourceKind.TEXT else source,
+                content=source if selected_kind is SkillLearningSourceKind.TEXT else None,
+            )
+        request = SkillLearningRequest(
+            request_id=request_id,
+            task_id=task_id,
+            task_class=task_class,
+            consuming_identity=client.principal_id,
+            suggested_name=name,
+            sources=(learning_source,),
+            platform=platform or sys.platform,
+            organization_version=organization_version,
+            available_tools=frozenset(available_tool or ()),
+            reason=reason,
+        )
+        record = client.learn_skill(request)
+    _emit(record.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@skill_app.command("register")
+def register_skill(
+    ctx: typer.Context,
+    record_file: Annotated[
+        Path,
+        typer.Option("--record", help="JSON SkillVersionRecord referencing an ArtifactCollection."),
+    ],
+    expected_revision: Annotated[int, typer.Option(min=0)] = 0,
+) -> None:
+    """Register and inspect an Artifact-first candidate through effective policy."""
+    from mishkan.application import ApplicationCommand
+    from mishkan.skills import SkillVersionRecord
+
+    try:
+        record = SkillVersionRecord.model_validate_json(record_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter("--record must contain a valid SkillVersionRecord") from exc
+    with _daemon_client(ctx) as client:
+        result = client.command(
+            ApplicationCommand(
+                command_type="skill.version.register",
+                actor_id=client.principal_id,
+                target_type="skill_version",
+                target_id=str(record.id),
+                expected_revision=expected_revision,
+                payload={"record": record.model_dump(mode="json")},
+            )
+        )
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@skill_app.command("decide")
+def decide_skill(
+    ctx: typer.Context,
+    version_id: Annotated[str, typer.Argument(help="Skill version UUID.")],
+    disposition: Annotated[
+        str,
+        typer.Option(help="One of allow, require_review, or deny."),
+    ],
+    reason: Annotated[str, typer.Option(help="Non-secret decision reason.")],
+    expected_revision: Annotated[int | None, typer.Option(min=0)] = None,
+    expected_active: Annotated[
+        str | None, typer.Option(help="Current active version UUID.")
+    ] = None,
+    quarantine_override: Annotated[
+        bool,
+        typer.Option(help="Request the separately governed quarantine-override effect."),
+    ] = False,
+) -> None:
+    """Stage, deny, or atomically activate an inspected skill version."""
+    from uuid import UUID
+
+    from mishkan.application import ApplicationCommand
+    from mishkan.skills import SkillLifecycleDecision, SkillMutationDisposition
+
+    try:
+        selected = SkillMutationDisposition(disposition)
+        identity = UUID(version_id)
+        current = None if expected_active is None else UUID(expected_active)
+    except ValueError as exc:
+        raise typer.BadParameter("invalid disposition or skill version UUID") from exc
+    with _daemon_client(ctx) as client:
+        decision = SkillLifecycleDecision(
+            version_id=identity,
+            disposition=selected,
+            actor_id=client.principal_id,
+            policy_fingerprint="0" * 64,
+            expected_active_version_id=current,
+            quarantine_override=quarantine_override,
+            reason=reason,
+        )
+        result = client.command(
+            ApplicationCommand(
+                command_type="skill.version.decide",
+                actor_id=client.principal_id,
+                target_type="skill_version",
+                target_id=version_id,
+                expected_revision=expected_revision,
+                payload={"decision": decision.model_dump(mode="json")},
+            )
+        )
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@skill_app.command("archive")
+def archive_skill(
+    ctx: typer.Context,
+    version_id: Annotated[str, typer.Argument(help="Skill version UUID.")],
+    version_revision: Annotated[int, typer.Option(min=1, help="Lifecycle CAS revision.")],
+    reason: Annotated[str, typer.Option(help="Non-secret archival reason.")],
+    expected_revision: Annotated[int | None, typer.Option(min=0)] = None,
+) -> None:
+    """Archive one unpinned version without erasing its history."""
+    from uuid import UUID
+
+    from mishkan.application import ApplicationCommand
+    from mishkan.skills import SkillLifecycleDecision, SkillMutationDisposition
+
+    try:
+        identity = UUID(version_id)
+    except ValueError as exc:
+        raise typer.BadParameter("skill version identity must be a UUID") from exc
+    with _daemon_client(ctx) as client:
+        decision = SkillLifecycleDecision(
+            version_id=identity,
+            disposition=SkillMutationDisposition.ALLOW,
+            actor_id=client.principal_id,
+            policy_fingerprint="0" * 64,
+            reason=reason,
+        )
+        result = client.command(
+            ApplicationCommand(
+                command_type="skill.version.archive",
+                actor_id=client.principal_id,
+                target_type="skill_version",
+                target_id=version_id,
+                expected_revision=expected_revision,
+                payload={
+                    "decision": decision.model_dump(mode="json"),
+                    "expected_revision": version_revision,
+                },
+            )
+        )
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@skill_app.command("delete")
+def delete_skill(
+    ctx: typer.Context,
+    version_id: Annotated[str, typer.Argument(help="Skill version UUID.")],
+    version_revision: Annotated[int, typer.Option(min=1, help="Lifecycle CAS revision.")],
+    reason: Annotated[str, typer.Option(help="Non-secret logical deletion reason.")],
+    expected_revision: Annotated[int | None, typer.Option(min=0)] = None,
+) -> None:
+    """Logically delete one unpinned version while preserving recoverable history."""
+    _archive_or_delete_skill(
+        ctx,
+        version_id,
+        version_revision,
+        reason,
+        expected_revision,
+        command_type="skill.version.delete",
+    )
+
+
+def _archive_or_delete_skill(
+    ctx: typer.Context,
+    version_id: str,
+    version_revision: int,
+    reason: str,
+    expected_revision: int | None,
+    *,
+    command_type: str,
+) -> None:
+    from uuid import UUID
+
+    from mishkan.application import ApplicationCommand
+    from mishkan.skills import SkillLifecycleDecision, SkillMutationDisposition
+
+    try:
+        identity = UUID(version_id)
+    except ValueError as exc:
+        raise typer.BadParameter("skill version identity must be a UUID") from exc
+    with _daemon_client(ctx) as client:
+        decision = SkillLifecycleDecision(
+            version_id=identity,
+            disposition=SkillMutationDisposition.ALLOW,
+            actor_id=client.principal_id,
+            policy_fingerprint="0" * 64,
+            reason=reason,
+        )
+        result = client.command(
+            ApplicationCommand(
+                command_type=command_type,
+                actor_id=client.principal_id,
+                target_type="skill_version",
+                target_id=version_id,
+                expected_revision=expected_revision,
+                payload={
+                    "decision": decision.model_dump(mode="json"),
+                    "expected_revision": version_revision,
+                },
+            )
+        )
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+def _reactivate_skill(
+    ctx: typer.Context,
+    version_id: str,
+    version_revision: int,
+    reason: str,
+    expected_active: str | None,
+    expected_revision: int | None,
+    *,
+    operation: str,
+) -> None:
+    from uuid import UUID
+
+    from mishkan.application import ApplicationCommand
+    from mishkan.skills import SkillLifecycleDecision, SkillMutationDisposition
+
+    try:
+        identity = UUID(version_id)
+        active_identity = None if expected_active is None else UUID(expected_active)
+    except ValueError as exc:
+        raise typer.BadParameter("skill version identities must be UUIDs") from exc
+    with _daemon_client(ctx) as client:
+        decision = SkillLifecycleDecision(
+            version_id=identity,
+            disposition=SkillMutationDisposition.ALLOW,
+            actor_id=client.principal_id,
+            policy_fingerprint="0" * 64,
+            expected_active_version_id=active_identity,
+            reason=reason,
+        )
+        result = client.command(
+            ApplicationCommand(
+                command_type=f"skill.version.{operation}",
+                actor_id=client.principal_id,
+                target_type="skill_version",
+                target_id=version_id,
+                expected_revision=expected_revision,
+                payload={
+                    "decision": decision.model_dump(mode="json"),
+                    "expected_revision": version_revision,
+                },
+            )
+        )
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@skill_app.command("restore")
+def restore_skill(
+    ctx: typer.Context,
+    version_id: Annotated[str, typer.Argument(help="Archived skill version UUID.")],
+    version_revision: Annotated[int, typer.Option(min=1)],
+    reason: Annotated[str, typer.Option(help="Non-secret restoration reason.")],
+    expected_active: Annotated[str | None, typer.Option()] = None,
+    expected_revision: Annotated[int | None, typer.Option(min=0)] = None,
+) -> None:
+    """Atomically restore an archived immutable version through policy and CAS."""
+    _reactivate_skill(
+        ctx,
+        version_id,
+        version_revision,
+        reason,
+        expected_active,
+        expected_revision,
+        operation="restore",
+    )
+
+
+@skill_app.command("reset")
+def reset_skill(
+    ctx: typer.Context,
+    version_id: Annotated[str, typer.Argument(help="Prior inspected version UUID.")],
+    version_revision: Annotated[int, typer.Option(min=1)],
+    reason: Annotated[str, typer.Option(help="Non-secret reset reason.")],
+    expected_active: Annotated[str, typer.Option(help="Current active version UUID.")],
+    expected_revision: Annotated[int | None, typer.Option(min=0)] = None,
+) -> None:
+    """Atomically reset an active pointer to a prior inspected version through CAS."""
+    _reactivate_skill(
+        ctx,
+        version_id,
+        version_revision,
+        reason,
+        expected_active,
+        expected_revision,
+        operation="reset",
+    )
+
+
+def _pin_skill(
+    ctx: typer.Context,
+    version_id: str,
+    version_revision: int,
+    expected_revision: int | None,
+    *,
+    pinned: bool,
+) -> None:
+    from mishkan.application import ApplicationCommand
+
+    with _daemon_client(ctx) as client:
+        result = client.command(
+            ApplicationCommand(
+                command_type="skill.version.pin" if pinned else "skill.version.unpin",
+                actor_id=client.principal_id,
+                target_type="skill_version",
+                target_id=version_id,
+                expected_revision=expected_revision,
+                payload={"expected_revision": version_revision},
+            )
+        )
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@skill_app.command("pin")
+def pin_skill(
+    ctx: typer.Context,
+    version_id: str,
+    version_revision: Annotated[int, typer.Option(min=1)],
+    expected_revision: Annotated[int | None, typer.Option(min=0)] = None,
+) -> None:
+    """Protect a skill version from configured archival curation."""
+    _pin_skill(ctx, version_id, version_revision, expected_revision, pinned=True)
+
+
+@skill_app.command("unpin")
+def unpin_skill(
+    ctx: typer.Context,
+    version_id: str,
+    version_revision: Annotated[int, typer.Option(min=1)],
+    expected_revision: Annotated[int | None, typer.Option(min=0)] = None,
+) -> None:
+    """Remove archival protection through the same command authority."""
+    _pin_skill(ctx, version_id, version_revision, expected_revision, pinned=False)
+
+
+@skill_app.command("usage")
+def skill_usage(
+    ctx: typer.Context,
+    task_class: Annotated[str, typer.Argument(help="Exact task class.")],
+    name: Annotated[str | None, typer.Option(help="Optional exact skill identity.")] = None,
+) -> None:
+    """Show durable hit, partial, and miss aggregates without activating anything."""
+    with _daemon_client(ctx) as client:
+        summary = client.skill_usage_summary(task_class, skill_name=name)
+    _emit(summary.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@skill_app.command("updates")
+def skill_updates(ctx: typer.Context) -> None:
+    """Detect configured-source updates and conflicts without activating them."""
+    with _daemon_client(ctx) as client:
+        report = client.skill_updates()
+    _emit(report.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@skill_app.command("curation")
+def skill_curation(ctx: typer.Context) -> None:
+    """Show non-destructive archival proposals under the configured stale-use rule."""
+    with _daemon_client(ctx) as client:
+        proposals = client.skill_curation()
+    _emit(
+        [item.model_dump(mode="json") for item in proposals],
+        as_json=_state(ctx).json_output,
+    )
+
+
+@environment_app.command("observe")
+def observe_environment(
+    ctx: typer.Context,
+    context_id: Annotated[str, typer.Option(help="Mission-local environment context identity.")],
+    execution_location: Annotated[
+        str,
+        typer.Option(help="Exact machine, worker, or prospective location identity."),
+    ],
+    repository_id: Annotated[str | None, typer.Option()] = None,
+    repository_revision: Annotated[str | None, typer.Option()] = None,
+) -> None:
+    """Record bounded read-only evidence for the configured project workspace."""
+    from mishkan.environment import EnvironmentObservationRequest
+
+    with _daemon_client(ctx) as client:
+        observation = client.observe_environment(
+            EnvironmentObservationRequest(
+                actor_identity=client.principal_id,
+                context_id=context_id,
+                repository_id=repository_id,
+                repository_revision=repository_revision,
+                execution_location=execution_location,
+            )
+        )
+    _emit(observation.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@environment_app.command("resolve")
+def resolve_environment(
+    ctx: typer.Context,
+    request_file: Annotated[
+        Path,
+        typer.Option("--request", help="JSON EnvironmentBindingRequest authored by the crew."),
+    ],
+) -> None:
+    """Resolve one exact agent-authored outcome without substituting another outcome."""
+    from mishkan.environment import EnvironmentBindingRequest
+
+    try:
+        request = EnvironmentBindingRequest.model_validate_json(
+            request_file.read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter(
+            "--request must contain a valid EnvironmentBindingRequest"
+        ) from exc
+    with _daemon_client(ctx) as client:
+        if request.owner_identity != client.principal_id:
+            raise typer.BadParameter(
+                "request owner_identity must match the authenticated daemon principal"
+            )
+        binding = client.resolve_environment(request)
+    _emit(binding.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@environment_app.command("observation")
+def show_environment_observation(
+    ctx: typer.Context,
+    observation_id: Annotated[str, typer.Argument(help="Environment observation UUID.")],
+) -> None:
+    """Show one exact durable observation."""
+    with _daemon_client(ctx) as client:
+        observation = client.environment_observation(observation_id)
+    _emit(observation.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@environment_app.command("binding")
+def show_environment_binding(
+    ctx: typer.Context,
+    binding_id: Annotated[str, typer.Argument(help="Environment binding UUID.")],
+) -> None:
+    """Show one exact durable compatibility decision."""
+    with _daemon_client(ctx) as client:
+        binding = client.environment_binding(binding_id)
+    _emit(binding.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@environment_app.command("command-candidates")
+def show_engineering_command_candidates(
+    ctx: typer.Context,
+    observation_id: Annotated[str, typer.Argument(help="Environment observation UUID.")],
+) -> None:
+    """Show exact executable pack commands and explicit unavailable alternatives."""
+    with _daemon_client(ctx) as client:
+        candidates = client.engineering_command_candidates(observation_id)
+    _emit(
+        [item.model_dump(mode="json") for item in candidates],
+        as_json=_state(ctx).json_output,
+    )
+
+
+def _engineering_command_request(source: Path):  # type: ignore[no-untyped-def]
+    from mishkan.environment import EngineeringCommandRequest
+
+    try:
+        return EngineeringCommandRequest.model_validate_json(source.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter(
+            "--request must contain a valid EngineeringCommandRequest"
+        ) from exc
+
+
+@environment_app.command("plan-command")
+def plan_engineering_command(
+    ctx: typer.Context,
+    request_file: Annotated[
+        Path,
+        typer.Option("--request", help="JSON exact technical-pack command request."),
+    ],
+) -> None:
+    """Resolve an applicable pack action to one observed executable without running it."""
+    request = _engineering_command_request(request_file)
+    with _daemon_client(ctx) as client:
+        if request.owner_identity != client.principal_id:
+            raise typer.BadParameter(
+                "request owner_identity must match the authenticated daemon principal"
+            )
+        plan = client.plan_engineering_command(request)
+    _emit(plan.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@environment_app.command("start-command")
+def start_engineering_command(
+    ctx: typer.Context,
+    request_file: Annotated[
+        Path,
+        typer.Option("--request", help="JSON exact technical-pack command request."),
+    ],
+) -> None:
+    """Plan and start a pack command through the governed I03 session supervisor."""
+    request = _engineering_command_request(request_file)
+    with _daemon_client(ctx) as client:
+        if request.owner_identity != client.principal_id:
+            raise typer.BadParameter(
+                "request owner_identity must match the authenticated daemon principal"
+            )
+        plan, session = client.start_engineering_command(request)
+    _emit(
+        {
+            "plan": plan.model_dump(mode="json"),
+            "session": session.model_dump(mode="json"),
+        },
+        as_json=_state(ctx).json_output,
+    )
+
+
+@environment_app.command("validate-descriptors")
+def validate_environment_descriptors(
+    ctx: typer.Context,
+    descriptor_file: Annotated[
+        Path,
+        typer.Option("--set", help="JSON EnvironmentDescriptorSet using immutable artifacts."),
+    ],
+) -> None:
+    """Validate and, only when valid, record an exact descriptor set."""
+    from mishkan.environment import EnvironmentDescriptorSet
+
+    try:
+        descriptor_set = EnvironmentDescriptorSet.model_validate_json(
+            descriptor_file.read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter("--set must contain a valid EnvironmentDescriptorSet") from exc
+    with _daemon_client(ctx) as client:
+        result = client.validate_environment_descriptors(descriptor_set)
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@environment_app.command("plan-descriptor-change")
+def plan_environment_descriptor_change(
+    ctx: typer.Context,
+    request_file: Annotated[
+        Path,
+        typer.Option("--request", help="JSON EnvironmentDescriptorChangeRequest."),
+    ],
+) -> None:
+    """Compose validated artifacts into an exact-base change set without applying it."""
+    from mishkan.environment import EnvironmentDescriptorChangeRequest
+
+    try:
+        request = EnvironmentDescriptorChangeRequest.model_validate_json(
+            request_file.read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter(
+            "--request must contain a valid EnvironmentDescriptorChangeRequest"
+        ) from exc
+    with _daemon_client(ctx) as client:
+        if request.owner_identity != client.principal_id:
+            raise typer.BadParameter(
+                "request owner_identity must match the authenticated daemon principal"
+            )
+        plan = client.plan_environment_descriptor_change(request)
+    _emit(plan.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+def _environment_operation_request(source: Path):  # type: ignore[no-untyped-def]
+    from mishkan.environment import EnvironmentOperationRequest
+
+    try:
+        return EnvironmentOperationRequest.model_validate_json(source.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter(
+            "--request must contain a valid EnvironmentOperationRequest"
+        ) from exc
+
+
+@environment_app.command("plan-operation")
+def plan_environment_operation(
+    ctx: typer.Context,
+    request_file: Annotated[
+        Path,
+        typer.Option("--request", help="JSON exact adapter operation request."),
+    ],
+) -> None:
+    """Produce a literal policy-visible execution request without executing it."""
+    request = _environment_operation_request(request_file)
+    with _daemon_client(ctx) as client:
+        if request.owner_identity != client.principal_id:
+            raise typer.BadParameter(
+                "request owner_identity must match the authenticated daemon principal"
+            )
+        plan = client.plan_environment_operation(request)
+    _emit(plan.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@environment_app.command("start-operation")
+def start_environment_operation(
+    ctx: typer.Context,
+    request_file: Annotated[
+        Path,
+        typer.Option("--request", help="JSON exact managed-job operation request."),
+    ],
+) -> None:
+    """Plan then start a governed environment operation through the I03 job supervisor."""
+    request = _environment_operation_request(request_file)
+    with _daemon_client(ctx) as client:
+        if request.owner_identity != client.principal_id:
+            raise typer.BadParameter(
+                "request owner_identity must match the authenticated daemon principal"
+            )
+        plan, session = client.start_environment_operation(request)
+    _emit(
+        {
+            "plan": plan.model_dump(mode="json"),
+            "session": session.model_dump(mode="json"),
+        },
+        as_json=_state(ctx).json_output,
+    )
+
+
+@environment_app.command("descriptor-set")
+def show_environment_descriptor_set(
+    ctx: typer.Context,
+    descriptor_set_id: Annotated[str, typer.Argument(help="Environment descriptor-set UUID.")],
+) -> None:
+    """Show one validated durable descriptor set."""
+    with _daemon_client(ctx) as client:
+        descriptor_set = client.environment_descriptor_set(descriptor_set_id)
+    _emit(descriptor_set.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@environment_app.command("settle-attempt")
+def settle_environment_attempt(
+    ctx: typer.Context,
+    plan_file: Annotated[
+        Path,
+        typer.Option("--plan", help="JSON EnvironmentOperationPlan returned by mishkand."),
+    ],
+    session_id: Annotated[str, typer.Option(help="Settled managed-job UUID.")],
+) -> None:
+    """Derive durable attempt evidence from an exact plan and terminal session."""
+    from mishkan.environment import EnvironmentOperationPlan
+
+    try:
+        plan = EnvironmentOperationPlan.model_validate_json(plan_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter("--plan must contain a valid EnvironmentOperationPlan") from exc
+    with _daemon_client(ctx) as client:
+        attempt = client.settle_environment_attempt(plan, session_id)
+    _emit(attempt.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@environment_app.command("verify")
+def verify_environment(
+    ctx: typer.Context,
+    request_file: Annotated[
+        Path,
+        typer.Option("--request", help="JSON EnvironmentVerificationRequest."),
+    ],
+) -> None:
+    """Derive location-bound verification from durable execution attempts."""
+    from mishkan.environment import EnvironmentVerificationRequest
+
+    try:
+        request = EnvironmentVerificationRequest.model_validate_json(
+            request_file.read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter(
+            "--request must contain a valid EnvironmentVerificationRequest"
+        ) from exc
+    with _daemon_client(ctx) as client:
+        verification = client.verify_environment(request)
+    _emit(verification.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@environment_app.command("invalidate")
+def invalidate_environment(
+    ctx: typer.Context,
+    invalidation_file: Annotated[
+        Path,
+        typer.Option("--request", help="JSON EnvironmentInvalidation."),
+    ],
+) -> None:
+    """Invalidate only one binding and its exact dependent task set."""
+    from mishkan.environment import EnvironmentInvalidation
+
+    try:
+        invalidation = EnvironmentInvalidation.model_validate_json(
+            invalidation_file.read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter("--request must contain a valid EnvironmentInvalidation") from exc
+    with _daemon_client(ctx) as client:
+        recorded = client.invalidate_environment(invalidation)
+    _emit(recorded.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@environment_app.command("attempt")
+def show_environment_attempt(
+    ctx: typer.Context,
+    attempt_id: Annotated[str, typer.Argument(help="Environment attempt UUID.")],
+) -> None:
+    """Show one durable environment attempt."""
+    with _daemon_client(ctx) as client:
+        attempt = client.environment_attempt(attempt_id)
+    _emit(attempt.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@environment_app.command("verification")
+def show_environment_verification(
+    ctx: typer.Context,
+    verification_id: Annotated[str, typer.Argument(help="Environment verification UUID.")],
+) -> None:
+    """Show one location-bound environment verification."""
+    with _daemon_client(ctx) as client:
+        verification = client.environment_verification(verification_id)
+    _emit(verification.model_dump(mode="json"), as_json=_state(ctx).json_output)
 
 
 @mcp_app.command("connect")

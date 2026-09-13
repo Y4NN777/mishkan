@@ -1,0 +1,213 @@
+{
+  "$defs": {
+    "LangSmithFeedbackImportRequest": {
+      "additionalProperties": false,
+      "description": "Bounded, attributable feedback copied from an authorized LangSmith client.",
+      "properties": {
+        "comment": {
+          "anyOf": [
+            {
+              "maxLength": 8192,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Comment"
+        },
+        "external_feedback_id": {
+          "format": "uuid",
+          "title": "External Feedback Id",
+          "type": "string"
+        },
+        "feedback_source_type": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]*$",
+          "title": "Feedback Source Type",
+          "type": "string"
+        },
+        "import_id": {
+          "format": "uuid",
+          "title": "Import Id",
+          "type": "string"
+        },
+        "key": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "owner_identity": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Owner Identity",
+          "type": "string"
+        },
+        "project_name": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Project Name",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "score": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Score"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Session Id"
+        },
+        "source_created_at": {
+          "format": "date-time",
+          "title": "Source Created At",
+          "type": "string"
+        },
+        "traced_run_id": {
+          "format": "uuid",
+          "title": "Traced Run Id",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        }
+      },
+      "required": [
+        "owner_identity",
+        "project_name",
+        "external_feedback_id",
+        "traced_run_id",
+        "key",
+        "feedback_source_type",
+        "source_created_at"
+      ],
+      "title": "LangSmithFeedbackImportRequest",
+      "type": "object"
+    },
+    "TelemetryEvaluationCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "accepted": {
+          "const": false,
+          "default": false,
+          "title": "Accepted",
+          "type": "boolean"
+        },
+        "authority": {
+          "const": "candidate_only",
+          "default": "candidate_only",
+          "title": "Authority",
+          "type": "string"
+        },
+        "evidence_id": {
+          "format": "uuid",
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "imported_at": {
+          "format": "date-time",
+          "title": "Imported At",
+          "type": "string"
+        },
+        "policy_fingerprint": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Policy Fingerprint",
+          "type": "string"
+        },
+        "request": {
+          "$ref": "#/$defs/LangSmithFeedbackImportRequest"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "source": {
+          "const": "langsmith",
+          "default": "langsmith",
+          "title": "Source",
+          "type": "string"
+        },
+        "source_payload_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Source Payload Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "request",
+        "source_payload_digest",
+        "policy_fingerprint"
+      ],
+      "title": "TelemetryEvaluationCandidate",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "artifact_reference": {
+      "pattern": "^artifact:[0-9a-f-]{36}$",
+      "title": "Artifact Reference",
+      "type": "string"
+    },
+    "candidate": {
+      "$ref": "#/$defs/TelemetryEvaluationCandidate"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "candidate",
+    "artifact_reference"
+  ],
+  "title": "TelemetryEvaluationImportResult",
+  "type": "object"
+}

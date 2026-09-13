@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import os
 import tempfile
@@ -17,14 +19,40 @@ from mishkan.artifacts import (
     ArtifactCollection,
     ArtifactManifest,
     ArtifactPin,
+    ArtifactProvenance,
     UploadSession,
     WorkingReference,
 )
 from mishkan.artifacts import (
     ArtifactHold as ArtifactEvidenceHold,
 )
+from mishkan.context import (
+    CommunityCandidate,
+    ContextualRecommendation,
+    ContextualRecommendationRequest,
+    EngineerProfile,
+)
 from mishkan.daemon.auth import TokenFile
 from mishkan.edits import ChangeSetResult
+from mishkan.environment import (
+    DescriptorValidationResult,
+    EngineeringCommandCandidate,
+    EngineeringCommandPlan,
+    EngineeringCommandRequest,
+    EnvironmentAttempt,
+    EnvironmentBinding,
+    EnvironmentBindingRequest,
+    EnvironmentDescriptorChangePlan,
+    EnvironmentDescriptorChangeRequest,
+    EnvironmentDescriptorSet,
+    EnvironmentInvalidation,
+    EnvironmentObservation,
+    EnvironmentObservationRequest,
+    EnvironmentOperationPlan,
+    EnvironmentOperationRequest,
+    EnvironmentVerification,
+    EnvironmentVerificationRequest,
+)
 from mishkan.events import (
     EventEnvelope,
     EventPage,
@@ -35,6 +63,21 @@ from mishkan.events import (
     EventHold as EventEvidenceHold,
 )
 from mishkan.execution import CursorRead, ExecutionSession
+from mishkan.skills.models import (
+    SkillCurationProposal,
+    SkillInvocationEvidence,
+    SkillInvocationRequest,
+    SkillLearningRecord,
+    SkillLearningRequest,
+    SkillUpdateReport,
+    SkillUsageSummary,
+    SkillVersionRecord,
+)
+from mishkan.telemetry.models import (
+    LangSmithFeedbackImportRequest,
+    TelemetryEvaluationImportResult,
+    TelemetryStatus,
+)
 
 
 class Mishkan:
@@ -75,10 +118,111 @@ class Mishkan:
         response.raise_for_status()
         return CommandResult.model_validate(response.json())
 
+    def put_artifact(
+        self,
+        content: bytes,
+        *,
+        media_type: str,
+        provenance: ArtifactProvenance,
+        chunk_bytes: int,
+        sensitivity: str = "internal",
+        retention: str = "run",
+    ) -> ArtifactManifest:
+        """Stream immutable bytes through the same versioned daemon commands."""
+        if chunk_bytes < 1:
+            raise ValueError("artifact chunk bound must be positive")
+        opened = self.command(
+            ApplicationCommand(
+                command_type="artifact.upload.open",
+                actor_id=self.principal_id,
+                target_type="artifact_service",
+                payload={
+                    "expected_size": len(content),
+                    "expected_digest": f"sha256:{hashlib.sha256(content).hexdigest()}",
+                    "media_type": media_type,
+                    "provenance": provenance.model_dump(mode="json"),
+                    "sensitivity": sensitivity,
+                    "retention": retention,
+                },
+            )
+        )
+        upload = UploadSession.model_validate(opened.payload)
+        for offset in range(0, len(content), chunk_bytes):
+            self.command(
+                ApplicationCommand(
+                    command_type="artifact.upload.chunk",
+                    actor_id=self.principal_id,
+                    target_type="artifact_upload",
+                    target_id=str(upload.upload_id),
+                    payload={
+                        "offset": offset,
+                        "content_base64": base64.b64encode(
+                            content[offset : offset + chunk_bytes]
+                        ).decode("ascii"),
+                    },
+                )
+            )
+        committed = self.command(
+            ApplicationCommand(
+                command_type="artifact.upload.commit",
+                actor_id=self.principal_id,
+                target_type="artifact_upload",
+                target_id=str(upload.upload_id),
+                payload={},
+            )
+        )
+        return ArtifactManifest.model_validate(committed.payload)
+
     def snapshot(self) -> SnapshotEnvelope:
         response = self._client.get("/v1/snapshot", headers=self._headers())
         response.raise_for_status()
         return SnapshotEnvelope.model_validate(response.json())
+
+    def telemetry_status(self) -> TelemetryStatus:
+        response = self._client.get("/v1/telemetry/status", headers=self._headers())
+        response.raise_for_status()
+        return TelemetryStatus.model_validate(response.json())
+
+    def engineer_profile(self) -> EngineerProfile:
+        response = self._client.get("/v1/context/engineer-profile", headers=self._headers())
+        response.raise_for_status()
+        return EngineerProfile.model_validate(response.json())
+
+    def community_candidates(self) -> tuple[CommunityCandidate, ...]:
+        response = self._client.get("/v1/context/community-candidates", headers=self._headers())
+        response.raise_for_status()
+        return tuple(
+            CommunityCandidate.model_validate(item) for item in response.json()["candidates"]
+        )
+
+    def recommend_community_candidate(
+        self, request: ContextualRecommendationRequest
+    ) -> ContextualRecommendation:
+        result = self.command(
+            ApplicationCommand(
+                command_type="context.recommend",
+                actor_id=self.principal_id,
+                target_type="context_recommendation",
+                target_id=str(request.request_id),
+                payload={"request": request.model_dump(mode="json")},
+            )
+        )
+        return ContextualRecommendation.model_validate(result.payload)
+
+    def import_langsmith_feedback(
+        self,
+        request: LangSmithFeedbackImportRequest,
+    ) -> TelemetryEvaluationImportResult:
+        result = self.command(
+            ApplicationCommand(
+                command_type="telemetry.evaluation.import",
+                actor_id=self.principal_id,
+                target_type="telemetry_evaluation",
+                target_id=str(request.import_id),
+                payload={"request": request.model_dump(mode="json")},
+            )
+        )
+        return TelemetryEvaluationImportResult.model_validate(result.payload)
 
     def events(
         self,
@@ -401,6 +545,333 @@ class Mishkan:
         )
         response.raise_for_status()
         return tuple(dict(item) for item in response.json())
+
+    def skills(
+        self,
+        *,
+        offset: int = 0,
+        limit: int = 100,
+        name: str | None = None,
+    ) -> tuple[SkillVersionRecord, ...]:
+        params: dict[str, str | int] = {"offset": offset, "limit": limit}
+        if name is not None:
+            params["name"] = name
+        response = self._client.get("/v1/skills", headers=self._headers(), params=params)
+        response.raise_for_status()
+        return tuple(SkillVersionRecord.model_validate(item) for item in response.json())
+
+    def active_skill(self, name: str) -> SkillVersionRecord | None:
+        identity = quote(name, safe="")
+        response = self._client.get(
+            f"/v1/skills/{identity}/active",
+            headers=self._headers(),
+        )
+        response.raise_for_status()
+        payload = response.json()
+        return None if payload is None else SkillVersionRecord.model_validate(payload)
+
+    def skill_usage_summary(
+        self,
+        task_class: str,
+        *,
+        skill_name: str | None = None,
+    ) -> SkillUsageSummary:
+        params: dict[str, str] = {"task_class": task_class}
+        if skill_name is not None:
+            params["skill_name"] = skill_name
+        response = self._client.get(
+            "/v1/skill-usage/summary",
+            headers=self._headers(),
+            params=params,
+        )
+        response.raise_for_status()
+        return SkillUsageSummary.model_validate(response.json())
+
+    def invoke_skill(self, request: SkillInvocationRequest) -> SkillInvocationEvidence:
+        """Resolve and load active instructions through the governed command path."""
+        result = self.command(
+            ApplicationCommand(
+                command_type="skill.invoke",
+                actor_id=self.principal_id,
+                target_type="task",
+                target_id=request.context.task_id,
+                payload={"request": request.model_dump(mode="json")},
+            )
+        )
+        return SkillInvocationEvidence.model_validate(result.payload)
+
+    def learn_skill(self, request: SkillLearningRequest) -> SkillLearningRecord:
+        """Execute a governed Research proposal and return its durable lineage."""
+        result = self.command(
+            ApplicationCommand(
+                command_type="skill.learn",
+                actor_id=self.principal_id,
+                target_type="skill_learning",
+                target_id=str(request.request_id),
+                payload={"request": request.model_dump(mode="json")},
+            )
+        )
+        return SkillLearningRecord.model_validate(result.payload)
+
+    def skill_learning(
+        self,
+        *,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> tuple[SkillLearningRecord, ...]:
+        response = self._client.get(
+            "/v1/skill-learning",
+            headers=self._headers(),
+            params={"offset": offset, "limit": limit},
+        )
+        response.raise_for_status()
+        return tuple(SkillLearningRecord.model_validate(item) for item in response.json())
+
+    def skill_learning_record(self, request_id: str) -> SkillLearningRecord:
+        identity = quote(request_id, safe="")
+        response = self._client.get(
+            f"/v1/skill-learning/{identity}",
+            headers=self._headers(),
+        )
+        response.raise_for_status()
+        return SkillLearningRecord.model_validate(response.json())
+
+    def skill_updates(self) -> SkillUpdateReport:
+        response = self._client.get("/v1/skill-updates", headers=self._headers())
+        response.raise_for_status()
+        return SkillUpdateReport.model_validate(response.json())
+
+    def skill_curation(self) -> tuple[SkillCurationProposal, ...]:
+        response = self._client.get("/v1/skill-curation", headers=self._headers())
+        response.raise_for_status()
+        return tuple(SkillCurationProposal.model_validate(item) for item in response.json())
+
+    def observe_environment(
+        self,
+        request: EnvironmentObservationRequest,
+    ) -> EnvironmentObservation:
+        result = self.command(
+            ApplicationCommand(
+                command_type="environment.observe",
+                actor_id=self.principal_id,
+                target_type="environment_observation",
+                target_id=str(request.observation_id),
+                payload={"request": request.model_dump(mode="json")},
+            )
+        )
+        return EnvironmentObservation.model_validate(result.payload)
+
+    def resolve_environment(self, request: EnvironmentBindingRequest) -> EnvironmentBinding:
+        result = self.command(
+            ApplicationCommand(
+                command_type="environment.resolve",
+                actor_id=self.principal_id,
+                target_type="environment_binding_request",
+                target_id=str(request.request_id),
+                payload={"request": request.model_dump(mode="json")},
+            )
+        )
+        return EnvironmentBinding.model_validate(result.payload)
+
+    def environment_observation(self, observation_id: str) -> EnvironmentObservation:
+        identity = quote(observation_id, safe="")
+        response = self._client.get(
+            f"/v1/environment/observations/{identity}",
+            headers=self._headers(),
+        )
+        response.raise_for_status()
+        return EnvironmentObservation.model_validate(response.json())
+
+    def environment_binding(self, binding_id: str) -> EnvironmentBinding:
+        identity = quote(binding_id, safe="")
+        response = self._client.get(
+            f"/v1/environment/bindings/{identity}",
+            headers=self._headers(),
+        )
+        response.raise_for_status()
+        return EnvironmentBinding.model_validate(response.json())
+
+    def engineering_command_candidates(
+        self,
+        observation_id: str,
+    ) -> tuple[EngineeringCommandCandidate, ...]:
+        identity = quote(observation_id, safe="")
+        response = self._client.get(
+            f"/v1/environment/observations/{identity}/command-candidates",
+            headers=self._headers(),
+        )
+        response.raise_for_status()
+        return tuple(EngineeringCommandCandidate.model_validate(item) for item in response.json())
+
+    def plan_engineering_command(
+        self,
+        request: EngineeringCommandRequest,
+    ) -> EngineeringCommandPlan:
+        result = self.command(
+            ApplicationCommand(
+                command_type="environment.command.plan",
+                actor_id=self.principal_id,
+                target_type="engineering_command",
+                target_id=str(request.request_id),
+                payload={"request": request.model_dump(mode="json")},
+            )
+        )
+        return EngineeringCommandPlan.model_validate(result.payload)
+
+    def start_engineering_command(
+        self,
+        request: EngineeringCommandRequest,
+    ) -> tuple[EngineeringCommandPlan, ExecutionSession]:
+        plan = self.plan_engineering_command(request)
+        if plan.execution.mode.value not in {"job", "pty"}:
+            raise ValueError("daemon engineering command requires a supervised session mode")
+        result = self.command(
+            ApplicationCommand(
+                command_type="session.start",
+                actor_id=self.principal_id,
+                target_type="session_service",
+                payload={"request": plan.execution.model_dump(mode="json")},
+            )
+        )
+        return plan, ExecutionSession.model_validate(result.payload)
+
+    def validate_environment_descriptors(
+        self,
+        descriptor_set: EnvironmentDescriptorSet,
+    ) -> DescriptorValidationResult:
+        result = self.command(
+            ApplicationCommand(
+                command_type="environment.descriptor.validate",
+                actor_id=self.principal_id,
+                target_type="environment_descriptor_set",
+                target_id=str(descriptor_set.descriptor_set_id),
+                payload={"descriptor_set": descriptor_set.model_dump(mode="json")},
+            )
+        )
+        return DescriptorValidationResult.model_validate(result.payload)
+
+    def plan_environment_descriptor_change(
+        self,
+        request: EnvironmentDescriptorChangeRequest,
+    ) -> EnvironmentDescriptorChangePlan:
+        result = self.command(
+            ApplicationCommand(
+                command_type="environment.descriptor.change.plan",
+                actor_id=self.principal_id,
+                target_type="environment_descriptor_change",
+                target_id=str(request.request_id),
+                payload={"request": request.model_dump(mode="json")},
+            )
+        )
+        return EnvironmentDescriptorChangePlan.model_validate(result.payload)
+
+    def plan_environment_operation(
+        self,
+        request: EnvironmentOperationRequest,
+    ) -> EnvironmentOperationPlan:
+        result = self.command(
+            ApplicationCommand(
+                command_type="environment.operation.plan",
+                actor_id=self.principal_id,
+                target_type="environment_operation",
+                target_id=str(request.operation_id),
+                payload={"request": request.model_dump(mode="json")},
+            )
+        )
+        return EnvironmentOperationPlan.model_validate(result.payload)
+
+    def start_environment_operation(
+        self,
+        request: EnvironmentOperationRequest,
+    ) -> tuple[EnvironmentOperationPlan, ExecutionSession]:
+        plan = self.plan_environment_operation(request)
+        if plan.execution.mode.value != "job":
+            raise ValueError("daemon environment execution requires a managed-job adapter")
+        result = self.command(
+            ApplicationCommand(
+                command_type="session.start",
+                actor_id=self.principal_id,
+                target_type="session_service",
+                payload={"request": plan.execution.model_dump(mode="json")},
+            )
+        )
+        return plan, ExecutionSession.model_validate(result.payload)
+
+    def environment_descriptor_set(self, descriptor_set_id: str) -> EnvironmentDescriptorSet:
+        identity = quote(descriptor_set_id, safe="")
+        response = self._client.get(
+            f"/v1/environment/descriptor-sets/{identity}",
+            headers=self._headers(),
+        )
+        response.raise_for_status()
+        return EnvironmentDescriptorSet.model_validate(response.json())
+
+    def settle_environment_attempt(
+        self,
+        plan: EnvironmentOperationPlan,
+        session_id: str,
+    ) -> EnvironmentAttempt:
+        result = self.command(
+            ApplicationCommand(
+                command_type="environment.attempt.settle",
+                actor_id=self.principal_id,
+                target_type="environment_operation",
+                target_id=str(plan.request.operation_id),
+                payload={
+                    "operation_plan": plan.model_dump(mode="json"),
+                    "session_id": session_id,
+                },
+            )
+        )
+        return EnvironmentAttempt.model_validate(result.payload)
+
+    def verify_environment(
+        self,
+        request: EnvironmentVerificationRequest,
+    ) -> EnvironmentVerification:
+        result = self.command(
+            ApplicationCommand(
+                command_type="environment.verification.record",
+                actor_id=self.principal_id,
+                target_type="environment_verification",
+                target_id=str(request.verification_id),
+                payload={"request": request.model_dump(mode="json")},
+            )
+        )
+        return EnvironmentVerification.model_validate(result.payload)
+
+    def invalidate_environment(
+        self,
+        invalidation: EnvironmentInvalidation,
+    ) -> EnvironmentInvalidation:
+        result = self.command(
+            ApplicationCommand(
+                command_type="environment.binding.invalidate",
+                actor_id=self.principal_id,
+                target_type="environment_binding",
+                target_id=str(invalidation.binding_id),
+                payload={"invalidation": invalidation.model_dump(mode="json")},
+            )
+        )
+        return EnvironmentInvalidation.model_validate(result.payload)
+
+    def environment_attempt(self, attempt_id: str) -> EnvironmentAttempt:
+        identity = quote(attempt_id, safe="")
+        response = self._client.get(
+            f"/v1/environment/attempts/{identity}",
+            headers=self._headers(),
+        )
+        response.raise_for_status()
+        return EnvironmentAttempt.model_validate(response.json())
+
+    def environment_verification(self, verification_id: str) -> EnvironmentVerification:
+        identity = quote(verification_id, safe="")
+        response = self._client.get(
+            f"/v1/environment/verifications/{identity}",
+            headers=self._headers(),
+        )
+        response.raise_for_status()
+        return EnvironmentVerification.model_validate(response.json())
 
     def mcp_connections(
         self,

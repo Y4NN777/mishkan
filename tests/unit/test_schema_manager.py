@@ -32,6 +32,41 @@ def test_empty_database_is_initialized_only_explicitly(tmp_path: Path) -> None:
     assert initialized.state is DatabaseState.CURRENT
     with create_engine(f"sqlite:///{database}").connect() as connection:
         assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+        assert (
+            connection.execute(
+                text("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='skill_usage'")
+            ).scalar_one()
+            == 1
+        )
+
+
+def test_explicit_upgrade_adds_skill_usage_without_changing_existing_events(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "pre-i05.db"
+    config = _migration_config(database)
+    command.upgrade(config, "event_cursor_highwater_v1")
+    with create_engine(f"sqlite:///{database}").begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO event_outbox "
+                "(id, schema_version, aggregate_id, entity_type, event_type, source, payload, "
+                "occurred_at, sensitivity) VALUES "
+                "('11111111-1111-4111-8111-111111111111', '1.0', 'task-1', 'task', "
+                "'test.event', 'test', '{}', '2026-08-29T00:00:00+00:00', 'internal')"
+            )
+        )
+
+    status = SchemaManager(database).upgrade()
+
+    assert status.state is DatabaseState.CURRENT
+    assert status.backup_path is not None
+    with create_engine(f"sqlite:///{database}").connect() as connection:
+        assert connection.execute(text("SELECT count(*) FROM event_outbox")).scalar_one() == 1
+        assert (
+            connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+            == "i05_environment_verify_v1"
+        )
 
 
 def test_exact_legacy_database_is_backed_up_and_upgraded(tmp_path: Path) -> None:

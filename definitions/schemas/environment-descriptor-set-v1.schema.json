@@ -1,0 +1,146 @@
+{
+  "$defs": {
+    "EnvironmentDescriptorMember": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_reference": {
+          "pattern": "^artifact:[a-f0-9-]{36}$",
+          "title": "Artifact Reference",
+          "type": "string"
+        },
+        "base_revision": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Base Revision"
+        },
+        "compatibility_limits": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Compatibility Limits",
+          "type": "array"
+        },
+        "format": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Format",
+          "type": "string"
+        },
+        "logical_path": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Logical Path",
+          "type": "string"
+        },
+        "specification_version": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Specification Version"
+        }
+      },
+      "required": [
+        "format",
+        "logical_path",
+        "artifact_reference"
+      ],
+      "title": "EnvironmentDescriptorMember",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "binding_id": {
+      "format": "uuid",
+      "title": "Binding Id",
+      "type": "string"
+    },
+    "context_fingerprint": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Context Fingerprint",
+      "type": "string"
+    },
+    "credential_references": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Credential References",
+      "type": "array"
+    },
+    "descriptor_set_id": {
+      "format": "uuid",
+      "title": "Descriptor Set Id",
+      "type": "string"
+    },
+    "expected_artifacts": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Expected Artifacts",
+      "type": "array"
+    },
+    "lifecycle_commands": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Lifecycle Commands",
+      "type": "array"
+    },
+    "members": {
+      "items": {
+        "$ref": "#/$defs/EnvironmentDescriptorMember"
+      },
+      "minItems": 1,
+      "title": "Members",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "target_architecture": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Target Architecture",
+      "type": "string"
+    },
+    "target_platform": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Target Platform",
+      "type": "string"
+    }
+  },
+  "required": [
+    "binding_id",
+    "context_fingerprint",
+    "target_platform",
+    "target_architecture",
+    "members"
+  ],
+  "title": "EnvironmentDescriptorSet",
+  "type": "object"
+}

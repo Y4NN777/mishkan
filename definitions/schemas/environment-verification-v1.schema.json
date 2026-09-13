@@ -1,0 +1,124 @@
+{
+  "$defs": {
+    "AvailabilityState": {
+      "enum": [
+        "true",
+        "false",
+        "unknown"
+      ],
+      "title": "AvailabilityState",
+      "type": "string"
+    },
+    "EnvironmentSettlement": {
+      "enum": [
+        "verified",
+        "failed",
+        "cancelled",
+        "uncertain"
+      ],
+      "title": "EnvironmentSettlement",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "artifact_references": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Artifact References",
+      "type": "array"
+    },
+    "attempt_ids": {
+      "items": {
+        "format": "uuid",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Attempt Ids",
+      "type": "array"
+    },
+    "binding_id": {
+      "format": "uuid",
+      "title": "Binding Id",
+      "type": "string"
+    },
+    "checks": {
+      "additionalProperties": {
+        "$ref": "#/$defs/AvailabilityState"
+      },
+      "minProperties": 1,
+      "title": "Checks",
+      "type": "object"
+    },
+    "context_fingerprint": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Context Fingerprint",
+      "type": "string"
+    },
+    "engine_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Engine Id",
+      "type": "string"
+    },
+    "engine_version": {
+      "anyOf": [
+        {
+          "maxLength": 512,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Engine Version"
+    },
+    "limitations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Limitations",
+      "type": "array"
+    },
+    "location_fingerprint": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Location Fingerprint",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "settlement": {
+      "$ref": "#/$defs/EnvironmentSettlement"
+    },
+    "verification_id": {
+      "format": "uuid",
+      "title": "Verification Id",
+      "type": "string"
+    },
+    "verified_at": {
+      "format": "date-time",
+      "title": "Verified At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "binding_id",
+    "context_fingerprint",
+    "location_fingerprint",
+    "engine_id",
+    "checks",
+    "attempt_ids",
+    "artifact_references",
+    "settlement",
+    "limitations"
+  ],
+  "title": "EnvironmentVerification",
+  "type": "object"
+}

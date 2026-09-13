@@ -1,0 +1,206 @@
+{
+  "$defs": {
+    "CredentialReference": {
+      "additionalProperties": false,
+      "description": "A late-resolution locator; never a credential value.",
+      "properties": {
+        "locator": {
+          "minLength": 1,
+          "title": "Locator",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/CredentialSource"
+        }
+      },
+      "required": [
+        "source",
+        "locator"
+      ],
+      "title": "CredentialReference",
+      "type": "object"
+    },
+    "CredentialSource": {
+      "enum": [
+        "env",
+        "file",
+        "keyring",
+        "command"
+      ],
+      "title": "CredentialSource",
+      "type": "string"
+    },
+    "EnvironmentOperation": {
+      "enum": [
+        "validate",
+        "build",
+        "materialize",
+        "start",
+        "readiness",
+        "stop",
+        "cleanup"
+      ],
+      "title": "EnvironmentOperation",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "adapter_id": {
+      "pattern": "^[a-z][a-z0-9_.-]{1,255}$",
+      "title": "Adapter Id",
+      "type": "string"
+    },
+    "binding_id": {
+      "format": "uuid",
+      "title": "Binding Id",
+      "type": "string"
+    },
+    "credential_environment": {
+      "additionalProperties": {
+        "$ref": "#/$defs/CredentialReference"
+      },
+      "maxProperties": 32,
+      "title": "Credential Environment",
+      "type": "object"
+    },
+    "credential_references": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/CredentialReference"
+      },
+      "title": "Credential References",
+      "type": "array"
+    },
+    "deadline": {
+      "format": "date-time",
+      "title": "Deadline",
+      "type": "string"
+    },
+    "descriptor_path": {
+      "anyOf": [
+        {
+          "maxLength": 1024,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Descriptor Path"
+    },
+    "descriptor_set_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Descriptor Set Id"
+    },
+    "environment": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "maxProperties": 64,
+      "title": "Environment",
+      "type": "object"
+    },
+    "expected_exit_codes": {
+      "default": [
+        0
+      ],
+      "items": {
+        "type": "integer"
+      },
+      "title": "Expected Exit Codes",
+      "type": "array"
+    },
+    "network_destinations": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Network Destinations",
+      "type": "array"
+    },
+    "operation": {
+      "$ref": "#/$defs/EnvironmentOperation"
+    },
+    "operation_id": {
+      "format": "uuid",
+      "title": "Operation Id",
+      "type": "string"
+    },
+    "owner_identity": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Owner Identity",
+      "type": "string"
+    },
+    "parameters": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "maxProperties": 32,
+      "title": "Parameters",
+      "type": "object"
+    },
+    "preview_bytes": {
+      "default": 65536,
+      "maximum": 16777216,
+      "minimum": 1,
+      "title": "Preview Bytes",
+      "type": "integer"
+    },
+    "run_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "session_profile": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Session Profile",
+      "type": "string"
+    },
+    "task_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Task Id",
+      "type": "string"
+    },
+    "timeout_seconds": {
+      "maximum": 86400,
+      "minimum": 1,
+      "title": "Timeout Seconds",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "binding_id",
+    "adapter_id",
+    "operation",
+    "owner_identity",
+    "run_id",
+    "task_id",
+    "session_profile",
+    "deadline",
+    "timeout_seconds"
+  ],
+  "title": "EnvironmentOperationRequest",
+  "type": "object"
+}

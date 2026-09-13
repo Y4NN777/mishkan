@@ -1,0 +1,193 @@
+{
+  "$defs": {
+    "EffectSettlement": {
+      "enum": [
+        "absent",
+        "completed",
+        "uncertain"
+      ],
+      "title": "EffectSettlement",
+      "type": "string"
+    },
+    "EnvironmentOperation": {
+      "enum": [
+        "validate",
+        "build",
+        "materialize",
+        "start",
+        "readiness",
+        "stop",
+        "cleanup"
+      ],
+      "title": "EnvironmentOperation",
+      "type": "string"
+    },
+    "EnvironmentSettlement": {
+      "enum": [
+        "verified",
+        "failed",
+        "cancelled",
+        "uncertain"
+      ],
+      "title": "EnvironmentSettlement",
+      "type": "string"
+    },
+    "ExecutionStatus": {
+      "enum": [
+        "completed",
+        "failed",
+        "timed_out",
+        "cancelled",
+        "lost",
+        "uncertain"
+      ],
+      "title": "ExecutionStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "adapter_id": {
+      "pattern": "^[a-z][a-z0-9_.-]{1,255}$",
+      "title": "Adapter Id",
+      "type": "string"
+    },
+    "artifact_references": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Artifact References",
+      "type": "array"
+    },
+    "attempt_id": {
+      "format": "uuid",
+      "title": "Attempt Id",
+      "type": "string"
+    },
+    "binding_id": {
+      "format": "uuid",
+      "title": "Binding Id",
+      "type": "string"
+    },
+    "completed_at": {
+      "format": "date-time",
+      "title": "Completed At",
+      "type": "string"
+    },
+    "declared_effects": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Declared Effects",
+      "type": "array"
+    },
+    "effect_call_ids": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Effect Call Ids",
+      "type": "array"
+    },
+    "effect_settlement": {
+      "$ref": "#/$defs/EffectSettlement"
+    },
+    "engine_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Engine Id",
+      "type": "string"
+    },
+    "engine_version": {
+      "anyOf": [
+        {
+          "maxLength": 512,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Engine Version"
+    },
+    "execution_location": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Execution Location",
+      "type": "string"
+    },
+    "execution_status": {
+      "$ref": "#/$defs/ExecutionStatus"
+    },
+    "exit_code": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Exit Code"
+    },
+    "limitations": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Limitations",
+      "type": "array"
+    },
+    "observed_effects": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Observed Effects",
+      "type": "array"
+    },
+    "operation": {
+      "$ref": "#/$defs/EnvironmentOperation"
+    },
+    "operation_plan_fingerprint": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Operation Plan Fingerprint",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "settlement": {
+      "$ref": "#/$defs/EnvironmentSettlement"
+    },
+    "started_at": {
+      "format": "date-time",
+      "title": "Started At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "binding_id",
+    "operation_plan_fingerprint",
+    "operation",
+    "adapter_id",
+    "engine_id",
+    "execution_location",
+    "effect_call_ids",
+    "artifact_references",
+    "execution_status",
+    "effect_settlement",
+    "declared_effects",
+    "observed_effects",
+    "settlement",
+    "started_at",
+    "completed_at"
+  ],
+  "title": "EnvironmentAttempt",
+  "type": "object"
+}

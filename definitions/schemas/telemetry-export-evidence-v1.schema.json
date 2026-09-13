@@ -1,0 +1,108 @@
+{
+  "$defs": {
+    "TelemetryDisclosure": {
+      "enum": [
+        "off",
+        "metadata_only",
+        "sanitized"
+      ],
+      "title": "TelemetryDisclosure",
+      "type": "string"
+    },
+    "TelemetryExportState": {
+      "enum": [
+        "disabled",
+        "exported",
+        "degraded",
+        "blocked"
+      ],
+      "title": "TelemetryExportState",
+      "type": "string"
+    },
+    "TelemetryExporterKind": {
+      "enum": [
+        "otlp_http",
+        "langsmith_otlp"
+      ],
+      "title": "TelemetryExporterKind",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "disclosure": {
+      "$ref": "#/$defs/TelemetryDisclosure"
+    },
+    "evidence_id": {
+      "format": "uuid",
+      "title": "Evidence Id",
+      "type": "string"
+    },
+    "exported_attribute_names": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Exported Attribute Names",
+      "type": "array"
+    },
+    "exporter_kind": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TelemetryExporterKind"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "observed_at": {
+      "format": "date-time",
+      "title": "Observed At",
+      "type": "string"
+    },
+    "omitted_attribute_names": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Omitted Attribute Names",
+      "type": "array"
+    },
+    "reason": {
+      "anyOf": [
+        {
+          "maxLength": 1024,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Reason"
+    },
+    "record_id": {
+      "format": "uuid",
+      "title": "Record Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "state": {
+      "$ref": "#/$defs/TelemetryExportState"
+    }
+  },
+  "required": [
+    "record_id",
+    "disclosure",
+    "state",
+    "exported_attribute_names",
+    "omitted_attribute_names"
+  ],
+  "title": "TelemetryExportEvidence",
+  "type": "object"
+}

@@ -11,8 +11,8 @@ retain authority over consequential actions.
 
 > **Pre-release:** MISHKAN is under active development and currently installs from source. The
 > implemented product is a local, single-daemon system for Linux and macOS. The full persistent
-> organization, skills, knowledge stack, scheduler, distributed workers, and operational TUI
-> remain roadmap work.
+> organization, knowledge stack, scheduler, distributed workers, and operational TUI remain
+> roadmap work.
 
 ## Organization model
 
@@ -108,6 +108,9 @@ CLI · Python SDK · HTTP/SSE · MCP bridge
 | Artifacts | Chunked uploads, content-addressed immutable bodies, collections, compare-and-swap references, holds, retention, and reconciliation |
 | Web and browser | Bounded search/fetch/extract/crawl plus governed Playwright Chromium sessions and diagnostic evidence |
 | MCP and harnesses | Governed STDIO and Streamable HTTP clients, a filtered MCP facade, and a stateless local STDIO bridge |
+| Skills and context | Progressive `SKILL.md` packages, bundles, contextual invocation, `/learn`, recoverable lifecycle, deterministic context packages, and candidate-only community recommendations |
+| Engineering environments | Evidence-based engine discovery, technical packs, immutable descriptor sets, governed environment attempts, and measured Docker/Compose/Dev Container/Podman adapters |
+| Observability | Bounded OpenTelemetry projection and optional non-authoritative LangSmith feedback import under public disclosure policy |
 
 The detailed implementation status and evidence are maintained in the
 [documentation index](docs/README.md), not duplicated here.
@@ -205,6 +208,9 @@ Run `uv run mishkan --help` for the authoritative command tree.
 | `change`, `git` | Apply recoverable filesystem change sets and explicit Git effects |
 | `terminal`, `job` | Operate daemon-owned interactive sessions and managed processes |
 | `mcp` | Connect, inspect, call, cancel, and reconcile governed MCP peers |
+| `skill`, `context` | Inspect, invoke, learn, evolve, and resolve procedural skills and confirmed project/engineer context |
+| `environment` | Observe engines, resolve compatible bindings, validate descriptors, execute adapters, and inspect settlement evidence |
+| `telemetry` | Inspect configured disclosure and import attributable non-authoritative evaluation evidence |
 
 The package also installs:
 

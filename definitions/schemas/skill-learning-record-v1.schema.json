@@ -1,0 +1,433 @@
+{
+  "$defs": {
+    "SkillLearningRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "available_tools": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Available Tools",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "consuming_identity": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Consuming Identity",
+          "type": "string"
+        },
+        "organization_version": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Organization Version",
+          "type": "string"
+        },
+        "platform": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Platform",
+          "type": "string"
+        },
+        "reason": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "request_id": {
+          "format": "uuid",
+          "title": "Request Id",
+          "type": "string"
+        },
+        "requested_at": {
+          "format": "date-time",
+          "title": "Requested At",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/SkillLearningSource"
+          },
+          "maxItems": 128,
+          "minItems": 1,
+          "title": "Sources",
+          "type": "array"
+        },
+        "suggested_name": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Suggested Name"
+        },
+        "task_class": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Task Class",
+          "type": "string"
+        },
+        "task_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Task Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "task_id",
+        "task_class",
+        "consuming_identity",
+        "sources",
+        "platform",
+        "organization_version",
+        "reason"
+      ],
+      "title": "SkillLearningRequest",
+      "type": "object"
+    },
+    "SkillLearningReview": {
+      "additionalProperties": false,
+      "properties": {
+        "accepted": {
+          "title": "Accepted",
+          "type": "boolean"
+        },
+        "draft_fingerprint": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Draft Fingerprint",
+          "type": "string"
+        },
+        "evaluator_identity": {
+          "const": "Research_Evaluator",
+          "default": "Research_Evaluator",
+          "title": "Evaluator Identity",
+          "type": "string"
+        },
+        "findings": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Findings",
+          "type": "array"
+        },
+        "reason": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "draft_fingerprint",
+        "accepted",
+        "findings",
+        "reason"
+      ],
+      "title": "SkillLearningReview",
+      "type": "object"
+    },
+    "SkillLearningSource": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Content"
+        },
+        "kind": {
+          "$ref": "#/$defs/SkillLearningSourceKind"
+        },
+        "locator": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Locator",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "locator"
+      ],
+      "title": "SkillLearningSource",
+      "type": "object"
+    },
+    "SkillLearningSourceKind": {
+      "enum": [
+        "text",
+        "artifact",
+        "url",
+        "repository_evidence",
+        "execution_evidence"
+      ],
+      "title": "SkillLearningSourceKind",
+      "type": "string"
+    },
+    "SkillLearningState": {
+      "enum": [
+        "requested",
+        "researching",
+        "reviewing",
+        "proposed",
+        "refused",
+        "failed"
+      ],
+      "title": "SkillLearningState",
+      "type": "string"
+    },
+    "SkillPackageDraft": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "fallback_tools": {
+          "additionalProperties": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": "Fallback Tools",
+          "type": "object"
+        },
+        "instructions_markdown": {
+          "maxLength": 262144,
+          "minLength": 1,
+          "title": "Instructions Markdown",
+          "type": "string"
+        },
+        "rationale": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "required_tools": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 256,
+          "title": "Required Tools",
+          "type": "array"
+        },
+        "retrieval_references": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Retrieval References",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "skill_name": {
+          "maxLength": 64,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "title": "Skill Name",
+          "type": "string"
+        },
+        "source_fingerprints": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 128,
+          "minItems": 1,
+          "title": "Source Fingerprints",
+          "type": "array"
+        },
+        "task_classes": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 256,
+          "minItems": 1,
+          "title": "Task Classes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "skill_name",
+        "description",
+        "instructions_markdown",
+        "required_tools",
+        "task_classes",
+        "retrieval_references",
+        "source_fingerprints",
+        "rationale"
+      ],
+      "title": "SkillPackageDraft",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "author_identity": {
+      "const": "Research_Synthesizer",
+      "default": "Research_Synthesizer",
+      "title": "Author Identity",
+      "type": "string"
+    },
+    "base_version_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Base Version Id"
+    },
+    "candidate_version_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Candidate Version Id"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "draft": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SkillPackageDraft"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "package_collection_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Package Collection Id"
+    },
+    "policy_fingerprint": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Policy Fingerprint",
+      "type": "string"
+    },
+    "refusal_code": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Refusal Code"
+    },
+    "request": {
+      "$ref": "#/$defs/SkillLearningRequest"
+    },
+    "review": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SkillLearningReview"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "revision": {
+      "default": 1,
+      "minimum": 1,
+      "title": "Revision",
+      "type": "integer"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "source_fingerprints": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 128,
+      "minItems": 1,
+      "title": "Source Fingerprints",
+      "type": "array"
+    },
+    "state": {
+      "$ref": "#/$defs/SkillLearningState"
+    },
+    "updated_at": {
+      "format": "date-time",
+      "title": "Updated At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "request",
+    "state",
+    "source_fingerprints",
+    "policy_fingerprint"
+  ],
+  "title": "SkillLearningRecord",
+  "type": "object"
+}

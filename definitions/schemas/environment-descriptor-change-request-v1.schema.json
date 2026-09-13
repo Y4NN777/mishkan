@@ -1,0 +1,40 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "descriptor_set_id": {
+      "format": "uuid",
+      "title": "Descriptor Set Id",
+      "type": "string"
+    },
+    "owner_identity": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Owner Identity",
+      "type": "string"
+    },
+    "request_id": {
+      "format": "uuid",
+      "title": "Request Id",
+      "type": "string"
+    },
+    "result_mode": {
+      "default": 420,
+      "maximum": 4095,
+      "minimum": 0,
+      "title": "Result Mode",
+      "type": "integer"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "descriptor_set_id",
+    "owner_identity"
+  ],
+  "title": "EnvironmentDescriptorChangeRequest",
+  "type": "object"
+}

@@ -1,0 +1,87 @@
+{
+  "$defs": {
+    "ConfirmedEngineerFact": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "pattern": "^[a-z][a-z0-9_.-]{1,127}$",
+          "title": "Category",
+          "type": "string"
+        },
+        "confirmed_at": {
+          "format": "date-time",
+          "title": "Confirmed At",
+          "type": "string"
+        },
+        "confirmed_by": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Confirmed By",
+          "type": "string"
+        },
+        "evidence_references": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence References",
+          "type": "array"
+        },
+        "fact_id": {
+          "pattern": "^[a-z][a-z0-9_.-]{1,127}$",
+          "title": "Fact Id",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "fact_id",
+        "category",
+        "value",
+        "confirmed_by",
+        "confirmed_at"
+      ],
+      "title": "ConfirmedEngineerFact",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "facts": {
+      "items": {
+        "$ref": "#/$defs/ConfirmedEngineerFact"
+      },
+      "title": "Facts",
+      "type": "array"
+    },
+    "profile_id": {
+      "pattern": "^[a-z][a-z0-9_.-]{1,127}$",
+      "title": "Profile Id",
+      "type": "string"
+    },
+    "revision": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Revision",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "profile_id",
+    "revision",
+    "facts"
+  ],
+  "title": "EngineerProfile",
+  "type": "object"
+}

@@ -1,0 +1,91 @@
+{
+  "$defs": {
+    "MaterializedContextEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_reference": {
+          "pattern": "^artifact:[0-9a-f-]{36}$",
+          "title": "Artifact Reference",
+          "type": "string"
+        },
+        "digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Digest",
+          "type": "string"
+        },
+        "logical_path": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Logical Path",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "logical_path",
+        "artifact_reference",
+        "digest",
+        "size_bytes"
+      ],
+      "title": "MaterializedContextEntry",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "context_pack_id": {
+      "format": "uuid",
+      "title": "Context Pack Id",
+      "type": "string"
+    },
+    "entries": {
+      "items": {
+        "$ref": "#/$defs/MaterializedContextEntry"
+      },
+      "title": "Entries",
+      "type": "array"
+    },
+    "manifest_fingerprint": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Manifest Fingerprint",
+      "type": "string"
+    },
+    "omitted_optional_paths": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Omitted Optional Paths",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "total_bytes": {
+      "minimum": 0,
+      "title": "Total Bytes",
+      "type": "integer"
+    },
+    "tree_digest": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Tree Digest",
+      "type": "string"
+    }
+  },
+  "required": [
+    "context_pack_id",
+    "manifest_fingerprint",
+    "tree_digest",
+    "entries",
+    "total_bytes"
+  ],
+  "title": "ContextPackMaterialization",
+  "type": "object"
+}

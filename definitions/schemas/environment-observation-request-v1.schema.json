@@ -1,0 +1,69 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "actor_identity": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Actor Identity",
+      "type": "string"
+    },
+    "context_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Context Id",
+      "type": "string"
+    },
+    "execution_location": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Execution Location",
+      "type": "string"
+    },
+    "observation_id": {
+      "format": "uuid",
+      "title": "Observation Id",
+      "type": "string"
+    },
+    "repository_id": {
+      "anyOf": [
+        {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Repository Id"
+    },
+    "repository_revision": {
+      "anyOf": [
+        {
+          "maxLength": 512,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Repository Revision"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "actor_identity",
+    "context_id",
+    "execution_location"
+  ],
+  "title": "EnvironmentObservationRequest",
+  "type": "object"
+}

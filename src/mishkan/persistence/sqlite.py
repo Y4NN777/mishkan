@@ -521,6 +521,135 @@ class ExecutionSessionRow(Base):
     updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
 
 
+class SkillUsageRow(Base):
+    __tablename__ = "skill_usage"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    task_id: Mapped[str] = mapped_column(String(256), nullable=False)
+    task_class: Mapped[str] = mapped_column(String(256), nullable=False)
+    consuming_identity: Mapped[str] = mapped_column(String(256), nullable=False)
+    requested_skill: Mapped[str] = mapped_column(String(64), nullable=False)
+    skill_version: Mapped[str | None] = mapped_column(String(128))
+    package_fingerprint: Mapped[str | None] = mapped_column(String(71))
+    outcome: Mapped[str] = mapped_column(String(16), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    policy_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    evidence_payload: Mapped[str] = mapped_column(Text, nullable=False)
+    recorded_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class SkillVersionRow(Base):
+    __tablename__ = "skill_versions"
+    __table_args__ = (UniqueConstraint("skill_name", "skill_version"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    skill_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    skill_version: Mapped[str] = mapped_column(String(128), nullable=False)
+    package_fingerprint: Mapped[str] = mapped_column(String(71), nullable=False)
+    state: Mapped[str] = mapped_column(String(32), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class SkillActiveVersionRow(Base):
+    __tablename__ = "skill_active_versions"
+
+    skill_name: Mapped[str] = mapped_column(String(64), primary_key=True)
+    version_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("skill_versions.id"), nullable=False
+    )
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class SkillLifecycleDecisionRow(Base):
+    __tablename__ = "skill_lifecycle_decisions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    version_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("skill_versions.id"), nullable=False
+    )
+    disposition: Mapped[str] = mapped_column(String(32), nullable=False)
+    policy_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    decided_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class SkillLearningRow(Base):
+    __tablename__ = "skill_learning"
+
+    request_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    task_id: Mapped[str] = mapped_column(String(256), nullable=False)
+    task_class: Mapped[str] = mapped_column(String(256), nullable=False)
+    state: Mapped[str] = mapped_column(String(32), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class EnvironmentObservationRow(Base):
+    __tablename__ = "environment_observations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    context_id: Mapped[str] = mapped_column(String(256), nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    observed_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class EnvironmentBindingRow(Base):
+    __tablename__ = "environment_bindings"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    request_id: Mapped[str] = mapped_column(String(36), unique=True, nullable=False)
+    observation_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    context_id: Mapped[str] = mapped_column(String(256), nullable=False)
+    state: Mapped[str] = mapped_column(String(32), nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    resolved_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class EnvironmentDescriptorSetRow(Base):
+    __tablename__ = "environment_descriptor_sets"
+
+    descriptor_set_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    binding_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    recorded_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class EnvironmentAttemptRow(Base):
+    __tablename__ = "environment_attempts"
+
+    attempt_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    binding_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    recorded_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class EnvironmentVerificationRow(Base):
+    __tablename__ = "environment_verifications"
+
+    verification_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    binding_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    recorded_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class EnvironmentInvalidationRow(Base):
+    __tablename__ = "environment_invalidations"
+
+    invalidation_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    binding_id: Mapped[str] = mapped_column(String(36), unique=True, nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    recorded_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
 @dataclass(frozen=True, slots=True)
 class RunSnapshot:
     run_id: str
