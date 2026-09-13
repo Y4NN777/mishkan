@@ -450,6 +450,12 @@ class MissionEscalation(ConversationModel):
         option_ids = [option.option_id for option in self.options]
         if len(option_ids) != len(set(option_ids)):
             raise ValueError("escalation option identities must be unique")
+        recommendation_identities = [item.identity_id for item in self.recommendations]
+        if len(recommendation_identities) != 2 or set(recommendation_identities) != {
+            "PM",
+            "CTO",
+        }:
+            raise ValueError("mission escalation requires distinct PM and CTO recommendations")
         if any(item.recommended_option_id not in option_ids for item in self.recommendations):
             raise ValueError("executive recommendation must reference an available option")
         if self.state is EscalationState.OPEN and self.answer_intervention_id is not None:

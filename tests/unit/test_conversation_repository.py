@@ -276,6 +276,27 @@ def test_intervention_contract_rejects_kind_target_and_state_mismatches() -> Non
         )
 
 
+def test_escalation_requires_distinct_pm_and_cto_recommendations() -> None:
+    mission = MissionRecord(
+        origin=MissionOrigin(
+            kind=MissionOriginKind.CEO,
+            actor_id="CEO",
+            objective="Resolve an executive disagreement",
+        ),
+        organization_id="mishkan",
+        organization_version="1",
+    )
+    channel = _mission_channel(mission)
+    escalation = _escalation(mission, channel)
+
+    with pytest.raises(ValidationError, match="distinct PM and CTO recommendations"):
+        MissionEscalation.model_validate(
+            escalation.model_copy(
+                update={"recommendations": (escalation.recommendations[0],)}
+            ).model_dump(mode="json")
+        )
+
+
 def test_messages_are_durable_records_and_never_implicit_commands(tmp_path: Path) -> None:
     missions, conversations, mission = _setup(tmp_path)
     channel = conversations.create_channel(_mission_channel(mission))

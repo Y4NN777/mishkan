@@ -355,6 +355,12 @@ def test_open_escalation_pauses_only_matching_task_scope() -> None:
             ),
             recommendations=(
                 ExecutiveRecommendation(
+                    identity_id="PM",
+                    recommended_option_id="b",
+                    rationale="Accept the bounded exception for the product outcome",
+                    evidence_references=("evidence:compatibility",),
+                ),
+                ExecutiveRecommendation(
                     identity_id="CTO",
                     recommended_option_id="a",
                     rationale="Preserve the verified platform constraint",
