@@ -28,6 +28,7 @@ class NotificationDelivery(StrEnum):
 class NotificationRuleConfig(NotificationModel):
     rule_id: str = Field(pattern=r"^[a-z][a-z0-9_.-]{1,127}$")
     event_types: tuple[str, ...] = Field(min_length=1)
+    sources: tuple[str, ...] = ()
     severity: NotificationSeverity
     delivery: NotificationDelivery
 
@@ -35,8 +36,12 @@ class NotificationRuleConfig(NotificationModel):
     def validate_patterns(self) -> NotificationRuleConfig:
         if any(not pattern.strip() for pattern in self.event_types):
             raise ValueError("notification event patterns must not be blank")
+        if any(not source.strip() for source in self.sources):
+            raise ValueError("notification source patterns must not be blank")
         if len(set(self.event_types)) != len(self.event_types):
             raise ValueError("notification event patterns must be unique within a rule")
+        if len(set(self.sources)) != len(self.sources):
+            raise ValueError("notification source patterns must be unique within a rule")
         return self
 
 

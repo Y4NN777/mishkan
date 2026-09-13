@@ -47,7 +47,7 @@ class NotificationService:
         from mishkan.events import EventEnvelope
 
         assert isinstance(event, EventEnvelope)
-        rule = self._match(event.event_type)
+        rule = self._match(event)
         severity = rule.severity if rule is not None else self._config.default_severity
         delivery = rule.delivery if rule is not None else self._config.default_delivery
         summary_field = event.payload.get("message") or event.payload.get("reason")
@@ -73,12 +73,19 @@ class NotificationService:
             action_reference=self._action_reference(event, severity),
         )
 
-    def _match(self, event_type: str) -> NotificationRuleConfig | None:
+    def _match(self, event: object) -> NotificationRuleConfig | None:
+        from mishkan.events import EventEnvelope
+
+        assert isinstance(event, EventEnvelope)
         return next(
             (
                 rule
                 for rule in self._config.rules
-                if any(fnmatchcase(event_type, pattern) for pattern in rule.event_types)
+                if any(fnmatchcase(event.event_type, pattern) for pattern in rule.event_types)
+                and (
+                    not rule.sources
+                    or any(fnmatchcase(event.source, pattern) for pattern in rule.sources)
+                )
             ),
             None,
         )

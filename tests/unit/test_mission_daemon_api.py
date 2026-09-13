@@ -1091,11 +1091,25 @@ async def test_conversation_escalation_and_intervention_share_daemon_semantics(
         interventions = await client.get(
             f"/v1/missions/{mission.mission_id}/interventions", headers=headers
         )
+        notifications = await client.get(
+            "/v1/notifications",
+            headers=headers,
+            params={"severity": "urgent"},
+        )
         durable_mission = await client.get(f"/v1/missions/{mission.mission_id}", headers=headers)
 
     assert [item["message_id"] for item in messages.json()] == [str(message.message_id)]
     assert escalations.json()[0]["state"] == "answered"
     assert interventions.json()[0]["intervention_id"] == str(intervention.intervention_id)
+    escalation_notifications = [
+        item
+        for item in notifications.json()["notifications"]
+        if item["event_type"] == "mission.escalation_opened"
+    ]
+    assert len(escalation_notifications) == 1
+    assert escalation_notifications[0]["severity"] == "urgent"
+    assert escalation_notifications[0]["delivery"] == "feed"
+    assert escalation_notifications[0]["action_reference"].startswith("event:")
     assert durable_mission.json()["revision"] == 3
 
 

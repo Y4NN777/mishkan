@@ -29,6 +29,14 @@
         },
         "severity": {
           "$ref": "#/$defs/NotificationSeverity"
+        },
+        "sources": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Sources",
+          "type": "array"
         }
       },
       "required": [

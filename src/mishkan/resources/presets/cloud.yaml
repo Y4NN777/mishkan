@@ -10,6 +10,7 @@ notifications:
   rules:
     - rule_id: mission-escalation
       event_types: [mission.escalation_opened]
+      sources: [mishkan.conversations]
       severity: urgent
       delivery: feed
     - rule_id: mission-action-required

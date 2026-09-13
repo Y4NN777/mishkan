@@ -43,6 +43,7 @@ def test_notifications_are_configured_projections_without_event_loss() -> None:
                 NotificationRuleConfig(
                     rule_id="mission.escalation",
                     event_types=("mission.escalation.*",),
+                    sources=("test",),
                     severity=NotificationSeverity.URGENT,
                     delivery=NotificationDelivery.FEED,
                 ),
@@ -69,6 +70,41 @@ def test_notifications_are_configured_projections_without_event_loss() -> None:
     assert urgent.notifications[0].action_reference == f"event:{escalation.event_id}"
     assert len(urgent.notifications) == 1
     assert page.events == (escalation, telemetry)
+
+
+def test_notification_rules_can_distinguish_domain_and_command_event_sources() -> None:
+    domain = _event(1, "mission.escalation_opened", {"reason": "CEO decision needed"})
+    command = domain.model_copy(update={"event_id": uuid4(), "cursor": 2, "source": "mishkand"})
+    service = NotificationService(
+        NotificationConfig(
+            rules=(
+                NotificationRuleConfig(
+                    rule_id="domain-escalation",
+                    event_types=("mission.escalation_opened",),
+                    sources=("test",),
+                    severity=NotificationSeverity.URGENT,
+                    delivery=NotificationDelivery.FEED,
+                ),
+                NotificationRuleConfig(
+                    rule_id="command-fact",
+                    event_types=("mission.*",),
+                    sources=("mishkand",),
+                    severity=NotificationSeverity.INFORMATION,
+                    delivery=NotificationDelivery.SILENT,
+                ),
+            )
+        )
+    )
+    page = EventPage(
+        after_cursor=0,
+        next_cursor=2,
+        retained_from_cursor=1,
+        events=(domain, command),
+    )
+
+    urgent = service.project(page, severities=frozenset({NotificationSeverity.URGENT}))
+
+    assert [item.event_id for item in urgent.notifications] == [domain.event_id]
 
 
 @pytest.mark.parametrize(
