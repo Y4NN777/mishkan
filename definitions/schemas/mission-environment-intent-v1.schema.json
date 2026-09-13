@@ -1,0 +1,94 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "credential_references": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Credential References",
+      "type": "array"
+    },
+    "environment_dependent": {
+      "title": "Environment Dependent",
+      "type": "boolean"
+    },
+    "existing_definition_references": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Existing Definition References",
+      "type": "array"
+    },
+    "isolation_requirements": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Isolation Requirements",
+      "type": "array"
+    },
+    "known_locations": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Known Locations",
+      "type": "array"
+    },
+    "known_unknowns": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Known Unknowns",
+      "type": "array"
+    },
+    "network_requirements": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Network Requirements",
+      "type": "array"
+    },
+    "required_evidence": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Required Evidence",
+      "type": "array"
+    },
+    "resource_constraints": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Resource Constraints",
+      "type": "array"
+    },
+    "target_architectures": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Target Architectures",
+      "type": "array"
+    },
+    "target_platforms": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Target Platforms",
+      "type": "array"
+    }
+  },
+  "required": [
+    "environment_dependent"
+  ],
+  "title": "MissionEnvironmentIntent",
+  "type": "object"
+}

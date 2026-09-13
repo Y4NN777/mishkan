@@ -89,6 +89,14 @@ from mishkan.mcp.models import (
     McpPrimitiveDescriptor,
     McpProgressEvent,
 )
+from mishkan.missions.models import (
+    ExecutiveConfirmation,
+    MissionBrief,
+    MissionCrewRevision,
+    MissionEnvironmentIntent,
+    MissionOrigin,
+    MissionRecord,
+)
 from mishkan.organization.models import OrganizationRosterDefinition
 from mishkan.runtime import TaskReviewRejection
 from mishkan.skills.models import (
@@ -207,6 +215,12 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "mcp-discovery-v1.schema.json": McpDiscoverySnapshot,
     "mcp-primitive-v1.schema.json": McpPrimitiveDescriptor,
     "mcp-progress-v1.schema.json": McpProgressEvent,
+    "mission-brief-v1.schema.json": MissionBrief,
+    "mission-crew-revision-v1.schema.json": MissionCrewRevision,
+    "mission-environment-intent-v1.schema.json": MissionEnvironmentIntent,
+    "mission-executive-confirmation-v1.schema.json": ExecutiveConfirmation,
+    "mission-origin-v1.schema.json": MissionOrigin,
+    "mission-record-v1.schema.json": MissionRecord,
     "organization-roster-v1.schema.json": OrganizationRosterDefinition,
     "langsmith-feedback-import-request-v1.schema.json": LangSmithFeedbackImportRequest,
     "run-initialization-request-v1.schema.json": RunInitializationRequest,

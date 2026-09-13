@@ -1,0 +1,183 @@
+{
+  "$defs": {
+    "MissionOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "actor_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Actor Id",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/MissionOriginKind"
+        },
+        "objective": {
+          "maxLength": 8192,
+          "minLength": 3,
+          "title": "Objective",
+          "type": "string"
+        },
+        "origin_id": {
+          "format": "uuid",
+          "title": "Origin Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "source_references": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Source References",
+          "type": "array"
+        },
+        "template_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Template Id"
+        }
+      },
+      "required": [
+        "kind",
+        "actor_id",
+        "objective"
+      ],
+      "title": "MissionOrigin",
+      "type": "object"
+    },
+    "MissionOriginKind": {
+      "enum": [
+        "ceo",
+        "pm",
+        "cto",
+        "incident",
+        "project_evidence",
+        "independent_finding",
+        "dependency",
+        "maintenance",
+        "organizational_proposal"
+      ],
+      "title": "MissionOriginKind",
+      "type": "string"
+    },
+    "MissionState": {
+      "enum": [
+        "proposed",
+        "clarifying",
+        "planned",
+        "active",
+        "paused",
+        "blocked",
+        "evaluating",
+        "remediating",
+        "completed",
+        "failed",
+        "cancelled"
+      ],
+      "title": "MissionState",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "current_brief_version": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Current Brief Version"
+    },
+    "current_crew_version": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Current Crew Version"
+    },
+    "mission_id": {
+      "format": "uuid",
+      "title": "Mission Id",
+      "type": "string"
+    },
+    "organization_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Organization Id",
+      "type": "string"
+    },
+    "organization_version": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Organization Version",
+      "type": "string"
+    },
+    "origin": {
+      "$ref": "#/$defs/MissionOrigin"
+    },
+    "revision": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Revision",
+      "type": "integer"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "state": {
+      "$ref": "#/$defs/MissionState",
+      "default": "proposed"
+    },
+    "updated_at": {
+      "format": "date-time",
+      "title": "Updated At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "origin",
+    "organization_id",
+    "organization_version"
+  ],
+  "title": "MissionRecord",
+  "type": "object"
+}
