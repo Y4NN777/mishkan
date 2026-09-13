@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from fnmatch import fnmatchcase
 from functools import lru_cache
 from typing import TypeVar, cast
@@ -11,7 +11,7 @@ from typing import TypeVar, cast
 from crewai import LLM, Agent, Crew, Process, Task
 from crewai.crews.crew_output import CrewOutput
 from crewai.tools import BaseTool
-from pydantic import BaseModel, Field, ValidationError, create_model
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model, field_validator
 
 from mishkan.config.models import MishkanConfig
 from mishkan.crewai.routing import CrewAIModelRouter
@@ -21,6 +21,8 @@ from mishkan.planning.models import (
     AcceptedPlan,
     InitializationResult,
     PlanCandidate,
+    PlanExecutionContext,
+    PlannedToolCall,
     PlanTask,
     ReviewDecision,
 )
@@ -35,15 +37,86 @@ from mishkan.tools.native import ExecutableObservation
 OutputT = TypeVar("OutputT", bound=BaseModel)
 
 
+class _PlanProposalTask(BaseModel):
+    """Model-authored task content without redundant selected-tool state."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    task_id: str = Field(pattern=r"^[a-z][a-z0-9-]{1,63}$")
+    title: str = Field(min_length=3, max_length=160)
+    purpose: str = Field(min_length=3, max_length=2_000)
+    assigned_role: str = Field(min_length=1)
+    tool_calls: tuple[PlannedToolCall, ...] = Field(min_length=1)
+    evidence_paths: tuple[str, ...] = Field(min_length=1)
+    depends_on: tuple[str, ...] = ()
+
+    @field_validator("evidence_paths", "depends_on")
+    @classmethod
+    def values_are_unique(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if len(value) != len(set(value)):
+            raise ValueError("values must be unique")
+        return value
+
+    def to_plan_task(self, contracts: Mapping[str, ToolContract]) -> PlanTask:
+        calls = tuple(
+            call.model_copy(
+                update={
+                    "arguments": contracts[call.tool_id].materialize_input_defaults(call.arguments)
+                }
+            )
+            if call.tool_id in contracts
+            else call
+            for call in self.tool_calls
+        )
+        return PlanTask(
+            task_id=self.task_id,
+            title=self.title,
+            purpose=self.purpose,
+            assigned_role=self.assigned_role,
+            tools=tuple(dict.fromkeys(call.tool_id for call in calls)),
+            tool_calls=calls,
+            evidence_paths=self.evidence_paths,
+            depends_on=self.depends_on,
+        )
+
+
+class _PlanProposal(BaseModel):
+    """Provider-visible proposal; MISHKAN owns the accepted envelope identity."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    tasks: tuple[_PlanProposalTask, ...] = Field(min_length=1, max_length=12)
+
+
+class _InitializationSynthesis(BaseModel):
+    """Evidence-grounded findings without system-owned result lineage."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    summary: str = Field(min_length=3, max_length=2_000)
+    cited_paths: tuple[str, ...] = Field(min_length=1)
+    findings: tuple[str, ...] = Field(min_length=1)
+
+
+class _IndependentReview(BaseModel):
+    """Independent judgement without system-owned task or identity fields."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    verdict: str = Field(pattern=r"^(accepted|rejected)$")
+    summary: str = Field(min_length=3, max_length=2_000)
+    issues: tuple[str, ...] = ()
+
+
 @lru_cache(maxsize=12)
-def _bounded_plan_candidate_model(max_tasks: int) -> type[PlanCandidate]:
-    """Derive the provider-visible output schema from the public outcome bound."""
+def _bounded_plan_proposal_model(max_tasks: int) -> type[_PlanProposal]:
+    """Derive the provider-visible proposal schema from the public outcome bound."""
 
     return create_model(
-        f"PlanCandidateMax{max_tasks}",
-        __base__=PlanCandidate,
+        f"PlanProposalMax{max_tasks}",
+        __base__=_PlanProposal,
         tasks=(
-            tuple[PlanTask, ...],
+            tuple[_PlanProposalTask, ...],
             Field(min_length=1, max_length=max_tasks),
         ),
     )
@@ -145,17 +218,20 @@ Unattended public command-policy allow rules:
 {json.dumps(command_policy_hints, sort_keys=True)}
 
 Rules:
-- Return schema_version "1.1".
-- Return the exact objective, outcome ID, and repository revision above.
+- Return only the model-authored tasks. MISHKAN supplies schema version, objective, outcome,
+  repository identity, revision, and execution context deterministically.
+- Do not return objective, outcome_id, repository_revision, execution_context, or a tools list.
 - Create at most {self._outcome.max_tasks} task(s); use the smallest sufficient plan and make every
   task ID, title, and purpose specific to the evidence.
 - assigned_role must be {task_role.name}.
-- Select exact tools only from the runnable contracts above.
+- Select exact tool IDs only in tool_calls from the runnable contracts above. MISHKAN derives each
+  task's selected tools from those exact calls so the two representations cannot diverge.
 - Include repository.read_file.
 {command_rule}
 - tool_calls must contain at least one exact call for every selected tool.
 - Give every tool call a unique repository-specific call_id.
-- Arguments must match the selected tool input schema exactly, including required fields.
+- Arguments must match the selected tool input schema. Fields carrying a public JSON Schema default
+  may be omitted; MISHKAN materializes only those declared defaults before deterministic validation.
 - A task may contain at most {self._config.crewai.max_agent_iterations - 1} exact calls so the
   configured CrewAI iteration bound still permits a final structured result.
 - Read every cited evidence path through repository.read_file.
@@ -174,15 +250,23 @@ Rules:
 
 {feedback}
 """.strip()
-        return self._kickoff_structured(
+        proposal = self._kickoff_structured(
             route_name=role.model_route,
             role=role,
             description=description,
             expected_output=(
-                "One valid PlanCandidate grounded only in the supplied discovery facts."
+                "One valid bounded task proposal grounded only in the supplied discovery facts."
             ),
-            output_model=_bounded_plan_candidate_model(self._outcome.max_tasks),
+            output_model=_bounded_plan_proposal_model(self._outcome.max_tasks),
             tools=[],
+        )
+        contracts = {contract.tool_id: contract for contract in self._available_tools}
+        return PlanCandidate(
+            schema_version="1.1",
+            objective=objective,
+            outcome_id=self._outcome.outcome_id,
+            repository_revision=repository.base_revision,
+            tasks=tuple(task.to_plan_task(contracts) for task in proposal.tasks),
         )
 
     def _required_task_role(self) -> RoleDefinition:
@@ -247,25 +331,35 @@ MISHKAN has already executed every accepted call exactly once through the govern
 gateway. The immutable call evidence is: {call_evidence}
 No capability is exposed during synthesis. Use only that evidence; never invent another observation
 or claim that you executed a call yourself.
-Return task_id exactly as {task_contract.task_id!r} and repository_revision exactly as
-{repository.base_revision!r}. Cite only the bound evidence paths. Report at least one
-concrete finding grounded in the file content and execution output. Do not modify anything.
+MISHKAN supplies the task ID, repository identity, revision, and execution context. Return only the
+summary, cited_paths, and findings. Cite only the bound evidence paths. Report at least one concrete
+finding grounded in the file content and execution output. Do not modify anything.
 
 {feedback}
 """.strip()
         attempts = self._config.crewai.task_execution_retries + 1
         for attempt in range(attempts):
             try:
-                return self._kickoff_structured(
+                proposed = self._kickoff_structured(
                     route_name=role.model_route,
                     role=role,
                     description=description,
                     expected_output=(
-                        "One valid InitializationResult with cited, file-grounded findings."
+                        "One cited, file-grounded synthesis of the immutable execution evidence."
                     ),
-                    output_model=InitializationResult,
+                    output_model=_InitializationSynthesis,
                     tools=[],
                     retry_limit=0,
+                )
+                execution_context = PlanExecutionContext.from_binding(discovery.binding)
+                return InitializationResult(
+                    schema_version="1.1",
+                    repository_revision=repository.base_revision,
+                    execution_context=execution_context,
+                    task_id=task_contract.task_id,
+                    summary=proposed.summary,
+                    cited_paths=proposed.cited_paths,
+                    findings=proposed.findings,
                 )
             except MishkanError:
                 if attempt + 1 >= attempts:
@@ -330,10 +424,10 @@ Proposed result: {result.model_dump_json()}
 MISHKAN independently executed the review role's accepted read calls through a separate governed
 binding. The immutable review evidence is: {review_evidence}
 No capability is exposed during review synthesis. Do not claim another read or run Process or Bash.
-Return task_id exactly as {task_contract.task_id!r}. checked_citations must include every result
-citation. Set verdict to accepted only when the findings are supported by the file content and the
-result obeys the task; otherwise set verdict to rejected and list concrete issues. You are reviewing
-another role's work.
+MISHKAN supplies the task ID, producer/evaluator identities, and the checked-citation proof derived
+from the independently executed review calls. Return only verdict, summary, and issues. Set verdict
+to accepted only when the findings are supported by the file content and the result obeys the task;
+otherwise set verdict to rejected and list concrete issues. You are reviewing another role's work.
 
 {deterministic_feedback}
 """.strip()
@@ -344,23 +438,58 @@ another role's work.
                     route_name=role.model_route,
                     role=role,
                     description=description,
-                    expected_output="One independent ReviewDecision grounded in the bound files.",
-                    output_model=ReviewDecision,
+                    expected_output="One independent judgement grounded in the bound files.",
+                    output_model=_IndependentReview,
                     tools=[],
                     retry_limit=0,
                 )
                 return ReviewDecision.model_validate(
                     {
-                        **proposed.model_dump(),
                         "schema_version": "1.1",
+                        "task_id": task_contract.task_id,
                         "producer_identity": task_contract.assigned_role,
                         "evaluator_identity": role.name,
+                        "verdict": proposed.verdict,
+                        "summary": proposed.summary,
+                        "checked_citations": self._reviewed_citations(
+                            review_evidence,
+                            result.cited_paths,
+                        ),
+                        "issues": proposed.issues,
                     }
                 )
             except MishkanError:
                 if attempt + 1 >= attempts:
                     raise
         raise RuntimeError("review execution retry loop produced no result")
+
+    @staticmethod
+    def _reviewed_citations(
+        review_evidence: str,
+        result_citations: tuple[str, ...],
+    ) -> tuple[str, ...]:
+        """Return only result citations proven by independent review-call scopes."""
+
+        try:
+            entries = json.loads(review_evidence)
+        except json.JSONDecodeError:
+            return ()
+        if not isinstance(entries, list):
+            return ()
+        observed: set[str] = set()
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            output = entry.get("output")
+            if not isinstance(output, dict):
+                continue
+            evidence = output.get("operation_evidence")
+            if not isinstance(evidence, dict):
+                continue
+            scope = evidence.get("scope")
+            if isinstance(scope, list):
+                observed.update(item for item in scope if isinstance(item, str))
+        return tuple(citation for citation in result_citations if citation in observed)
 
     def _execute_planned_calls(
         self,

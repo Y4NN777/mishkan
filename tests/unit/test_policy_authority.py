@@ -263,6 +263,35 @@ def test_bundled_init_policy_allows_portable_safe_git_read_and_gates_other_host_
     assert gated.matched_rule_ids == ("local.repository-probe.approval",)
 
 
+@pytest.mark.parametrize("role", ["Repository_Investigator", "Repository_Reviewer"])
+def test_local_policy_authorizes_declared_repository_text_search(role: str, tmp_path: Path) -> None:
+    policy = PolicyLoader().load(
+        ("package://mishkan.resources.policies/local-control-plane.yaml",),
+        tmp_path,
+    )
+    request = _request(
+        identity=f"role:{role}",
+        objective_class="repository-initialization",
+        repository="fixture-repository",
+        outcome="mishkan.init",
+        role=role,
+        capability="search.text",
+        effect_class="read",
+        paths=(".",),
+        resources=ResourceRequest(
+            timeout_seconds=30,
+            memory_mb=128,
+            network=False,
+            concurrency=2,
+        ),
+    )
+
+    decision = PolicyAuthority().evaluate(request, policy)
+
+    assert decision.decision is Decision.ALLOW
+    assert decision.matched_rule_ids == ("local.repository-read",)
+
+
 def test_unicode_confusable_is_rejected_in_authorization_identity() -> None:
     with pytest.raises(ValueError, match="stable visible Unicode"):
         _request(identity="role:\uff25ngineer")

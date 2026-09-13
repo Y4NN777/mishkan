@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from copy import deepcopy
 from enum import StrEnum
 from typing import Any, Self
 from uuid import UUID
@@ -21,6 +22,30 @@ def argument_fingerprint(arguments: dict[str, Any]) -> str:
         ensure_ascii=True,
     ).encode()
     return hashlib.sha256(payload).hexdigest()
+
+
+def _materialize_schema_defaults(schema: dict[str, Any], value: Any) -> Any:
+    """Copy explicit JSON Schema defaults into a supplied instance recursively."""
+
+    if isinstance(value, dict) and schema.get("type") == "object":
+        result = deepcopy(value)
+        properties = schema.get("properties", {})
+        if not isinstance(properties, dict):
+            return result
+        for name, child_schema in properties.items():
+            if not isinstance(name, str) or not isinstance(child_schema, dict):
+                continue
+            if name not in result and "default" in child_schema:
+                result[name] = deepcopy(child_schema["default"])
+            if name in result:
+                result[name] = _materialize_schema_defaults(child_schema, result[name])
+        return result
+    if isinstance(value, list) and schema.get("type") == "array":
+        item_schema = schema.get("items")
+        if isinstance(item_schema, dict):
+            return [_materialize_schema_defaults(item_schema, item) for item in value]
+        return deepcopy(value)
+    return deepcopy(value)
 
 
 class ToolModel(BaseModel):
@@ -161,6 +186,14 @@ class ToolContract(ToolModel):
         if not isinstance(value, int) or value < 1:
             raise ValueError(f"tool {self.tool_id} does not declare a positive max_bytes")
         return value
+
+    def materialize_input_defaults(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Apply only defaults declared by this public input contract."""
+
+        materialized = _materialize_schema_defaults(self.input_schema, arguments)
+        if not isinstance(materialized, dict):
+            raise ValueError("tool input defaults did not produce an object")
+        return materialized
 
 
 class ToolsetDefinition(ToolModel):

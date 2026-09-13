@@ -1,6 +1,6 @@
 schema_version: "1.0"
 source_id: bundled.local
-revision: "28"
+revision: "29"
 adoption_authority: MISHKAN release
 priority: 0
 rules:
@@ -38,7 +38,7 @@ rules:
       max_timeout_seconds: 120
       max_memory_mb: 512
       allow_network: false
-      max_concurrency: 1
+      max_concurrency: 2
   - rule_id: local.repository-probe.git-read
     priority: 110
     decision: allow
