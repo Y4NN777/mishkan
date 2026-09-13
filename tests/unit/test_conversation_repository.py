@@ -31,6 +31,7 @@ from mishkan.conversations import (
 )
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.identity import new_id
+from mishkan.domain.time import utc_now
 from mishkan.missions import (
     CrewAssignmentKind,
     CrewSelectionEvidence,
@@ -376,6 +377,7 @@ def test_mission_pause_and_resume_are_explicit_revision_checked_interventions(
             "effect": "Allow mission work to become eligible again",
             "evidence_references": ("evidence:risk-settlement",),
             "resulting_mission_state": MissionState.ACTIVE,
+            "created_at": utc_now(),
         }
     )
     conversations.apply_intervention(resume, expected_revision=paused.revision)
@@ -389,6 +391,7 @@ def test_mission_pause_and_resume_are_explicit_revision_checked_interventions(
             "confirmation": "Stop the complete mission",
             "effect": "Cancel the mission",
             "resulting_mission_state": MissionState.CANCELLED,
+            "created_at": utc_now(),
         }
     )
     with pytest.raises(MishkanError) as stale:
@@ -426,6 +429,7 @@ def test_stopped_task_cannot_be_resumed_and_unrelated_work_is_unchanged(
             "confirmation": "Resume only the suspended task",
             "effect": "Allow this task to become eligible again",
             "evidence_references": ("evidence:task-resolution",),
+            "created_at": utc_now(),
         }
     )
     conversations.apply_intervention(resume, expected_revision=current.revision)
@@ -438,11 +442,14 @@ def test_stopped_task_cannot_be_resumed_and_unrelated_work_is_unchanged(
             "confirmation": "Stop only this task",
             "effect": "Prevent any later claim or resume for this task",
             "evidence_references": ("evidence:stop-decision",),
+            "created_at": utc_now(),
         }
     )
     conversations.apply_intervention(stop, expected_revision=current.revision)
     current = missions.mission(str(mission.mission_id))
-    invalid_resume = resume.model_copy(update={"intervention_id": new_id()})
+    invalid_resume = resume.model_copy(
+        update={"intervention_id": new_id(), "created_at": utc_now()}
+    )
 
     with pytest.raises(MishkanError, match="stopped mission task"):
         conversations.apply_intervention(invalid_resume, expected_revision=current.revision)
@@ -516,6 +523,7 @@ def _consequential_decision(
             ),
         ),
     )
+
     criteria = (
         DecisionCriterion(
             criterion_id="transactional-acceptance",
@@ -609,6 +617,132 @@ def _consequential_decision(
             focus_areas=("migration", "operational-risk"),
             request_reference="conversation:engineer-explanation-request",
         ),
+    )
+
+
+def _ceo_intervention(
+    mission: MissionRecord,
+    channel: ConversationChannel,
+    *,
+    kind: InterventionKind,
+    target_kind: InterventionTargetKind,
+    target_id: str,
+) -> MissionIntervention:
+    return MissionIntervention(
+        mission_id=mission.mission_id,
+        conversation_id=channel.conversation_id,
+        actor_id="CEO",
+        kind=kind,
+        target_kind=target_kind,
+        target_id=target_id,
+        reason=f"Apply the explicit CEO {kind.value} decision",
+        scope=(f"{target_kind.value}:{target_id}",),
+        confirmation=f"Confirm the exact {kind.value} intervention",
+        authority_reference="authority:ceo",
+        evidence_references=("evidence:ceo-intervention",),
+        effect=f"Record the governed {kind.value} disposition",
+    )
+
+
+def test_proposal_intervention_requires_and_settles_one_durable_proposal(
+    tmp_path: Path,
+) -> None:
+    missions, conversations, mission = _setup(tmp_path)
+    channel = conversations.create_channel(_mission_channel(mission))
+    staged = _consequential_decision(mission, channel)
+    conversations.record_decision(staged)
+    accepted = _ceo_intervention(
+        mission,
+        channel,
+        kind=InterventionKind.ACCEPT_PROPOSAL,
+        target_kind=InterventionTargetKind.PROPOSAL,
+        target_id=str(staged.decision_id),
+    )
+
+    assert (
+        conversations.apply_intervention(accepted, expected_revision=mission.revision) == accepted
+    )
+    current = missions.mission(str(mission.mission_id))
+    rejected = _ceo_intervention(
+        current,
+        channel,
+        kind=InterventionKind.REJECT_PROPOSAL,
+        target_kind=InterventionTargetKind.PROPOSAL,
+        target_id=str(staged.decision_id),
+    )
+    with pytest.raises(MishkanError, match="already has a durable CEO disposition") as duplicate:
+        conversations.apply_intervention(rejected, expected_revision=current.revision)
+    assert duplicate.value.envelope.code is ErrorCode.DUPLICATE_RESULT
+
+    missing = _ceo_intervention(
+        current,
+        channel,
+        kind=InterventionKind.ACCEPT_PROPOSAL,
+        target_kind=InterventionTargetKind.PROPOSAL,
+        target_id=str(new_id()),
+    )
+    with pytest.raises(MishkanError, match="proposal is absent"):
+        conversations.apply_intervention(missing, expected_revision=current.revision)
+
+
+def test_risk_acceptance_targets_existing_durable_mission_risk(tmp_path: Path) -> None:
+    missions, conversations, mission = _setup(tmp_path)
+    channel = conversations.create_channel(_mission_channel(mission))
+    accepted = _ceo_intervention(
+        mission,
+        channel,
+        kind=InterventionKind.ACCEPT_RISK,
+        target_kind=InterventionTargetKind.RISK,
+        target_id="unnecessary mission-wide pause",
+    )
+
+    conversations.apply_intervention(accepted, expected_revision=mission.revision)
+    current = missions.mission(str(mission.mission_id))
+    unknown = _ceo_intervention(
+        current,
+        channel,
+        kind=InterventionKind.ACCEPT_RISK,
+        target_kind=InterventionTargetKind.RISK,
+        target_id="invented risk without durable evidence",
+    )
+
+    with pytest.raises(MishkanError, match="not present in durable mission evidence"):
+        conversations.apply_intervention(unknown, expected_revision=current.revision)
+
+
+def test_reassignment_confirmation_requires_a_pending_ceo_request(tmp_path: Path) -> None:
+    missions, conversations, mission = _setup(tmp_path)
+    mission, assignment = _add_governed_task(missions, mission)
+    channel = conversations.create_channel(_mission_channel(mission))
+    confirmation = _ceo_intervention(
+        mission,
+        channel,
+        kind=InterventionKind.CONFIRM_REASSIGNMENT,
+        target_kind=InterventionTargetKind.ASSIGNMENT,
+        target_id=str(assignment.assignment_id),
+    )
+    with pytest.raises(MishkanError, match="requires a pending CEO request"):
+        conversations.apply_intervention(confirmation, expected_revision=mission.revision)
+
+    request = _ceo_intervention(
+        mission,
+        channel,
+        kind=InterventionKind.REQUEST_REASSIGNMENT,
+        target_kind=InterventionTargetKind.ASSIGNMENT,
+        target_id=str(assignment.assignment_id),
+    )
+    conversations.apply_intervention(request, expected_revision=mission.revision)
+    current = missions.mission(str(mission.mission_id))
+    confirmation = _ceo_intervention(
+        current,
+        channel,
+        kind=InterventionKind.CONFIRM_REASSIGNMENT,
+        target_kind=InterventionTargetKind.ASSIGNMENT,
+        target_id=str(assignment.assignment_id),
+    )
+    assert (
+        conversations.apply_intervention(confirmation, expected_revision=current.revision)
+        == confirmation
     )
 
 

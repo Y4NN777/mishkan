@@ -25,17 +25,19 @@ from mishkan.conversations.models import (
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.identity import new_id
 from mishkan.domain.time import utc_now
-from mishkan.missions import MissionRecord, MissionState
+from mishkan.missions import MissionBrief, MissionRecord, MissionRunReport, MissionState
 from mishkan.organization.models import OrganizationRosterDefinition
 from mishkan.persistence.migration import SchemaManager
 from mishkan.persistence.sqlite import (
     ConversationChannelRow,
     ConversationMessageRow,
     MissionAssignmentRow,
+    MissionBriefRow,
     MissionDecisionRow,
     MissionEscalationRow,
     MissionInterventionRow,
     MissionRow,
+    MissionRunReportRow,
     OrganizationRosterRow,
     OutboxRow,
     create_local_engine,
@@ -243,6 +245,7 @@ class SQLiteConversationRepository:
                 session, str(intervention.mission_id), str(intervention.conversation_id)
             )
             self._validate_intervention_target(session, intervention)
+            self._validate_intervention_sequence(session, intervention)
             if intervention.escalation_id is not None:
                 escalation_row = session.get(MissionEscalationRow, str(intervention.escalation_id))
                 if escalation_row is None or escalation_row.mission_id != str(
@@ -510,6 +513,39 @@ class SQLiteConversationRepository:
                     "intervention assignment is absent or belongs to another mission",
                 )
             return
+        if intervention.target_kind is InterventionTargetKind.PROPOSAL:
+            proposal_row = session.get(MissionDecisionRow, intervention.target_id)
+            if proposal_row is None or proposal_row.mission_id != mission_id:
+                raise MishkanError(
+                    ErrorCode.MISSION,
+                    "intervention proposal is absent or belongs to another mission",
+                )
+            proposal = MissionDecision.model_validate_json(proposal_row.payload)
+            if proposal.schema_version != "1.1" or proposal.decision_status is not (
+                DecisionStatus.STAGED
+            ):
+                raise MishkanError(
+                    ErrorCode.DECISION_VALIDATION,
+                    "CEO proposal disposition requires a staged durable recommendation",
+                )
+            return
+        if intervention.target_kind is InterventionTargetKind.RISK:
+            if intervention.target_id not in SQLiteConversationRepository._mission_risks(
+                session, mission_id
+            ):
+                raise MishkanError(
+                    ErrorCode.MISSION,
+                    "intervention risk is not present in durable mission evidence",
+                )
+            return
+        if intervention.target_kind is InterventionTargetKind.ESCALATION:
+            escalation = session.get(MissionEscalationRow, intervention.target_id)
+            if escalation is None or escalation.mission_id != mission_id:
+                raise MishkanError(
+                    ErrorCode.MISSION,
+                    "intervention escalation is absent or belongs to another mission",
+                )
+            return
         if intervention.target_kind is not InterventionTargetKind.TASK:
             return
         assignment = session.scalar(
@@ -550,6 +586,101 @@ class SQLiteConversationRepository:
             raise MishkanError(ErrorCode.MISSION, "only a suspended mission task can resume")
         if intervention.kind is InterventionKind.SUSPEND and latest is InterventionKind.SUSPEND:
             raise MishkanError(ErrorCode.MISSION, "mission task is already suspended")
+
+    @staticmethod
+    def _validate_intervention_sequence(
+        session: Session,
+        intervention: MissionIntervention,
+    ) -> None:
+        prior = tuple(
+            record
+            for row in session.scalars(
+                select(MissionInterventionRow)
+                .where(MissionInterventionRow.mission_id == str(intervention.mission_id))
+                .order_by(MissionInterventionRow.created_at)
+            ).all()
+            if (record := MissionIntervention.model_validate_json(row.payload)).target_kind
+            is intervention.target_kind
+            and record.target_id == intervention.target_id
+        )
+        if prior and intervention.created_at <= max(item.created_at for item in prior):
+            raise MishkanError(
+                ErrorCode.REVISION_MISMATCH,
+                "intervention timestamp does not follow its target history",
+            )
+        if intervention.kind in {
+            InterventionKind.ACCEPT_PROPOSAL,
+            InterventionKind.REJECT_PROPOSAL,
+        } and any(
+            item.kind in {InterventionKind.ACCEPT_PROPOSAL, InterventionKind.REJECT_PROPOSAL}
+            for item in prior
+        ):
+            raise MishkanError(
+                ErrorCode.DUPLICATE_RESULT,
+                "mission proposal already has a durable CEO disposition",
+            )
+        if intervention.kind is InterventionKind.ACCEPT_RISK and any(
+            item.kind is InterventionKind.ACCEPT_RISK for item in prior
+        ):
+            raise MishkanError(
+                ErrorCode.DUPLICATE_RESULT,
+                "mission risk already has a durable CEO acceptance",
+            )
+        reassignment = tuple(
+            item
+            for item in prior
+            if item.kind
+            in {
+                InterventionKind.REQUEST_REASSIGNMENT,
+                InterventionKind.CONFIRM_REASSIGNMENT,
+            }
+        )
+        latest = reassignment[-1].kind if reassignment else None
+        if (
+            intervention.kind is InterventionKind.REQUEST_REASSIGNMENT
+            and latest is InterventionKind.REQUEST_REASSIGNMENT
+        ):
+            raise MishkanError(ErrorCode.MISSION, "reassignment request is already pending")
+        if (
+            intervention.kind is InterventionKind.CONFIRM_REASSIGNMENT
+            and latest is not InterventionKind.REQUEST_REASSIGNMENT
+        ):
+            raise MishkanError(
+                ErrorCode.MISSION,
+                "reassignment confirmation requires a pending CEO request",
+            )
+
+    @staticmethod
+    def _mission_risks(session: Session, mission_id: str) -> frozenset[str]:
+        risks: set[str] = set()
+        brief_row = session.scalar(
+            select(MissionBriefRow)
+            .where(MissionBriefRow.mission_id == mission_id)
+            .order_by(MissionBriefRow.version.desc())
+            .limit(1)
+        )
+        if brief_row is not None:
+            risks.update(MissionBrief.model_validate_json(brief_row.payload).risks)
+        for decision_row in session.scalars(
+            select(MissionDecisionRow).where(MissionDecisionRow.mission_id == mission_id)
+        ).all():
+            decision = MissionDecision.model_validate_json(decision_row.payload)
+            if decision.context is not None:
+                risks.update(item.statement for item in decision.context.risks)
+            if decision.recommendation is not None:
+                risks.update(decision.recommendation.risks)
+        for escalation_row in session.scalars(
+            select(MissionEscalationRow).where(MissionEscalationRow.mission_id == mission_id)
+        ).all():
+            escalation = MissionEscalation.model_validate_json(escalation_row.payload)
+            risks.update(risk for option in escalation.options for risk in option.risks)
+        for report_row in session.scalars(
+            select(MissionRunReportRow).where(MissionRunReportRow.mission_id == mission_id)
+        ).all():
+            report = MissionRunReport.model_validate_json(report_row.payload)
+            risks.update(report.residual_risks)
+            risks.update(risk for task in report.task_results for risk in task.residual_risks)
+        return frozenset(risks)
 
     @staticmethod
     def _require_channel(session: Session, conversation_id: str) -> ConversationChannelRow:
