@@ -242,7 +242,21 @@ async def test_real_podman_build_interrupt_cleanup_and_repeatability_through_mis
             execution_location="local:podman",
         ),
     )
-    repository = SQLiteEnvironmentRepository(paths.database)
+    persistence = config.persistence
+    artifact_config = config.artifacts
+    assert persistence is not None and artifact_config is not None
+    artifacts = DurableArtifactService(
+        paths.database,
+        paths.artifacts,
+        max_artifact_bytes=artifact_config.max_artifact_bytes,
+        max_chunk_bytes=artifact_config.chunk_bytes,
+        busy_timeout_ms=persistence.busy_timeout_ms,
+    )
+    repository = SQLiteEnvironmentRepository(
+        paths.database,
+        artifacts=artifacts,
+        busy_timeout_ms=persistence.busy_timeout_ms,
+    )
     repository.record_observation(observation)
     request = EnvironmentBindingRequest(
         mission_id="mission:podman-gate",
@@ -270,16 +284,6 @@ async def test_real_podman_build_interrupt_cleanup_and_repeatability_through_mis
     )
     assert binding.state is EnvironmentBindingState.COMPATIBLE
     repository.record_binding(binding)
-    persistence = config.persistence
-    artifact_config = config.artifacts
-    assert persistence is not None and artifact_config is not None
-    artifacts = DurableArtifactService(
-        paths.database,
-        paths.artifacts,
-        max_artifact_bytes=artifact_config.max_artifact_bytes,
-        max_chunk_bytes=artifact_config.chunk_bytes,
-        busy_timeout_ms=persistence.busy_timeout_ms,
-    )
     upload = artifacts.open_upload(
         expected_size=len(content),
         expected_digest=f"sha256:{hashlib.sha256(content).hexdigest()}",
