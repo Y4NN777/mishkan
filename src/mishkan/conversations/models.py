@@ -53,6 +53,26 @@ class DecisionValidationStatus(StrEnum):
     FAILED = "failed"
 
 
+class DecisionExplanationDepth(StrEnum):
+    CONCISE = "concise"
+    STANDARD = "standard"
+    DEEP = "deep"
+
+
+class DecisionExplanationPreference(ConversationModel):
+    requested_by: str = Field(min_length=1, max_length=256)
+    depth: DecisionExplanationDepth = DecisionExplanationDepth.STANDARD
+    focus_areas: tuple[str, ...] = ()
+    request_reference: str = Field(min_length=1, max_length=1_024)
+
+    @field_validator("focus_areas")
+    @classmethod
+    def focus_areas_are_unique(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if len(value) != len(set(value)):
+            raise ValueError("decision explanation focus areas must be unique")
+        return value
+
+
 class InterventionKind(StrEnum):
     COMMENT = "comment"
     ANSWER_ESCALATION = "answer_escalation"
@@ -269,6 +289,7 @@ class MissionDecision(ConversationModel):
     alternatives_search: str | None = Field(default=None, min_length=3, max_length=8_192)
     recommendation: DecisionRecommendation | None = None
     validation: DecisionValidation | None = None
+    explanation_preference: DecisionExplanationPreference | None = None
     supersedes_decision_id: UUID | None = None
     created_at: datetime = Field(default_factory=utc_now)
 
@@ -296,6 +317,7 @@ class MissionDecision(ConversationModel):
                     self.alternatives_search is not None,
                     self.deciding_identity is not None,
                     self.supersedes_decision_id is not None,
+                    self.explanation_preference is not None,
                 )
             ):
                 raise ValueError("decision 1.0 cannot carry partial 1.1 decision fields")

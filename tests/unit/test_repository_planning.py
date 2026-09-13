@@ -70,12 +70,14 @@ def test_plan_acceptance_binds_discovery_and_authority(tmp_path: Path) -> None:
     organization, outcome = load_initialization_definitions()
 
     mission_id = uuid4()
+    mission_origin_id = uuid4()
     accepted = plan_validator(discovery.binding.root).accept(
         _candidate(discovery.binding.base_revision),
         discovery,
         organization,
         outcome,
         mission_id=mission_id,
+        mission_origin_id=mission_origin_id,
     )
 
     assert accepted.discovery_fingerprint == discovery.fingerprint
@@ -87,6 +89,7 @@ def test_plan_acceptance_binds_discovery_and_authority(tmp_path: Path) -> None:
     assert accepted.organization_binding.organization_version == roster.organization_version
     assert accepted.organization_binding.organization_fingerprint == roster.fingerprint
     assert accepted.organization_binding.mission_id == mission_id
+    assert accepted.organization_binding.mission_origin_id == mission_origin_id
 
 
 @pytest.mark.parametrize(

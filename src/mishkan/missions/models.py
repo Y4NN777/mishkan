@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from mishkan.domain.identity import new_id
 from mishkan.domain.time import require_aware, utc_now
-from mishkan.planning.models import PlanExecutionContext
+from mishkan.planning.models import MissionTemplateReference, PlanExecutionContext
 
 
 class MissionModel(BaseModel):
@@ -74,19 +74,35 @@ class MissionRunAcceptance(StrEnum):
 
 
 class MissionOrigin(MissionModel):
-    schema_version: Literal["1.0"] = "1.0"
+    schema_version: Literal["1.0", "1.1"] = "1.0"
     origin_id: UUID = Field(default_factory=new_id)
     kind: MissionOriginKind
     actor_id: str = Field(min_length=1, max_length=256)
     objective: str = Field(min_length=3, max_length=8_192)
     source_references: tuple[str, ...] = ()
     template_id: str | None = Field(default=None, min_length=1, max_length=256)
+    template_reference: MissionTemplateReference | None = None
     created_at: datetime = Field(default_factory=utc_now)
 
     @field_validator("created_at")
     @classmethod
     def created_at_is_aware(cls, value: datetime) -> datetime:
         return require_aware(value)
+
+    @model_validator(mode="after")
+    def optional_template_has_exact_lineage(self) -> MissionOrigin:
+        if self.schema_version == "1.0":
+            if self.template_reference is not None:
+                raise ValueError("mission origin 1.0 cannot carry a 1.1 template reference")
+            return self
+        if (self.template_id is None) != (self.template_reference is None):
+            raise ValueError("mission origin 1.1 requires both template id and exact reference")
+        if (
+            self.template_reference is not None
+            and self.template_reference.template_id != self.template_id
+        ):
+            raise ValueError("mission template id differs from its exact reference")
+        return self
 
 
 class MissionEnvironmentIntent(MissionModel):

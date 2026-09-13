@@ -50,6 +50,7 @@ from mishkan.context.profile import ConfirmedEngineerFact, EngineerProfile
 from mishkan.conversations.models import (
     ConversationChannel,
     ConversationMessage,
+    DecisionExplanationPreference,
     MissionDecision,
     MissionEscalation,
     MissionIntervention,
@@ -143,6 +144,7 @@ from mishkan.organization.models import OrganizationRosterDefinition
 from mishkan.planning.models import (
     AcceptedPlan,
     InitializationResult,
+    MissionTemplateReference,
     PlanCandidate,
     PlanExecutionContext,
     PlanOrganizationBinding,
@@ -244,6 +246,7 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "crewai-mission-environment-output-v1.schema.json": MissionEnvironmentPlanningOutput,
     "conversation-channel-v1.schema.json": ConversationChannel,
     "conversation-message-v1.schema.json": ConversationMessage,
+    "decision-explanation-preference-v1.schema.json": DecisionExplanationPreference,
     "domain-record-v1.schema.json": DomainRecord,
     "error-envelope-v1.schema.json": ErrorEnvelope,
     "engineering-command-candidate-v1.schema.json": EngineeringCommandCandidate,
@@ -303,6 +306,7 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "mission-task-eligibility-v1.schema.json": MissionTaskEligibility,
     "mission-template-catalogue-v1.schema.json": MissionTemplateCatalogue,
     "mission-template-definition-v1.schema.json": MissionTemplateDefinition,
+    "mission-template-reference-v1.schema.json": MissionTemplateReference,
     "plan-accepted-v1.schema.json": AcceptedPlan,
     "plan-candidate-v1.schema.json": PlanCandidate,
     "plan-execution-context-v1.schema.json": PlanExecutionContext,

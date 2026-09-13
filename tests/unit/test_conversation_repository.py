@@ -14,6 +14,8 @@ from mishkan.conversations import (
     DecisionCriterionAssessment,
     DecisionEvidenceClaim,
     DecisionEvidenceClass,
+    DecisionExplanationDepth,
+    DecisionExplanationPreference,
     DecisionRecommendation,
     DecisionStatus,
     DecisionValidation,
@@ -601,6 +603,12 @@ def _consequential_decision(
             status=DecisionValidationStatus.PENDING,
             findings=("The independent benchmark has not run yet",),
         ),
+        explanation_preference=DecisionExplanationPreference(
+            requested_by="engineer:y4nn777",
+            depth=DecisionExplanationDepth.DEEP,
+            focus_areas=("migration", "operational-risk"),
+            request_reference="conversation:engineer-explanation-request",
+        ),
     )
 
 
@@ -610,6 +618,9 @@ def test_consequential_decision_requires_complete_context_and_independent_valida
     _missions, conversations, mission = _setup(tmp_path)
     channel = conversations.create_channel(_mission_channel(mission))
     staged = _consequential_decision(mission, channel)
+
+    assert staged.explanation_preference is not None
+    assert staged.explanation_preference.depth is DecisionExplanationDepth.DEEP
 
     with pytest.raises(ValidationError, match="complete consequential decision evidence"):
         MissionDecision(

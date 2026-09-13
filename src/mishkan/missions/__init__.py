@@ -55,6 +55,7 @@ from mishkan.missions.templates import (
     MissionTemplateLoader,
     MissionTemplateService,
 )
+from mishkan.planning.models import MissionTemplateReference
 
 __all__ = [
     "AssignmentChangeKind",
@@ -99,6 +100,7 @@ __all__ = [
     "MissionTemplateCatalogue",
     "MissionTemplateDefinition",
     "MissionTemplateLoader",
+    "MissionTemplateReference",
     "MissionTemplateService",
     "MissionTransition",
     "SQLiteMissionRepository",

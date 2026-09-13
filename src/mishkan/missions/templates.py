@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from importlib.resources import files
 from pathlib import Path
 from typing import Literal
@@ -11,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.sources import resolve_source_path
+from mishkan.planning.models import MissionTemplateReference
 
 
 class TemplateModel(BaseModel):
@@ -49,6 +52,13 @@ class MissionTemplateDefinition(TemplateModel):
             if len(values) != len(set(values)):
                 raise ValueError("mission template guidance values must be unique")
         return self
+
+    @property
+    def fingerprint(self) -> str:
+        payload = self.model_dump(mode="json")
+        return hashlib.sha256(
+            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
 
 
 class MissionTemplateCatalogue(TemplateModel):
@@ -131,4 +141,29 @@ class MissionTemplateService:
             if organization_version in template.compatible_organization_versions
             and set(template.applicability_signals).issubset(observed)
             and not set(template.applicability_exclusions).intersection(observed)
+        )
+
+    def reference(
+        self, template_id: str, *, version: str | None = None
+    ) -> MissionTemplateReference:
+        matches = tuple(
+            item
+            for item in self._catalogue.templates
+            if item.template_id == template_id and (version is None or item.version == version)
+        )
+        if len(matches) != 1:
+            raise MishkanError(
+                ErrorCode.MISSION,
+                "mission template reference is absent or ambiguous",
+                details={"template_id": template_id, "version": version},
+            )
+        selected = matches[0]
+        return MissionTemplateReference(
+            template_id=selected.template_id,
+            version=selected.version,
+            source=selected.source,
+            provenance=selected.provenance,
+            catalogue_id=self._catalogue.catalogue_id,
+            catalogue_revision=self._catalogue.revision,
+            definition_fingerprint=selected.fingerprint,
         )

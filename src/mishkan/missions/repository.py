@@ -798,6 +798,14 @@ class SQLiteMissionRepository:
                     ErrorCode.PLAN,
                     "accepted run plan does not carry this mission and organization identity",
                 )
+            if mission.origin.schema_version == "1.1" and (
+                organization.mission_origin_id != mission.origin.origin_id
+                or organization.mission_template_reference != mission.origin.template_reference
+            ):
+                raise MishkanError(
+                    ErrorCode.PLAN,
+                    "accepted run plan does not preserve the exact mission origin and template",
+                )
             plan_task = next(
                 (task for task in accepted_plan.tasks if task.task_id == binding.execution_task_id),
                 None,

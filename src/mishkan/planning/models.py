@@ -67,11 +67,35 @@ class PlanExecutionContext(PlanModel):
         )
 
 
+class MissionTemplateReference(PlanModel):
+    """Exact immutable identity of optional mission guidance used by a plan."""
+
+    template_id: str = Field(pattern=r"^[a-z][a-z0-9_.-]{1,127}$")
+    version: str = Field(min_length=1, max_length=128)
+    source: str = Field(min_length=1, max_length=2_048)
+    provenance: tuple[str, ...] = Field(min_length=1)
+    catalogue_id: str = Field(pattern=r"^[a-z][a-z0-9_.-]{1,127}$")
+    catalogue_revision: str = Field(min_length=1, max_length=512)
+    definition_fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
 class PlanOrganizationBinding(PlanModel):
     organization_id: str = Field(min_length=1, max_length=128)
     organization_version: str = Field(min_length=1, max_length=64)
     organization_fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
     mission_id: UUID | None = None
+    mission_origin_id: UUID | None = None
+    mission_template_reference: MissionTemplateReference | None = None
+
+    @model_validator(mode="after")
+    def mission_lineage_is_complete(self) -> "PlanOrganizationBinding":
+        if self.mission_id is None and (
+            self.mission_origin_id is not None or self.mission_template_reference is not None
+        ):
+            raise ValueError("mission lineage requires a mission identity")
+        if self.mission_template_reference is not None and self.mission_origin_id is None:
+            raise ValueError("mission template lineage requires the exact mission origin")
+        return self
 
 
 class PlannedToolCall(PlanModel):

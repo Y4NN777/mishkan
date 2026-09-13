@@ -71,6 +71,7 @@ def _setup(tmp_path: Path) -> tuple[Path, SQLiteMissionRepository, MissionRecord
     mission = repository.create_mission(
         MissionRecord(
             origin=MissionOrigin(
+                schema_version="1.1",
                 kind=MissionOriginKind.CEO,
                 actor_id="ceo:y4nn777",
                 objective="Add durable account recovery",
@@ -718,6 +719,7 @@ def test_multi_repository_mission_binds_exact_runs_dependencies_and_acceptance(
                 organization_version=organization.organization_version,
                 organization_fingerprint=organization.fingerprint,
                 mission_id=mission.mission_id,
+                mission_origin_id=mission.origin.origin_id,
             ),
         )
         runs.accept_plan(run.run_id, plan)

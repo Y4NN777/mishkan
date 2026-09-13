@@ -277,6 +277,50 @@
       "title": "DecisionEvidenceClass",
       "type": "string"
     },
+    "DecisionExplanationDepth": {
+      "enum": [
+        "concise",
+        "standard",
+        "deep"
+      ],
+      "title": "DecisionExplanationDepth",
+      "type": "string"
+    },
+    "DecisionExplanationPreference": {
+      "additionalProperties": false,
+      "properties": {
+        "depth": {
+          "$ref": "#/$defs/DecisionExplanationDepth",
+          "default": "standard"
+        },
+        "focus_areas": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Focus Areas",
+          "type": "array"
+        },
+        "request_reference": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Request Reference",
+          "type": "string"
+        },
+        "requested_by": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Requested By",
+          "type": "string"
+        }
+      },
+      "required": [
+        "requested_by",
+        "request_reference"
+      ],
+      "title": "DecisionExplanationPreference",
+      "type": "object"
+    },
     "DecisionRecommendation": {
       "additionalProperties": false,
       "properties": {
@@ -578,6 +622,17 @@
       "minItems": 1,
       "title": "Evidence References",
       "type": "array"
+    },
+    "explanation_preference": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DecisionExplanationPreference"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "mission_id": {
       "format": "uuid",

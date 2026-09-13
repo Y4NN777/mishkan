@@ -18,6 +18,7 @@ from mishkan.organization.models import (
 )
 from mishkan.planning.models import (
     AcceptedPlan,
+    MissionTemplateReference,
     PlanCandidate,
     PlanExecutionContext,
     PlannedToolCall,
@@ -63,6 +64,8 @@ class PlanValidator:
         approvals: tuple[ApprovalEvidence, ...] = (),
         *,
         mission_id: UUID | None = None,
+        mission_origin_id: UUID | None = None,
+        mission_template_reference: MissionTemplateReference | None = None,
     ) -> AcceptedPlan:
         SchemaRegistry.require_supported("mishkan.plan", candidate.schema_version)
         violations: list[str] = []
@@ -143,6 +146,8 @@ class PlanValidator:
             organization_version=self._organization_roster.organization_version,
             organization_fingerprint=self._organization_roster.fingerprint,
             mission_id=mission_id,
+            mission_origin_id=mission_origin_id,
+            mission_template_reference=mission_template_reference,
         )
         payload = candidate.model_dump(mode="json")
         payload["discovery_fingerprint"] = discovery.fingerprint

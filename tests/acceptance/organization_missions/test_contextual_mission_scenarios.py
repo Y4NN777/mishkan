@@ -32,6 +32,7 @@ from mishkan.missions import (
     MissionResourceLimit,
     MissionTaskAssignment,
     MissionTemplateLoader,
+    MissionTemplateReference,
     MissionTemplateService,
     SQLiteMissionRepository,
 )
@@ -224,15 +225,18 @@ def _member(
 def _governance(
     runner: CrewAIMissionGovernanceRunner,
     scenario: _Scenario,
+    template_reference: MissionTemplateReference,
 ) -> tuple[MissionRecord, MissionGovernanceResult]:
     organization = load_canonical_organization()
     mission = MissionRecord(
         origin=MissionOrigin(
+            schema_version="1.1",
             kind=scenario.origin,
             actor_id=scenario.origin.value,
             objective=scenario.objective,
             source_references=(f"fixture:{scenario.scenario_id}:origin",),
             template_id=scenario.template_id,
+            template_reference=template_reference,
         ),
         organization_id=organization.organization_id,
         organization_version=organization.organization_version,
@@ -486,7 +490,11 @@ def test_contextual_missions_do_not_collapse_to_one_static_workflow(tmp_path: Pa
             item.template_id
             for item in templates.applicable((scenario.signal,), organization_version="1")
         ] == [scenario.template_id]
-        mission, governance = _governance(runner, scenario)
+        mission, governance = _governance(
+            runner,
+            scenario,
+            templates.reference(scenario.template_id),
+        )
         stored = repository.create_mission(mission)
         repository.record_brief(governance.brief, expected_revision=stored.revision)
         after_brief = repository.mission(str(mission.mission_id))
