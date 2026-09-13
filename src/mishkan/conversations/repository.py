@@ -25,6 +25,7 @@ from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.identity import new_id
 from mishkan.domain.time import utc_now
 from mishkan.missions import MissionRecord, MissionState
+from mishkan.organization.models import OrganizationRosterDefinition
 from mishkan.persistence.migration import SchemaManager
 from mishkan.persistence.sqlite import (
     ConversationChannelRow,
@@ -34,6 +35,7 @@ from mishkan.persistence.sqlite import (
     MissionEscalationRow,
     MissionInterventionRow,
     MissionRow,
+    OrganizationRosterRow,
     OutboxRow,
     create_local_engine,
 )
@@ -54,6 +56,29 @@ class SQLiteConversationRepository:
                 return self._idempotent(existing.payload, payload, channel)
             if channel.mission_id is not None:
                 self._require_mission(session, str(channel.mission_id))
+            roster = self._organization(session)
+            known_identities = {identity.identity_id for identity in roster.identities} | {"CEO"}
+            unknown_participants = set(channel.participants) - known_identities
+            if unknown_participants:
+                raise MishkanError(
+                    ErrorCode.ROLE_CONFLICT,
+                    "conversation references unknown professional identities",
+                    details={"unknown": sorted(unknown_participants)},
+                )
+            if channel.created_by not in known_identities:
+                raise MishkanError(
+                    ErrorCode.ROLE_CONFLICT,
+                    "conversation creator is not a known professional identity",
+                    details={"created_by": channel.created_by},
+                )
+            if channel.channel_class is ChannelClass.BRANCH:
+                known_branches = {branch.branch_id for branch in roster.branches}
+                if channel.branch_id not in known_branches:
+                    raise MishkanError(
+                        ErrorCode.ROLE_CONFLICT,
+                        "conversation references an unknown organization branch",
+                        details={"branch_id": channel.branch_id},
+                    )
             if channel.channel_class is ChannelClass.EXECUTIVE:
                 prior = session.scalar(
                     select(ConversationChannelRow).where(
@@ -482,6 +507,17 @@ class SQLiteConversationRepository:
                 "conversation does not govern the referenced mission",
             )
         return row
+
+    @staticmethod
+    def _organization(session: Session) -> OrganizationRosterDefinition:
+        rows = session.scalars(select(OrganizationRosterRow)).all()
+        if len(rows) != 1:
+            raise MishkanError(
+                ErrorCode.REQUIRED_DEPENDENCY,
+                "conversation authority requires exactly one recorded organization",
+                details={"organization_count": len(rows)},
+            )
+        return OrganizationRosterDefinition.model_validate_json(rows[0].payload)
 
     @staticmethod
     def _json(record: BaseModel) -> str:

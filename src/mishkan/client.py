@@ -277,6 +277,52 @@ class Mishkan:
         response.raise_for_status()
         return ProfessionalCompetenceState.model_validate(response.json())
 
+    def professional_evidence(
+        self,
+        identity_id: str,
+        *,
+        kind: ProfessionalEvidenceKind | None = None,
+        subject: str | None = None,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> tuple[ProfessionalEvidenceRecord, ...]:
+        identity = quote(identity_id, safe="")
+        params: dict[str, str | int] = {"offset": offset, "limit": limit}
+        if kind is not None:
+            params["kind"] = kind.value
+        if subject is not None:
+            params["subject"] = subject
+        response = self._client.get(
+            f"/v1/organization/profiles/{identity}/evidence",
+            headers=self._headers(),
+            params=params,
+        )
+        response.raise_for_status()
+        return tuple(ProfessionalEvidenceRecord.model_validate(item) for item in response.json())
+
+    def professional_promotions(
+        self,
+        identity_id: str,
+        *,
+        kind: ProfessionalEvidenceKind | None = None,
+        subject: str | None = None,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> tuple[ProfessionalPromotionDecision, ...]:
+        identity = quote(identity_id, safe="")
+        params: dict[str, str | int] = {"offset": offset, "limit": limit}
+        if kind is not None:
+            params["kind"] = kind.value
+        if subject is not None:
+            params["subject"] = subject
+        response = self._client.get(
+            f"/v1/organization/profiles/{identity}/promotions",
+            headers=self._headers(),
+            params=params,
+        )
+        response.raise_for_status()
+        return tuple(ProfessionalPromotionDecision.model_validate(item) for item in response.json())
+
     def create_mission(self, record: MissionRecord) -> MissionRecord:
         result = self.command(
             ApplicationCommand(
@@ -510,6 +556,18 @@ class Mishkan:
         response = self._client.get(f"/v1/missions/{mission_id}", headers=self._headers())
         response.raise_for_status()
         return MissionRecord.model_validate(response.json())
+
+    def mission_inspection(self, mission_id: str, *, limit: int = 100) -> dict[str, object]:
+        response = self._client.get(
+            f"/v1/missions/{quote(mission_id, safe='')}/inspection",
+            headers=self._headers(),
+            params={"limit": limit},
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise TypeError("mission inspection response must be an object")
+        return payload
 
     def mission_brief(self, mission_id: str, *, version: int | None = None) -> MissionBrief:
         params = {} if version is None else {"version": version}

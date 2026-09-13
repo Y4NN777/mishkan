@@ -267,6 +267,73 @@ class SQLiteProfessionalEvolutionRepository:
                 ),
             )
 
+    def evidence(
+        self,
+        identity_id: str,
+        *,
+        kind: ProfessionalEvidenceKind | None = None,
+        subject: str | None = None,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> tuple[ProfessionalEvidenceRecord, ...]:
+        self._query_bound(offset, limit)
+        with Session(self._engine) as session:
+            self._require_identity(session, identity_id)
+            query = select(ProfessionalEvidenceRow).where(
+                ProfessionalEvidenceRow.identity_id == identity_id
+            )
+            if kind is not None:
+                query = query.where(ProfessionalEvidenceRow.kind == kind.value)
+            if subject is not None:
+                query = query.where(ProfessionalEvidenceRow.subject == subject)
+            rows = session.scalars(
+                query.order_by(
+                    ProfessionalEvidenceRow.observed_at,
+                    ProfessionalEvidenceRow.evidence_id,
+                )
+                .offset(offset)
+                .limit(limit)
+            ).all()
+            return tuple(
+                ProfessionalEvidenceRecord.model_validate_json(row.payload) for row in rows
+            )
+
+    def promotion_history(
+        self,
+        identity_id: str,
+        *,
+        kind: ProfessionalEvidenceKind | None = None,
+        subject: str | None = None,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> tuple[ProfessionalPromotionDecision, ...]:
+        self._query_bound(offset, limit)
+        with Session(self._engine) as session:
+            self._require_identity(session, identity_id)
+            query = select(ProfessionalPromotionRow).where(
+                ProfessionalPromotionRow.identity_id == identity_id
+            )
+            if kind is not None:
+                query = query.where(ProfessionalPromotionRow.kind == kind.value)
+            if subject is not None:
+                query = query.where(ProfessionalPromotionRow.subject == subject)
+            rows = session.scalars(
+                query.order_by(
+                    ProfessionalPromotionRow.decided_at,
+                    ProfessionalPromotionRow.decision_id,
+                )
+                .offset(offset)
+                .limit(limit)
+            ).all()
+            return tuple(
+                ProfessionalPromotionDecision.model_validate_json(row.payload) for row in rows
+            )
+
+    @staticmethod
+    def _query_bound(offset: int, limit: int) -> None:
+        if offset < 0 or limit < 1 or limit > 1_000:
+            raise MishkanError(ErrorCode.OUTPUT_CONTRACT, "query bound is invalid")
+
     @staticmethod
     def _evidence_for_subject(
         session: Session,

@@ -127,6 +127,19 @@ def test_promotion_preserves_support_failure_and_contradiction_evidence(
     assert state.effective_scope == request.target_scope
     assert state.failure_evidence_ids == (failed.evidence_id,)
     assert state.contradictory_evidence_ids == (contradicted.evidence_id,)
+    assert repository.evidence(demonstrated.identity_id) == (
+        demonstrated,
+        failed,
+        contradicted,
+    )
+    assert repository.promotion_history(demonstrated.identity_id) == (decision,)
+    assert repository.evidence(
+        demonstrated.identity_id,
+        kind=demonstrated.kind,
+        subject=demonstrated.subject,
+        offset=1,
+        limit=1,
+    ) == (failed,)
 
 
 def test_stale_or_non_demonstrated_evidence_cannot_authorize_promotion(
@@ -224,12 +237,26 @@ async def test_professional_evolution_uses_governed_daemon_commands(
             headers=headers,
             params={"kind": evidence.kind.value, "subject": evidence.subject},
         )
+        evidence_history = await client.get(
+            f"/v1/organization/profiles/{evidence.identity_id}/evidence",
+            headers=headers,
+            params={"kind": evidence.kind.value, "subject": evidence.subject},
+        )
+        promotion_history = await client.get(
+            f"/v1/organization/profiles/{evidence.identity_id}/promotions",
+            headers=headers,
+            params={"kind": evidence.kind.value, "subject": evidence.subject},
+        )
 
     assert recorded.status_code == 200, recorded.text
     assert decided.status_code == 200, decided.text
     assert state.status_code == 200, state.text
+    assert evidence_history.status_code == 200, evidence_history.text
+    assert promotion_history.status_code == 200, promotion_history.text
     assert state.json()["effective_scope"] == {
         "level": "project",
         "scope_id": "project:api",
     }
     assert state.json()["supporting_evidence_ids"] == [str(evidence.evidence_id)]
+    assert evidence_history.json() == [evidence.model_dump(mode="json")]
+    assert promotion_history.json() == [decided.json()["payload"]]

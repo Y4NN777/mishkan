@@ -121,6 +121,60 @@ def record_professional_evidence(
     _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
 
 
+@org_app.command("evidence")
+def list_professional_evidence(
+    ctx: typer.Context,
+    identity_id: str,
+    kind: Annotated[str | None, typer.Option("--kind")] = None,
+    subject: Annotated[str | None, typer.Option("--subject")] = None,
+    offset: Annotated[int, typer.Option(min=0)] = 0,
+    limit: Annotated[int, typer.Option(min=1, max=1_000)] = 100,
+) -> None:
+    """List immutable evidence behind one professional profile."""
+    from mishkan.organization import ProfessionalEvidenceKind
+
+    try:
+        evidence_kind = ProfessionalEvidenceKind(kind) if kind is not None else None
+    except ValueError as exc:
+        raise typer.BadParameter("--kind must name a ProfessionalEvidenceKind") from exc
+    with _daemon_client(ctx) as client:
+        records = client.professional_evidence(
+            identity_id,
+            kind=evidence_kind,
+            subject=subject,
+            offset=offset,
+            limit=limit,
+        )
+    _emit(_dump_models(records), as_json=_state(ctx).json_output)
+
+
+@org_app.command("promotions")
+def list_professional_promotions(
+    ctx: typer.Context,
+    identity_id: str,
+    kind: Annotated[str | None, typer.Option("--kind")] = None,
+    subject: Annotated[str | None, typer.Option("--subject")] = None,
+    offset: Annotated[int, typer.Option(min=0)] = 0,
+    limit: Annotated[int, typer.Option(min=1, max=1_000)] = 100,
+) -> None:
+    """List accepted and rejected professional promotion decisions."""
+    from mishkan.organization import ProfessionalEvidenceKind
+
+    try:
+        evidence_kind = ProfessionalEvidenceKind(kind) if kind is not None else None
+    except ValueError as exc:
+        raise typer.BadParameter("--kind must name a ProfessionalEvidenceKind") from exc
+    with _daemon_client(ctx) as client:
+        records = client.professional_promotions(
+            identity_id,
+            kind=evidence_kind,
+            subject=subject,
+            offset=offset,
+            limit=limit,
+        )
+    _emit(_dump_models(records), as_json=_state(ctx).json_output)
+
+
 @org_app.command("promotion-decide")
 def decide_professional_promotion(
     ctx: typer.Context,
@@ -167,6 +221,18 @@ def show_mission(ctx: typer.Context, mission_id: str) -> None:
     with _daemon_client(ctx) as client:
         record = client.mission(mission_id)
     _emit(record.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@mission_app.command("inspect")
+def inspect_mission(
+    ctx: typer.Context,
+    mission_id: str,
+    limit: Annotated[int, typer.Option(min=1, max=1_000)] = 100,
+) -> None:
+    """Inspect the bounded, non-authoritative projection for one mission."""
+    with _daemon_client(ctx) as client:
+        projection = client.mission_inspection(mission_id, limit=limit)
+    _emit(projection, as_json=_state(ctx).json_output)
 
 
 @mission_app.command("templates")

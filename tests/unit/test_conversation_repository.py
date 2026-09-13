@@ -274,6 +274,29 @@ def test_messages_are_durable_records_and_never_implicit_commands(tmp_path: Path
     assert missions.mission(str(mission.mission_id)).revision == mission.revision
 
 
+def test_channels_require_known_people_and_real_organization_branches(tmp_path: Path) -> None:
+    _missions, conversations, _mission = _setup(tmp_path)
+    unknown_person = ConversationChannel(
+        channel_class=ChannelClass.DIRECT,
+        title="Unknown direct participant",
+        participants=("PM", "Invented_Agent"),
+        direct_authorization_reference="authority:pm-direct",
+        created_by="PM",
+    )
+    unknown_branch = ConversationChannel(
+        channel_class=ChannelClass.BRANCH,
+        title="Invented branch discussion",
+        participants=("PM", "CTO"),
+        branch_id="invented-branch",
+        created_by="PM",
+    )
+
+    with pytest.raises(MishkanError, match="unknown professional identities"):
+        conversations.create_channel(unknown_person)
+    with pytest.raises(MishkanError, match="unknown organization branch"):
+        conversations.create_channel(unknown_branch)
+
+
 def test_disagreement_preserves_independent_work_and_answer_is_attributed(
     tmp_path: Path,
 ) -> None:

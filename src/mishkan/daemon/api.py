@@ -145,6 +145,7 @@ from mishkan.notifications import (
 from mishkan.organization import (
     ProfessionalCompetenceState,
     ProfessionalEvidenceKind,
+    ProfessionalEvidenceRecord,
     ProfessionalPromotionDecision,
     load_canonical_organization,
 )
@@ -1114,6 +1115,50 @@ def create_app(
             kind=kind,
             subject=subject,
         )
+
+    @app.get(
+        "/v1/organization/profiles/{identity_id}/evidence",
+        response_model=None,
+    )
+    async def professional_evidence_list(
+        identity_id: str,
+        _principal: TokenRecord = authenticated,
+        kind: ProfessionalEvidenceKind | None = None,
+        subject: Annotated[str | None, Query(min_length=1, max_length=512)] = None,
+        offset: Annotated[int, Query(ge=0)] = 0,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
+    ) -> tuple[dict[str, object], ...]:
+        records: tuple[ProfessionalEvidenceRecord, ...] = await _thread_call(
+            professional_evolution.evidence,
+            identity_id,
+            kind=kind,
+            subject=subject,
+            offset=offset,
+            limit=limit,
+        )
+        return tuple(record.model_dump(mode="json") for record in records)
+
+    @app.get(
+        "/v1/organization/profiles/{identity_id}/promotions",
+        response_model=None,
+    )
+    async def professional_promotion_list(
+        identity_id: str,
+        _principal: TokenRecord = authenticated,
+        kind: ProfessionalEvidenceKind | None = None,
+        subject: Annotated[str | None, Query(min_length=1, max_length=512)] = None,
+        offset: Annotated[int, Query(ge=0)] = 0,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
+    ) -> tuple[dict[str, object], ...]:
+        records: tuple[ProfessionalPromotionDecision, ...] = await _thread_call(
+            professional_evolution.promotion_history,
+            identity_id,
+            kind=kind,
+            subject=subject,
+            offset=offset,
+            limit=limit,
+        )
+        return tuple(record.model_dump(mode="json") for record in records)
 
     @app.get("/v1/missions", response_model=None)
     async def mission_list(
