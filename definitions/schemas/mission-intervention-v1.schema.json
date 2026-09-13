@@ -1,0 +1,175 @@
+{
+  "$defs": {
+    "InterventionKind": {
+      "enum": [
+        "comment",
+        "answer_escalation",
+        "accept_proposal",
+        "reject_proposal",
+        "suspend",
+        "resume",
+        "request_reassignment",
+        "confirm_reassignment",
+        "stop",
+        "accept_risk"
+      ],
+      "title": "InterventionKind",
+      "type": "string"
+    },
+    "InterventionTargetKind": {
+      "enum": [
+        "mission",
+        "task",
+        "proposal",
+        "assignment",
+        "risk",
+        "escalation"
+      ],
+      "title": "InterventionTargetKind",
+      "type": "string"
+    },
+    "MissionState": {
+      "enum": [
+        "proposed",
+        "clarifying",
+        "planned",
+        "active",
+        "paused",
+        "blocked",
+        "evaluating",
+        "remediating",
+        "completed",
+        "failed",
+        "cancelled"
+      ],
+      "title": "MissionState",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "actor_id": {
+      "const": "CEO",
+      "title": "Actor Id",
+      "type": "string"
+    },
+    "authority_reference": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Authority Reference",
+      "type": "string"
+    },
+    "confirmation": {
+      "maxLength": 4096,
+      "minLength": 3,
+      "title": "Confirmation",
+      "type": "string"
+    },
+    "conversation_id": {
+      "format": "uuid",
+      "title": "Conversation Id",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "effect": {
+      "maxLength": 4096,
+      "minLength": 3,
+      "title": "Effect",
+      "type": "string"
+    },
+    "escalation_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Escalation Id"
+    },
+    "evidence_references": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Evidence References",
+      "type": "array"
+    },
+    "intervention_id": {
+      "format": "uuid",
+      "title": "Intervention Id",
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/InterventionKind"
+    },
+    "mission_id": {
+      "format": "uuid",
+      "title": "Mission Id",
+      "type": "string"
+    },
+    "reason": {
+      "maxLength": 8192,
+      "minLength": 3,
+      "title": "Reason",
+      "type": "string"
+    },
+    "resulting_mission_state": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/MissionState"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "scope": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Scope",
+      "type": "array"
+    },
+    "target_id": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Target Id",
+      "type": "string"
+    },
+    "target_kind": {
+      "$ref": "#/$defs/InterventionTargetKind"
+    }
+  },
+  "required": [
+    "mission_id",
+    "conversation_id",
+    "actor_id",
+    "kind",
+    "target_kind",
+    "target_id",
+    "reason",
+    "scope",
+    "confirmation",
+    "authority_reference",
+    "evidence_references",
+    "effect"
+  ],
+  "title": "MissionIntervention",
+  "type": "object"
+}

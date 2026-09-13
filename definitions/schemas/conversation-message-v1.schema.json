@@ -1,0 +1,66 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "author_identity": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Author Identity",
+      "type": "string"
+    },
+    "body": {
+      "maxLength": 65536,
+      "minLength": 1,
+      "title": "Body",
+      "type": "string"
+    },
+    "conversation_id": {
+      "format": "uuid",
+      "title": "Conversation Id",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "evidence_references": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Evidence References",
+      "type": "array"
+    },
+    "message_id": {
+      "format": "uuid",
+      "title": "Message Id",
+      "type": "string"
+    },
+    "reply_to_message_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Reply To Message Id"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "conversation_id",
+    "author_identity",
+    "body"
+  ],
+  "title": "ConversationMessage",
+  "type": "object"
+}

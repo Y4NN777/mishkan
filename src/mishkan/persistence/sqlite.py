@@ -701,6 +701,68 @@ class MissionCrewRow(Base):
     created_at: Mapped[str] = mapped_column(String(40), nullable=False)
 
 
+class ConversationChannelRow(Base):
+    __tablename__ = "conversation_channels"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    channel_class: Mapped[str] = mapped_column(String(32), nullable=False)
+    mission_id: Mapped[str | None] = mapped_column(ForeignKey("missions.id"))
+    branch_id: Mapped[str | None] = mapped_column(String(128))
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class ConversationMessageRow(Base):
+    __tablename__ = "conversation_messages"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    conversation_id: Mapped[str] = mapped_column(
+        ForeignKey("conversation_channels.id"), nullable=False
+    )
+    author_identity: Mapped[str] = mapped_column(String(256), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class MissionDecisionRow(Base):
+    __tablename__ = "mission_decisions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    mission_id: Mapped[str] = mapped_column(ForeignKey("missions.id"), nullable=False)
+    conversation_id: Mapped[str] = mapped_column(
+        ForeignKey("conversation_channels.id"), nullable=False
+    )
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class MissionEscalationRow(Base):
+    __tablename__ = "mission_escalations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    mission_id: Mapped[str] = mapped_column(ForeignKey("missions.id"), nullable=False)
+    conversation_id: Mapped[str] = mapped_column(
+        ForeignKey("conversation_channels.id"), nullable=False
+    )
+    state: Mapped[str] = mapped_column(String(32), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class MissionInterventionRow(Base):
+    __tablename__ = "mission_interventions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    mission_id: Mapped[str] = mapped_column(ForeignKey("missions.id"), nullable=False)
+    conversation_id: Mapped[str] = mapped_column(
+        ForeignKey("conversation_channels.id"), nullable=False
+    )
+    kind: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
 @dataclass(frozen=True, slots=True)
 class RunSnapshot:
     run_id: str

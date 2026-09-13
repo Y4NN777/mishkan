@@ -1,0 +1,90 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "actor_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Actor Id",
+      "type": "string"
+    },
+    "authority_reference": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Authority Reference",
+      "type": "string"
+    },
+    "conversation_id": {
+      "format": "uuid",
+      "title": "Conversation Id",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "decision_id": {
+      "format": "uuid",
+      "title": "Decision Id",
+      "type": "string"
+    },
+    "disposition": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Disposition",
+      "type": "string"
+    },
+    "evidence_references": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Evidence References",
+      "type": "array"
+    },
+    "mission_id": {
+      "format": "uuid",
+      "title": "Mission Id",
+      "type": "string"
+    },
+    "reason": {
+      "maxLength": 8192,
+      "minLength": 3,
+      "title": "Reason",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "scope": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Scope",
+      "type": "array"
+    },
+    "subject": {
+      "maxLength": 2048,
+      "minLength": 3,
+      "title": "Subject",
+      "type": "string"
+    }
+  },
+  "required": [
+    "mission_id",
+    "conversation_id",
+    "actor_id",
+    "subject",
+    "disposition",
+    "reason",
+    "scope",
+    "evidence_references",
+    "authority_reference"
+  ],
+  "title": "MissionDecision",
+  "type": "object"
+}

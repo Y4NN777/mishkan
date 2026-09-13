@@ -45,6 +45,13 @@ from mishkan.context.candidates import (
 )
 from mishkan.context.models import ContextPackManifest, ContextPackMaterialization
 from mishkan.context.profile import ConfirmedEngineerFact, EngineerProfile
+from mishkan.conversations.models import (
+    ConversationChannel,
+    ConversationMessage,
+    MissionDecision,
+    MissionEscalation,
+    MissionIntervention,
+)
 from mishkan.domain.errors import ErrorEnvelope
 from mishkan.domain.identity import DomainRecord
 from mishkan.edits.git import GitEffectRequest, GitEffectResult
@@ -179,6 +186,8 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "context-pack-materialization-v1.schema.json": ContextPackMaterialization,
     "contextual-recommendation-request-v1.schema.json": ContextualRecommendationRequest,
     "contextual-recommendation-v1.schema.json": ContextualRecommendation,
+    "conversation-channel-v1.schema.json": ConversationChannel,
+    "conversation-message-v1.schema.json": ConversationMessage,
     "domain-record-v1.schema.json": DomainRecord,
     "error-envelope-v1.schema.json": ErrorEnvelope,
     "engineering-command-candidate-v1.schema.json": EngineeringCommandCandidate,
@@ -220,6 +229,9 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "mission-environment-intent-v1.schema.json": MissionEnvironmentIntent,
     "mission-executive-confirmation-v1.schema.json": ExecutiveConfirmation,
     "mission-origin-v1.schema.json": MissionOrigin,
+    "mission-decision-v1.schema.json": MissionDecision,
+    "mission-escalation-v1.schema.json": MissionEscalation,
+    "mission-intervention-v1.schema.json": MissionIntervention,
     "mission-record-v1.schema.json": MissionRecord,
     "organization-roster-v1.schema.json": OrganizationRosterDefinition,
     "langsmith-feedback-import-request-v1.schema.json": LangSmithFeedbackImportRequest,
