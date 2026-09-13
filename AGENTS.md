@@ -19,8 +19,10 @@ promotion is closed at `3481ca5`. Its 400-test local gate and six-job Linux/macO
 topic and `develop` matrices are recorded in `docs/VALIDATION/web-browser-mcp.md`. D-040 records the
 history-preserving integration checkpoint `0534988` and green six-job matrices on both `develop`
 and `main`; I04 is integrated and closed. D-041 accepts Implementation Plan 1.6 and authorizes I05
-on `feat/i05-skills-engineering-foundation`. The I05 gate remains open until its runnable skill,
-context, environment, security, and conformance evidence is observed.
+on `feat/i05-skills-engineering-foundation`. D-042 accepts the complete I05 gate at `8605437` after
+the seven-job Linux/macOS Python 3.11–3.13 matrix and real governed Docker, Compose, Dev Container,
+and Podman lifecycles passed. I05 is closed and ready for topic-to-`develop` promotion. I06 remains
+unauthorized until an explicit decision after promotion.
 The rejected
 universal workflow, mandatory outcome catalogue, capability-family matrix, static role/tool matrix,
 competing runtime, and private operational deny-list must not return.
