@@ -1,3 +1,4 @@
+from datetime import timedelta
 from pathlib import Path
 from typing import Literal
 
@@ -313,6 +314,18 @@ def test_escalation_requires_distinct_pm_and_cto_recommendations() -> None:
         MissionEscalation.model_validate(
             escalation.model_copy(
                 update={"recommendations": (escalation.recommendations[0],)}
+            ).model_dump(mode="json")
+        )
+    with pytest.raises(ValidationError, match="cannot also be declared independent work"):
+        MissionEscalation.model_validate(
+            escalation.model_copy(
+                update={"independent_work_continuing": escalation.blocked_scope}
+            ).model_dump(mode="json")
+        )
+    with pytest.raises(ValidationError, match="deadline must follow"):
+        MissionEscalation.model_validate(
+            escalation.model_copy(
+                update={"deadline": escalation.created_at - timedelta(seconds=1)}
             ).model_dump(mode="json")
         )
 

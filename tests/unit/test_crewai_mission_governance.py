@@ -288,6 +288,23 @@ def test_cto_rejection_compiles_to_actionable_disagreement_without_a_crew(
     assert any(item.startswith("crewai-output:") for item in escalation.evidence_references)
 
 
+def test_governance_disagreement_cannot_claim_blocked_work_as_independent(
+    tmp_path: Path,
+) -> None:
+    runner = CrewAIMissionGovernanceRunner(_config(tmp_path))
+    contradictory = _cto("rejected").model_copy(
+        update={"independent_work_continuing": ("task:security-design",)}
+    )
+
+    with pytest.raises(ValueError, match="both block and continue"):
+        runner.compile(
+            _mission(),
+            _pm(),
+            contradictory,
+            evidence_references=_governance_evidence_references(),
+        )
+
+
 def test_cto_cannot_silently_replace_the_pm_confirmed_composition(tmp_path: Path) -> None:
     runner = CrewAIMissionGovernanceRunner(_config(tmp_path))
     changed = _cto().model_copy(

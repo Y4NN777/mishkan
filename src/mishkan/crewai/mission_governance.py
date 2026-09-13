@@ -148,6 +148,14 @@ class MissionGovernanceDisagreement(GovernanceOutput):
     independent_work_continuing: tuple[str, ...]
     requires_ceo_escalation: bool = True
 
+    @model_validator(mode="after")
+    def independent_work_is_not_blocked(self) -> MissionGovernanceDisagreement:
+        if set(self.blocked_scope).intersection(self.independent_work_continuing):
+            raise ValueError(
+                "governance disagreement cannot both block and continue the same scope"
+            )
+        return self
+
 
 class CrewAIGovernanceLineage(GovernanceOutput):
     runtime: Literal["crewai-1.x"] = "crewai-1.x"

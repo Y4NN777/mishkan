@@ -502,6 +502,12 @@ class MissionEscalation(ConversationModel):
             self.answer_intervention_id is None
         ):
             raise ValueError("answered escalation requires its intervention identity")
+        if set(self.blocked_scope).intersection(self.independent_work_continuing):
+            raise ValueError("blocked escalation scope cannot also be declared independent work")
+        if self.deadline is not None and self.deadline <= self.created_at:
+            raise ValueError("escalation deadline must follow its creation time")
+        if self.updated_at < self.created_at:
+            raise ValueError("escalation update time cannot precede its creation time")
         return self
 
 
