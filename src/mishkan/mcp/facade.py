@@ -19,6 +19,7 @@ from mishkan.missions import (
     MissionTemplateService,
     SQLiteMissionRepository,
 )
+from mishkan.missions.inspection import MissionInspectionService
 from mishkan.notifications import NotificationDelivery, NotificationService, NotificationSeverity
 from mishkan.organization import (
     OrganizationRosterDefinition,
@@ -85,6 +86,11 @@ class MissionQuery(FacadeModel):
     limit: int = Field(default=100, ge=1, le=1_000)
 
 
+class OrganizationBranchQuery(FacadeModel):
+    branch_id: str = Field(pattern=r"^[a-z][a-z0-9-]{1,63}$")
+    limit: int = Field(default=100, ge=1, le=1_000)
+
+
 class MissionTemplateQuery(FacadeModel):
     signals: tuple[str, ...] = ()
     organization_version: str = Field(default="1", min_length=1, max_length=64)
@@ -128,6 +134,7 @@ class McpFacadeRouter:
         advisory: ContextualRecommendationService | None = None,
         readiness: MissionEnvironmentReadinessService | None = None,
         mission_task_claims: MissionTaskClaimService | None = None,
+        mission_inspections: MissionInspectionService | None = None,
         notifications: NotificationService | None = None,
     ) -> None:
         profile = config.exposure_profiles[config.facade.exposure_profile]
@@ -145,6 +152,7 @@ class McpFacadeRouter:
         self._advisory = advisory
         self._readiness = readiness
         self._mission_task_claims = mission_task_claims
+        self._mission_inspections = mission_inspections
         self._notifications = notifications
 
     async def invoke(
@@ -179,6 +187,20 @@ class McpFacadeRouter:
             self._require_empty(arguments)
             organization = self._require_dependency(self._organization, "organization")
             return organization.model_dump(mode="json")
+        if operation == "organization.inspect":
+            query = self._validate(LimitQuery, arguments)
+            inspections = self._require_dependency(
+                self._mission_inspections,
+                "mission inspections",
+            )
+            return inspections.organization(limit=query.limit)
+        if operation == "organization.branch.inspect":
+            query = self._validate(OrganizationBranchQuery, arguments)
+            inspections = self._require_dependency(
+                self._mission_inspections,
+                "mission inspections",
+            )
+            return inspections.branch(query.branch_id, limit=query.limit)
         if operation == "organization.competence.get":
             query = self._validate(ProfessionalCompetenceQuery, arguments)
             evolution = self._require_dependency(
@@ -238,7 +260,11 @@ class McpFacadeRouter:
             return missions.mission(query.mission_id).model_dump(mode="json")
         if operation == "mission.inspect":
             query = self._validate(MissionQuery, arguments)
-            return self._mission_inspection(query)
+            inspections = self._require_dependency(
+                self._mission_inspections,
+                "mission inspections",
+            )
+            return inspections.mission(query.mission_id, limit=query.limit)
         if operation == "mission.templates.list":
             query = self._validate(MissionTemplateQuery, arguments)
             templates = self._require_dependency(self._mission_templates, "mission templates")
@@ -330,83 +356,6 @@ class McpFacadeRouter:
             else {}
         )
         return await self.invoke(operation, arguments, principal_id=principal_id)
-
-    def _mission_inspection(self, query: MissionQuery) -> dict[str, Any]:
-        missions = self._require_dependency(self._missions, "missions")
-        conversations = self._require_dependency(self._conversations, "conversations")
-        mission = missions.mission(query.mission_id)
-        brief = (
-            missions.brief(query.mission_id).model_dump(mode="json")
-            if mission.current_brief_version is not None
-            else None
-        )
-        crew = (
-            missions.crew(query.mission_id).model_dump(mode="json")
-            if mission.current_crew_version is not None
-            else None
-        )
-        environment_plan = (
-            missions.environment_plan(query.mission_id).model_dump(mode="json")
-            if mission.current_environment_plan_version is not None
-            else None
-        )
-        readiness = self._require_dependency(self._readiness, "mission readiness")
-        mission_task_claims = self._require_dependency(
-            self._mission_task_claims,
-            "mission task claims",
-        )
-        assignments = missions.assignments(query.mission_id, limit=query.limit)
-        return {
-            "mission": mission.model_dump(mode="json"),
-            "brief": brief,
-            "crew": crew,
-            "environment_plan": environment_plan,
-            "readiness": readiness.inspect(query.mission_id).model_dump(mode="json"),
-            "task_eligibility": [
-                mission_task_claims.inspect(query.mission_id, item.task_id).model_dump(mode="json")
-                for item in {assignment.task_id: assignment for assignment in assignments}.values()
-            ],
-            "completion_readiness": mission_task_claims.inspect_completion(
-                query.mission_id
-            ).model_dump(mode="json"),
-            "assignments": [item.model_dump(mode="json") for item in assignments],
-            "run_bindings": [
-                item.model_dump(mode="json")
-                for item in missions.run_bindings(query.mission_id, limit=query.limit)
-            ],
-            "transitions": [
-                item.model_dump(mode="json")
-                for item in missions.transitions(query.mission_id, limit=query.limit)
-            ],
-            "conversations": [
-                item.model_dump(mode="json")
-                for item in conversations.channels(
-                    mission_id=query.mission_id,
-                    limit=query.limit,
-                )
-            ],
-            "decisions": [
-                item.model_dump(mode="json")
-                for item in conversations.decisions(query.mission_id, limit=query.limit)
-            ],
-            "escalations": [
-                item.model_dump(mode="json")
-                for item in conversations.escalations(query.mission_id, limit=query.limit)
-            ],
-            "interventions": [
-                item.model_dump(mode="json")
-                for item in conversations.interventions(query.mission_id, limit=query.limit)
-            ],
-            "events": [
-                item.model_dump(mode="json")
-                for item in self._repository.events(
-                    after_cursor=0,
-                    limit=query.limit,
-                    entity_type="mission",
-                    entity_id=query.mission_id,
-                ).events
-            ],
-        }
 
     def _events(self, query: EventQuery) -> EventPage:
         return self._repository.events(

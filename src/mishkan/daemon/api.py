@@ -137,6 +137,7 @@ from mishkan.missions.environment import (
     MissionEnvironmentPlanAcceptance,
     MissionEnvironmentPlanValidator,
 )
+from mishkan.missions.inspection import MissionInspectionService
 from mishkan.notifications import (
     NotificationDelivery,
     NotificationPage,
@@ -611,6 +612,16 @@ def create_app(
         mission_readiness,
         run_repository,
     )
+    mission_inspections = MissionInspectionService(
+        organization=load_canonical_organization(),
+        missions=mission_repository,
+        conversations=conversation_repository,
+        application=repository,
+        runs=run_repository,
+        artifacts=artifacts,
+        readiness=mission_readiness,
+        task_claims=mission_task_claims,
+    )
     notification_service = NotificationService(config.notifications)
     telemetry_tasks: set[asyncio.Task[object]] = set()
 
@@ -997,6 +1008,7 @@ def create_app(
             advisory=community_recommendations,
             readiness=mission_readiness,
             mission_task_claims=mission_task_claims,
+            mission_inspections=mission_inspections,
             notifications=notification_service,
         )
         mcp_http = McpHttpFacade(
@@ -1106,6 +1118,21 @@ def create_app(
     ) -> dict[str, object]:
         roster = load_canonical_organization()
         return roster.model_dump(mode="json")
+
+    @app.get("/v1/organization/inspection", response_model=None)
+    async def organization_inspection(
+        _principal: TokenRecord = authenticated,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
+    ) -> dict[str, object]:
+        return await _thread_call(mission_inspections.organization, limit=limit)
+
+    @app.get("/v1/organization/branches/{branch_id}/inspection", response_model=None)
+    async def organization_branch_inspection(
+        branch_id: str,
+        _principal: TokenRecord = authenticated,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
+    ) -> dict[str, object]:
+        return await _thread_call(mission_inspections.branch, branch_id, limit=limit)
 
     @app.get(
         "/v1/organization/profiles/{identity_id}/competence",
@@ -1367,82 +1394,7 @@ def create_app(
         _principal: TokenRecord = authenticated,
         limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
     ) -> dict[str, object]:
-        identity = str(mission_id)
-        mission = await _thread_call(mission_repository.mission, identity)
-        brief = (
-            await _thread_call(mission_repository.brief, identity)
-            if mission.current_brief_version is not None
-            else None
-        )
-        crew = (
-            await _thread_call(mission_repository.crew, identity)
-            if mission.current_crew_version is not None
-            else None
-        )
-        environment_plan = (
-            await _thread_call(mission_repository.environment_plan, identity)
-            if mission.current_environment_plan_version is not None
-            else None
-        )
-        (
-            assignments,
-            transitions,
-            channels,
-            decisions,
-            escalations,
-            interventions,
-        ) = await asyncio.gather(
-            _thread_call(mission_repository.assignments, identity, limit=limit),
-            _thread_call(mission_repository.transitions, identity, limit=limit),
-            _thread_call(conversation_repository.channels, mission_id=identity, limit=limit),
-            _thread_call(conversation_repository.decisions, identity, limit=limit),
-            _thread_call(conversation_repository.escalations, identity, limit=limit),
-            _thread_call(conversation_repository.interventions, identity, limit=limit),
-        )
-        run_bindings = await _thread_call(
-            mission_repository.run_bindings,
-            identity,
-            limit=limit,
-        )
-        mission_events = await _thread_call(
-            repository.events,
-            after_cursor=0,
-            limit=limit,
-            entity_type="mission",
-            entity_id=identity,
-        )
-        return {
-            "mission": mission.model_dump(mode="json"),
-            "brief": brief.model_dump(mode="json") if brief is not None else None,
-            "crew": crew.model_dump(mode="json") if crew is not None else None,
-            "environment_plan": (
-                environment_plan.model_dump(mode="json") if environment_plan is not None else None
-            ),
-            "readiness": (await _thread_call(mission_readiness.inspect, identity)).model_dump(
-                mode="json"
-            ),
-            "task_eligibility": [
-                (
-                    await _thread_call(
-                        mission_task_claims.inspect,
-                        identity,
-                        item.task_id,
-                    )
-                ).model_dump(mode="json")
-                for item in {assignment.task_id: assignment for assignment in assignments}.values()
-            ],
-            "completion_readiness": (
-                await _thread_call(mission_task_claims.inspect_completion, identity)
-            ).model_dump(mode="json"),
-            "assignments": [item.model_dump(mode="json") for item in assignments],
-            "run_bindings": [item.model_dump(mode="json") for item in run_bindings],
-            "transitions": [item.model_dump(mode="json") for item in transitions],
-            "conversations": [item.model_dump(mode="json") for item in channels],
-            "decisions": [item.model_dump(mode="json") for item in decisions],
-            "escalations": [item.model_dump(mode="json") for item in escalations],
-            "interventions": [item.model_dump(mode="json") for item in interventions],
-            "events": [item.model_dump(mode="json") for item in mission_events.events],
-        }
+        return await _thread_call(mission_inspections.mission, str(mission_id), limit=limit)
 
     @app.get("/v1/tools/registry")
     async def tool_registry(

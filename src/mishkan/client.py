@@ -231,6 +231,35 @@ class Mishkan:
         response.raise_for_status()
         return OrganizationRosterDefinition.model_validate(response.json())
 
+    def organization_inspection(self, *, limit: int = 100) -> dict[str, object]:
+        response = self._client.get(
+            "/v1/organization/inspection",
+            headers=self._headers(),
+            params={"limit": limit},
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise TypeError("organization inspection response must be an object")
+        return payload
+
+    def organization_branch_inspection(
+        self,
+        branch_id: str,
+        *,
+        limit: int = 100,
+    ) -> dict[str, object]:
+        response = self._client.get(
+            f"/v1/organization/branches/{quote(branch_id, safe='')}/inspection",
+            headers=self._headers(),
+            params={"limit": limit},
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise TypeError("organization branch inspection response must be an object")
+        return payload
+
     def record_professional_evidence(
         self,
         evidence: ProfessionalEvidenceRecord,

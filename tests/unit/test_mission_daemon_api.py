@@ -1021,6 +1021,11 @@ async def test_mission_completion_requires_separated_accepted_task_chain(tmp_pat
     headers = {"Authorization": f"Bearer {token.token}"}
     organization = load_canonical_organization()
     mission_identity = uuid4()
+    backend_branch = next(
+        item.branch_id
+        for item in organization.identities
+        if item.identity_id == "Backend_Service_Engineer"
+    )
     runs = LocalRunRepository(paths.database)
     discovery = DiscoverySnapshot(
         binding=RepositoryBinding(
@@ -1325,9 +1330,34 @@ async def test_mission_completion_requires_separated_accepted_task_chain(tmp_pat
             f"/v1/missions/{mission.mission_id}/inspection",
             headers=headers,
         )
+        organization_response = await client.get(
+            "/v1/organization/inspection",
+            headers=headers,
+        )
+        branch_response = await client.get(
+            f"/v1/organization/branches/{backend_branch}/inspection",
+            headers=headers,
+        )
         assert bindings_response.status_code == 200
         assert len(bindings_response.json()) == 6
-        assert len(inspection_response.json()["run_bindings"]) == 6
+        inspection = inspection_response.json()
+        assert len(inspection["run_bindings"]) == 6
+        assert {
+            "agents",
+            "plans",
+            "tasks",
+            "artifacts",
+            "evidence",
+            "risks",
+            "failures",
+            "costs",
+            "schedules",
+            "events",
+        }.issubset(inspection)
+        assert inspection["projection"]["authoritative"] is False
+        assert organization_response.status_code == 200
+        assert branch_response.status_code == 200
+        assert str(mission.mission_id) in branch_response.json()["mission_drill_down"]
         evaluating = MissionTransition(
             mission_id=mission.mission_id,
             from_state=MissionState.ACTIVE,

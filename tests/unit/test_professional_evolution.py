@@ -192,7 +192,9 @@ async def test_professional_evolution_uses_governed_daemon_commands(
     config = _config(tmp_path)
     paths = DaemonBootstrap().setup(config)
     token = TokenFile(paths.token_file).read()
-    evidence = _evidence(outcome=ProfessionalEvidenceOutcome.DEMONSTRATED)
+    evidence = _evidence(outcome=ProfessionalEvidenceOutcome.DEMONSTRATED).model_copy(
+        update={"recorded_by": token.principal_id}
+    )
     request = ProfessionalPromotionRequest(
         identity_id=evidence.identity_id,
         kind=evidence.kind,
@@ -200,12 +202,26 @@ async def test_professional_evolution_uses_governed_daemon_commands(
         source_scope=evidence.scope,
         target_scope=_scope(LearningScopeLevel.PROJECT, "project:api"),
         supporting_evidence_ids=(evidence.evidence_id,),
-        requested_by="PM",
+        requested_by=token.principal_id,
         rationale="Promote the demonstrated competence only to this project",
     )
     headers = {"Authorization": f"Bearer {token.token}"}
     transport = httpx.ASGITransport(app=create_app(config))
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        forged_evidence = evidence.model_copy(
+            update={"evidence_id": uuid4(), "recorded_by": "another-identity"}
+        )
+        forged_record = await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=ApplicationCommand(
+                command_type="organization.evidence.record",
+                actor_id=token.principal_id,
+                target_type="professional_evidence",
+                target_id=str(forged_evidence.evidence_id),
+                payload={"evidence": forged_evidence.model_dump(mode="json")},
+            ).model_dump(mode="json"),
+        )
         recorded = await client.post(
             "/v1/commands",
             headers=headers,
@@ -248,6 +264,7 @@ async def test_professional_evolution_uses_governed_daemon_commands(
             params={"kind": evidence.kind.value, "subject": evidence.subject},
         )
 
+    assert forged_record.status_code == 403, forged_record.text
     assert recorded.status_code == 200, recorded.text
     assert decided.status_code == 200, decided.text
     assert state.status_code == 200, state.text

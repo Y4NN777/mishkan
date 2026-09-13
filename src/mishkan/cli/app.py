@@ -88,6 +88,29 @@ def show_organization(ctx: typer.Context) -> None:
     _emit(roster.model_dump(mode="json"), as_json=_state(ctx).json_output)
 
 
+@org_app.command("inspect")
+def inspect_organization(
+    ctx: typer.Context,
+    limit: Annotated[int, typer.Option(min=1, max=1_000)] = 100,
+) -> None:
+    """Inspect the bounded non-authoritative organization and branch status."""
+    with _daemon_client(ctx) as client:
+        projection = client.organization_inspection(limit=limit)
+    _emit(projection, as_json=_state(ctx).json_output)
+
+
+@org_app.command("branch")
+def inspect_organization_branch(
+    ctx: typer.Context,
+    branch_id: str,
+    limit: Annotated[int, typer.Option(min=1, max=1_000)] = 100,
+) -> None:
+    """Drill into one branch, its agents, pools, missions, and conversations."""
+    with _daemon_client(ctx) as client:
+        projection = client.organization_branch_inspection(branch_id, limit=limit)
+    _emit(projection, as_json=_state(ctx).json_output)
+
+
 @org_app.command("competence")
 def show_professional_competence(
     ctx: typer.Context,

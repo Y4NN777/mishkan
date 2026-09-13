@@ -33,6 +33,19 @@ class _Client:
     def organization(self) -> _Payload:
         return _Payload("organization")
 
+    def organization_inspection(self, *, limit: int) -> dict[str, str]:
+        assert limit == 13
+        return {"kind": "organization-inspection"}
+
+    def organization_branch_inspection(
+        self,
+        branch_id: str,
+        *,
+        limit: int,
+    ) -> dict[str, str]:
+        assert (branch_id, limit) == ("software-engineering", 14)
+        return {"kind": "branch-inspection"}
+
     def professional_competence(
         self,
         identity_id: str,
@@ -210,6 +223,11 @@ def client(monkeypatch: pytest.MonkeyPatch) -> _Client:
     ("arguments", "expected"),
     [
         (("org", "show"), {"kind": "organization"}),
+        (("org", "inspect", "--limit", "13"), {"kind": "organization-inspection"}),
+        (
+            ("org", "branch", "software-engineering", "--limit", "14"),
+            {"kind": "branch-inspection"},
+        ),
         (
             (
                 "org",

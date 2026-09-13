@@ -490,6 +490,8 @@ SUPPORTED_MCP_FACADE_OPERATIONS = frozenset(
         "events.list",
         "run.get",
         "organization.get",
+        "organization.inspect",
+        "organization.branch.inspect",
         "organization.competence.get",
         "organization.evidence.list",
         "organization.promotions.list",

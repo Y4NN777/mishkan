@@ -109,6 +109,8 @@ async def test_official_sdk_uses_authenticated_stateless_daemon_facade(tmp_path:
         "events.list",
         "run.get",
         "organization.get",
+        "organization.inspect",
+        "organization.branch.inspect",
         "organization.competence.get",
         "organization.evidence.list",
         "organization.promotions.list",

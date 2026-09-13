@@ -945,6 +945,12 @@ class LocalRunRepository:
             session.flush()
             return self._snapshot(session, run, resumed=resumed)
 
+    def snapshot(self, run_id: str) -> RunSnapshot:
+        """Read one exact durable run without changing its lifecycle."""
+        with Session(self._engine) as session:
+            run = self._require_run(session, run_id)
+            return self._snapshot(session, run, resumed=True)
+
     def accept_plan(self, run_id: str, plan: AcceptedPlan) -> RunSnapshot:
         self._require_safe_content(plan.model_dump_json())
         with Session(self._engine) as session, session.begin():

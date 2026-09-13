@@ -1486,6 +1486,11 @@ class ApplicationCommandAuthority:
                 )
                 if normalized.target_id != str(professional_promotion_request.request_id):
                     raise ValueError("professional promotion target differs from its request")
+                if professional_promotion_request.requested_by != normalized.actor_id:
+                    raise MishkanError(
+                        ErrorCode.AUTHORITY_NOT_GRANTED,
+                        "professional promotion requester must match the authenticated actor",
+                    )
                 external_resources = (
                     f"identity:{professional_promotion_request.identity_id}",
                     f"professional-subject:{professional_promotion_request.subject}",
