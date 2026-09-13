@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Literal
 from uuid import uuid4
 
@@ -138,6 +139,39 @@ def test_pm_cto_outputs_compile_to_confirmed_brief_and_contextual_crew(tmp_path:
     assert any(
         ref.startswith("crewai-output:") for ref in result.brief.pm_confirmation.evidence_references
     )
+
+
+def test_proposal_runs_bounded_pm_then_cto_crewai_work(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = CrewAIMissionGovernanceRunner(_config(tmp_path))
+    calls: list[tuple[str, str, type[object]]] = []
+    monkeypatch.setattr(
+        runner._models,
+        "candidates_for",
+        lambda route_name: (SimpleNamespace(route_name=route_name),),
+    )
+
+    def crew_result(  # type: ignore[no-untyped-def]
+        role, llm, _description, _expected_output, output_model
+    ):
+        calls.append((role.name, llm.route_name, output_model))
+        return SimpleNamespace(pydantic=_pm() if role.name == "PM" else _cto(), raw="")
+
+    monkeypatch.setattr(runner, "_crew", crew_result)
+
+    result = runner.propose(
+        _mission(),
+        ({"reference": "evidence:repository", "fact": "Account recovery is absent"},),
+    )
+
+    assert result.disposition == "agreed"
+    assert [identity for identity, _route, _model in calls] == ["PM", "CTO"]
+    assert calls[0][1] == runner._config.crewai.mission_pm_model_route
+    assert calls[1][1] == runner._config.crewai.mission_cto_model_route
+    assert calls[0][2] is PMMissionProposal
+    assert calls[1][2] is CTOMissionReview
 
 
 def test_cto_rejection_compiles_to_actionable_disagreement_without_a_crew(
