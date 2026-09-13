@@ -51,6 +51,11 @@ from mishkan.context import (
     EngineerProfile,
     EngineerProfileLoader,
 )
+from mishkan.conversations import (
+    ConversationChannel,
+    EscalationState,
+    SQLiteConversationRepository,
+)
 from mishkan.crewai.credentials import CredentialPoolResolver
 from mishkan.crewai.skill_learning import CrewAISkillLearningRunner
 from mishkan.daemon.auth import TokenFile, TokenRecord
@@ -536,6 +541,10 @@ def create_app(
     # Loading the daemon must not advance the public event cursor. The immutable
     # roster is persisted as reference data; explicit roster changes remain events.
     mission_repository.record_organization(load_canonical_organization(), emit_event=False)
+    conversation_repository = SQLiteConversationRepository(
+        paths.database,
+        busy_timeout_ms=persistence.busy_timeout_ms,
+    )
     telemetry_tasks: set[asyncio.Task[object]] = set()
 
     def project_telemetry(
@@ -830,6 +839,7 @@ def create_app(
                                 telemetry_evaluation_service,
                                 community_recommendations,
                                 mission_repository,
+                                conversation_repository,
                             )
                         except MishkanError as error:
                             result = repository.fail_reserved(
@@ -1045,6 +1055,63 @@ def create_app(
         version: Annotated[int | None, Query(ge=1)] = None,
     ) -> MissionCrewRevision:
         return await _thread_call(mission_repository.crew, str(mission_id), version)
+
+    @app.get("/v1/conversations", response_model=None)
+    async def conversation_list(
+        _principal: TokenRecord = authenticated,
+        mission_id: UUID | None = None,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
+    ) -> tuple[dict[str, object], ...]:
+        records = await _thread_call(
+            conversation_repository.channels,
+            mission_id=str(mission_id) if mission_id is not None else None,
+            limit=limit,
+        )
+        return tuple(record.model_dump(mode="json") for record in records)
+
+    @app.get("/v1/conversations/{conversation_id}", response_model=ConversationChannel)
+    async def conversation_get(
+        conversation_id: UUID,
+        _principal: TokenRecord = authenticated,
+    ) -> ConversationChannel:
+        return await _thread_call(conversation_repository.channel, str(conversation_id))
+
+    @app.get("/v1/conversations/{conversation_id}/messages", response_model=None)
+    async def conversation_messages(
+        conversation_id: UUID,
+        _principal: TokenRecord = authenticated,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
+    ) -> tuple[dict[str, object], ...]:
+        records = await _thread_call(
+            conversation_repository.messages, str(conversation_id), limit=limit
+        )
+        return tuple(record.model_dump(mode="json") for record in records)
+
+    @app.get("/v1/missions/{mission_id}/escalations", response_model=None)
+    async def mission_escalations(
+        mission_id: UUID,
+        _principal: TokenRecord = authenticated,
+        state: EscalationState | None = None,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
+    ) -> tuple[dict[str, object], ...]:
+        records = await _thread_call(
+            conversation_repository.escalations,
+            str(mission_id),
+            state=state,
+            limit=limit,
+        )
+        return tuple(record.model_dump(mode="json") for record in records)
+
+    @app.get("/v1/missions/{mission_id}/interventions", response_model=None)
+    async def mission_interventions(
+        mission_id: UUID,
+        _principal: TokenRecord = authenticated,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
+    ) -> tuple[dict[str, object], ...]:
+        records = await _thread_call(
+            conversation_repository.interventions, str(mission_id), limit=limit
+        )
+        return tuple(record.model_dump(mode="json") for record in records)
 
     @app.get("/v1/tools/registry")
     async def tool_registry(
@@ -1628,6 +1695,7 @@ def _dispatch(
     telemetry_evaluation_service: TelemetryEvaluationService,
     community_recommendations: ContextualRecommendationService,
     mission_repository: SQLiteMissionRepository,
+    conversation_repository: SQLiteConversationRepository,
 ) -> tuple[str, dict[str, object]]:
     payload = command.payload
     if command.command_type == "system.checkpoint" and command.target_type == "system":
@@ -1686,6 +1754,45 @@ def _dispatch(
             expected_revision=command.expected_revision,
         )
         return "mission.crew_recorded", recorded_crew.model_dump(mode="json")
+    if command.command_type == "conversation.create":
+        channel = authorized.conversation_channel
+        if channel is None:
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT, "authorized conversation channel is absent"
+            )
+        created_channel = conversation_repository.create_channel(channel)
+        return "conversation.created", created_channel.model_dump(mode="json")
+    if command.command_type == "conversation.message.post":
+        message = authorized.conversation_message
+        if message is None:
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT, "authorized conversation message is absent"
+            )
+        posted = conversation_repository.post_message(message)
+        return "conversation.message_posted", posted.model_dump(mode="json")
+    if command.command_type == "mission.decision.record":
+        mission_decision_record = authorized.mission_decision
+        if mission_decision_record is None:
+            raise MishkanError(ErrorCode.OUTPUT_CONTRACT, "authorized mission decision is absent")
+        recorded_decision = conversation_repository.record_decision(mission_decision_record)
+        return "mission.decision_recorded", recorded_decision.model_dump(mode="json")
+    if command.command_type == "mission.escalation.open":
+        escalation = authorized.mission_escalation
+        if escalation is None:
+            raise MishkanError(ErrorCode.OUTPUT_CONTRACT, "authorized mission escalation is absent")
+        opened = conversation_repository.create_escalation(escalation)
+        return "mission.escalation_opened", opened.model_dump(mode="json")
+    if command.command_type == "mission.intervention.apply":
+        intervention = authorized.mission_intervention
+        if intervention is None or command.expected_revision is None:
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT,
+                "mission intervention requires an authorized record and expected revision",
+            )
+        applied = conversation_repository.apply_intervention(
+            intervention, expected_revision=command.expected_revision
+        )
+        return "mission.intervention_applied", applied.model_dump(mode="json")
     if command.command_type == "artifact.upload.open":
         upload = artifacts.open_upload(
             expected_size=int(payload["expected_size"]),

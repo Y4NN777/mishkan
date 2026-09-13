@@ -27,6 +27,13 @@ from mishkan.config.models import (
     MishkanConfig,
 )
 from mishkan.context import ContextualRecommendationRequest
+from mishkan.conversations import (
+    ConversationChannel,
+    ConversationMessage,
+    MissionDecision,
+    MissionEscalation,
+    MissionIntervention,
+)
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.time import utc_now
 from mishkan.edits import ChangeSet
@@ -270,6 +277,21 @@ COMMAND_SEMANTICS = MappingProxyType(
         "mission.crew.record": CommandSemantics(
             "application.mission.crew", "coordination", ("mission.crew.record",)
         ),
+        "conversation.create": CommandSemantics(
+            "application.conversation.lifecycle", "coordination", ("conversation.create",)
+        ),
+        "conversation.message.post": CommandSemantics(
+            "application.conversation.message", "coordination", ("conversation.message.post",)
+        ),
+        "mission.decision.record": CommandSemantics(
+            "application.mission.decision", "coordination", ("mission.decision.record",)
+        ),
+        "mission.escalation.open": CommandSemantics(
+            "application.mission.escalation", "coordination", ("mission.escalation.open",)
+        ),
+        "mission.intervention.apply": CommandSemantics(
+            "application.mission.intervention", "coordination", ("mission.intervention.apply",)
+        ),
         **{
             f"registry.entry.{action.value}": CommandSemantics(
                 "application.registry.lifecycle",
@@ -343,6 +365,11 @@ _COMMAND_TARGETS = MappingProxyType(
         "mission.create": ("mission", "uuid"),
         "mission.brief.record": ("mission", "uuid"),
         "mission.crew.record": ("mission", "uuid"),
+        "conversation.create": ("conversation", "uuid"),
+        "conversation.message.post": ("conversation_message", "uuid"),
+        "mission.decision.record": ("mission_decision", "uuid"),
+        "mission.escalation.open": ("mission_escalation", "uuid"),
+        "mission.intervention.apply": ("mission", "uuid"),
         **{
             f"registry.entry.{action.value}": ("registry_entry", "required")
             for action in RegistryLifecycleAction
@@ -442,6 +469,11 @@ _COMMAND_PAYLOAD_FIELDS = MappingProxyType(
         "mission.create": (frozenset({"record"}), frozenset()),
         "mission.brief.record": (frozenset({"brief"}), frozenset()),
         "mission.crew.record": (frozenset({"crew"}), frozenset()),
+        "conversation.create": (frozenset({"channel"}), frozenset()),
+        "conversation.message.post": (frozenset({"message"}), frozenset()),
+        "mission.decision.record": (frozenset({"decision"}), frozenset()),
+        "mission.escalation.open": (frozenset({"escalation"}), frozenset()),
+        "mission.intervention.apply": (frozenset({"intervention"}), frozenset()),
         "registry.entry.add": (frozenset({"entry_kind", "definition"}), frozenset()),
         "registry.entry.enable": (frozenset({"entry_kind"}), frozenset()),
         "registry.entry.disable": (frozenset({"entry_kind"}), frozenset()),
@@ -482,6 +514,11 @@ class AuthorizedApplicationCommand:
     mission_record: MissionRecord | None = None
     mission_brief: MissionBrief | None = None
     mission_crew: MissionCrewRevision | None = None
+    conversation_channel: ConversationChannel | None = None
+    conversation_message: ConversationMessage | None = None
+    mission_decision: MissionDecision | None = None
+    mission_escalation: MissionEscalation | None = None
+    mission_intervention: MissionIntervention | None = None
 
 
 class ApplicationCommandAuthority:
@@ -552,6 +589,11 @@ class ApplicationCommandAuthority:
         mission_record: MissionRecord | None = None
         mission_brief: MissionBrief | None = None
         mission_crew: MissionCrewRevision | None = None
+        conversation_channel: ConversationChannel | None = None
+        conversation_message: ConversationMessage | None = None
+        mission_decision: MissionDecision | None = None
+        mission_escalation: MissionEscalation | None = None
+        mission_intervention: MissionIntervention | None = None
 
         try:
             if normalized.command_type == "run.initialize":
@@ -1035,6 +1077,66 @@ class ApplicationCommandAuthority:
                     f"mission-brief:{mission_crew.mission_id}:{mission_crew.brief_version}",
                     *(f"identity:{member.identity_id}" for member in mission_crew.members),
                 )
+            elif normalized.command_type == "conversation.create":
+                conversation_channel = ConversationChannel.model_validate(
+                    normalized.payload["channel"]
+                )
+                if normalized.target_id != str(conversation_channel.conversation_id):
+                    raise ValueError("conversation target differs from its immutable identity")
+                if normalized.expected_revision not in {None, 0}:
+                    raise ValueError("new conversation must begin at revision zero")
+                external_resources = (
+                    *(f"identity:{item}" for item in conversation_channel.participants),
+                    *(
+                        (f"mission:{conversation_channel.mission_id}",)
+                        if conversation_channel.mission_id is not None
+                        else ()
+                    ),
+                )
+            elif normalized.command_type == "conversation.message.post":
+                conversation_message = ConversationMessage.model_validate(
+                    normalized.payload["message"]
+                )
+                if normalized.target_id != str(conversation_message.message_id):
+                    raise ValueError("message target differs from its immutable identity")
+                external_resources = (
+                    f"conversation:{conversation_message.conversation_id}",
+                    f"identity:{conversation_message.author_identity}",
+                )
+            elif normalized.command_type == "mission.decision.record":
+                mission_decision = MissionDecision.model_validate(normalized.payload["decision"])
+                if normalized.target_id != str(mission_decision.decision_id):
+                    raise ValueError("decision target differs from its immutable identity")
+                external_resources = (
+                    f"mission:{mission_decision.mission_id}",
+                    f"conversation:{mission_decision.conversation_id}",
+                    f"authority:{mission_decision.authority_reference}",
+                )
+            elif normalized.command_type == "mission.escalation.open":
+                mission_escalation = MissionEscalation.model_validate(
+                    normalized.payload["escalation"]
+                )
+                if normalized.target_id != str(mission_escalation.escalation_id):
+                    raise ValueError("escalation target differs from its immutable identity")
+                external_resources = (
+                    f"mission:{mission_escalation.mission_id}",
+                    f"conversation:{mission_escalation.conversation_id}",
+                    *(f"evidence:{item}" for item in mission_escalation.evidence_references),
+                )
+            elif normalized.command_type == "mission.intervention.apply":
+                mission_intervention = MissionIntervention.model_validate(
+                    normalized.payload["intervention"]
+                )
+                if normalized.target_id != str(mission_intervention.mission_id):
+                    raise ValueError("intervention target differs from its mission identity")
+                if normalized.expected_revision is None:
+                    raise ValueError("mission intervention requires expected mission revision")
+                external_resources = (
+                    f"mission:{mission_intervention.mission_id}",
+                    f"conversation:{mission_intervention.conversation_id}",
+                    f"authority:{mission_intervention.authority_reference}",
+                    *(f"evidence:{item}" for item in mission_intervention.evidence_references),
+                )
             elif normalized.target_id is not None:
                 external_resources = (f"{normalized.target_type}:{normalized.target_id}",)
         except (KeyError, TypeError, ValueError, ValidationError) as exc:
@@ -1095,6 +1197,11 @@ class ApplicationCommandAuthority:
             mission_record=mission_record,
             mission_brief=mission_brief,
             mission_crew=mission_crew,
+            conversation_channel=conversation_channel,
+            conversation_message=conversation_message,
+            mission_decision=mission_decision,
+            mission_escalation=mission_escalation,
+            mission_intervention=mission_intervention,
         )
 
     @staticmethod

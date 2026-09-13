@@ -32,6 +32,14 @@ from mishkan.context import (
     ContextualRecommendationRequest,
     EngineerProfile,
 )
+from mishkan.conversations import (
+    ConversationChannel,
+    ConversationMessage,
+    EscalationState,
+    MissionDecision,
+    MissionEscalation,
+    MissionIntervention,
+)
 from mishkan.daemon.auth import TokenFile
 from mishkan.edits import ChangeSetResult
 from mishkan.environment import (
@@ -272,6 +280,134 @@ class Mishkan:
         )
         response.raise_for_status()
         return MissionCrewRevision.model_validate(response.json())
+
+    def create_conversation(self, channel: ConversationChannel) -> ConversationChannel:
+        result = self.command(
+            ApplicationCommand(
+                command_type="conversation.create",
+                actor_id=self.principal_id,
+                target_type="conversation",
+                target_id=str(channel.conversation_id),
+                expected_revision=0,
+                payload={"channel": channel.model_dump(mode="json")},
+            )
+        )
+        return ConversationChannel.model_validate(result.payload)
+
+    def post_message(self, message: ConversationMessage) -> ConversationMessage:
+        result = self.command(
+            ApplicationCommand(
+                command_type="conversation.message.post",
+                actor_id=self.principal_id,
+                target_type="conversation_message",
+                target_id=str(message.message_id),
+                expected_revision=0,
+                payload={"message": message.model_dump(mode="json")},
+            )
+        )
+        return ConversationMessage.model_validate(result.payload)
+
+    def record_mission_decision(self, decision: MissionDecision) -> MissionDecision:
+        result = self.command(
+            ApplicationCommand(
+                command_type="mission.decision.record",
+                actor_id=self.principal_id,
+                target_type="mission_decision",
+                target_id=str(decision.decision_id),
+                expected_revision=0,
+                payload={"decision": decision.model_dump(mode="json")},
+            )
+        )
+        return MissionDecision.model_validate(result.payload)
+
+    def open_mission_escalation(self, escalation: MissionEscalation) -> MissionEscalation:
+        result = self.command(
+            ApplicationCommand(
+                command_type="mission.escalation.open",
+                actor_id=self.principal_id,
+                target_type="mission_escalation",
+                target_id=str(escalation.escalation_id),
+                expected_revision=0,
+                payload={"escalation": escalation.model_dump(mode="json")},
+            )
+        )
+        return MissionEscalation.model_validate(result.payload)
+
+    def apply_mission_intervention(
+        self,
+        intervention: MissionIntervention,
+        *,
+        expected_revision: int,
+    ) -> MissionIntervention:
+        result = self.command(
+            ApplicationCommand(
+                command_type="mission.intervention.apply",
+                actor_id=self.principal_id,
+                target_type="mission",
+                target_id=str(intervention.mission_id),
+                expected_revision=expected_revision,
+                payload={"intervention": intervention.model_dump(mode="json")},
+            )
+        )
+        return MissionIntervention.model_validate(result.payload)
+
+    def conversations(
+        self,
+        *,
+        mission_id: str | None = None,
+        limit: int = 100,
+    ) -> tuple[ConversationChannel, ...]:
+        params: dict[str, str | int] = {"limit": limit}
+        if mission_id is not None:
+            params["mission_id"] = mission_id
+        response = self._client.get("/v1/conversations", headers=self._headers(), params=params)
+        response.raise_for_status()
+        return tuple(ConversationChannel.model_validate(item) for item in response.json())
+
+    def conversation(self, conversation_id: str) -> ConversationChannel:
+        response = self._client.get(f"/v1/conversations/{conversation_id}", headers=self._headers())
+        response.raise_for_status()
+        return ConversationChannel.model_validate(response.json())
+
+    def conversation_messages(
+        self, conversation_id: str, *, limit: int = 100
+    ) -> tuple[ConversationMessage, ...]:
+        response = self._client.get(
+            f"/v1/conversations/{conversation_id}/messages",
+            headers=self._headers(),
+            params={"limit": limit},
+        )
+        response.raise_for_status()
+        return tuple(ConversationMessage.model_validate(item) for item in response.json())
+
+    def mission_escalations(
+        self,
+        mission_id: str,
+        *,
+        state: EscalationState | None = None,
+        limit: int = 100,
+    ) -> tuple[MissionEscalation, ...]:
+        params: dict[str, str | int] = {"limit": limit}
+        if state is not None:
+            params["state"] = state.value
+        response = self._client.get(
+            f"/v1/missions/{mission_id}/escalations",
+            headers=self._headers(),
+            params=params,
+        )
+        response.raise_for_status()
+        return tuple(MissionEscalation.model_validate(item) for item in response.json())
+
+    def mission_interventions(
+        self, mission_id: str, *, limit: int = 100
+    ) -> tuple[MissionIntervention, ...]:
+        response = self._client.get(
+            f"/v1/missions/{mission_id}/interventions",
+            headers=self._headers(),
+            params={"limit": limit},
+        )
+        response.raise_for_status()
+        return tuple(MissionIntervention.model_validate(item) for item in response.json())
 
     def telemetry_status(self) -> TelemetryStatus:
         response = self._client.get("/v1/telemetry/status", headers=self._headers())
