@@ -1,13 +1,19 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 from mishkan.artifacts.service import DurableArtifactService
 from mishkan.config.loader import ConfigLoader
 from mishkan.config.models import MishkanConfig, ProjectConfig
 from mishkan.config.presets import preset_text
+from mishkan.crewai.skill_learning import CrewAISkillLearningRunner, _research_roles
 from mishkan.daemon import DaemonBootstrap
+from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.time import utc_now
+from mishkan.organization.models import OrganizationDefinition, RoleDefinition
 from mishkan.skills import (
     SkillLearningRequest,
     SkillLearningReview,
@@ -200,3 +206,196 @@ def test_rejected_research_proposal_is_durable_without_candidate(tmp_path: Path)
     assert result.candidate_version_id is None
     assert lifecycle.versions("python-review") == ()
     assert learning.get(str(result.request.request_id)) == result
+
+
+def _draft() -> SkillPackageDraft:
+    return SkillPackageDraft(
+        skill_name="python-review",
+        description="Review Python changes from accepted evidence.",
+        instructions_markdown="Read the accepted diff and cite supported findings.",
+        required_tools=("file.read",),
+        task_classes=("software.review.python",),
+        retrieval_references=(),
+        source_fingerprints=("e" * 64,),
+        rationale="The correction is reusable and attributable.",
+    )
+
+
+def test_crewai_learning_runner_builds_attributed_proposal_and_independent_review(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = CrewAISkillLearningRunner(_config(tmp_path))
+    draft = _draft()
+    review = SkillLearningReview(
+        draft_fingerprint=draft.fingerprint,
+        accepted=True,
+        findings=(),
+        reason="The proposal is grounded in the supplied evidence.",
+    )
+    calls: list[tuple[str, str, str, type[object]]] = []
+
+    def structured(
+        role: RoleDefinition,
+        description: str,
+        expected_output: str,
+        output_model: type[object],
+    ) -> object:
+        calls.append((role.name, description, expected_output, output_model))
+        return draft if output_model is SkillPackageDraft else review
+
+    monkeypatch.setattr(runner, "_kickoff_structured", structured)
+    request = _request().model_copy(update={"available_tools": frozenset({"file.read"})})
+
+    proposed = runner.propose(
+        request,
+        desired_name="python-review",
+        base=None,
+        source_packet=({"locator": "inline:test", "content": "cite evidence"},),
+        source_fingerprints=("e" * 64,),
+    )
+    evaluated = runner.review(request, proposed, source_fingerprints=("e" * 64,))
+
+    assert proposed == draft
+    assert evaluated == review
+    assert [call[0] for call in calls] == ["Research_Synthesizer", "Research_Evaluator"]
+    assert "Exact skill identity: python-review" in calls[0][1]
+    assert 'Available tool identities: ["file.read"]' in calls[0][1]
+    assert draft.fingerprint in calls[1][1]
+    assert calls[0][3] is SkillPackageDraft
+    assert calls[1][3] is SkillLearningReview
+
+
+def test_crewai_learning_runner_supplies_existing_package_metadata(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = CrewAISkillLearningRunner(_config(tmp_path))
+    draft = _draft()
+    descriptions: list[str] = []
+
+    def structured(
+        _role: RoleDefinition,
+        description: str,
+        _expected_output: str,
+        _output_model: type[SkillPackageDraft],
+    ) -> SkillPackageDraft:
+        descriptions.append(description)
+        return draft
+
+    monkeypatch.setattr(runner, "_kickoff_structured", structured)
+    base = SimpleNamespace(metadata=SimpleNamespace(model_dump=lambda **_kwargs: {"name": "base"}))
+
+    assert (
+        runner.propose(
+            _request(),
+            desired_name="python-review",
+            base=base,  # type: ignore[arg-type]
+            source_packet=({"content": "accepted evidence"},),
+            source_fingerprints=("e" * 64,),
+        )
+        == draft
+    )
+    assert '"name": "base"' in descriptions[0]
+
+
+def test_crewai_structured_runner_accepts_pydantic_then_raw_json(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = CrewAISkillLearningRunner(_config(tmp_path))
+    draft = _draft()
+
+    class Models:
+        @staticmethod
+        def candidates_for(route: str) -> tuple[object, ...]:
+            assert route == "planning"
+            return (object(),)
+
+    monkeypatch.setattr(runner, "_models", Models())
+    monkeypatch.setattr(
+        runner,
+        "_crew",
+        lambda *_args: SimpleNamespace(pydantic=draft, raw="not-json"),
+    )
+    role = runner._role("Research_Synthesizer")
+    assert runner._kickoff_structured(role, "draft", "result", SkillPackageDraft) == draft
+
+    monkeypatch.setattr(
+        runner,
+        "_crew",
+        lambda *_args: SimpleNamespace(pydantic=None, raw=draft.model_dump_json()),
+    )
+    assert runner._kickoff_structured(role, "draft", "result", SkillPackageDraft) == draft
+
+
+def test_crewai_structured_runner_retries_candidates_and_reports_failure_chain(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = _config(tmp_path).model_copy(
+        update={
+            "crewai": _config(tmp_path).crewai.model_copy(update={"structured_output_retries": 1})
+        }
+    )
+    runner = CrewAISkillLearningRunner(config)
+    descriptions: list[str] = []
+
+    class Models:
+        @staticmethod
+        def candidates_for(_route: str) -> tuple[object, ...]:
+            return (object(), object())
+
+    def fail(
+        _role: RoleDefinition,
+        _llm: object,
+        description: str,
+        _expected: str,
+        _model: type[SkillPackageDraft],
+    ) -> object:
+        descriptions.append(description)
+        try:
+            raise ValueError("invalid structured output")
+        except ValueError as cause:
+            raise RuntimeError("provider failure") from cause
+
+    monkeypatch.setattr(runner, "_models", Models())
+    monkeypatch.setattr(runner, "_crew", fail)
+
+    with pytest.raises(MishkanError) as caught:
+        runner._kickoff_structured(
+            runner._role("Research_Synthesizer"),
+            "draft",
+            "result",
+            SkillPackageDraft,
+        )
+
+    assert caught.value.envelope.code is ErrorCode.REQUIRED_DEPENDENCY
+    assert caught.value.envelope.retryable is True
+    assert len(descriptions) == 4
+    assert descriptions[0] == descriptions[2] == "draft"
+    assert "prior result failed SkillPackageDraft validation" in descriptions[1]
+    assert caught.value.envelope.details["failure_type_chains"][-1] == [
+        "RuntimeError",
+        "ValueError",
+    ]
+
+
+def test_crewai_learning_role_and_exception_chain_are_bounded(tmp_path: Path) -> None:
+    runner = CrewAISkillLearningRunner(_config(tmp_path))
+    duplicate = RoleDefinition(
+        name="Research_Synthesizer",
+        goal="Synthesize evidence",
+        backstory="Ground every claim",
+        model_route="planning",
+    )
+    runner._organization = OrganizationDefinition(
+        schema_version="1.0",
+        organization_id="invalid-test-organization",
+        roles=(duplicate, duplicate),
+    )
+
+    with pytest.raises(MishkanError) as caught:
+        runner._role("Research_Synthesizer")
+    assert caught.value.envelope.code is ErrorCode.ROLE_CONFLICT
+
+    error = RuntimeError("cycle")
+    error.__cause__ = error
+    assert runner._exception_type_chain(error) == ("RuntimeError",)
+    assert len(_research_roles().roles) == 2
