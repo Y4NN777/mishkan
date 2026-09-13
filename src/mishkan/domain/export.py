@@ -110,6 +110,8 @@ from mishkan.missions.environment import (
     MissionEnvironmentPlanningRequest,
 )
 from mishkan.missions.execution import (
+    MissionCompletionReadiness,
+    MissionTaskAcceptanceStatus,
     MissionTaskClaim,
     MissionTaskClaimRequest,
     MissionTaskEligibility,
@@ -261,6 +263,7 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "mcp-primitive-v1.schema.json": McpPrimitiveDescriptor,
     "mcp-progress-v1.schema.json": McpProgressEvent,
     "mission-brief-v1.schema.json": MissionBrief,
+    "mission-completion-readiness-v1.schema.json": MissionCompletionReadiness,
     "mission-crew-revision-v1.schema.json": MissionCrewRevision,
     "mission-environment-intent-v1.schema.json": MissionEnvironmentIntent,
     "mission-environment-plan-v1.schema.json": MissionEnvironmentPlan,
@@ -275,6 +278,7 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "mission-record-v1.schema.json": MissionRecord,
     "mission-resource-limit-v1.schema.json": MissionResourceLimit,
     "mission-task-assignment-v1.schema.json": MissionTaskAssignment,
+    "mission-task-acceptance-status-v1.schema.json": MissionTaskAcceptanceStatus,
     "mission-task-claim-request-v1.schema.json": MissionTaskClaimRequest,
     "mission-task-claim-v1.schema.json": MissionTaskClaim,
     "mission-task-eligibility-v1.schema.json": MissionTaskEligibility,

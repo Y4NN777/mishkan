@@ -324,6 +324,9 @@ class McpFacadeRouter:
                 mission_task_claims.inspect(query.mission_id, item.task_id).model_dump(mode="json")
                 for item in {assignment.task_id: assignment for assignment in assignments}.values()
             ],
+            "completion_readiness": mission_task_claims.inspect_completion(
+                query.mission_id
+            ).model_dump(mode="json"),
             "assignments": [item.model_dump(mode="json") for item in assignments],
             "transitions": [
                 item.model_dump(mode="json")

@@ -1558,6 +1558,11 @@ class LocalRunRepository:
             ).all()
             return {row.task_key: row.status for row in rows}
 
+    def task_contract(self, run_id: str, task_id: str) -> PlanTask:
+        with Session(self._engine) as session:
+            task = self._require_task(session, run_id, task_id)
+            return PlanTask.model_validate_json(task.contract)
+
     def run_state(self, run_id: str) -> str:
         with Session(self._engine) as session:
             return self._require_run(session, run_id).status

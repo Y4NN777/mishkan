@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.identity import new_id
 from mishkan.domain.time import utc_now
+from mishkan.missions.assignment_graph import MissionAssignmentGraphValidator
 from mishkan.missions.environment import (
     MissionEnvironmentPlanAcceptance,
 )
@@ -402,14 +403,58 @@ class SQLiteMissionRepository:
                     "task cannot declare environment contexts when the Brief has no "
                     "environment-dependent work",
                 )
-            members = {member.identity_id for member in crew.members}
+            members = {member.identity_id: member for member in crew.members}
             assigned = {assignment.accountable_owner, *assignment.contributors}
-            unknown = assigned - members
+            unknown = assigned - set(members)
             if unknown:
                 raise MishkanError(
                     ErrorCode.MISSION,
                     "task assignment contains identities outside the current Mission Crew",
                     details={"unknown": sorted(unknown)},
+                )
+            owner = members[assignment.accountable_owner]
+            if owner.assignment_kind is not assignment.assignment_kind:
+                raise MishkanError(
+                    ErrorCode.ROLE_CONFLICT,
+                    "task responsibility differs from its accountable crew assignment",
+                    details={
+                        "task_id": assignment.task_id,
+                        "task_kind": assignment.assignment_kind.value,
+                        "crew_kind": owner.assignment_kind.value,
+                    },
+                )
+            allowed_contributor_kinds = {
+                CrewAssignmentKind.PRODUCTION: {
+                    CrewAssignmentKind.PRODUCTION,
+                    CrewAssignmentKind.CONTRIBUTOR,
+                },
+                CrewAssignmentKind.CONTRIBUTOR: {
+                    CrewAssignmentKind.PRODUCTION,
+                    CrewAssignmentKind.CONTRIBUTOR,
+                },
+                CrewAssignmentKind.EVALUATION: {
+                    CrewAssignmentKind.EVALUATION,
+                    CrewAssignmentKind.AUDIT,
+                },
+                CrewAssignmentKind.REPORTING: {CrewAssignmentKind.REPORTING},
+                CrewAssignmentKind.AUDIT: {
+                    CrewAssignmentKind.EVALUATION,
+                    CrewAssignmentKind.AUDIT,
+                },
+            }[assignment.assignment_kind]
+            conflicting_contributors = sorted(
+                identity_id
+                for identity_id in assignment.contributors
+                if members[identity_id].assignment_kind not in allowed_contributor_kinds
+            )
+            if conflicting_contributors:
+                raise MishkanError(
+                    ErrorCode.ROLE_CONFLICT,
+                    "task contributors violate responsibility separation",
+                    details={
+                        "task_id": assignment.task_id,
+                        "conflicting_identity_ids": conflicting_contributors,
+                    },
                 )
             expected_revision = 1 + (
                 session.scalar(
@@ -500,16 +545,17 @@ class SQLiteMissionRepository:
                     "mission cannot advance without a current Brief and Mission Crew",
                 )
             if transition.to_state is MissionState.ACTIVE:
-                assignment = session.scalar(
-                    select(MissionAssignmentRow.id)
-                    .where(MissionAssignmentRow.mission_id == str(mission.mission_id))
-                    .limit(1)
-                )
-                if assignment is None:
-                    raise MishkanError(
-                        ErrorCode.MISSION,
-                        "mission cannot become active without an accountable task assignment",
+                assignment_rows = session.scalars(
+                    select(MissionAssignmentRow).where(
+                        MissionAssignmentRow.mission_id == str(mission.mission_id)
                     )
+                ).all()
+                MissionAssignmentGraphValidator.validate(
+                    tuple(
+                        MissionTaskAssignment.model_validate_json(row.payload)
+                        for row in assignment_rows
+                    )
+                )
             updated = mission.model_copy(
                 update={
                     "state": transition.to_state,

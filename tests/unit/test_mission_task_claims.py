@@ -11,6 +11,7 @@ from mishkan.conversations import (
 )
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.missions import (
+    CrewAssignmentKind,
     EnvironmentReadinessState,
     MissionEnvironmentReadiness,
     MissionOrigin,
@@ -24,7 +25,8 @@ from mishkan.missions import (
     MissionTaskEnvironmentReadiness,
     MissionTaskGateState,
 )
-from mishkan.runtime import TaskState
+from mishkan.planning import PlanTask
+from mishkan.runtime import RunState, TaskState
 
 
 @dataclass
@@ -75,16 +77,23 @@ class _Readiness:
 
 @dataclass
 class _Runs:
-    states: dict[str, str]
+    states: dict[str, dict[str, str]]
+    contracts: dict[tuple[str, str], PlanTask]
+    run_states: dict[str, str] = field(default_factory=lambda: {"run-1": RunState.RUNNING.value})
     claims: list[tuple[str, str]] = field(default_factory=list)
 
     def task_states(self, run_id: str) -> dict[str, str]:
-        assert run_id == "run-1"
-        return self.states
+        return self.states[run_id]
+
+    def task_contract(self, run_id: str, task_id: str) -> PlanTask:
+        return self.contracts[(run_id, task_id)]
+
+    def run_state(self, run_id: str) -> str:
+        return self.run_states[run_id]
 
     def claim_task(self, run_id: str, task_id: str) -> int:
         self.claims.append((run_id, task_id))
-        self.states[task_id] = TaskState.EXECUTING.value
+        self.states[run_id][task_id] = TaskState.EXECUTING.value
         return 1
 
 
@@ -116,6 +125,7 @@ def _fixture(
         crew_version=1,
         task_id="build-api",
         accountable_owner="Backend_Engineer",
+        assignment_kind=CrewAssignmentKind.PRODUCTION,
         expected_result="A tested API change",
         completion_criteria=("independent review accepted",),
         execution_run_id="run-1",
@@ -147,7 +157,19 @@ def _fixture(
         ready_task_ids=(assignment.task_id,) if environment_ready else (),
         blocked_task_ids=() if environment_ready else (assignment.task_id,),
     )
-    runs = _Runs({assignment.task_id: TaskState.ELIGIBLE.value})
+    runs = _Runs(
+        {"run-1": {assignment.task_id: TaskState.ELIGIBLE.value}},
+        {
+            ("run-1", assignment.task_id): PlanTask(
+                task_id=assignment.task_id,
+                title="Build the API",
+                purpose=assignment.expected_result,
+                assigned_role=assignment.accountable_owner,
+                tools=assignment.exact_tools,
+                evidence_paths=("README.md",),
+            )
+        },
+    )
     conversations = _Conversations()
     service = MissionTaskClaimService(
         _Missions(mission, (assignment,)),
@@ -206,7 +228,15 @@ def test_open_escalation_pauses_only_matching_task_scope() -> None:
             "authority_scope": ("repository:docs",),
         }
     )
-    runs.states[independent_assignment.task_id] = TaskState.ELIGIBLE.value
+    runs.states["run-1"][independent_assignment.task_id] = TaskState.ELIGIBLE.value
+    runs.contracts[("run-1", independent_assignment.task_id)] = PlanTask(
+        task_id=independent_assignment.task_id,
+        title="Write the documentation",
+        purpose=independent_assignment.expected_result,
+        assigned_role=independent_assignment.accountable_owner,
+        tools=independent_assignment.exact_tools,
+        evidence_paths=("README.md",),
+    )
     conversations.escalations_ = (
         MissionEscalation(
             mission_id=mission.mission_id,
@@ -277,3 +307,107 @@ def test_open_escalation_pauses_only_matching_task_scope() -> None:
     assert independent.state is MissionTaskGateState.ELIGIBLE
     assert independent.blocking_escalation_ids == ()
     assert runs.claims == []
+
+
+@pytest.mark.parametrize(
+    ("contract_update", "blocker"),
+    (
+        (
+            {"assigned_role": "Another_Engineer"},
+            "bound run task owner differs from the mission assignment",
+        ),
+        (
+            {"tools": ("file.read",)},
+            "bound run task tools differ from the mission assignment",
+        ),
+    ),
+)
+def test_claim_refuses_drift_between_mission_assignment_and_run_contract(
+    contract_update: dict[str, object],
+    blocker: str,
+) -> None:
+    service, mission, assignment, runs, _conversations = _fixture(environment_ready=True)
+    key = ("run-1", assignment.task_id)
+    runs.contracts[key] = runs.contracts[key].model_copy(update=contract_update)
+
+    eligibility = service.inspect(str(mission.mission_id), assignment.task_id)
+
+    assert eligibility.state is MissionTaskGateState.BLOCKED
+    assert blocker in eligibility.blockers
+    assert runs.claims == []
+
+
+def test_cross_run_mission_dependency_must_be_durably_accepted() -> None:
+    service, mission, assignment, runs, conversations = _fixture(environment_ready=True)
+    dependency = assignment.model_copy(
+        update={
+            "assignment_id": uuid4(),
+            "task_id": "prepare-contract",
+            "execution_run_id": "run-2",
+            "execution_task_id": "prepare-contract",
+            "environment_context_ids": (),
+        }
+    )
+    dependent = assignment.model_copy(update={"dependencies": (dependency.task_id,)})
+    environment = service.inspect(str(mission.mission_id), assignment.task_id).environment
+    runs.states["run-2"] = {dependency.task_id: TaskState.EXECUTING.value}
+    runs.contracts[("run-2", dependency.task_id)] = PlanTask(
+        task_id=dependency.task_id,
+        title="Prepare the contract",
+        purpose=dependency.expected_result,
+        assigned_role=dependency.accountable_owner,
+        tools=dependency.exact_tools,
+        evidence_paths=("README.md",),
+    )
+    readiness = MissionEnvironmentReadiness(
+        mission_id=mission.mission_id,
+        mission_revision=mission.revision,
+        environment_plan_version=1,
+        tasks=(environment,),
+        ready_task_ids=(dependent.task_id,),
+        blocked_task_ids=(),
+    )
+    service = MissionTaskClaimService(
+        _Missions(mission, (dependency, dependent)),
+        conversations,  # type: ignore[arg-type]
+        _Readiness(readiness),  # type: ignore[arg-type]
+        runs,
+    )
+
+    blocked = service.inspect(str(mission.mission_id), dependent.task_id)
+    runs.states["run-2"][dependency.task_id] = TaskState.ACCEPTED.value
+    eligible = service.inspect(str(mission.mission_id), dependent.task_id)
+
+    assert blocked.state is MissionTaskGateState.BLOCKED
+    assert "mission task dependency prepare-contract is not durably accepted" in blocked.blockers
+    assert eligible.state is MissionTaskGateState.ELIGIBLE
+
+
+def test_completion_requires_current_environment_and_durable_run_acceptance() -> None:
+    service, mission, assignment, runs, conversations = _fixture(environment_ready=True)
+    evaluating = mission.model_copy(update={"state": MissionState.EVALUATING})
+    environment = service.inspect(str(mission.mission_id), assignment.task_id).environment
+    readiness = MissionEnvironmentReadiness(
+        mission_id=mission.mission_id,
+        mission_revision=mission.revision,
+        environment_plan_version=1,
+        tasks=(environment,),
+        ready_task_ids=(assignment.task_id,),
+        blocked_task_ids=(),
+    )
+    service = MissionTaskClaimService(
+        _Missions(evaluating, (assignment,)),
+        conversations,  # type: ignore[arg-type]
+        _Readiness(readiness),  # type: ignore[arg-type]
+        runs,
+    )
+
+    before = service.inspect_completion(str(mission.mission_id))
+    runs.states["run-1"][assignment.task_id] = TaskState.ACCEPTED.value
+    runs.run_states["run-1"] = RunState.COMPLETED.value
+    ready = service.inspect_completion(str(mission.mission_id))
+
+    assert not before.ready
+    assert "task build-api is not durably accepted" in before.blockers
+    assert ready.ready
+    assert ready.tasks[0].accepted

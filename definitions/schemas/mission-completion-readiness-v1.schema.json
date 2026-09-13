@@ -1,0 +1,166 @@
+{
+  "$defs": {
+    "CrewAssignmentKind": {
+      "enum": [
+        "production",
+        "contributor",
+        "evaluation",
+        "reporting",
+        "audit"
+      ],
+      "title": "CrewAssignmentKind",
+      "type": "string"
+    },
+    "MissionState": {
+      "enum": [
+        "proposed",
+        "clarifying",
+        "planned",
+        "active",
+        "paused",
+        "blocked",
+        "evaluating",
+        "remediating",
+        "completed",
+        "failed",
+        "cancelled"
+      ],
+      "title": "MissionState",
+      "type": "string"
+    },
+    "MissionTaskAcceptanceStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "accepted": {
+          "title": "Accepted",
+          "type": "boolean"
+        },
+        "assignment_kind": {
+          "$ref": "#/$defs/CrewAssignmentKind"
+        },
+        "assignment_revision": {
+          "minimum": 1,
+          "title": "Assignment Revision",
+          "type": "integer"
+        },
+        "environment_ready": {
+          "title": "Environment Ready",
+          "type": "boolean"
+        },
+        "execution_run_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Execution Run Id"
+        },
+        "execution_task_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Execution Task Id"
+        },
+        "run_state": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Run State"
+        },
+        "run_task_state": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Run Task State"
+        },
+        "task_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Task Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "task_id",
+        "assignment_revision",
+        "assignment_kind",
+        "environment_ready",
+        "accepted"
+      ],
+      "title": "MissionTaskAcceptanceStatus",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "blockers": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Blockers",
+      "type": "array"
+    },
+    "mission_id": {
+      "format": "uuid",
+      "title": "Mission Id",
+      "type": "string"
+    },
+    "mission_revision": {
+      "minimum": 1,
+      "title": "Mission Revision",
+      "type": "integer"
+    },
+    "mission_state": {
+      "$ref": "#/$defs/MissionState"
+    },
+    "ready": {
+      "title": "Ready",
+      "type": "boolean"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "tasks": {
+      "items": {
+        "$ref": "#/$defs/MissionTaskAcceptanceStatus"
+      },
+      "title": "Tasks",
+      "type": "array"
+    }
+  },
+  "required": [
+    "mission_id",
+    "mission_revision",
+    "mission_state",
+    "ready",
+    "tasks",
+    "blockers"
+  ],
+  "title": "MissionCompletionReadiness",
+  "type": "object"
+}

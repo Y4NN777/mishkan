@@ -378,6 +378,14 @@ def show_mission_task_eligibility(
     _emit(eligibility.model_dump(mode="json"), as_json=_state(ctx).json_output)
 
 
+@mission_app.command("completion-readiness")
+def show_mission_completion_readiness(ctx: typer.Context, mission_id: str) -> None:
+    """Show whether every governed mission result is durably accepted."""
+    with _daemon_client(ctx) as client:
+        readiness = client.mission_completion_readiness(mission_id)
+    _emit(readiness.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
 @mission_app.command("task-claim")
 def claim_mission_task(
     ctx: typer.Context,

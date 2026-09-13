@@ -97,6 +97,10 @@ class _Client:
         assert (mission_id, task_id) == ("mission/id", "task/id")
         return _Payload("task-eligibility")
 
+    def mission_completion_readiness(self, mission_id: str) -> _Payload:
+        assert mission_id == "mission/id"
+        return _Payload("completion-readiness")
+
     def conversations(
         self,
         *,
@@ -223,6 +227,10 @@ def client(monkeypatch: pytest.MonkeyPatch) -> _Client:
         (
             ("mission", "task-eligibility", "mission/id", "task/id"),
             {"kind": "task-eligibility"},
+        ),
+        (
+            ("mission", "completion-readiness", "mission/id"),
+            {"kind": "completion-readiness"},
         ),
         (
             ("conversation", "list", "--mission", "mission/id", "--limit", "6"),

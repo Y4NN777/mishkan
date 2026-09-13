@@ -273,6 +273,7 @@ class MissionTaskAssignment(MissionModel):
     task_id: str = Field(min_length=1, max_length=256)
     assignment_revision: int = Field(default=1, ge=1)
     accountable_owner: str = Field(min_length=2, max_length=128)
+    assignment_kind: CrewAssignmentKind
     contributors: tuple[str, ...] = ()
     expected_result: str = Field(min_length=3, max_length=8_192)
     completion_criteria: tuple[str, ...] = Field(min_length=1)
@@ -285,6 +286,7 @@ class MissionTaskAssignment(MissionModel):
     path_scopes: tuple[str, ...]
     limits: tuple[MissionResourceLimit, ...] = Field(min_length=1)
     required_evidence: tuple[str, ...] = Field(min_length=1)
+    requires_independent_evaluation: bool = False
     created_at: datetime = Field(default_factory=utc_now)
 
     @field_validator("created_at")
@@ -300,10 +302,16 @@ class MissionTaskAssignment(MissionModel):
             raise ValueError("task contributors must be unique")
         if len(self.dependencies) != len(set(self.dependencies)):
             raise ValueError("task dependencies must be unique")
+        if self.task_id in self.dependencies:
+            raise ValueError("task cannot depend on itself")
         if len(self.environment_context_ids) != len(set(self.environment_context_ids)):
             raise ValueError("task environment context dependencies must be unique")
         if (self.execution_run_id is None) != (self.execution_task_id is None):
             raise ValueError("task execution run and task identities must be declared together")
+        if self.requires_independent_evaluation and self.assignment_kind is not (
+            CrewAssignmentKind.PRODUCTION
+        ):
+            raise ValueError("only production work can require independent evaluation")
         return self
 
 

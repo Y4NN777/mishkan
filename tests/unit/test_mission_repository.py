@@ -255,6 +255,7 @@ def test_accountable_assignment_and_lifecycle_are_explicit_and_durable(tmp_path:
         crew_version=crew.version,
         task_id="implement-recovery",
         accountable_owner="Backend_Service_Engineer",
+        assignment_kind=CrewAssignmentKind.PRODUCTION,
         contributors=(),
         expected_result="A verified recovery implementation",
         completion_criteria=("independent recovery test passes",),
@@ -304,6 +305,7 @@ def test_assignment_rejects_identity_outside_current_contextual_crew(tmp_path: P
         crew_version=1,
         task_id="unscoped-work",
         accountable_owner="Android_Engineer",
+        assignment_kind=CrewAssignmentKind.PRODUCTION,
         expected_result="An unauthorized result",
         completion_criteria=("result exists",),
         authority_scope=("repository:api",),
@@ -316,3 +318,51 @@ def test_assignment_rejects_identity_outside_current_contextual_crew(tmp_path: P
     with pytest.raises(MishkanError) as error:
         repository.record_assignment(assignment)
     assert error.value.envelope.code is ErrorCode.MISSION
+
+
+@pytest.mark.parametrize(
+    ("owner", "kind", "contributors"),
+    (
+        (
+            "Product_Functional_Evaluator",
+            CrewAssignmentKind.PRODUCTION,
+            (),
+        ),
+        (
+            "Backend_Service_Engineer",
+            CrewAssignmentKind.PRODUCTION,
+            ("Product_Functional_Evaluator",),
+        ),
+    ),
+)
+def test_assignment_rejects_cross_responsibility_production_and_evaluation(
+    tmp_path: Path,
+    owner: str,
+    kind: CrewAssignmentKind,
+    contributors: tuple[str, ...],
+) -> None:
+    _, repository, mission = _setup(tmp_path)
+    brief = _brief(mission)
+    repository.record_brief(brief, expected_revision=mission.revision)
+    current = repository.mission(str(mission.mission_id))
+    repository.record_crew(_crew(brief), expected_revision=current.revision)
+    assignment = MissionTaskAssignment(
+        mission_id=mission.mission_id,
+        crew_version=1,
+        task_id="conflicted-production",
+        accountable_owner=owner,
+        assignment_kind=kind,
+        contributors=contributors,
+        expected_result="A production result with invalid responsibility separation",
+        completion_criteria=("result exists",),
+        authority_scope=("repository:api",),
+        exact_tools=("file.read",),
+        path_scopes=("repository:api",),
+        limits=(MissionResourceLimit(name="wall_time", value=60, unit="seconds"),),
+        required_evidence=("result",),
+    )
+
+    with pytest.raises(MishkanError) as error:
+        repository.record_assignment(assignment)
+
+    assert error.value.envelope.code is ErrorCode.ROLE_CONFLICT

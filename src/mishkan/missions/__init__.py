@@ -1,5 +1,6 @@
 """Mission governance contracts and durable services."""
 
+from mishkan.missions.assignment_graph import MissionAssignmentGraphValidator
 from mishkan.missions.environment import (
     CrewAIPlanningLineage,
     MissionEnvironmentAlternative,
@@ -11,6 +12,8 @@ from mishkan.missions.environment import (
     MissionEnvironmentPlanValidator,
 )
 from mishkan.missions.execution import (
+    MissionCompletionReadiness,
+    MissionTaskAcceptanceStatus,
     MissionTaskClaim,
     MissionTaskClaimRequest,
     MissionTaskClaimService,
@@ -56,8 +59,10 @@ __all__ = [
     "EnvironmentContextReadiness",
     "EnvironmentReadinessState",
     "ExecutiveConfirmation",
+    "MissionAssignmentGraphValidator",
     "MissionBrief",
     "MissionBriefStatus",
+    "MissionCompletionReadiness",
     "MissionCrewMember",
     "MissionCrewRevision",
     "MissionEnvironmentAlternative",
@@ -75,6 +80,7 @@ __all__ = [
     "MissionRecord",
     "MissionResourceLimit",
     "MissionState",
+    "MissionTaskAcceptanceStatus",
     "MissionTaskAssignment",
     "MissionTaskClaim",
     "MissionTaskClaimRequest",

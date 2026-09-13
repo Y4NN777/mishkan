@@ -78,6 +78,7 @@ from mishkan.events import (
 from mishkan.execution import CursorRead, ExecutionSession
 from mishkan.missions import (
     MissionBrief,
+    MissionCompletionReadiness,
     MissionCrewRevision,
     MissionEnvironmentReadiness,
     MissionRecord,
@@ -394,6 +395,15 @@ class Mishkan:
         )
         response.raise_for_status()
         return MissionTaskEligibility.model_validate(response.json())
+
+    def mission_completion_readiness(self, mission_id: str) -> MissionCompletionReadiness:
+        identity = quote(mission_id, safe="")
+        response = self._client.get(
+            f"/v1/missions/{identity}/completion-readiness",
+            headers=self._headers(),
+        )
+        response.raise_for_status()
+        return MissionCompletionReadiness.model_validate(response.json())
 
     def claim_mission_task(self, request: MissionTaskClaimRequest) -> MissionTaskClaim:
         result = self.command(

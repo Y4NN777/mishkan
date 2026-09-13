@@ -134,6 +134,7 @@ def _mission_contracts() -> tuple[
             crew_version=1,
             task_id=task_id,
             accountable_owner=owner,
+            assignment_kind=CrewAssignmentKind.PRODUCTION,
             expected_result=expected,
             completion_criteria=("result is independently verifiable",),
             authority_scope=("repository:api",),

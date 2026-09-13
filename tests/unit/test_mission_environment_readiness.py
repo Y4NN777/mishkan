@@ -13,6 +13,7 @@ from mishkan.environment import (
 )
 from mishkan.missions import (
     CrewAIPlanningLineage,
+    CrewAssignmentKind,
     EnvironmentReadinessState,
     MissionEnvironmentAlternative,
     MissionEnvironmentContextRequest,
@@ -103,6 +104,7 @@ def _fixture() -> tuple[
         crew_version=1,
         task_id="plan-environment",
         accountable_owner="Platform_Engineer",
+        assignment_kind=CrewAssignmentKind.PRODUCTION,
         expected_result="An attributable environment decision",
         completion_criteria=("decision is accepted",),
         authority_scope=("repository:api",),

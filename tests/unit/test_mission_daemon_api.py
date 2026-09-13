@@ -63,6 +63,7 @@ from mishkan.missions import (
 from mishkan.organization import load_canonical_organization
 from mishkan.persistence import LocalRunRepository
 from mishkan.planning import AcceptedPlan, PlanTask
+from mishkan.planning.models import InitializationResult, ReviewDecision
 from mishkan.repository.models import DiscoverySnapshot, RepositoryBinding
 
 
@@ -270,6 +271,7 @@ async def test_mission_brief_and_contextual_crew_use_the_common_daemon_authority
         crew_version=crew.version,
         task_id="implement-recovery",
         accountable_owner="Backend_Service_Engineer",
+        assignment_kind=CrewAssignmentKind.PRODUCTION,
         expected_result="A verified recovery implementation",
         completion_criteria=("independent recovery test passes",),
         authority_scope=("repository:api",),
@@ -460,6 +462,7 @@ async def test_daemon_claims_only_an_explicitly_bound_eligible_mission_task(
         crew_version=crew.version,
         task_id="implement-recovery",
         accountable_owner="Backend_Service_Engineer",
+        assignment_kind=CrewAssignmentKind.PRODUCTION,
         expected_result="A verified recovery implementation",
         completion_criteria=("independent recovery test passes",),
         execution_run_id=run.run_id,
@@ -661,6 +664,7 @@ async def test_crewai_environment_plan_requires_explicit_acceptance_and_exact_re
         crew_version=crew.version,
         task_id="plan-environment",
         accountable_owner="Backend_Service_Engineer",
+        assignment_kind=CrewAssignmentKind.PRODUCTION,
         expected_result="An attributable environment plan",
         completion_criteria=("one exposed outcome is requested per context",),
         authority_scope=("repository:api",),
@@ -1005,3 +1009,311 @@ async def test_conversation_escalation_and_intervention_share_daemon_semantics(
     assert escalations.json()[0]["state"] == "answered"
     assert interventions.json()[0]["intervention_id"] == str(intervention.intervention_id)
     assert durable_mission.json()["revision"] == 3
+
+
+@pytest.mark.anyio
+async def test_mission_completion_requires_separated_accepted_task_chain(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    paths = DaemonBootstrap().setup(config)
+    token = TokenFile(paths.token_file).read()
+    headers = {"Authorization": f"Bearer {token.token}"}
+    organization = load_canonical_organization()
+    runs = LocalRunRepository(paths.database)
+    discovery = DiscoverySnapshot(
+        binding=RepositoryBinding(
+            repository_id="a" * 64,
+            root=tmp_path,
+            base_revision="b" * 40,
+            working_tree_dirty=False,
+            working_tree_fingerprint="c" * 64,
+        ),
+        facts=(),
+        unknowns=(),
+        fingerprint="d" * 64,
+    )
+    run = runs.start_or_resume(discovery, "Deliver one governed mission", "mission-chain")
+    task_contracts = (
+        PlanTask(
+            task_id="produce-change",
+            title="Produce the change",
+            purpose="Produce the accepted workspace change",
+            assigned_role="Backend_Service_Engineer",
+            tools=("file.read",),
+            evidence_paths=("README.md",),
+        ),
+        PlanTask(
+            task_id="evaluate-change",
+            title="Evaluate the change",
+            purpose="Evaluate the production result independently",
+            assigned_role="Product_Functional_Evaluator",
+            tools=("file.read",),
+            evidence_paths=("README.md",),
+            depends_on=("produce-change",),
+        ),
+        PlanTask(
+            task_id="report-change",
+            title="Report the change",
+            purpose="Report only independently accepted evidence",
+            assigned_role="Technical_Change_Reporter",
+            tools=("file.read",),
+            evidence_paths=("README.md",),
+            depends_on=("evaluate-change",),
+        ),
+    )
+    runs.accept_plan(
+        run.run_id,
+        AcceptedPlan(
+            objective="Deliver one governed mission",
+            outcome_id="mission-chain",
+            repository_revision=discovery.binding.base_revision,
+            tasks=task_contracts,
+            fingerprint="e" * 64,
+            discovery_fingerprint=discovery.fingerprint,
+        ),
+    )
+    runs.start_run(run.run_id)
+    mission = MissionRecord(
+        origin=MissionOrigin(
+            kind=MissionOriginKind.CEO,
+            actor_id="CEO",
+            objective="Deliver one change through independent assurance and reporting",
+        ),
+        organization_id=organization.organization_id,
+        organization_version=organization.organization_version,
+    )
+    brief = _brief(mission)
+    crew = _crew(brief)
+    assignments = (
+        MissionTaskAssignment(
+            mission_id=mission.mission_id,
+            crew_version=crew.version,
+            task_id="produce-change",
+            accountable_owner="Backend_Service_Engineer",
+            assignment_kind=CrewAssignmentKind.PRODUCTION,
+            expected_result="An attributable production change",
+            completion_criteria=("production result is reviewable",),
+            execution_run_id=run.run_id,
+            execution_task_id="produce-change",
+            authority_scope=("repository:api",),
+            exact_tools=("file.read",),
+            path_scopes=("repository:api",),
+            limits=(MissionResourceLimit(name="wall_time", value=600, unit="seconds"),),
+            required_evidence=("artifact:production",),
+            requires_independent_evaluation=True,
+        ),
+        MissionTaskAssignment(
+            mission_id=mission.mission_id,
+            crew_version=crew.version,
+            task_id="evaluate-change",
+            accountable_owner="Product_Functional_Evaluator",
+            assignment_kind=CrewAssignmentKind.EVALUATION,
+            expected_result="An independent acceptance decision",
+            completion_criteria=("evaluation decision is explicit",),
+            dependencies=("produce-change",),
+            execution_run_id=run.run_id,
+            execution_task_id="evaluate-change",
+            authority_scope=("repository:api",),
+            exact_tools=("file.read",),
+            path_scopes=("repository:api",),
+            limits=(MissionResourceLimit(name="wall_time", value=600, unit="seconds"),),
+            required_evidence=("evaluation:production",),
+        ),
+        MissionTaskAssignment(
+            mission_id=mission.mission_id,
+            crew_version=crew.version,
+            task_id="report-change",
+            accountable_owner="Technical_Change_Reporter",
+            assignment_kind=CrewAssignmentKind.REPORTING,
+            expected_result="A structured report grounded in accepted evidence",
+            completion_criteria=("report identifies evidence and residual risk",),
+            dependencies=("evaluate-change",),
+            execution_run_id=run.run_id,
+            execution_task_id="report-change",
+            authority_scope=("repository:api",),
+            exact_tools=("file.read",),
+            path_scopes=("repository:api",),
+            limits=(MissionResourceLimit(name="wall_time", value=600, unit="seconds"),),
+            required_evidence=("report:mission",),
+        ),
+    )
+    planned = MissionTransition(
+        mission_id=mission.mission_id,
+        from_state=MissionState.CLARIFYING,
+        to_state=MissionState.PLANNED,
+        actor_or_cause="PM+CTO",
+        reason="Brief, crew, and contextual task plan are confirmed",
+        affected_scope=("mission:all",),
+        evidence_references=(f"brief:{brief.brief_id}", f"crew:{crew.crew_id}"),
+    )
+    active = MissionTransition(
+        mission_id=mission.mission_id,
+        from_state=MissionState.PLANNED,
+        to_state=MissionState.ACTIVE,
+        actor_or_cause="Mission_Lead",
+        reason="The separated task graph is ready",
+        affected_scope=("mission:all",),
+        evidence_references=tuple(
+            f"assignment:{assignment.assignment_id}" for assignment in assignments
+        ),
+    )
+
+    transport = httpx.ASGITransport(app=create_app(config))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        setup_commands = [
+            ApplicationCommand(
+                command_type="mission.create",
+                actor_id=token.principal_id,
+                target_type="mission",
+                target_id=str(mission.mission_id),
+                expected_revision=0,
+                payload={"record": mission.model_dump(mode="json")},
+            ),
+            ApplicationCommand(
+                command_type="mission.brief.record",
+                actor_id=token.principal_id,
+                target_type="mission",
+                target_id=str(mission.mission_id),
+                expected_revision=1,
+                payload={"brief": brief.model_dump(mode="json")},
+            ),
+            ApplicationCommand(
+                command_type="mission.crew.record",
+                actor_id=token.principal_id,
+                target_type="mission",
+                target_id=str(mission.mission_id),
+                expected_revision=2,
+                payload={"crew": crew.model_dump(mode="json")},
+            ),
+            *(
+                ApplicationCommand(
+                    command_type="mission.assignment.record",
+                    actor_id=token.principal_id,
+                    target_type="mission_assignment",
+                    target_id=str(assignment.assignment_id),
+                    expected_revision=0,
+                    payload={"assignment": assignment.model_dump(mode="json")},
+                )
+                for assignment in assignments
+            ),
+            ApplicationCommand(
+                command_type="mission.transition",
+                actor_id=token.principal_id,
+                target_type="mission",
+                target_id=str(mission.mission_id),
+                expected_revision=3,
+                payload={"transition": planned.model_dump(mode="json")},
+            ),
+            ApplicationCommand(
+                command_type="mission.transition",
+                actor_id=token.principal_id,
+                target_type="mission",
+                target_id=str(mission.mission_id),
+                expected_revision=4,
+                payload={"transition": active.model_dump(mode="json")},
+            ),
+        ]
+        for command in setup_commands:
+            response = await client.post(
+                "/v1/commands", headers=headers, json=command.model_dump(mode="json")
+            )
+            assert response.status_code == 200, response.json()
+        before = await client.get(
+            f"/v1/missions/{mission.mission_id}/completion-readiness",
+            headers=headers,
+        )
+        assert before.status_code == 200
+        assert not before.json()["ready"]
+        for assignment in assignments:
+            claim_request = MissionTaskClaimRequest(
+                mission_id=mission.mission_id,
+                mission_revision=5,
+                task_id=assignment.task_id,
+                assignment_revision=assignment.assignment_revision,
+            )
+            claimed = await client.post(
+                "/v1/commands",
+                headers=headers,
+                json=ApplicationCommand(
+                    command_type="mission.task.claim",
+                    actor_id=token.principal_id,
+                    target_type="mission_task",
+                    target_id=f"{mission.mission_id}:{assignment.task_id}",
+                    payload={"request": claim_request.model_dump(mode="json")},
+                ).model_dump(mode="json"),
+            )
+            assert claimed.status_code == 200, claimed.json()
+            runs.mark_validating(run.run_id, assignment.task_id)
+            runs.accept_result(
+                run.run_id,
+                InitializationResult(
+                    repository_revision=discovery.binding.base_revision,
+                    task_id=assignment.task_id,
+                    summary=f"Accepted result for {assignment.task_id}",
+                    cited_paths=("README.md",),
+                    findings=(f"{assignment.task_id} contract satisfied",),
+                ),
+                ReviewDecision(
+                    task_id=assignment.task_id,
+                    verdict="accepted",
+                    summary=f"Independent review accepted {assignment.task_id}",
+                    checked_citations=("README.md",),
+                ),
+            )
+        evaluating = MissionTransition(
+            mission_id=mission.mission_id,
+            from_state=MissionState.ACTIVE,
+            to_state=MissionState.EVALUATING,
+            actor_or_cause="Mission_Lead",
+            reason="All planned results are ready for mission acceptance",
+            affected_scope=("mission:all",),
+            evidence_references=(f"run:{run.run_id}",),
+        )
+        evaluated = await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=ApplicationCommand(
+                command_type="mission.transition",
+                actor_id=token.principal_id,
+                target_type="mission",
+                target_id=str(mission.mission_id),
+                expected_revision=5,
+                payload={"transition": evaluating.model_dump(mode="json")},
+            ).model_dump(mode="json"),
+        )
+        assert evaluated.status_code == 200, evaluated.json()
+        ready = await client.get(
+            f"/v1/missions/{mission.mission_id}/completion-readiness",
+            headers=headers,
+        )
+        completed = await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=ApplicationCommand(
+                command_type="mission.transition",
+                actor_id=token.principal_id,
+                target_type="mission",
+                target_id=str(mission.mission_id),
+                expected_revision=6,
+                payload={
+                    "transition": MissionTransition(
+                        mission_id=mission.mission_id,
+                        from_state=MissionState.EVALUATING,
+                        to_state=MissionState.COMPLETED,
+                        actor_or_cause="PM+CTO",
+                        reason="Production, evaluation, and reporting are durably accepted",
+                        affected_scope=("mission:all",),
+                        evidence_references=(f"run:{run.run_id}",),
+                    ).model_dump(mode="json")
+                },
+            ).model_dump(mode="json"),
+        )
+
+    assert ready.status_code == 200
+    assert ready.json()["ready"]
+    assert {item["task_id"]: item["assignment_kind"] for item in ready.json()["tasks"]} == {
+        "produce-change": "production",
+        "evaluate-change": "evaluation",
+        "report-change": "reporting",
+    }
+    assert completed.status_code == 200, completed.json()
+    assert completed.json()["payload"]["to_state"] == "completed"

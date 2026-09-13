@@ -120,10 +120,12 @@ from mishkan.mcp import (
 from mishkan.mcp.sdk import McpStdioCommandBuilder
 from mishkan.missions import (
     MissionBrief,
+    MissionCompletionReadiness,
     MissionCrewRevision,
     MissionEnvironmentReadiness,
     MissionEnvironmentReadinessService,
     MissionRecord,
+    MissionState,
     MissionTaskClaimService,
     MissionTaskEligibility,
     MissionTemplateLoader,
@@ -1195,6 +1197,16 @@ def create_app(
     ) -> MissionTaskEligibility:
         return await _thread_call(mission_task_claims.inspect, str(mission_id), task_id)
 
+    @app.get(
+        "/v1/missions/{mission_id}/completion-readiness",
+        response_model=MissionCompletionReadiness,
+    )
+    async def mission_completion_readiness(
+        mission_id: UUID,
+        _principal: TokenRecord = authenticated,
+    ) -> MissionCompletionReadiness:
+        return await _thread_call(mission_task_claims.inspect_completion, str(mission_id))
+
     @app.get("/v1/missions/{mission_id}/assignments", response_model=None)
     async def mission_assignments(
         mission_id: UUID,
@@ -1348,6 +1360,9 @@ def create_app(
                 ).model_dump(mode="json")
                 for item in {assignment.task_id: assignment for assignment in assignments}.values()
             ],
+            "completion_readiness": (
+                await _thread_call(mission_task_claims.inspect_completion, identity)
+            ).model_dump(mode="json"),
             "assignments": [item.model_dump(mode="json") for item in assignments],
             "transitions": [item.model_dump(mode="json") for item in transitions],
             "conversations": [item.model_dump(mode="json") for item in channels],
@@ -2083,6 +2098,8 @@ def _dispatch(
                 ErrorCode.OUTPUT_CONTRACT,
                 "mission transition requires an authorized record and expected revision",
             )
+        if transition.to_state is MissionState.COMPLETED:
+            mission_task_claims.require_completion_ready(str(transition.mission_id))
         recorded_transition = mission_repository.transition(
             transition, expected_revision=command.expected_revision
         )
