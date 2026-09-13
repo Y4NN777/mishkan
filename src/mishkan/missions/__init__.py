@@ -14,6 +14,7 @@ from mishkan.missions.models import (
     MissionRecord,
     MissionState,
 )
+from mishkan.missions.repository import SQLiteMissionRepository
 
 __all__ = [
     "CrewAssignmentKind",
@@ -28,4 +29,5 @@ __all__ = [
     "MissionOriginKind",
     "MissionRecord",
     "MissionState",
+    "SQLiteMissionRepository",
 ]

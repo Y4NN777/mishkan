@@ -65,7 +65,7 @@ def test_explicit_upgrade_adds_skill_usage_without_changing_existing_events(
         assert connection.execute(text("SELECT count(*) FROM event_outbox")).scalar_one() == 1
         assert (
             connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            == "i05_environment_verify_v1"
+            == "mission_governance_v1"
         )
 
 

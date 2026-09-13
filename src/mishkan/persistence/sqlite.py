@@ -650,6 +650,57 @@ class EnvironmentInvalidationRow(Base):
     recorded_at: Mapped[str] = mapped_column(String(40), nullable=False)
 
 
+class OrganizationRosterRow(Base):
+    __tablename__ = "organization_rosters"
+
+    organization_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    organization_version: Mapped[str] = mapped_column(String(64), primary_key=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    recorded_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class MissionRow(Base):
+    __tablename__ = "missions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    state: Mapped[str] = mapped_column(String(32), nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    organization_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    organization_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    current_brief_version: Mapped[int | None] = mapped_column(Integer)
+    current_crew_version: Mapped[int | None] = mapped_column(Integer)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class MissionBriefRow(Base):
+    __tablename__ = "mission_briefs"
+    __table_args__ = (UniqueConstraint("mission_id", "version"),)
+
+    brief_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    mission_id: Mapped[str] = mapped_column(ForeignKey("missions.id"), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class MissionCrewRow(Base):
+    __tablename__ = "mission_crews"
+    __table_args__ = (UniqueConstraint("mission_id", "version"),)
+
+    crew_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    mission_id: Mapped[str] = mapped_column(ForeignKey("missions.id"), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    brief_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
 @dataclass(frozen=True, slots=True)
 class RunSnapshot:
     run_id: str

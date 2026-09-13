@@ -58,7 +58,7 @@ async def test_remote_facade_forwards_queries_commands_and_resources(tmp_path: P
     )
     events = await facade.read_resource("mishkan://events", principal_id=token.principal_id)
 
-    assert health == {"status": "ready", "schema": "i05_environment_verify_v1"}
+    assert health == {"status": "ready", "schema": "mission_governance_v1"}
     assert result["status"] == "accepted"
     assert len(events["events"]) == 1
 
