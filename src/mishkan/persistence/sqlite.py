@@ -816,6 +816,18 @@ class MissionRunBindingRow(Base):
     created_at: Mapped[str] = mapped_column(String(40), nullable=False)
 
 
+class MissionRunReportRow(Base):
+    __tablename__ = "mission_run_reports"
+    __table_args__ = (UniqueConstraint("mission_id", "run_id"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    mission_id: Mapped[str] = mapped_column(ForeignKey("missions.id"), nullable=False)
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id"), nullable=False)
+    reporter_identity: Mapped[str] = mapped_column(String(128), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
 class MissionTransitionRow(Base):
     __tablename__ = "mission_transitions"
 
@@ -950,6 +962,15 @@ class LocalRunRepository:
         with Session(self._engine) as session:
             run = self._require_run(session, run_id)
             return self._snapshot(session, run, resumed=True)
+
+    def task_count(self, run_id: str) -> int:
+        """Return the exact task count from the immutable accepted run plan."""
+        with Session(self._engine) as session:
+            self._require_run(session, run_id)
+            plan = session.scalar(select(PlanRow).where(PlanRow.run_id == run_id))
+            if plan is None:
+                return 0
+            return len(AcceptedPlan.model_validate_json(plan.payload).tasks)
 
     def accept_plan(self, run_id: str, plan: AcceptedPlan) -> RunSnapshot:
         self._require_safe_content(plan.model_dump_json())

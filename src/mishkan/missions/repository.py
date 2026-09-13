@@ -27,6 +27,7 @@ from mishkan.missions.models import (
     MissionRecord,
     MissionRunAcceptance,
     MissionRunBinding,
+    MissionRunReport,
     MissionState,
     MissionTaskAssignment,
     MissionTransition,
@@ -41,6 +42,7 @@ from mishkan.persistence.sqlite import (
     MissionEnvironmentPlanRow,
     MissionRow,
     MissionRunBindingRow,
+    MissionRunReportRow,
     MissionTransitionRow,
     OrganizationRosterRow,
     OutboxRow,
@@ -927,6 +929,201 @@ class SQLiteMissionRepository:
                 .limit(limit)
             )
             return tuple(MissionRunBinding.model_validate_json(row.payload) for row in rows)
+
+    def record_run_report(self, report: MissionRunReport) -> MissionRunReport:
+        payload = self._json(report)
+        with Session(self._engine) as session, session.begin():
+            existing = session.get(MissionRunReportRow, str(report.report_id))
+            if existing is not None:
+                return self._idempotent(existing.payload, payload, report)
+            mission = MissionRecord.model_validate_json(
+                self._require_mission_row(session, str(report.mission_id)).payload
+            )
+            if report.mission_revision != mission.revision:
+                raise MishkanError(
+                    ErrorCode.REVISION_MISMATCH,
+                    "mission changed before its run report was recorded",
+                )
+            if mission.state is not MissionState.EVALUATING:
+                raise MishkanError(
+                    ErrorCode.MISSION,
+                    "mission run report requires the evaluating mission state",
+                )
+            duplicate = session.scalar(
+                select(MissionRunReportRow).where(
+                    MissionRunReportRow.mission_id == str(report.mission_id),
+                    MissionRunReportRow.run_id == report.run_id,
+                )
+            )
+            if duplicate is not None:
+                raise MishkanError(
+                    ErrorCode.DUPLICATE_RESULT,
+                    "mission run already has another immutable report",
+                )
+            run = session.get(RunRow, report.run_id)
+            plan_row = session.scalar(select(PlanRow).where(PlanRow.run_id == report.run_id))
+            if run is None or plan_row is None:
+                raise MishkanError(ErrorCode.RUN_INTERRUPTED, "reported run or plan does not exist")
+            plan = AcceptedPlan.model_validate_json(plan_row.payload)
+            if run.status != "completed" or len(plan.tasks) < 2:
+                raise MishkanError(
+                    ErrorCode.MISSION,
+                    "run report requires one completed multi-task run",
+                )
+            if report.plan_fingerprint != plan.fingerprint:
+                raise MishkanError(
+                    ErrorCode.REVISION_MISMATCH,
+                    "mission run report references another accepted plan",
+                )
+            observed_context = PlanExecutionContext(
+                kind=run.context_kind,  # type: ignore[arg-type]
+                context_id=run.context_id,
+                revision=run.context_revision,
+                repository_id=run.repository_id,
+                repository_revision=run.repository_revision,
+                prospective_workspace_id=(
+                    run.context_id if run.context_kind == "prospective_workspace" else None
+                ),
+                discovery_revision=(
+                    run.context_revision if run.context_kind == "prospective_workspace" else None
+                ),
+            )
+            if report.execution_context != observed_context:
+                raise MishkanError(
+                    ErrorCode.REVISION_MISMATCH,
+                    "mission run report execution context differs from its run",
+                )
+            assignments = MissionAssignmentGraphValidator.latest(
+                tuple(
+                    MissionTaskAssignment.model_validate_json(row.payload)
+                    for row in session.scalars(
+                        select(MissionAssignmentRow).where(
+                            MissionAssignmentRow.mission_id == str(report.mission_id)
+                        )
+                    ).all()
+                )
+            )
+            MissionAssignmentGraphValidator.validate(tuple(assignments.values()))
+            latest_bindings: dict[str, MissionRunBinding] = {}
+            for row in session.scalars(
+                select(MissionRunBindingRow).where(
+                    MissionRunBindingRow.mission_id == str(report.mission_id),
+                    MissionRunBindingRow.run_id == report.run_id,
+                )
+            ).all():
+                binding = MissionRunBinding.model_validate_json(row.payload)
+                current = latest_bindings.get(binding.binding_key)
+                if current is None or binding.binding_revision > current.binding_revision:
+                    latest_bindings[binding.binding_key] = binding
+            by_execution_task = {
+                binding.execution_task_id: binding for binding in latest_bindings.values()
+            }
+            expected_tasks = {task.task_id for task in plan.tasks}
+            reported_tasks = {item.execution_task_id for item in report.task_results}
+            if reported_tasks != expected_tasks:
+                raise MishkanError(
+                    ErrorCode.MISSION,
+                    "mission run report does not cover the exact accepted plan tasks",
+                    details={
+                        "missing": sorted(expected_tasks - reported_tasks),
+                        "unexpected": sorted(reported_tasks - expected_tasks),
+                    },
+                )
+            accepted_results = {
+                row.task_key
+                for row in session.scalars(
+                    select(ResultRow).where(ResultRow.run_id == report.run_id)
+                ).all()
+            }
+            acceptances = {
+                row.task_key
+                for row in session.scalars(
+                    select(AcceptanceRow).where(AcceptanceRow.run_id == report.run_id)
+                ).all()
+            }
+            if accepted_results != expected_tasks or acceptances != expected_tasks:
+                raise MishkanError(
+                    ErrorCode.MISSION,
+                    "mission run report requires every task result to be durably accepted",
+                )
+            for item in report.task_results:
+                assignment = assignments.get(item.mission_task_id)
+                matched_binding = by_execution_task.get(item.execution_task_id)
+                if (
+                    assignment is None
+                    or matched_binding is None
+                    or (
+                        assignment.execution_run_id != report.run_id
+                        or assignment.execution_task_id != item.execution_task_id
+                        or assignment.accountable_owner != item.accountable_owner
+                        or assignment.assignment_kind is not item.assignment_kind
+                        or matched_binding.mission_task_id != item.mission_task_id
+                        or matched_binding.acceptance is not MissionRunAcceptance.ACCEPTED
+                        or matched_binding.result_references != item.result_references
+                        or matched_binding.acceptance_references != item.acceptance_references
+                    )
+                ):
+                    raise MishkanError(
+                        ErrorCode.MISSION,
+                        "mission run report contradicts an accepted assignment or result binding",
+                        details={"execution_task_id": item.execution_task_id},
+                    )
+                required_evidence = {
+                    *item.result_references,
+                    *item.acceptance_references,
+                }
+                if not required_evidence.issubset(item.evidence_references):
+                    raise MishkanError(
+                        ErrorCode.MISSION,
+                        "mission run report omits accepted result evidence",
+                        details={"execution_task_id": item.execution_task_id},
+                    )
+            reporting = assignments[report.reporting_mission_task_id]
+            if (
+                reporting.assignment_kind is not CrewAssignmentKind.REPORTING
+                or reporting.accountable_owner != report.reporter_identity
+                or reporting.execution_run_id != report.run_id
+                or reporting.execution_task_id != report.reporting_execution_task_id
+            ):
+                raise MishkanError(
+                    ErrorCode.ROLE_CONFLICT,
+                    "mission run report is not attributable to its independent Reporter task",
+                )
+            session.add(
+                MissionRunReportRow(
+                    id=str(report.report_id),
+                    mission_id=str(report.mission_id),
+                    run_id=report.run_id,
+                    reporter_identity=report.reporter_identity,
+                    payload=payload,
+                    created_at=report.created_at.isoformat(),
+                )
+            )
+            self._event(
+                session,
+                aggregate_id=str(report.mission_id),
+                entity_type="mission",
+                event_type="mission.run_reported",
+                payload={
+                    "report_id": str(report.report_id),
+                    "run_id": report.run_id,
+                    "reporter_identity": report.reporter_identity,
+                    "plan_fingerprint": report.plan_fingerprint,
+                    "task_count": len(report.task_results),
+                },
+            )
+        return report
+
+    def run_reports(self, mission_id: str, *, limit: int = 1_000) -> tuple[MissionRunReport, ...]:
+        with Session(self._engine) as session:
+            self._require_mission_row(session, mission_id)
+            rows = session.scalars(
+                select(MissionRunReportRow)
+                .where(MissionRunReportRow.mission_id == mission_id)
+                .order_by(MissionRunReportRow.created_at)
+                .limit(limit)
+            )
+            return tuple(MissionRunReport.model_validate_json(row.payload) for row in rows)
 
     def transitions(self, mission_id: str, *, limit: int = 1_000) -> tuple[MissionTransition, ...]:
         with Session(self._engine) as session:

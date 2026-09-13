@@ -53,6 +53,7 @@ class MissionInspectionService:
         )
         assignments = self._missions.assignments(mission_id, limit=limit)
         run_bindings = self._missions.run_bindings(mission_id, limit=limit)
+        run_reports = self._missions.run_reports(mission_id, limit=limit)
         transitions = self._missions.transitions(mission_id, limit=limit)
         channels = self._conversations.channels(mission_id=mission_id, limit=limit)
         decisions = self._conversations.decisions(mission_id, limit=limit)
@@ -127,6 +128,7 @@ class MissionInspectionService:
                 environment_plan,
                 assignments,
                 run_bindings,
+                run_reports,
                 transitions,
                 decisions,
                 escalations,
@@ -170,6 +172,7 @@ class MissionInspectionService:
             ),
             "runs": [run_rows[item] for item in run_ids if item in run_rows][:limit],
             "run_bindings": [item.model_dump(mode="json") for item in run_bindings],
+            "run_reports": [item.model_dump(mode="json") for item in run_reports],
             "plans": plans[:limit],
             "tasks": tasks[:limit],
             "results": results[:limit],

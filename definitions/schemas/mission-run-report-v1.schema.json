@@ -1,0 +1,311 @@
+{
+  "$defs": {
+    "CrewAssignmentKind": {
+      "enum": [
+        "production",
+        "contributor",
+        "evaluation",
+        "reporting",
+        "audit"
+      ],
+      "title": "CrewAssignmentKind",
+      "type": "string"
+    },
+    "MissionRunReportTask": {
+      "additionalProperties": false,
+      "properties": {
+        "acceptance_references": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Acceptance References",
+          "type": "array"
+        },
+        "accountable_owner": {
+          "maxLength": 128,
+          "minLength": 2,
+          "title": "Accountable Owner",
+          "type": "string"
+        },
+        "assignment_kind": {
+          "$ref": "#/$defs/CrewAssignmentKind"
+        },
+        "evidence_references": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Evidence References",
+          "type": "array"
+        },
+        "execution_task_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Execution Task Id",
+          "type": "string"
+        },
+        "failures": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Failures",
+          "type": "array"
+        },
+        "mission_task_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Mission Task Id",
+          "type": "string"
+        },
+        "outcome_summary": {
+          "maxLength": 8192,
+          "minLength": 3,
+          "title": "Outcome Summary",
+          "type": "string"
+        },
+        "residual_risks": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Residual Risks",
+          "type": "array"
+        },
+        "result_references": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Result References",
+          "type": "array"
+        }
+      },
+      "required": [
+        "mission_task_id",
+        "execution_task_id",
+        "accountable_owner",
+        "assignment_kind",
+        "result_references",
+        "acceptance_references",
+        "outcome_summary",
+        "evidence_references"
+      ],
+      "title": "MissionRunReportTask",
+      "type": "object"
+    },
+    "PlanExecutionContext": {
+      "additionalProperties": false,
+      "properties": {
+        "context_id": {
+          "maxLength": 256,
+          "minLength": 12,
+          "title": "Context Id",
+          "type": "string"
+        },
+        "discovery_revision": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 7,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Discovery Revision"
+        },
+        "kind": {
+          "enum": [
+            "repository",
+            "prospective_workspace"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "prospective_workspace_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 12,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prospective Workspace Id"
+        },
+        "repository_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 12,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repository Id"
+        },
+        "repository_revision": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 7,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repository Revision"
+        },
+        "revision": {
+          "maxLength": 128,
+          "minLength": 7,
+          "title": "Revision",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "context_id",
+        "revision"
+      ],
+      "title": "PlanExecutionContext",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "delivered_outcomes": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Delivered Outcomes",
+      "type": "array"
+    },
+    "execution_context": {
+      "$ref": "#/$defs/PlanExecutionContext"
+    },
+    "failures": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Failures",
+      "type": "array"
+    },
+    "mission_id": {
+      "format": "uuid",
+      "title": "Mission Id",
+      "type": "string"
+    },
+    "mission_revision": {
+      "minimum": 1,
+      "title": "Mission Revision",
+      "type": "integer"
+    },
+    "plan_fingerprint": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Plan Fingerprint",
+      "type": "string"
+    },
+    "report_id": {
+      "format": "uuid",
+      "title": "Report Id",
+      "type": "string"
+    },
+    "reporter_identity": {
+      "maxLength": 128,
+      "minLength": 2,
+      "title": "Reporter Identity",
+      "type": "string"
+    },
+    "reporting_execution_task_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Reporting Execution Task Id",
+      "type": "string"
+    },
+    "reporting_mission_task_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Reporting Mission Task Id",
+      "type": "string"
+    },
+    "residual_risks": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Residual Risks",
+      "type": "array"
+    },
+    "run_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "task_results": {
+      "items": {
+        "$ref": "#/$defs/MissionRunReportTask"
+      },
+      "minItems": 2,
+      "title": "Task Results",
+      "type": "array"
+    },
+    "unresolved_decisions": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Unresolved Decisions",
+      "type": "array"
+    },
+    "validation_summary": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Validation Summary",
+      "type": "array"
+    }
+  },
+  "required": [
+    "mission_id",
+    "mission_revision",
+    "run_id",
+    "execution_context",
+    "plan_fingerprint",
+    "reporter_identity",
+    "reporting_mission_task_id",
+    "reporting_execution_task_id",
+    "task_results",
+    "delivered_outcomes",
+    "validation_summary"
+  ],
+  "title": "MissionRunReport",
+  "type": "object"
+}

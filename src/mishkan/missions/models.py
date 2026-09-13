@@ -439,6 +439,77 @@ class MissionRunBinding(MissionModel):
         return self
 
 
+class MissionRunReportTask(MissionModel):
+    mission_task_id: str = Field(min_length=1, max_length=256)
+    execution_task_id: str = Field(min_length=1, max_length=256)
+    accountable_owner: str = Field(min_length=2, max_length=128)
+    assignment_kind: CrewAssignmentKind
+    result_references: tuple[str, ...] = Field(min_length=1)
+    acceptance_references: tuple[str, ...] = Field(min_length=1)
+    outcome_summary: str = Field(min_length=3, max_length=8_192)
+    evidence_references: tuple[str, ...] = Field(min_length=1)
+    residual_risks: tuple[str, ...] = ()
+    failures: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def evidence_is_unique(self) -> MissionRunReportTask:
+        for values in (
+            self.result_references,
+            self.acceptance_references,
+            self.evidence_references,
+            self.residual_risks,
+            self.failures,
+        ):
+            if len(values) != len(set(values)):
+                raise ValueError("mission run report values must be unique")
+        return self
+
+
+class MissionRunReport(MissionModel):
+    schema_version: Literal["1.0"] = "1.0"
+    report_id: UUID = Field(default_factory=new_id)
+    mission_id: UUID
+    mission_revision: int = Field(ge=1)
+    run_id: str = Field(min_length=1, max_length=256)
+    execution_context: PlanExecutionContext
+    plan_fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
+    reporter_identity: str = Field(min_length=2, max_length=128)
+    reporting_mission_task_id: str = Field(min_length=1, max_length=256)
+    reporting_execution_task_id: str = Field(min_length=1, max_length=256)
+    task_results: tuple[MissionRunReportTask, ...] = Field(min_length=2)
+    delivered_outcomes: tuple[str, ...] = Field(min_length=1)
+    validation_summary: tuple[str, ...] = Field(min_length=1)
+    residual_risks: tuple[str, ...] = ()
+    failures: tuple[str, ...] = ()
+    unresolved_decisions: tuple[str, ...] = ()
+    created_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("created_at")
+    @classmethod
+    def report_time_is_aware(cls, value: datetime) -> datetime:
+        return require_aware(value)
+
+    @model_validator(mode="after")
+    def reporter_and_task_coverage_are_explicit(self) -> MissionRunReport:
+        mission_tasks = tuple(item.mission_task_id for item in self.task_results)
+        execution_tasks = tuple(item.execution_task_id for item in self.task_results)
+        if len(mission_tasks) != len(set(mission_tasks)) or len(execution_tasks) != len(
+            set(execution_tasks)
+        ):
+            raise ValueError("mission run report task identities must be unique")
+        reporting = tuple(
+            item
+            for item in self.task_results
+            if item.mission_task_id == self.reporting_mission_task_id
+            and item.execution_task_id == self.reporting_execution_task_id
+        )
+        if len(reporting) != 1 or reporting[0].assignment_kind is not CrewAssignmentKind.REPORTING:
+            raise ValueError("mission run report must identify one reporting task")
+        if reporting[0].accountable_owner != self.reporter_identity:
+            raise ValueError("mission run report identity differs from its reporting task owner")
+        return self
+
+
 class MissionTransition(MissionModel):
     schema_version: Literal["1.0"] = "1.0"
     transition_id: UUID = Field(default_factory=new_id)

@@ -265,6 +265,15 @@ class McpFacadeRouter:
                 "mission inspections",
             )
             return inspections.mission(query.mission_id, limit=query.limit)
+        if operation == "mission.run-reports.list":
+            query = self._validate(MissionQuery, arguments)
+            missions = self._require_dependency(self._missions, "missions")
+            return {
+                "reports": [
+                    item.model_dump(mode="json")
+                    for item in missions.run_reports(query.mission_id, limit=query.limit)
+                ]
+            }
         if operation == "mission.templates.list":
             query = self._validate(MissionTemplateQuery, arguments)
             templates = self._require_dependency(self._mission_templates, "mission templates")

@@ -125,6 +125,10 @@ class _Client:
         assert (mission_id, limit) == ("mission/id", 12)
         return (_Payload("mission-run-binding"),)
 
+    def mission_run_reports(self, mission_id: str, *, limit: int) -> tuple[_Payload, ...]:
+        assert (mission_id, limit) == ("mission/id", 15)
+        return (_Payload("mission-run-report"),)
+
     def mission_transitions(self, mission_id: str, *, limit: int) -> tuple[_Payload, ...]:
         assert (mission_id, limit) == ("mission/id", 5)
         return (_Payload("mission-transition"),)
@@ -305,6 +309,10 @@ def client(monkeypatch: pytest.MonkeyPatch) -> _Client:
             [{"kind": "mission-run-binding"}],
         ),
         (
+            ("mission", "run-reports", "mission/id", "--limit", "15"),
+            [{"kind": "mission-run-report"}],
+        ),
+        (
             ("mission", "transitions", "mission/id", "--limit", "5"),
             [{"kind": "mission-transition"}],
         ),
@@ -449,6 +457,7 @@ def test_chat_posts_through_the_same_durable_message_contract(client: _Client) -
             "0",
         ),
         ("mission", "assignment-record", "--assignment", "missing.json"),
+        ("mission", "run-report-record", "--report", "missing.json"),
         (
             "mission",
             "transition",

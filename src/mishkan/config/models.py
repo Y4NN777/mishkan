@@ -498,6 +498,7 @@ SUPPORTED_MCP_FACADE_OPERATIONS = frozenset(
         "mission.list",
         "mission.get",
         "mission.inspect",
+        "mission.run-reports.list",
         "mission.templates.list",
         "conversation.list",
         "conversation.get",

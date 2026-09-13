@@ -15,6 +15,7 @@ from mishkan.missions.assignment_graph import MissionAssignmentGraphValidator
 from mishkan.missions.models import (
     CrewAssignmentKind,
     MissionRecord,
+    MissionRunReport,
     MissionState,
     MissionTaskAssignment,
 )
@@ -115,6 +116,10 @@ class MissionExecutionRepository(Protocol):
         self, mission_id: str, *, limit: int = 1_000
     ) -> tuple[MissionTaskAssignment, ...]: ...
 
+    def run_reports(
+        self, mission_id: str, *, limit: int = 1_000
+    ) -> tuple[MissionRunReport, ...]: ...
+
 
 class MissionConversationLookup(Protocol):
     def escalations(
@@ -138,6 +143,8 @@ class RunTaskAuthority(Protocol):
     def run_state(self, run_id: str) -> str: ...
 
     def claim_task(self, run_id: str, task_id: str) -> int: ...
+
+    def task_count(self, run_id: str) -> int: ...
 
 
 class MissionTaskClaimService:
@@ -342,6 +349,15 @@ class MissionTaskClaimService:
         if mission.state is not MissionState.EVALUATING:
             blockers.append("mission must be evaluating before completion")
         environment = {item.task_id: item for item in self._readiness.inspect(mission_id).tasks}
+        reported_runs = {
+            item.run_id for item in self._missions.run_reports(mission_id, limit=1_000)
+        }
+        bound_runs = {
+            item.execution_run_id for item in assignments if item.execution_run_id is not None
+        }
+        for run_id in sorted(bound_runs):
+            if self._runs.task_count(run_id) > 1 and run_id not in reported_runs:
+                blockers.append(f"multi-task run {run_id} has no versioned mission report")
         task_statuses: list[MissionTaskAcceptanceStatus] = []
         for assignment in assignments:
             readiness = environment.get(assignment.task_id)

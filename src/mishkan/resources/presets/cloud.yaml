@@ -192,6 +192,7 @@ mcp:
         - mission.list
         - mission.get
         - mission.inspect
+        - mission.run-reports.list
         - mission.templates.list
         - conversation.list
         - conversation.get

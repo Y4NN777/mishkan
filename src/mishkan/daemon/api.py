@@ -1309,6 +1309,19 @@ def create_app(
         )
         return tuple(record.model_dump(mode="json") for record in records)
 
+    @app.get("/v1/missions/{mission_id}/run-reports", response_model=None)
+    async def mission_run_reports(
+        mission_id: UUID,
+        _principal: TokenRecord = authenticated,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 1_000,
+    ) -> tuple[dict[str, object], ...]:
+        records = await _thread_call(
+            mission_repository.run_reports,
+            str(mission_id),
+            limit=limit,
+        )
+        return tuple(record.model_dump(mode="json") for record in records)
+
     @app.get("/v1/missions/{mission_id}/transitions", response_model=None)
     async def mission_transitions(
         mission_id: UUID,
@@ -2168,6 +2181,15 @@ def _dispatch(
             )
         recorded_run_binding: MissionRunBinding = mission_repository.record_run_binding(run_binding)
         return "mission.run_bound", recorded_run_binding.model_dump(mode="json")
+    if command.command_type == "mission.run-report.record":
+        run_report = authorized.mission_run_report
+        if run_report is None:
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT,
+                "authorized mission run report is absent",
+            )
+        recorded_report = mission_repository.record_run_report(run_report)
+        return "mission.run_reported", recorded_report.model_dump(mode="json")
     if command.command_type == "mission.task.claim":
         claim_request = authorized.mission_task_claim
         if claim_request is None:

@@ -56,6 +56,8 @@ from mishkan.missions import (
     MissionResourceLimit,
     MissionRunAcceptance,
     MissionRunBinding,
+    MissionRunReport,
+    MissionRunReportTask,
     MissionState,
     MissionTaskAssignment,
     MissionTaskClaimRequest,
@@ -1264,6 +1266,7 @@ async def test_mission_completion_requires_separated_accepted_task_chain(tmp_pat
         )
         assert before.status_code == 200
         assert not before.json()["ready"]
+        settled_bindings: list[MissionRunBinding] = []
         for assignment, run_binding in zip(assignments, run_bindings, strict=True):
             claim_request = MissionTaskClaimRequest(
                 mission_id=mission.mission_id,
@@ -1322,6 +1325,7 @@ async def test_mission_completion_requires_separated_accepted_task_chain(tmp_pat
                 ).model_dump(mode="json"),
             )
             assert settled_response.status_code == 200, settled_response.json()
+            settled_bindings.append(settled_binding)
         bindings_response = await client.get(
             f"/v1/missions/{mission.mission_id}/run-bindings",
             headers=headers,
@@ -1380,6 +1384,63 @@ async def test_mission_completion_requires_separated_accepted_task_chain(tmp_pat
             ).model_dump(mode="json"),
         )
         assert evaluated.status_code == 200, evaluated.json()
+        not_reported = await client.get(
+            f"/v1/missions/{mission.mission_id}/completion-readiness",
+            headers=headers,
+        )
+        assert not_reported.status_code == 200
+        assert not not_reported.json()["ready"]
+        assert any(
+            "no versioned mission report" in item for item in not_reported.json()["blockers"]
+        )
+        report = MissionRunReport(
+            mission_id=mission.mission_id,
+            mission_revision=6,
+            run_id=run.run_id,
+            execution_context=PlanExecutionContext.from_binding(discovery.binding),
+            plan_fingerprint="e" * 64,
+            reporter_identity="Technical_Change_Reporter",
+            reporting_mission_task_id="report-change",
+            reporting_execution_task_id="report-change",
+            task_results=tuple(
+                MissionRunReportTask(
+                    mission_task_id=assignment.task_id,
+                    execution_task_id=assignment.execution_task_id or assignment.task_id,
+                    accountable_owner=assignment.accountable_owner,
+                    assignment_kind=assignment.assignment_kind,
+                    result_references=binding.result_references,
+                    acceptance_references=binding.acceptance_references,
+                    outcome_summary=f"Accepted outcome for {assignment.task_id}",
+                    evidence_references=(
+                        *binding.result_references,
+                        *binding.acceptance_references,
+                    ),
+                )
+                for assignment, binding in zip(assignments, settled_bindings, strict=True)
+            ),
+            delivered_outcomes=("The governed change and independent evaluation were accepted",),
+            validation_summary=("All three accepted task contracts are covered",),
+            residual_risks=("Production deployment remains excluded",),
+        )
+        report_response = await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=ApplicationCommand(
+                command_type="mission.run-report.record",
+                actor_id=token.principal_id,
+                target_type="mission_run_report",
+                target_id=str(report.report_id),
+                expected_revision=0,
+                payload={"report": report.model_dump(mode="json")},
+            ).model_dump(mode="json"),
+        )
+        reports_response = await client.get(
+            f"/v1/missions/{mission.mission_id}/run-reports",
+            headers=headers,
+        )
+        assert report_response.status_code == 200, report_response.json()
+        assert reports_response.status_code == 200
+        assert reports_response.json() == [report.model_dump(mode="json")]
         ready = await client.get(
             f"/v1/missions/{mission.mission_id}/completion-readiness",
             headers=headers,

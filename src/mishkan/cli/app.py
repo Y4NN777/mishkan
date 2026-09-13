@@ -422,6 +422,32 @@ def record_mission_run_binding(
     _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
 
 
+@mission_app.command("run-reports")
+def list_mission_run_reports(
+    ctx: typer.Context,
+    mission_id: str,
+    limit: Annotated[int, typer.Option(min=1, max=10_000)] = 1_000,
+) -> None:
+    """List versioned reports for completed multi-task mission runs."""
+    with _daemon_client(ctx) as client:
+        reports = client.mission_run_reports(mission_id, limit=limit)
+    _emit(_dump_models(reports), as_json=_state(ctx).json_output)
+
+
+@mission_app.command("run-report-record")
+def record_mission_run_report(
+    ctx: typer.Context,
+    report_file: Annotated[Path, typer.Option("--report")],
+) -> None:
+    """Record one attributable report after all run results are accepted."""
+    from mishkan.missions import MissionRunReport
+
+    report = _read_contract(report_file, MissionRunReport, "--report")
+    with _daemon_client(ctx) as client:
+        result = client.record_mission_run_report(report)
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
 @mission_app.command("transitions")
 def list_mission_transitions(
     ctx: typer.Context,

@@ -18,6 +18,7 @@ from mishkan.missions import (
     MissionOriginKind,
     MissionRecord,
     MissionResourceLimit,
+    MissionRunReport,
     MissionState,
     MissionTaskAssignment,
     MissionTaskClaimRequest,
@@ -33,6 +34,7 @@ from mishkan.runtime import RunState, TaskState
 class _Missions:
     mission_record: MissionRecord
     assignments_: tuple[MissionTaskAssignment, ...]
+    reports_: tuple[MissionRunReport, ...] = ()
 
     def mission(self, mission_id: str) -> MissionRecord:
         assert mission_id == str(self.mission_record.mission_id)
@@ -44,6 +46,11 @@ class _Missions:
         assert mission_id == str(self.mission_record.mission_id)
         assert limit == 1_000
         return self.assignments_
+
+    def run_reports(self, mission_id: str, *, limit: int = 1_000) -> tuple[MissionRunReport, ...]:
+        assert mission_id == str(self.mission_record.mission_id)
+        assert limit == 1_000
+        return self.reports_
 
 
 @dataclass
@@ -95,6 +102,9 @@ class _Runs:
         self.claims.append((run_id, task_id))
         self.states[run_id][task_id] = TaskState.EXECUTING.value
         return 1
+
+    def task_count(self, run_id: str) -> int:
+        return len(self.states[run_id])
 
 
 def _fixture(
