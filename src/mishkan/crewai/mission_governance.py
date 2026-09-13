@@ -41,18 +41,33 @@ class GovernanceOutput(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
+class MissionGovernanceEvidence(GovernanceOutput):
+    reference: str = Field(min_length=1, max_length=2_048)
+    summary: str = Field(min_length=1, max_length=8_192)
+
+
 class MissionGovernanceRequest(GovernanceOutput):
     schema_version: Literal["1.0"] = "1.0"
     request_id: UUID = Field(default_factory=new_id)
     mission_id: UUID
     mission_revision: int = Field(ge=1)
-    evidence: tuple[dict[str, object], ...] = Field(min_length=1)
+    evidence: tuple[MissionGovernanceEvidence, ...] = Field(min_length=1)
     requested_at: datetime = Field(default_factory=utc_now)
 
     @field_validator("requested_at")
     @classmethod
     def _validate_timestamp(cls, value: datetime) -> datetime:
         return require_aware(value)
+
+    @field_validator("evidence")
+    @classmethod
+    def _evidence_references_are_unique(
+        cls, value: tuple[MissionGovernanceEvidence, ...]
+    ) -> tuple[MissionGovernanceEvidence, ...]:
+        references = tuple(item.reference for item in value)
+        if len(references) != len(set(references)):
+            raise ValueError("mission governance evidence references must be unique")
+        return value
 
 
 class PMMissionProposal(GovernanceOutput):
@@ -89,6 +104,14 @@ class CTOMissionReview(GovernanceOutput):
     @model_validator(mode="after")
     def rejection_is_actionable(self) -> CTOMissionReview:
         if self.disposition == "confirmed":
+            normalized = " ".join(self.coverage).lower()
+            missing = {
+                required
+                for required in ("technical", "security", "quality")
+                if required not in normalized
+            }
+            if missing:
+                raise ValueError("confirmed CTO review must cover technical, security, and quality")
             return self
         option_ids = {item.option_id for item in self.alternatives}
         if (
@@ -169,7 +192,7 @@ class MissionGovernanceResult(GovernanceOutput):
 
 class MissionGovernanceRunner(Protocol):
     def propose(
-        self, mission: MissionRecord, evidence: tuple[dict[str, object], ...]
+        self, mission: MissionRecord, evidence: tuple[MissionGovernanceEvidence, ...]
     ) -> MissionGovernanceResult: ...
 
 
@@ -186,7 +209,7 @@ class CrewAIMissionGovernanceRunner:
         self._organization = organization or load_canonical_organization()
 
     def propose(
-        self, mission: MissionRecord, evidence: tuple[dict[str, object], ...]
+        self, mission: MissionRecord, evidence: tuple[MissionGovernanceEvidence, ...]
     ) -> MissionGovernanceResult:
         pm = self._kickoff_structured(
             identity_id="PM",
@@ -202,14 +225,31 @@ class CrewAIMissionGovernanceRunner:
             expected_output="One technical, security, and quality coverage decision.",
             output_model=CTOMissionReview,
         )
-        return self.compile(mission, pm, cto)
+        return self.compile(
+            mission,
+            pm,
+            cto,
+            evidence_references=tuple(item.reference for item in evidence),
+        )
 
     def compile(
         self,
         mission: MissionRecord,
         pm: PMMissionProposal,
         cto: CTOMissionReview,
+        *,
+        evidence_references: tuple[str, ...],
     ) -> MissionGovernanceResult:
+        allowed_evidence = set(evidence_references)
+        unattributed = (set(pm.evidence_references) | set(cto.evidence_references)) - (
+            allowed_evidence
+        )
+        if unattributed:
+            raise MishkanError(
+                ErrorCode.PLAN,
+                "CrewAI mission governance output invented an evidence reference",
+                details={"references": sorted(unattributed)},
+            )
         proposed = tuple(pm.proposed_identity_ids)
         approved = tuple(member.identity_id for member in cto.approved_members)
         if len(proposed) != len(set(proposed)):
@@ -408,20 +448,23 @@ class CrewAIMissionGovernanceRunner:
             model_route=route_name,
         )
 
-    def _pm_prompt(self, mission: MissionRecord, evidence: tuple[dict[str, object], ...]) -> str:
+    def _pm_prompt(
+        self, mission: MissionRecord, evidence: tuple[MissionGovernanceEvidence, ...]
+    ) -> str:
         return (
             "Produce the product Mission Brief proposal for this mission. Do not invent evidence, "
             "authority, tools, or a fixed workflow. Select identities only from the supplied "
             "roster.\n"
             f"Mission: {mission.model_dump_json()}\n"
-            f"Roster: {self._roster_projection()}\nEvidence: {json.dumps(evidence, sort_keys=True)}"
+            f"Roster: {self._roster_projection()}\n"
+            f"Evidence: {self._evidence_projection(evidence)}"
         )
 
     def _cto_prompt(
         self,
         mission: MissionRecord,
         pm: PMMissionProposal,
-        evidence: tuple[dict[str, object], ...],
+        evidence: tuple[MissionGovernanceEvidence, ...],
     ) -> str:
         return (
             "Independently confirm or reject technical, security, quality, operability, and "
@@ -430,7 +473,15 @@ class CrewAIMissionGovernanceRunner:
             "consequences and risks, both PM and CTO recommendations, and the independent work "
             "that can continue. Do not grant tools or authority.\n"
             f"Mission: {mission.model_dump_json()}\nPM proposal: {pm.model_dump_json()}\n"
-            f"Roster: {self._roster_projection()}\nEvidence: {json.dumps(evidence, sort_keys=True)}"
+            f"Roster: {self._roster_projection()}\n"
+            f"Evidence: {self._evidence_projection(evidence)}"
+        )
+
+    @staticmethod
+    def _evidence_projection(evidence: tuple[MissionGovernanceEvidence, ...]) -> str:
+        return json.dumps(
+            [item.model_dump(mode="json") for item in evidence],
+            sort_keys=True,
         )
 
     def _roster_projection(self) -> str:

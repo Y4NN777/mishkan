@@ -1423,10 +1423,7 @@ class ApplicationCommandAuthority:
                     raise ValueError("governance request target differs from its identity")
                 external_resources = (
                     f"mission:{mission_governance_request.mission_id}",
-                    *(
-                        f"evidence:{item.get('reference', index)}"
-                        for index, item in enumerate(mission_governance_request.evidence)
-                    ),
+                    *(f"evidence:{item.reference}" for item in mission_governance_request.evidence),
                 )
             elif normalized.command_type == "mission.environment.propose":
                 mission_environment_planning_request = (

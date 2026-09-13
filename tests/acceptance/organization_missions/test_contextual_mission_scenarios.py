@@ -280,7 +280,15 @@ def _governance(
         ),
         unresolved_findings=(),
     )
-    return mission, runner.compile(mission, pm, cto)
+    return mission, runner.compile(
+        mission,
+        pm,
+        cto,
+        evidence_references=(
+            f"fixture:{scenario.scenario_id}:product",
+            f"fixture:{scenario.scenario_id}:technical",
+        ),
+    )
 
 
 def _assignments(scenario: _Scenario, mission: MissionRecord) -> tuple[MissionTaskAssignment, ...]:

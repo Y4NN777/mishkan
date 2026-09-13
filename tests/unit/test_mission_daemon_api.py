@@ -26,6 +26,7 @@ from mishkan.crewai.mission_environment import (
     MissionEnvironmentPlanningOutput,
 )
 from mishkan.crewai.mission_governance import (
+    MissionGovernanceEvidence,
     MissionGovernanceRequest,
     MissionGovernanceResult,
 )
@@ -202,7 +203,7 @@ def _crew(brief: MissionBrief) -> MissionCrewRevision:
 
 class _MissionGovernanceRunner:
     def propose(
-        self, mission: MissionRecord, _evidence: tuple[dict[str, object], ...]
+        self, mission: MissionRecord, _evidence: tuple[MissionGovernanceEvidence, ...]
     ) -> MissionGovernanceResult:
         brief = _brief(mission)
         return MissionGovernanceResult(
@@ -628,10 +629,10 @@ async def test_crewai_governance_command_returns_candidate_without_implicit_muta
         mission_id=mission.mission_id,
         mission_revision=1,
         evidence=(
-            {
-                "reference": "artifact:discovery",
-                "summary": "Repository evidence for account recovery",
-            },
+            MissionGovernanceEvidence(
+                reference="artifact:discovery",
+                summary="Repository evidence for account recovery",
+            ),
         ),
     )
     create = ApplicationCommand(

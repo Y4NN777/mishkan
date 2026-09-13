@@ -12,6 +12,8 @@ from mishkan.conversations import EscalationOption
 from mishkan.crewai.mission_governance import (
     CrewAIMissionGovernanceRunner,
     CTOMissionReview,
+    MissionGovernanceEvidence,
+    MissionGovernanceRequest,
     PMMissionProposal,
 )
 from mishkan.domain.errors import ErrorCode, MishkanError
@@ -130,7 +132,12 @@ def _cto(
 
 def test_pm_cto_outputs_compile_to_confirmed_brief_and_contextual_crew(tmp_path: Path) -> None:
     runner = CrewAIMissionGovernanceRunner(_config(tmp_path))
-    result = runner.compile(_mission(), _pm(), _cto())
+    result = runner.compile(
+        _mission(),
+        _pm(),
+        _cto(),
+        evidence_references=("evidence:product-analysis", "evidence:technical-review"),
+    )
 
     assert result.brief.pm_confirmation is not None
     assert result.brief.cto_confirmation is not None
@@ -163,7 +170,16 @@ def test_proposal_runs_bounded_pm_then_cto_crewai_work(
 
     result = runner.propose(
         _mission(),
-        ({"reference": "evidence:repository", "fact": "Account recovery is absent"},),
+        (
+            MissionGovernanceEvidence(
+                reference="evidence:product-analysis",
+                summary="Account recovery is absent",
+            ),
+            MissionGovernanceEvidence(
+                reference="evidence:technical-review",
+                summary="Security and quality coverage were reviewed",
+            ),
+        ),
     )
 
     assert result.disposition == "agreed"
@@ -179,7 +195,12 @@ def test_cto_rejection_compiles_to_actionable_disagreement_without_a_crew(
 ) -> None:
     runner = CrewAIMissionGovernanceRunner(_config(tmp_path))
 
-    result = runner.compile(_mission(), _pm(), _cto("rejected"))
+    result = runner.compile(
+        _mission(),
+        _pm(),
+        _cto("rejected"),
+        evidence_references=("evidence:product-analysis", "evidence:technical-review"),
+    )
 
     assert result.disposition == "disagreement"
     assert result.brief.status.value == "rejected"
@@ -207,5 +228,46 @@ def test_cto_cannot_silently_replace_the_pm_confirmed_composition(tmp_path: Path
     )
 
     with pytest.raises(MishkanError) as error:
-        runner.compile(_mission(), _pm(), changed)
+        runner.compile(
+            _mission(),
+            _pm(),
+            changed,
+            evidence_references=("evidence:product-analysis", "evidence:technical-review"),
+        )
     assert error.value.envelope.code is ErrorCode.MISSION
+
+
+def test_governance_rejects_evidence_references_absent_from_the_input(tmp_path: Path) -> None:
+    runner = CrewAIMissionGovernanceRunner(_config(tmp_path))
+
+    with pytest.raises(MishkanError) as error:
+        runner.compile(
+            _mission(),
+            _pm(),
+            _cto(),
+            evidence_references=("evidence:product-analysis",),
+        )
+
+    assert error.value.envelope.code is ErrorCode.PLAN
+    assert error.value.envelope.details == {"references": ["evidence:technical-review"]}
+
+
+def test_confirmed_cto_review_requires_technical_security_and_quality_coverage() -> None:
+    with pytest.raises(ValueError, match="technical, security, and quality"):
+        CTOMissionReview.model_validate(
+            _cto().model_dump() | {"coverage": ("technical", "quality")}
+        )
+
+
+def test_governance_request_rejects_duplicate_evidence_references() -> None:
+    evidence = MissionGovernanceEvidence(
+        reference="artifact:discovery",
+        summary="Repository discovery",
+    )
+
+    with pytest.raises(ValueError, match="evidence references must be unique"):
+        MissionGovernanceRequest(
+            mission_id=_mission().mission_id,
+            mission_revision=1,
+            evidence=(evidence, evidence),
+        )

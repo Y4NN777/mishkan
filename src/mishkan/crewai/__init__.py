@@ -10,6 +10,7 @@ from mishkan.crewai.mission_environment import (
 from mishkan.crewai.mission_governance import (
     CrewAIMissionGovernanceRunner,
     MissionGovernanceDisagreement,
+    MissionGovernanceEvidence,
     MissionGovernanceRequest,
     MissionGovernanceResult,
     MissionGovernanceRunner,
@@ -22,6 +23,7 @@ __all__ = [
     "MissionEnvironmentPlanningOutput",
     "MissionEnvironmentPlanningRunner",
     "MissionGovernanceDisagreement",
+    "MissionGovernanceEvidence",
     "MissionGovernanceRequest",
     "MissionGovernanceResult",
     "MissionGovernanceRunner",
