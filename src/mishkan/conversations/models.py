@@ -25,6 +25,15 @@ class ChannelClass(StrEnum):
     DIRECT = "direct"
 
 
+class MessagePurpose(StrEnum):
+    DISCUSSION = "discussion"
+    COLLABORATION = "collaboration"
+    CONSULTATION = "consultation"
+    HANDOFF_CONTEXT = "handoff_context"
+    REVIEW = "review"
+    EVIDENCE_CHALLENGE = "evidence_challenge"
+
+
 class EscalationState(StrEnum):
     OPEN = "open"
     ANSWERED = "answered"
@@ -134,12 +143,14 @@ class ConversationChannel(ConversationModel):
 
 
 class ConversationMessage(ConversationModel):
-    schema_version: Literal["1.0"] = "1.0"
+    schema_version: Literal["1.0", "1.1"] = "1.0"
     message_id: UUID = Field(default_factory=new_id)
     conversation_id: UUID
     author_identity: str = Field(min_length=1, max_length=256)
+    purpose: MessagePurpose = MessagePurpose.DISCUSSION
     body: str = Field(min_length=1, max_length=65_536)
     reply_to_message_id: UUID | None = None
+    scope: tuple[str, ...] = ()
     evidence_references: tuple[str, ...] = ()
     created_at: datetime = Field(default_factory=utc_now)
 
@@ -147,6 +158,20 @@ class ConversationMessage(ConversationModel):
     @classmethod
     def created_at_is_aware(cls, value: datetime) -> datetime:
         return require_aware(value)
+
+    @model_validator(mode="after")
+    def collaborative_purpose_is_attributable(self) -> ConversationMessage:
+        if self.schema_version == "1.0":
+            if self.purpose is not MessagePurpose.DISCUSSION or self.scope:
+                raise ValueError("message 1.0 cannot claim structured collaboration semantics")
+            return self
+        if self.purpose is not MessagePurpose.DISCUSSION and (
+            not self.scope or not self.evidence_references
+        ):
+            raise ValueError(
+                "structured collaboration message requires bounded scope and attributable evidence"
+            )
+        return self
 
 
 class DecisionContextElement(ConversationModel):

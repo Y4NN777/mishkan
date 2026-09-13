@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Literal
 
 import pytest
 from pydantic import ValidationError
@@ -24,6 +25,7 @@ from mishkan.conversations import (
     ExecutiveRecommendation,
     InterventionKind,
     InterventionTargetKind,
+    MessagePurpose,
     MissionDecision,
     MissionEscalation,
     MissionIntervention,
@@ -53,7 +55,7 @@ from mishkan.organization import load_canonical_organization
 from mishkan.persistence.migration import SchemaManager
 
 
-def _confirmation(identity_id: str) -> ExecutiveConfirmation:
+def _confirmation(identity_id: Literal["PM", "CTO"]) -> ExecutiveConfirmation:
     return ExecutiveConfirmation(
         identity_id=identity_id,
         disposition="confirmed",
@@ -311,6 +313,54 @@ def test_messages_are_durable_records_and_never_implicit_commands(tmp_path: Path
     assert conversations.post_message(message) == message
     assert conversations.messages(str(channel.conversation_id)) == (message,)
     assert missions.mission(str(mission.mission_id)).revision == mission.revision
+
+
+def test_collaboration_messages_are_typed_bounded_and_non_mutating(tmp_path: Path) -> None:
+    missions, conversations, mission = _setup(tmp_path)
+    channel = conversations.create_channel(_mission_channel(mission))
+    purposes = (
+        MessagePurpose.COLLABORATION,
+        MessagePurpose.CONSULTATION,
+        MessagePurpose.HANDOFF_CONTEXT,
+        MessagePurpose.REVIEW,
+        MessagePurpose.EVIDENCE_CHALLENGE,
+    )
+    messages = tuple(
+        ConversationMessage(
+            schema_version="1.1",
+            conversation_id=channel.conversation_id,
+            author_identity="PM" if index % 2 == 0 else "CTO",
+            purpose=purpose,
+            body=f"Record the bounded {purpose.value} context without changing authority.",
+            scope=("task:blocked",),
+            evidence_references=(f"evidence:{purpose.value}",),
+        )
+        for index, purpose in enumerate(purposes)
+    )
+
+    for message in messages:
+        conversations.post_message(message)
+
+    assert conversations.messages(str(channel.conversation_id)) == messages
+    assert missions.mission(str(mission.mission_id)).revision == mission.revision
+
+    with pytest.raises(ValidationError, match="cannot claim structured collaboration semantics"):
+        ConversationMessage(
+            conversation_id=channel.conversation_id,
+            author_identity="PM",
+            purpose=MessagePurpose.CONSULTATION,
+            body="Invalid unversioned consultation.",
+            scope=("task:blocked",),
+            evidence_references=("evidence:consultation",),
+        )
+    with pytest.raises(ValidationError, match="bounded scope and attributable evidence"):
+        ConversationMessage(
+            schema_version="1.1",
+            conversation_id=channel.conversation_id,
+            author_identity="CTO",
+            purpose=MessagePurpose.EVIDENCE_CHALLENGE,
+            body="Unattributed challenge.",
+        )
 
 
 def test_executive_conversation_and_message_survive_repository_restart(tmp_path: Path) -> None:

@@ -1,4 +1,18 @@
 {
+  "$defs": {
+    "MessagePurpose": {
+      "enum": [
+        "discussion",
+        "collaboration",
+        "consultation",
+        "handoff_context",
+        "review",
+        "evidence_challenge"
+      ],
+      "title": "MessagePurpose",
+      "type": "string"
+    }
+  },
   "additionalProperties": false,
   "properties": {
     "author_identity": {
@@ -36,6 +50,10 @@
       "title": "Message Id",
       "type": "string"
     },
+    "purpose": {
+      "$ref": "#/$defs/MessagePurpose",
+      "default": "discussion"
+    },
     "reply_to_message_id": {
       "anyOf": [
         {
@@ -50,10 +68,21 @@
       "title": "Reply To Message Id"
     },
     "schema_version": {
-      "const": "1.0",
       "default": "1.0",
+      "enum": [
+        "1.0",
+        "1.1"
+      ],
       "title": "Schema Version",
       "type": "string"
+    },
+    "scope": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Scope",
+      "type": "array"
     }
   },
   "required": [
