@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from mishkan.domain.identity import new_id
 from mishkan.domain.time import require_aware, utc_now
-from mishkan.missions import MissionState
+from mishkan.missions.models import MissionState
 
 
 class ConversationModel(BaseModel):

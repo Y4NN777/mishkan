@@ -15,6 +15,7 @@ from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.events import EventPage
 from mishkan.missions import (
     MissionEnvironmentReadinessService,
+    MissionTaskClaimService,
     MissionTemplateService,
     SQLiteMissionRepository,
 )
@@ -118,6 +119,7 @@ class McpFacadeRouter:
         mission_templates: MissionTemplateService | None = None,
         advisory: ContextualRecommendationService | None = None,
         readiness: MissionEnvironmentReadinessService | None = None,
+        mission_task_claims: MissionTaskClaimService | None = None,
         notifications: NotificationService | None = None,
     ) -> None:
         profile = config.exposure_profiles[config.facade.exposure_profile]
@@ -134,6 +136,7 @@ class McpFacadeRouter:
         self._mission_templates = mission_templates
         self._advisory = advisory
         self._readiness = readiness
+        self._mission_task_claims = mission_task_claims
         self._notifications = notifications
 
     async def invoke(
@@ -306,16 +309,22 @@ class McpFacadeRouter:
             else None
         )
         readiness = self._require_dependency(self._readiness, "mission readiness")
+        mission_task_claims = self._require_dependency(
+            self._mission_task_claims,
+            "mission task claims",
+        )
+        assignments = missions.assignments(query.mission_id, limit=query.limit)
         return {
             "mission": mission.model_dump(mode="json"),
             "brief": brief,
             "crew": crew,
             "environment_plan": environment_plan,
             "readiness": readiness.inspect(query.mission_id).model_dump(mode="json"),
-            "assignments": [
-                item.model_dump(mode="json")
-                for item in missions.assignments(query.mission_id, limit=query.limit)
+            "task_eligibility": [
+                mission_task_claims.inspect(query.mission_id, item.task_id).model_dump(mode="json")
+                for item in {assignment.task_id: assignment for assignment in assignments}.values()
             ],
+            "assignments": [item.model_dump(mode="json") for item in assignments],
             "transitions": [
                 item.model_dump(mode="json")
                 for item in missions.transitions(query.mission_id, limit=query.limit)

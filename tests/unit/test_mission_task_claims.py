@@ -1,0 +1,279 @@
+from dataclasses import dataclass, field
+from uuid import uuid4
+
+import pytest
+
+from mishkan.conversations import (
+    EscalationOption,
+    EscalationState,
+    ExecutiveRecommendation,
+    MissionEscalation,
+)
+from mishkan.domain.errors import ErrorCode, MishkanError
+from mishkan.missions import (
+    EnvironmentReadinessState,
+    MissionEnvironmentReadiness,
+    MissionOrigin,
+    MissionOriginKind,
+    MissionRecord,
+    MissionResourceLimit,
+    MissionState,
+    MissionTaskAssignment,
+    MissionTaskClaimRequest,
+    MissionTaskClaimService,
+    MissionTaskEnvironmentReadiness,
+    MissionTaskGateState,
+)
+from mishkan.runtime import TaskState
+
+
+@dataclass
+class _Missions:
+    mission_record: MissionRecord
+    assignments_: tuple[MissionTaskAssignment, ...]
+
+    def mission(self, mission_id: str) -> MissionRecord:
+        assert mission_id == str(self.mission_record.mission_id)
+        return self.mission_record
+
+    def assignments(
+        self, mission_id: str, *, limit: int = 1_000
+    ) -> tuple[MissionTaskAssignment, ...]:
+        assert mission_id == str(self.mission_record.mission_id)
+        assert limit == 1_000
+        return self.assignments_
+
+
+@dataclass
+class _Conversations:
+    escalations_: tuple[MissionEscalation, ...] = ()
+
+    def escalations(
+        self,
+        mission_id: str,
+        *,
+        state: EscalationState | None = None,
+        limit: int = 100,
+    ) -> tuple[MissionEscalation, ...]:
+        assert state is None
+        assert limit == 1_000
+        return self.escalations_
+
+    def interventions(self, mission_id: str, *, limit: int = 100) -> tuple[object, ...]:
+        assert limit == 1_000
+        return ()
+
+
+@dataclass
+class _Readiness:
+    projection: MissionEnvironmentReadiness
+
+    def inspect(self, mission_id: str) -> MissionEnvironmentReadiness:
+        assert mission_id == str(self.projection.mission_id)
+        return self.projection
+
+
+@dataclass
+class _Runs:
+    states: dict[str, str]
+    claims: list[tuple[str, str]] = field(default_factory=list)
+
+    def task_states(self, run_id: str) -> dict[str, str]:
+        assert run_id == "run-1"
+        return self.states
+
+    def claim_task(self, run_id: str, task_id: str) -> int:
+        self.claims.append((run_id, task_id))
+        self.states[task_id] = TaskState.EXECUTING.value
+        return 1
+
+
+def _fixture(
+    *, environment_ready: bool
+) -> tuple[
+    MissionTaskClaimService,
+    MissionRecord,
+    MissionTaskAssignment,
+    _Runs,
+    _Conversations,
+]:
+    mission = MissionRecord(
+        revision=7,
+        state=MissionState.ACTIVE,
+        origin=MissionOrigin(
+            kind=MissionOriginKind.CEO,
+            actor_id="CEO",
+            objective="Execute only work whose complete gate is currently satisfied",
+        ),
+        organization_id="mishkan",
+        organization_version="1",
+        current_brief_version=1,
+        current_crew_version=1,
+        current_environment_plan_version=1,
+    )
+    assignment = MissionTaskAssignment(
+        mission_id=mission.mission_id,
+        crew_version=1,
+        task_id="build-api",
+        accountable_owner="Backend_Engineer",
+        expected_result="A tested API change",
+        completion_criteria=("independent review accepted",),
+        execution_run_id="run-1",
+        execution_task_id="build-api",
+        environment_context_ids=("repository:api",),
+        authority_scope=("repository:api",),
+        exact_tools=("process.exec",),
+        path_scopes=("repository:api",),
+        limits=(MissionResourceLimit(name="wall_time", value=600, unit="seconds"),),
+        required_evidence=("test-results",),
+    )
+    task_readiness = MissionTaskEnvironmentReadiness(
+        task_id=assignment.task_id,
+        assignment_revision=assignment.assignment_revision,
+        state=(
+            EnvironmentReadinessState.ELIGIBLE
+            if environment_ready
+            else EnvironmentReadinessState.AWAITING_VERIFICATION
+        ),
+        environment_ready=environment_ready,
+        contexts=(),
+        blockers=() if environment_ready else ("binding has no verification",),
+    )
+    readiness = MissionEnvironmentReadiness(
+        mission_id=mission.mission_id,
+        mission_revision=mission.revision,
+        environment_plan_version=1,
+        tasks=(task_readiness,),
+        ready_task_ids=(assignment.task_id,) if environment_ready else (),
+        blocked_task_ids=() if environment_ready else (assignment.task_id,),
+    )
+    runs = _Runs({assignment.task_id: TaskState.ELIGIBLE.value})
+    conversations = _Conversations()
+    service = MissionTaskClaimService(
+        _Missions(mission, (assignment,)),
+        conversations,  # type: ignore[arg-type]
+        _Readiness(readiness),  # type: ignore[arg-type]
+        runs,
+    )
+    return service, mission, assignment, runs, conversations
+
+
+def test_claim_refuses_generated_but_unverified_environment() -> None:
+    service, mission, assignment, runs, _conversations = _fixture(environment_ready=False)
+
+    eligibility = service.inspect(str(mission.mission_id), assignment.task_id)
+    with pytest.raises(MishkanError) as blocked:
+        service.claim(
+            MissionTaskClaimRequest(
+                mission_id=mission.mission_id,
+                mission_revision=mission.revision,
+                task_id=assignment.task_id,
+                assignment_revision=assignment.assignment_revision,
+            )
+        )
+
+    assert eligibility.state is MissionTaskGateState.BLOCKED
+    assert "binding has no verification" in eligibility.blockers
+    assert blocked.value.envelope.code is ErrorCode.MISSION
+    assert runs.claims == []
+
+
+def test_claim_starts_exact_bound_run_task_after_all_gates_pass() -> None:
+    service, mission, assignment, runs, _conversations = _fixture(environment_ready=True)
+
+    claim = service.claim(
+        MissionTaskClaimRequest(
+            mission_id=mission.mission_id,
+            mission_revision=mission.revision,
+            task_id=assignment.task_id,
+            assignment_revision=assignment.assignment_revision,
+        )
+    )
+
+    assert claim.execution_run_id == "run-1"
+    assert claim.execution_task_id == "build-api"
+    assert claim.attempt == 1
+    assert runs.claims == [("run-1", "build-api")]
+
+
+def test_open_escalation_pauses_only_matching_task_scope() -> None:
+    service, mission, assignment, runs, conversations = _fixture(environment_ready=True)
+    independent_assignment = assignment.model_copy(
+        update={
+            "task_id": "write-docs",
+            "execution_task_id": "write-docs",
+            "environment_context_ids": ("repository:docs",),
+            "authority_scope": ("repository:docs",),
+        }
+    )
+    runs.states[independent_assignment.task_id] = TaskState.ELIGIBLE.value
+    conversations.escalations_ = (
+        MissionEscalation(
+            mission_id=mission.mission_id,
+            conversation_id=uuid4(),
+            state=EscalationState.OPEN,
+            raised_by="CTO",
+            blocked_scope=(f"task:{assignment.task_id}",),
+            decision_required="Choose the bounded compatibility option",
+            reason="PM and CTO disagree on one task constraint",
+            options=(
+                EscalationOption(
+                    option_id="a",
+                    description="Keep the constraint",
+                    consequences=("delivery is delayed",),
+                    risks=("schedule risk",),
+                ),
+                EscalationOption(
+                    option_id="b",
+                    description="Accept the exception",
+                    consequences=("delivery continues",),
+                    risks=("compatibility risk",),
+                ),
+            ),
+            recommendations=(
+                ExecutiveRecommendation(
+                    identity_id="CTO",
+                    recommended_option_id="a",
+                    rationale="Preserve the verified platform constraint",
+                    evidence_references=("evidence:compatibility",),
+                ),
+            ),
+            uncertainty=("downstream consumer timing",),
+            independent_work_continuing=("task:docs",),
+            evidence_references=("evidence:compatibility",),
+        ),
+    )
+    independent_readiness = MissionTaskEnvironmentReadiness(
+        task_id=independent_assignment.task_id,
+        assignment_revision=independent_assignment.assignment_revision,
+        state=EnvironmentReadinessState.ELIGIBLE,
+        environment_ready=True,
+        contexts=(),
+        blockers=(),
+    )
+    readiness = MissionEnvironmentReadiness(
+        mission_id=mission.mission_id,
+        mission_revision=mission.revision,
+        environment_plan_version=1,
+        tasks=(
+            service.inspect(str(mission.mission_id), assignment.task_id).environment,
+            independent_readiness,
+        ),
+        ready_task_ids=(assignment.task_id, independent_assignment.task_id),
+        blocked_task_ids=(),
+    )
+    service = MissionTaskClaimService(
+        _Missions(mission, (assignment, independent_assignment)),
+        conversations,  # type: ignore[arg-type]
+        _Readiness(readiness),  # type: ignore[arg-type]
+        runs,
+    )
+
+    blocked = service.inspect(str(mission.mission_id), assignment.task_id)
+    independent = service.inspect(str(mission.mission_id), independent_assignment.task_id)
+
+    assert blocked.state is MissionTaskGateState.PAUSED
+    assert blocked.blocking_escalation_ids == (conversations.escalations_[0].escalation_id,)
+    assert independent.state is MissionTaskGateState.ELIGIBLE
+    assert independent.blocking_escalation_ids == ()
+    assert runs.claims == []

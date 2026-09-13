@@ -82,6 +82,9 @@ from mishkan.missions import (
     MissionEnvironmentReadiness,
     MissionRecord,
     MissionTaskAssignment,
+    MissionTaskClaim,
+    MissionTaskClaimRequest,
+    MissionTaskEligibility,
     MissionTemplateDefinition,
     MissionTransition,
 )
@@ -381,6 +384,28 @@ class Mishkan:
         )
         response.raise_for_status()
         return MissionEnvironmentReadiness.model_validate(response.json())
+
+    def mission_task_eligibility(self, mission_id: str, task_id: str) -> MissionTaskEligibility:
+        mission_identity = quote(mission_id, safe="")
+        task_identity = quote(task_id, safe="")
+        response = self._client.get(
+            f"/v1/missions/{mission_identity}/tasks/{task_identity}/eligibility",
+            headers=self._headers(),
+        )
+        response.raise_for_status()
+        return MissionTaskEligibility.model_validate(response.json())
+
+    def claim_mission_task(self, request: MissionTaskClaimRequest) -> MissionTaskClaim:
+        result = self.command(
+            ApplicationCommand(
+                command_type="mission.task.claim",
+                actor_id=self.principal_id,
+                target_type="mission_task",
+                target_id=f"{request.mission_id}:{request.task_id}",
+                payload={"request": request.model_dump(mode="json")},
+            )
+        )
+        return MissionTaskClaim.model_validate(result.payload)
 
     def record_mission_brief(
         self,

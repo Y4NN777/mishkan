@@ -124,6 +124,8 @@ from mishkan.missions import (
     MissionEnvironmentReadiness,
     MissionEnvironmentReadinessService,
     MissionRecord,
+    MissionTaskClaimService,
+    MissionTaskEligibility,
     MissionTemplateLoader,
     MissionTemplateService,
     SQLiteMissionRepository,
@@ -593,6 +595,12 @@ def create_app(
         mission_repository,
         environment_repository,
     )
+    mission_task_claims = MissionTaskClaimService(
+        mission_repository,
+        conversation_repository,
+        mission_readiness,
+        run_repository,
+    )
     notification_service = NotificationService(config.notifications)
     telemetry_tasks: set[asyncio.Task[object]] = set()
 
@@ -893,6 +901,7 @@ def create_app(
                                 mission_environment_planning,
                                 environment_profile,
                                 professional_evolution,
+                                mission_task_claims,
                             )
                         except MishkanError as error:
                             result = repository.fail_reserved(
@@ -976,6 +985,7 @@ def create_app(
             mission_templates=mission_templates,
             advisory=community_recommendations,
             readiness=mission_readiness,
+            mission_task_claims=mission_task_claims,
             notifications=notification_service,
         )
         mcp_http = McpHttpFacade(
@@ -1174,6 +1184,17 @@ def create_app(
     ) -> MissionEnvironmentReadiness:
         return await _thread_call(mission_readiness.inspect, str(mission_id))
 
+    @app.get(
+        "/v1/missions/{mission_id}/tasks/{task_id}/eligibility",
+        response_model=MissionTaskEligibility,
+    )
+    async def mission_task_eligibility(
+        mission_id: UUID,
+        task_id: str,
+        _principal: TokenRecord = authenticated,
+    ) -> MissionTaskEligibility:
+        return await _thread_call(mission_task_claims.inspect, str(mission_id), task_id)
+
     @app.get("/v1/missions/{mission_id}/assignments", response_model=None)
     async def mission_assignments(
         mission_id: UUID,
@@ -1317,6 +1338,16 @@ def create_app(
             "readiness": (await _thread_call(mission_readiness.inspect, identity)).model_dump(
                 mode="json"
             ),
+            "task_eligibility": [
+                (
+                    await _thread_call(
+                        mission_task_claims.inspect,
+                        identity,
+                        item.task_id,
+                    )
+                ).model_dump(mode="json")
+                for item in {assignment.task_id: assignment for assignment in assignments}.values()
+            ],
             "assignments": [item.model_dump(mode="json") for item in assignments],
             "transitions": [item.model_dump(mode="json") for item in transitions],
             "conversations": [item.model_dump(mode="json") for item in channels],
@@ -1932,6 +1963,7 @@ def _dispatch(
     mission_environment_planning: MissionEnvironmentPlanningRunner,
     environment_profile: EnvironmentProfile | None,
     professional_evolution: SQLiteProfessionalEvolutionRepository,
+    mission_task_claims: MissionTaskClaimService,
 ) -> tuple[str, dict[str, object]]:
     payload = command.payload
     if command.command_type == "system.checkpoint" and command.target_type == "system":
@@ -2035,6 +2067,15 @@ def _dispatch(
             raise MishkanError(ErrorCode.OUTPUT_CONTRACT, "authorized mission assignment is absent")
         recorded_assignment = mission_repository.record_assignment(assignment)
         return "mission.task_assigned", recorded_assignment.model_dump(mode="json")
+    if command.command_type == "mission.task.claim":
+        claim_request = authorized.mission_task_claim
+        if claim_request is None:
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT,
+                "authorized mission task claim is absent",
+            )
+        claim = mission_task_claims.claim(claim_request)
+        return "mission.task_claimed", claim.model_dump(mode="json")
     if command.command_type == "mission.transition":
         transition = authorized.mission_transition
         if transition is None or command.expected_revision is None:

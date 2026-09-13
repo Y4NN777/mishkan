@@ -366,6 +366,32 @@ def show_mission_readiness(ctx: typer.Context, mission_id: str) -> None:
     _emit(readiness.model_dump(mode="json"), as_json=_state(ctx).json_output)
 
 
+@mission_app.command("task-eligibility")
+def show_mission_task_eligibility(
+    ctx: typer.Context,
+    mission_id: str,
+    task_id: str,
+) -> None:
+    """Show the exact mission, environment, escalation, and run claim gate."""
+    with _daemon_client(ctx) as client:
+        eligibility = client.mission_task_eligibility(mission_id, task_id)
+    _emit(eligibility.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@mission_app.command("task-claim")
+def claim_mission_task(
+    ctx: typer.Context,
+    request_file: Annotated[Path, typer.Option("--request")],
+) -> None:
+    """Atomically request execution of a currently eligible mission task."""
+    from mishkan.missions import MissionTaskClaimRequest
+
+    request = _read_contract(request_file, MissionTaskClaimRequest, "--request")
+    with _daemon_client(ctx) as client:
+        claim = client.claim_mission_task(request)
+    _emit(claim.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
 @mission_app.command("environment-propose")
 def propose_mission_environment(
     ctx: typer.Context,

@@ -56,9 +56,14 @@ from mishkan.missions import (
     MissionResourceLimit,
     MissionState,
     MissionTaskAssignment,
+    MissionTaskClaimRequest,
     MissionTransition,
+    SQLiteMissionRepository,
 )
 from mishkan.organization import load_canonical_organization
+from mishkan.persistence import LocalRunRepository
+from mishkan.planning import AcceptedPlan, PlanTask
+from mishkan.repository.models import DiscoverySnapshot, RepositoryBinding
 
 
 @pytest.fixture
@@ -387,6 +392,141 @@ async def test_mission_brief_and_contextual_crew_use_the_common_daemon_authority
     assert MissionCrewRevision.model_validate(crew_response.json()) == crew
     assert MissionTaskAssignment.model_validate(assignment_response.json()[0]) == assignment
     assert [item["to_state"] for item in transition_response.json()] == ["planned", "active"]
+
+
+@pytest.mark.anyio
+async def test_daemon_claims_only_an_explicitly_bound_eligible_mission_task(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    paths = DaemonBootstrap().setup(config)
+    token = TokenFile(paths.token_file).read()
+    headers = {"Authorization": f"Bearer {token.token}"}
+    organization = load_canonical_organization()
+    runs = LocalRunRepository(paths.database)
+    discovery = DiscoverySnapshot(
+        binding=RepositoryBinding(
+            repository_id="a" * 64,
+            root=tmp_path,
+            base_revision="b" * 40,
+            working_tree_dirty=False,
+            working_tree_fingerprint="c" * 64,
+        ),
+        facts=(),
+        unknowns=(),
+        fingerprint="d" * 64,
+    )
+    run = runs.start_or_resume(discovery, "Execute the accepted mission task", "mission")
+    runs.accept_plan(
+        run.run_id,
+        AcceptedPlan(
+            objective="Execute the accepted mission task",
+            outcome_id="mission",
+            repository_revision=discovery.binding.base_revision,
+            tasks=(
+                PlanTask(
+                    task_id="implement-recovery",
+                    title="Implement recovery",
+                    purpose="Produce the accepted mission result",
+                    assigned_role="Backend_Service_Engineer",
+                    tools=("file.read",),
+                    evidence_paths=("README.md",),
+                ),
+            ),
+            fingerprint="e" * 64,
+            discovery_fingerprint=discovery.fingerprint,
+        ),
+    )
+    runs.start_run(run.run_id)
+    missions = SQLiteMissionRepository(paths.database)
+    missions.record_organization(organization, emit_event=False)
+    mission = missions.create_mission(
+        MissionRecord(
+            origin=MissionOrigin(
+                kind=MissionOriginKind.CEO,
+                actor_id="CEO",
+                objective="Execute a mission task through the complete claim gate",
+            ),
+            organization_id=organization.organization_id,
+            organization_version=organization.organization_version,
+        )
+    )
+    brief = _brief(mission)
+    missions.record_brief(brief, expected_revision=mission.revision)
+    crew = _crew(brief)
+    missions.record_crew(crew, expected_revision=2)
+    assignment = MissionTaskAssignment(
+        mission_id=mission.mission_id,
+        crew_version=crew.version,
+        task_id="implement-recovery",
+        accountable_owner="Backend_Service_Engineer",
+        expected_result="A verified recovery implementation",
+        completion_criteria=("independent recovery test passes",),
+        execution_run_id=run.run_id,
+        execution_task_id="implement-recovery",
+        authority_scope=("repository:api",),
+        exact_tools=("file.read",),
+        path_scopes=("repository:api",),
+        limits=(MissionResourceLimit(name="wall_time", value=1800, unit="seconds"),),
+        required_evidence=("test report",),
+    )
+    missions.record_assignment(assignment)
+    missions.transition(
+        MissionTransition(
+            mission_id=mission.mission_id,
+            from_state=MissionState.CLARIFYING,
+            to_state=MissionState.PLANNED,
+            actor_or_cause="PM+CTO",
+            reason="The mission has an accepted Brief, crew, and bound task",
+            affected_scope=("mission:all",),
+            evidence_references=(f"assignment:{assignment.assignment_id}",),
+        ),
+        expected_revision=3,
+    )
+    missions.transition(
+        MissionTransition(
+            mission_id=mission.mission_id,
+            from_state=MissionState.PLANNED,
+            to_state=MissionState.ACTIVE,
+            actor_or_cause="Mission_Lead",
+            reason="The bound task is ready for a governed claim",
+            affected_scope=("task:implement-recovery",),
+            evidence_references=(f"run:{run.run_id}",),
+        ),
+        expected_revision=4,
+    )
+    request = MissionTaskClaimRequest(
+        mission_id=mission.mission_id,
+        mission_revision=5,
+        task_id=assignment.task_id,
+        assignment_revision=assignment.assignment_revision,
+    )
+    command = ApplicationCommand(
+        command_type="mission.task.claim",
+        actor_id=token.principal_id,
+        target_type="mission_task",
+        target_id=f"{mission.mission_id}:{assignment.task_id}",
+        payload={"request": request.model_dump(mode="json")},
+    )
+
+    transport = httpx.ASGITransport(app=create_app(config))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        eligible = await client.get(
+            f"/v1/missions/{mission.mission_id}/tasks/{assignment.task_id}/eligibility",
+            headers=headers,
+        )
+        claimed = await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=command.model_dump(mode="json"),
+        )
+
+    assert eligible.status_code == 200
+    assert eligible.json()["eligible"] is True
+    assert claimed.status_code == 200
+    assert claimed.json()["status"] == "accepted", claimed.json()
+    assert claimed.json()["payload"]["attempt"] == 1
+    assert runs.task_states(run.run_id)[assignment.task_id] == "executing"
 
 
 @pytest.mark.anyio

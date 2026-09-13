@@ -10,6 +10,13 @@ from mishkan.missions.environment import (
     MissionEnvironmentPlanningRequest,
     MissionEnvironmentPlanValidator,
 )
+from mishkan.missions.execution import (
+    MissionTaskClaim,
+    MissionTaskClaimRequest,
+    MissionTaskClaimService,
+    MissionTaskEligibility,
+    MissionTaskGateState,
+)
 from mishkan.missions.models import (
     CrewAssignmentKind,
     CrewSelectionEvidence,
@@ -69,7 +76,12 @@ __all__ = [
     "MissionResourceLimit",
     "MissionState",
     "MissionTaskAssignment",
+    "MissionTaskClaim",
+    "MissionTaskClaimRequest",
+    "MissionTaskClaimService",
+    "MissionTaskEligibility",
     "MissionTaskEnvironmentReadiness",
+    "MissionTaskGateState",
     "MissionTemplateCatalogue",
     "MissionTemplateDefinition",
     "MissionTemplateLoader",

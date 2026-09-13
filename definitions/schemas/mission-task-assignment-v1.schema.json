@@ -106,6 +106,34 @@
       "title": "Exact Tools",
       "type": "array"
     },
+    "execution_run_id": {
+      "anyOf": [
+        {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Execution Run Id"
+    },
+    "execution_task_id": {
+      "anyOf": [
+        {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Execution Task Id"
+    },
     "expected_result": {
       "maxLength": 8192,
       "minLength": 3,

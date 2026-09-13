@@ -56,6 +56,7 @@ from mishkan.missions import (
     MissionCrewRevision,
     MissionRecord,
     MissionTaskAssignment,
+    MissionTaskClaimRequest,
     MissionTransition,
 )
 from mishkan.missions.environment import (
@@ -311,6 +312,9 @@ COMMAND_SEMANTICS = MappingProxyType(
         "mission.assignment.record": CommandSemantics(
             "application.mission.assignment", "coordination", ("mission.assignment.record",)
         ),
+        "mission.task.claim": CommandSemantics(
+            "application.mission.task", "coordination", ("mission.task.claim",)
+        ),
         "mission.transition": CommandSemantics(
             "application.mission.lifecycle", "coordination", ("mission.transition",)
         ),
@@ -421,6 +425,7 @@ _COMMAND_TARGETS = MappingProxyType(
         "mission.escalation.open": ("mission_escalation", "uuid"),
         "mission.intervention.apply": ("mission", "uuid"),
         "mission.assignment.record": ("mission_assignment", "uuid"),
+        "mission.task.claim": ("mission_task", "required"),
         "mission.transition": ("mission", "uuid"),
         "mission.governance.propose": ("mission_governance_request", "uuid"),
         "mission.environment.propose": ("mission_environment_planning_request", "uuid"),
@@ -533,6 +538,7 @@ _COMMAND_PAYLOAD_FIELDS = MappingProxyType(
         "mission.escalation.open": (frozenset({"escalation"}), frozenset()),
         "mission.intervention.apply": (frozenset({"intervention"}), frozenset()),
         "mission.assignment.record": (frozenset({"assignment"}), frozenset()),
+        "mission.task.claim": (frozenset({"request"}), frozenset()),
         "mission.transition": (frozenset({"transition"}), frozenset()),
         "mission.governance.propose": (frozenset({"request"}), frozenset()),
         "mission.environment.propose": (frozenset({"request"}), frozenset()),
@@ -589,6 +595,7 @@ class AuthorizedApplicationCommand:
     mission_escalation: MissionEscalation | None = None
     mission_intervention: MissionIntervention | None = None
     mission_assignment: MissionTaskAssignment | None = None
+    mission_task_claim: MissionTaskClaimRequest | None = None
     mission_transition: MissionTransition | None = None
     mission_governance_request: MissionGovernanceRequest | None = None
     mission_environment_planning_request: MissionEnvironmentPlanningRequest | None = None
@@ -672,6 +679,7 @@ class ApplicationCommandAuthority:
         mission_escalation: MissionEscalation | None = None
         mission_intervention: MissionIntervention | None = None
         mission_assignment: MissionTaskAssignment | None = None
+        mission_task_claim: MissionTaskClaimRequest | None = None
         mission_transition: MissionTransition | None = None
         mission_governance_request: MissionGovernanceRequest | None = None
         mission_environment_planning_request: MissionEnvironmentPlanningRequest | None = None
@@ -1235,6 +1243,17 @@ class ApplicationCommandAuthority:
                     *(f"tool:{item}" for item in mission_assignment.exact_tools),
                     *(f"path:{item}" for item in mission_assignment.path_scopes),
                 )
+            elif normalized.command_type == "mission.task.claim":
+                mission_task_claim = MissionTaskClaimRequest.model_validate(
+                    normalized.payload["request"]
+                )
+                expected_target = f"{mission_task_claim.mission_id}:{mission_task_claim.task_id}"
+                if normalized.target_id != expected_target:
+                    raise ValueError("mission task claim target differs from its request")
+                external_resources = (
+                    f"mission:{mission_task_claim.mission_id}",
+                    f"task:{mission_task_claim.task_id}",
+                )
             elif normalized.command_type == "mission.transition":
                 mission_transition = MissionTransition.model_validate(
                     normalized.payload["transition"]
@@ -1421,6 +1440,7 @@ class ApplicationCommandAuthority:
             mission_escalation=mission_escalation,
             mission_intervention=mission_intervention,
             mission_assignment=mission_assignment,
+            mission_task_claim=mission_task_claim,
             mission_transition=mission_transition,
             mission_governance_request=mission_governance_request,
             mission_environment_planning_request=mission_environment_planning_request,

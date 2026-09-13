@@ -109,6 +109,11 @@ from mishkan.missions.environment import (
     MissionEnvironmentPlanAcceptance,
     MissionEnvironmentPlanningRequest,
 )
+from mishkan.missions.execution import (
+    MissionTaskClaim,
+    MissionTaskClaimRequest,
+    MissionTaskEligibility,
+)
 from mishkan.missions.models import (
     ExecutiveConfirmation,
     MissionBrief,
@@ -270,6 +275,9 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "mission-record-v1.schema.json": MissionRecord,
     "mission-resource-limit-v1.schema.json": MissionResourceLimit,
     "mission-task-assignment-v1.schema.json": MissionTaskAssignment,
+    "mission-task-claim-request-v1.schema.json": MissionTaskClaimRequest,
+    "mission-task-claim-v1.schema.json": MissionTaskClaim,
+    "mission-task-eligibility-v1.schema.json": MissionTaskEligibility,
     "mission-template-catalogue-v1.schema.json": MissionTemplateCatalogue,
     "mission-template-definition-v1.schema.json": MissionTemplateDefinition,
     "mission-transition-v1.schema.json": MissionTransition,

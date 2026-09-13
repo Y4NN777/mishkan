@@ -1,0 +1,274 @@
+{
+  "$defs": {
+    "EnvironmentContextReadiness": {
+      "additionalProperties": false,
+      "properties": {
+        "binding_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Binding Id"
+        },
+        "binding_revision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Binding Revision"
+        },
+        "context_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Context Id",
+          "type": "string"
+        },
+        "plan_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Plan Id"
+        },
+        "plan_version": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Plan Version"
+        },
+        "reason": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/$defs/EnvironmentReadinessState"
+        },
+        "verification_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Verification Id"
+        }
+      },
+      "required": [
+        "context_id",
+        "state",
+        "reason"
+      ],
+      "title": "EnvironmentContextReadiness",
+      "type": "object"
+    },
+    "EnvironmentReadinessState": {
+      "enum": [
+        "not_required",
+        "awaiting_plan",
+        "unresolved",
+        "service_unavailable",
+        "awaiting_binding",
+        "incompatible",
+        "stale",
+        "awaiting_verification",
+        "verification_failed",
+        "verification_uncertain",
+        "eligible"
+      ],
+      "title": "EnvironmentReadinessState",
+      "type": "string"
+    },
+    "MissionTaskEnvironmentReadiness": {
+      "additionalProperties": false,
+      "properties": {
+        "assignment_revision": {
+          "minimum": 1,
+          "title": "Assignment Revision",
+          "type": "integer"
+        },
+        "blockers": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Blockers",
+          "type": "array"
+        },
+        "contexts": {
+          "items": {
+            "$ref": "#/$defs/EnvironmentContextReadiness"
+          },
+          "title": "Contexts",
+          "type": "array"
+        },
+        "environment_ready": {
+          "title": "Environment Ready",
+          "type": "boolean"
+        },
+        "state": {
+          "$ref": "#/$defs/EnvironmentReadinessState"
+        },
+        "task_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Task Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "task_id",
+        "assignment_revision",
+        "state",
+        "environment_ready",
+        "contexts",
+        "blockers"
+      ],
+      "title": "MissionTaskEnvironmentReadiness",
+      "type": "object"
+    },
+    "MissionTaskGateState": {
+      "enum": [
+        "eligible",
+        "paused",
+        "blocked",
+        "cancelled"
+      ],
+      "title": "MissionTaskGateState",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "assignment_revision": {
+      "minimum": 1,
+      "title": "Assignment Revision",
+      "type": "integer"
+    },
+    "blockers": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Blockers",
+      "type": "array"
+    },
+    "blocking_escalation_ids": {
+      "items": {
+        "format": "uuid",
+        "type": "string"
+      },
+      "title": "Blocking Escalation Ids",
+      "type": "array"
+    },
+    "eligible": {
+      "title": "Eligible",
+      "type": "boolean"
+    },
+    "environment": {
+      "$ref": "#/$defs/MissionTaskEnvironmentReadiness"
+    },
+    "execution_run_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Execution Run Id"
+    },
+    "execution_task_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Execution Task Id"
+    },
+    "mission_id": {
+      "format": "uuid",
+      "title": "Mission Id",
+      "type": "string"
+    },
+    "mission_revision": {
+      "minimum": 1,
+      "title": "Mission Revision",
+      "type": "integer"
+    },
+    "run_task_state": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Run Task State"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "state": {
+      "$ref": "#/$defs/MissionTaskGateState"
+    },
+    "task_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Task Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "mission_id",
+    "mission_revision",
+    "task_id",
+    "assignment_revision",
+    "state",
+    "eligible",
+    "environment",
+    "blocking_escalation_ids",
+    "blockers"
+  ],
+  "title": "MissionTaskEligibility",
+  "type": "object"
+}

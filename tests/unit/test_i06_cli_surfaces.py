@@ -93,6 +93,10 @@ class _Client:
         assert mission_id == "mission/id"
         return _Payload("environment-readiness")
 
+    def mission_task_eligibility(self, mission_id: str, task_id: str) -> _Payload:
+        assert (mission_id, task_id) == ("mission/id", "task/id")
+        return _Payload("task-eligibility")
+
     def conversations(
         self,
         *,
@@ -217,6 +221,10 @@ def client(monkeypatch: pytest.MonkeyPatch) -> _Client:
             {"kind": "environment-readiness"},
         ),
         (
+            ("mission", "task-eligibility", "mission/id", "task/id"),
+            {"kind": "task-eligibility"},
+        ),
+        (
             ("conversation", "list", "--mission", "mission/id", "--limit", "6"),
             [{"kind": "conversation"}],
         ),
@@ -310,6 +318,7 @@ def test_chat_posts_through_the_same_durable_message_contract(client: _Client) -
             "proved",
         ),
         ("mission", "create", "--record", "missing.json"),
+        ("mission", "task-claim", "--request", "missing.json"),
         ("mission", "governance-propose", "--request", "missing.json"),
         (
             "mission",
