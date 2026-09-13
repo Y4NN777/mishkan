@@ -63,6 +63,8 @@ from mishkan.events import (
     EventHold as EventEvidenceHold,
 )
 from mishkan.execution import CursorRead, ExecutionSession
+from mishkan.missions import MissionBrief, MissionCrewRevision, MissionRecord
+from mishkan.organization import OrganizationRosterDefinition
 from mishkan.skills.models import (
     SkillCurationProposal,
     SkillInvocationEvidence,
@@ -177,6 +179,99 @@ class Mishkan:
         response = self._client.get("/v1/snapshot", headers=self._headers())
         response.raise_for_status()
         return SnapshotEnvelope.model_validate(response.json())
+
+    def organization(self) -> OrganizationRosterDefinition:
+        response = self._client.get("/v1/organization", headers=self._headers())
+        response.raise_for_status()
+        return OrganizationRosterDefinition.model_validate(response.json())
+
+    def create_mission(self, record: MissionRecord) -> MissionRecord:
+        result = self.command(
+            ApplicationCommand(
+                command_type="mission.create",
+                actor_id=self.principal_id,
+                target_type="mission",
+                target_id=str(record.mission_id),
+                expected_revision=0,
+                payload={"record": record.model_dump(mode="json")},
+            )
+        )
+        return MissionRecord.model_validate(result.payload)
+
+    def record_mission_brief(
+        self,
+        brief: MissionBrief,
+        *,
+        expected_revision: int,
+    ) -> MissionBrief:
+        result = self.command(
+            ApplicationCommand(
+                command_type="mission.brief.record",
+                actor_id=self.principal_id,
+                target_type="mission",
+                target_id=str(brief.mission_id),
+                expected_revision=expected_revision,
+                payload={"brief": brief.model_dump(mode="json")},
+            )
+        )
+        return MissionBrief.model_validate(result.payload)
+
+    def record_mission_crew(
+        self,
+        crew: MissionCrewRevision,
+        *,
+        expected_revision: int,
+    ) -> MissionCrewRevision:
+        result = self.command(
+            ApplicationCommand(
+                command_type="mission.crew.record",
+                actor_id=self.principal_id,
+                target_type="mission",
+                target_id=str(crew.mission_id),
+                expected_revision=expected_revision,
+                payload={"crew": crew.model_dump(mode="json")},
+            )
+        )
+        return MissionCrewRevision.model_validate(result.payload)
+
+    def missions(self, *, limit: int = 100) -> tuple[MissionRecord, ...]:
+        response = self._client.get(
+            "/v1/missions",
+            headers=self._headers(),
+            params={"limit": limit},
+        )
+        response.raise_for_status()
+        return tuple(MissionRecord.model_validate(item) for item in response.json())
+
+    def mission(self, mission_id: str) -> MissionRecord:
+        response = self._client.get(f"/v1/missions/{mission_id}", headers=self._headers())
+        response.raise_for_status()
+        return MissionRecord.model_validate(response.json())
+
+    def mission_brief(self, mission_id: str, *, version: int | None = None) -> MissionBrief:
+        params = {} if version is None else {"version": version}
+        response = self._client.get(
+            f"/v1/missions/{mission_id}/brief",
+            headers=self._headers(),
+            params=params,
+        )
+        response.raise_for_status()
+        return MissionBrief.model_validate(response.json())
+
+    def mission_crew(
+        self,
+        mission_id: str,
+        *,
+        version: int | None = None,
+    ) -> MissionCrewRevision:
+        params = {} if version is None else {"version": version}
+        response = self._client.get(
+            f"/v1/missions/{mission_id}/crew",
+            headers=self._headers(),
+            params=params,
+        )
+        response.raise_for_status()
+        return MissionCrewRevision.model_validate(response.json())
 
     def telemetry_status(self) -> TelemetryStatus:
         response = self._client.get("/v1/telemetry/status", headers=self._headers())

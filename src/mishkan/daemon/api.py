@@ -103,6 +103,13 @@ from mishkan.mcp import (
     McpServiceRunner,
 )
 from mishkan.mcp.sdk import McpStdioCommandBuilder
+from mishkan.missions import (
+    MissionBrief,
+    MissionCrewRevision,
+    MissionRecord,
+    SQLiteMissionRepository,
+)
+from mishkan.organization import load_canonical_organization
 from mishkan.persistence import LocalRunRepository, SchemaManager, SQLiteApplicationRepository
 from mishkan.policy import Decision
 from mishkan.policy.models import EffectivePolicy
@@ -522,6 +529,13 @@ def create_app(
     community_recommendations = ContextualRecommendationService(
         CommunityCandidateLoader().load(config.community_candidate_sources, paths.workspace)
     )
+    mission_repository = SQLiteMissionRepository(
+        paths.database,
+        busy_timeout_ms=persistence.busy_timeout_ms,
+    )
+    # Loading the daemon must not advance the public event cursor. The immutable
+    # roster is persisted as reference data; explicit roster changes remain events.
+    mission_repository.record_organization(load_canonical_organization(), emit_event=False)
     telemetry_tasks: set[asyncio.Task[object]] = set()
 
     def project_telemetry(
@@ -815,6 +829,7 @@ def create_app(
                                 technical_pack_service,
                                 telemetry_evaluation_service,
                                 community_recommendations,
+                                mission_repository,
                             )
                         except MishkanError as error:
                             result = repository.fail_reserved(
@@ -992,6 +1007,44 @@ def create_app(
             "count": len(candidates),
             "activation_authorized": False,
         }
+
+    @app.get("/v1/organization", response_model=None)
+    async def organization(
+        _principal: TokenRecord = authenticated,
+    ) -> dict[str, object]:
+        roster = load_canonical_organization()
+        return roster.model_dump(mode="json")
+
+    @app.get("/v1/missions", response_model=None)
+    async def mission_list(
+        _principal: TokenRecord = authenticated,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
+    ) -> tuple[dict[str, object], ...]:
+        records = await _thread_call(mission_repository.list_missions, limit=limit)
+        return tuple(record.model_dump(mode="json") for record in records)
+
+    @app.get("/v1/missions/{mission_id}", response_model=MissionRecord)
+    async def mission_get(
+        mission_id: UUID,
+        _principal: TokenRecord = authenticated,
+    ) -> MissionRecord:
+        return await _thread_call(mission_repository.mission, str(mission_id))
+
+    @app.get("/v1/missions/{mission_id}/brief", response_model=MissionBrief)
+    async def mission_brief_get(
+        mission_id: UUID,
+        _principal: TokenRecord = authenticated,
+        version: Annotated[int | None, Query(ge=1)] = None,
+    ) -> MissionBrief:
+        return await _thread_call(mission_repository.brief, str(mission_id), version)
+
+    @app.get("/v1/missions/{mission_id}/crew", response_model=MissionCrewRevision)
+    async def mission_crew_get(
+        mission_id: UUID,
+        _principal: TokenRecord = authenticated,
+        version: Annotated[int | None, Query(ge=1)] = None,
+    ) -> MissionCrewRevision:
+        return await _thread_call(mission_repository.crew, str(mission_id), version)
 
     @app.get("/v1/tools/registry")
     async def tool_registry(
@@ -1574,6 +1627,7 @@ def _dispatch(
     technical_pack_service: TechnicalPackService | None,
     telemetry_evaluation_service: TelemetryEvaluationService,
     community_recommendations: ContextualRecommendationService,
+    mission_repository: SQLiteMissionRepository,
 ) -> tuple[str, dict[str, object]]:
     payload = command.payload
     if command.command_type == "system.checkpoint" and command.target_type == "system":
@@ -1602,6 +1656,36 @@ def _dispatch(
             recommendation_request
         )
         return "context.recommendation_generated", recommendation.model_dump(mode="json")
+    if command.command_type == "mission.create":
+        record = authorized.mission_record
+        if record is None:
+            raise MishkanError(ErrorCode.OUTPUT_CONTRACT, "authorized mission record is absent")
+        created = mission_repository.create_mission(record)
+        return "mission.created", created.model_dump(mode="json")
+    if command.command_type == "mission.brief.record":
+        brief = authorized.mission_brief
+        if brief is None or command.expected_revision is None:
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT,
+                "Mission Brief command requires a record and expected mission revision",
+            )
+        recorded_brief = mission_repository.record_brief(
+            brief,
+            expected_revision=command.expected_revision,
+        )
+        return "mission.brief_recorded", recorded_brief.model_dump(mode="json")
+    if command.command_type == "mission.crew.record":
+        crew = authorized.mission_crew
+        if crew is None or command.expected_revision is None:
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT,
+                "Mission Crew command requires a revision and expected mission revision",
+            )
+        recorded_crew = mission_repository.record_crew(
+            crew,
+            expected_revision=command.expected_revision,
+        )
+        return "mission.crew_recorded", recorded_crew.model_dump(mode="json")
     if command.command_type == "artifact.upload.open":
         upload = artifacts.open_upload(
             expected_size=int(payload["expected_size"]),
@@ -1721,8 +1805,8 @@ def _dispatch(
         effective_request = session_request.model_copy(
             update={"policy_fingerprint": authorized.decision.policy_fingerprint}
         )
-        record = supervisor.start(effective_request, credential_values=resolved_credentials)
-        return "session.started", record.model_dump(mode="json")
+        session_record = supervisor.start(effective_request, credential_values=resolved_credentials)
+        return "session.started", session_record.model_dump(mode="json")
     if command.command_type == "session.write" and command.target_id is not None:
         content = base64.b64decode(str(payload["content_base64"]), validate=True)
         written = supervisor.write(
@@ -1738,14 +1822,14 @@ def _dispatch(
         )
         return "session.resized", {"rows": int(payload["rows"]), "columns": int(payload["columns"])}
     if command.command_type == "session.signal" and command.target_id is not None:
-        record = supervisor.signal(UUID(command.target_id), str(payload["signal"]))
-        return "session.signalled", record.model_dump(mode="json")
+        session_record = supervisor.signal(UUID(command.target_id), str(payload["signal"]))
+        return "session.signalled", session_record.model_dump(mode="json")
     if command.command_type == "session.cancel" and command.target_id is not None:
-        record = supervisor.cancel(UUID(command.target_id))
-        return "session.cancelled", record.model_dump(mode="json")
+        session_record = supervisor.cancel(UUID(command.target_id))
+        return "session.cancelled", session_record.model_dump(mode="json")
     if command.command_type == "session.settle" and command.target_id is not None:
-        record = supervisor.settle(UUID(command.target_id))
-        return "session.settled", record.model_dump(mode="json")
+        session_record = supervisor.settle(UUID(command.target_id))
+        return "session.settled", session_record.model_dump(mode="json")
     if command.command_type == "run.cancel" and command.target_id is not None:
         snapshot = runs.cancel_run(command.target_id)
         return "run.cancellation_requested", {"run_id": snapshot.run_id}

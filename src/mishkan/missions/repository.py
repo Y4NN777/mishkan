@@ -44,7 +44,10 @@ class SQLiteMissionRepository:
         self._engine = create_local_engine(database_path, busy_timeout_ms=busy_timeout_ms)
 
     def record_organization(
-        self, organization: OrganizationRosterDefinition
+        self,
+        organization: OrganizationRosterDefinition,
+        *,
+        emit_event: bool = True,
     ) -> OrganizationRosterDefinition:
         payload = self._json(organization)
         fingerprint = hashlib.sha256(payload.encode()).hexdigest()
@@ -62,18 +65,19 @@ class SQLiteMissionRepository:
                     recorded_at=utc_now().isoformat(),
                 )
             )
-            self._event(
-                session,
-                aggregate_id=organization.organization_id,
-                entity_type="organization",
-                event_type="organization.roster_recorded",
-                payload={
-                    "organization_id": organization.organization_id,
-                    "organization_version": organization.organization_version,
-                    "fingerprint": fingerprint,
-                    "identity_count": len(organization.identities),
-                },
-            )
+            if emit_event:
+                self._event(
+                    session,
+                    aggregate_id=organization.organization_id,
+                    entity_type="organization",
+                    event_type="organization.roster_recorded",
+                    payload={
+                        "organization_id": organization.organization_id,
+                        "organization_version": organization.organization_version,
+                        "fingerprint": fingerprint,
+                        "identity_count": len(organization.identities),
+                    },
+                )
         return organization
 
     def create_mission(self, record: MissionRecord) -> MissionRecord:

@@ -43,6 +43,7 @@ from mishkan.environment import (
     EnvironmentVerificationRequest,
 )
 from mishkan.execution import ExecutionRequest, ExecutionSession
+from mishkan.missions import MissionBrief, MissionCrewRevision, MissionRecord
 from mishkan.policy import (
     AuthorizationDecision,
     AuthorizationRequest,
@@ -260,6 +261,15 @@ COMMAND_SEMANTICS = MappingProxyType(
         "context.recommend": CommandSemantics(
             "application.context.recommend", "read", ("context.recommend",)
         ),
+        "mission.create": CommandSemantics(
+            "application.mission.lifecycle", "coordination", ("mission.create",)
+        ),
+        "mission.brief.record": CommandSemantics(
+            "application.mission.brief", "coordination", ("mission.brief.record",)
+        ),
+        "mission.crew.record": CommandSemantics(
+            "application.mission.crew", "coordination", ("mission.crew.record",)
+        ),
         **{
             f"registry.entry.{action.value}": CommandSemantics(
                 "application.registry.lifecycle",
@@ -330,6 +340,9 @@ _COMMAND_TARGETS = MappingProxyType(
         "environment.binding.invalidate": ("environment_binding", "uuid"),
         "telemetry.evaluation.import": ("telemetry_evaluation", "uuid"),
         "context.recommend": ("context_recommendation", "uuid"),
+        "mission.create": ("mission", "uuid"),
+        "mission.brief.record": ("mission", "uuid"),
+        "mission.crew.record": ("mission", "uuid"),
         **{
             f"registry.entry.{action.value}": ("registry_entry", "required")
             for action in RegistryLifecycleAction
@@ -426,6 +439,9 @@ _COMMAND_PAYLOAD_FIELDS = MappingProxyType(
         "environment.binding.invalidate": (frozenset({"invalidation"}), frozenset()),
         "telemetry.evaluation.import": (frozenset({"request"}), frozenset()),
         "context.recommend": (frozenset({"request"}), frozenset()),
+        "mission.create": (frozenset({"record"}), frozenset()),
+        "mission.brief.record": (frozenset({"brief"}), frozenset()),
+        "mission.crew.record": (frozenset({"crew"}), frozenset()),
         "registry.entry.add": (frozenset({"entry_kind", "definition"}), frozenset()),
         "registry.entry.enable": (frozenset({"entry_kind"}), frozenset()),
         "registry.entry.disable": (frozenset({"entry_kind"}), frozenset()),
@@ -463,6 +479,9 @@ class AuthorizedApplicationCommand:
     environment_invalidation: EnvironmentInvalidation | None = None
     telemetry_evaluation: LangSmithFeedbackImportRequest | None = None
     context_recommendation: ContextualRecommendationRequest | None = None
+    mission_record: MissionRecord | None = None
+    mission_brief: MissionBrief | None = None
+    mission_crew: MissionCrewRevision | None = None
 
 
 class ApplicationCommandAuthority:
@@ -530,6 +549,9 @@ class ApplicationCommandAuthority:
         environment_invalidation: EnvironmentInvalidation | None = None
         telemetry_evaluation: LangSmithFeedbackImportRequest | None = None
         context_recommendation: ContextualRecommendationRequest | None = None
+        mission_record: MissionRecord | None = None
+        mission_brief: MissionBrief | None = None
+        mission_crew: MissionCrewRevision | None = None
 
         try:
             if normalized.command_type == "run.initialize":
@@ -980,6 +1002,39 @@ class ApplicationCommandAuthority:
                     *(f"candidate:{item}" for item in context_recommendation.candidate_ids),
                     *(f"evidence:{item}" for item in context_recommendation.project_evidence),
                 )
+            elif normalized.command_type == "mission.create":
+                mission_record = MissionRecord.model_validate(normalized.payload["record"])
+                if normalized.target_id != str(mission_record.mission_id):
+                    raise ValueError("mission target differs from its immutable identity")
+                if normalized.expected_revision not in {None, 0} or mission_record.revision != 0:
+                    raise ValueError("new mission must begin at revision zero")
+                external_resources = (
+                    f"organization:{mission_record.organization_id}"
+                    f"@{mission_record.organization_version}",
+                    f"mission-origin:{mission_record.origin.origin_id}",
+                )
+            elif normalized.command_type == "mission.brief.record":
+                mission_brief = MissionBrief.model_validate(normalized.payload["brief"])
+                if normalized.target_id != str(mission_brief.mission_id):
+                    raise ValueError("Mission Brief target differs from its mission identity")
+                if normalized.expected_revision is None:
+                    raise ValueError("Mission Brief command requires expected mission revision")
+                external_resources = (
+                    f"mission:{mission_brief.mission_id}",
+                    f"organization:{mission_brief.organization_id}"
+                    f"@{mission_brief.organization_version}",
+                )
+            elif normalized.command_type == "mission.crew.record":
+                mission_crew = MissionCrewRevision.model_validate(normalized.payload["crew"])
+                if normalized.target_id != str(mission_crew.mission_id):
+                    raise ValueError("Mission Crew target differs from its mission identity")
+                if normalized.expected_revision is None:
+                    raise ValueError("Mission Crew command requires expected mission revision")
+                external_resources = (
+                    f"mission:{mission_crew.mission_id}",
+                    f"mission-brief:{mission_crew.mission_id}:{mission_crew.brief_version}",
+                    *(f"identity:{member.identity_id}" for member in mission_crew.members),
+                )
             elif normalized.target_id is not None:
                 external_resources = (f"{normalized.target_type}:{normalized.target_id}",)
         except (KeyError, TypeError, ValueError, ValidationError) as exc:
@@ -1037,6 +1092,9 @@ class ApplicationCommandAuthority:
             environment_invalidation=environment_invalidation,
             telemetry_evaluation=telemetry_evaluation,
             context_recommendation=context_recommendation,
+            mission_record=mission_record,
+            mission_brief=mission_brief,
+            mission_crew=mission_crew,
         )
 
     @staticmethod

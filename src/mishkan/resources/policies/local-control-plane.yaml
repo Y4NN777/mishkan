@@ -1,6 +1,6 @@
 schema_version: "1.0"
 source_id: bundled.local
-revision: "21"
+revision: "22"
 adoption_authority: MISHKAN release
 priority: 0
 rules:
@@ -165,6 +165,9 @@ rules:
         - environment.binding.invalidate
         - telemetry.evaluation.import
         - context.recommend
+        - mission.create
+        - mission.brief.record
+        - mission.crew.record
       roles: [application-client]
       capabilities:
         - application.system.checkpoint
@@ -202,6 +205,9 @@ rules:
         - application.environment.invalidate
         - application.telemetry.evaluation
         - application.context.recommend
+        - application.mission.lifecycle
+        - application.mission.brief
+        - application.mission.crew
       effect_classes: [read, control, coordination, artifact, filesystem, process, external, registry_lifecycle, skill_lifecycle]
       effects: ["*"]
       paths: ["*"]
