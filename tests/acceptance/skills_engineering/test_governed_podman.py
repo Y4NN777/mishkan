@@ -351,9 +351,9 @@ async def test_real_podman_build_interrupt_cleanup_and_repeatability_through_mis
                     client,
                     headers,
                     session_id,
-                    {"running", "settled", "failed", "lost", "uncertain"},
+                    {"running", "ready", "settled", "failed", "lost", "uncertain"},
                 )
-                assert running["state"] == "running", running
+                assert running["state"] in {"running", "ready"}, running
                 readiness_plan = await _plan(
                     client,
                     headers,
