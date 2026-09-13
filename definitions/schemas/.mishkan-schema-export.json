@@ -68,6 +68,7 @@
     "mcp-discovery-v1.schema.json",
     "mcp-primitive-v1.schema.json",
     "mcp-progress-v1.schema.json",
+    "organization-roster-v1.schema.json",
     "recommendation-criterion-v1.schema.json",
     "run-initialization-request-v1.schema.json",
     "skill-bundle-definition-v1.schema.json",

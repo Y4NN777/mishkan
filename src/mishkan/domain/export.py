@@ -89,6 +89,7 @@ from mishkan.mcp.models import (
     McpPrimitiveDescriptor,
     McpProgressEvent,
 )
+from mishkan.organization.models import OrganizationRosterDefinition
 from mishkan.runtime import TaskReviewRejection
 from mishkan.skills.models import (
     SkillBundleDefinition,
@@ -206,6 +207,7 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "mcp-discovery-v1.schema.json": McpDiscoverySnapshot,
     "mcp-primitive-v1.schema.json": McpPrimitiveDescriptor,
     "mcp-progress-v1.schema.json": McpProgressEvent,
+    "organization-roster-v1.schema.json": OrganizationRosterDefinition,
     "langsmith-feedback-import-request-v1.schema.json": LangSmithFeedbackImportRequest,
     "run-initialization-request-v1.schema.json": RunInitializationRequest,
     "skill-bundle-definition-v1.schema.json": SkillBundleDefinition,

@@ -148,6 +148,7 @@ def test_public_contract_catalogue_exports_deterministically(tmp_path: Path) -> 
         "mcp-discovery-v1.schema.json",
         "mcp-primitive-v1.schema.json",
         "mcp-progress-v1.schema.json",
+        "organization-roster-v1.schema.json",
         "recommendation-criterion-v1.schema.json",
         "langsmith-feedback-import-request-v1.schema.json",
         "run-initialization-request-v1.schema.json",

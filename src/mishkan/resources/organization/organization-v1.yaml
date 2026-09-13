@@ -1,0 +1,434 @@
+schema_version: "1.0"
+organization_id: mishkan-organization
+organization_version: "1"
+
+branches:
+  - branch_id: executive
+    name: Executive
+    executive_sponsor: null
+    independent: false
+  - branch_id: product-experience
+    name: Product and Experience
+    executive_sponsor: PM
+    independent: false
+  - branch_id: architecture-system-design
+    name: Architecture and System Design
+    executive_sponsor: CTO
+    independent: false
+  - branch_id: software-engineering
+    name: Software Engineering
+    executive_sponsor: CTO
+    independent: false
+  - branch_id: data-ai-engineering
+    name: Data and AI Engineering
+    executive_sponsor: CTO
+    independent: false
+  - branch_id: platform-delivery-reliability
+    name: Platform, Delivery, and Reliability
+    executive_sponsor: CTO
+    independent: false
+  - branch_id: security-supply-chain
+    name: Security and Supply Chain
+    executive_sponsor: CTO
+    independent: false
+  - branch_id: independent-assurance
+    name: Independent Assurance
+    executive_sponsor: null
+    independent: true
+  - branch_id: research-decision-support
+    name: Research and Decision Support
+    executive_sponsor: null
+    independent: true
+  - branch_id: documentation-organizational-learning
+    name: Documentation and Organizational Learning
+    executive_sponsor: null
+    independent: true
+
+pools:
+  - pool_id: software-engineering
+    name: Software Engineering Pool
+    members:
+      - Web_Application_Engineer
+      - Android_Engineer
+      - Apple_Platform_Engineer
+      - Backend_Service_Engineer
+      - Desktop_TUI_Engineer
+      - Systems_Software_Engineer
+      - Integration_SDK_Engineer
+  - pool_id: quality-evaluation
+    name: Quality Evaluation Pool
+    members:
+      - Product_Functional_Evaluator
+      - Software_Technical_Evaluator
+      - Mobile_Application_Evaluator
+      - Accessibility_Evaluator
+      - Performance_Resilience_Evaluator
+      - Data_AI_Evaluator
+      - Platform_Release_Evaluator
+  - pool_id: security-evaluation
+    name: Security Evaluation Pool
+    members:
+      - Application_Security_Evaluator
+      - Platform_Infrastructure_Security_Evaluator
+      - Identity_Access_Security_Evaluator
+      - SupplyChain_Security_Evaluator
+      - Data_AI_Security_Evaluator
+  - pool_id: mission-reporting
+    name: Mission Reporting Pool
+    members:
+      - Product_Delivery_Reporter
+      - Technical_Change_Reporter
+      - Incident_Operations_Reporter
+  - pool_id: documentation
+    name: Documentation Pool
+    members:
+      - Product_Documentation_Specialist
+      - Developer_Documentation_Specialist
+      - Architecture_Documentation_Specialist
+      - Operations_Documentation_Specialist
+      - Security_Documentation_Specialist
+
+identities:
+  - identity_id: PM
+    branch_id: executive
+    responsibility: Own product purpose, priorities, functional acceptance, and formal Mission Crew composition.
+    independence_class: executive
+    authority_limits: [mission.product-governance]
+    mission_lead_eligible: true
+  - identity_id: CTO
+    branch_id: executive
+    responsibility: Own technical direction, feasibility, risk coverage, and technical readiness.
+    independence_class: executive
+    authority_limits: [mission.technical-governance]
+    mission_lead_eligible: true
+  - identity_id: Product_Analyst
+    branch_id: product-experience
+    responsibility: Clarify product problems, actors, outcomes, constraints, and measurable acceptance evidence.
+    independence_class: production
+    authority_limits: [mission.assigned-work]
+  - identity_id: UX_Researcher
+    branch_id: product-experience
+    responsibility: Produce attributable user and workflow research for product decisions.
+    independence_class: production
+    authority_limits: [mission.assigned-work]
+  - identity_id: Product_Designer
+    branch_id: product-experience
+    responsibility: Design coherent product interaction and visual behavior from accepted evidence.
+    independence_class: production
+    authority_limits: [mission.assigned-work]
+  - identity_id: Accessibility_Specialist
+    branch_id: product-experience
+    responsibility: Define accessible product requirements and implementation guidance.
+    independence_class: production
+    authority_limits: [mission.assigned-work]
+  - identity_id: System_Architect
+    branch_id: architecture-system-design
+    responsibility: Model system boundaries, behavior, quality attributes, and cross-system tradeoffs.
+    independence_class: production
+    authority_limits: [mission.assigned-work]
+  - identity_id: Software_Architect
+    branch_id: architecture-system-design
+    responsibility: Define software structures, contracts, dependencies, and evolution constraints.
+    independence_class: production
+    authority_limits: [mission.assigned-work]
+  - identity_id: Integration_Architect
+    branch_id: architecture-system-design
+    responsibility: Define integration boundaries, protocols, compatibility, and failure behavior.
+    independence_class: production
+    authority_limits: [mission.assigned-work]
+  - identity_id: Software_EngineeringLead
+    branch_id: software-engineering
+    responsibility: Coordinate engineering delivery, technical decomposition, and accountable implementation ownership.
+    independence_class: production
+    authority_limits: [mission.assigned-work]
+  - identity_id: Web_Application_Engineer
+    branch_id: software-engineering
+    responsibility: Build and maintain web application systems across client and server boundaries.
+    independence_class: production
+    authority_limits: [mission.assigned-work]
+    pool_memberships: [software-engineering]
+  - identity_id: Android_Engineer
+    branch_id: software-engineering
+    responsibility: Build and maintain Android applications and platform integrations.
+    independence_class: production
+    authority_limits: [mission.assigned-work]
+    pool_memberships: [software-engineering]
+  - identity_id: Apple_Platform_Engineer
+    branch_id: software-engineering
+    responsibility: Build and maintain applications and integrations for Apple platforms.
+    independence_class: production
+    authority_limits: [mission.assigned-work]
+    pool_memberships: [software-engineering]
+  - identity_id: Backend_Service_Engineer
+    branch_id: software-engineering
+    responsibility: Build and maintain backend services, APIs, and service-side domain logic.
+    independence_class: production
+    authority_limits: [mission.assigned-work]
+    pool_memberships: [software-engineering]
+  - identity_id: Desktop_TUI_Engineer
+    branch_id: software-engineering
+    responsibility: Build and maintain desktop and terminal user interfaces.
+    independence_class: production
+    authority_limits: [mission.assigned-work]
+    pool_memberships: [software-engineering]
+  - identity_id: Systems_Software_Engineer
+    branch_id: software-engineering
+    responsibility: Build and maintain low-level, concurrent, and operating-system-facing software.
+    independence_class: production
+    authority_limits: [mission.assigned-work]
+    pool_memberships: [software-engineering]
+  - identity_id: Integration_SDK_Engineer
+    branch_id: software-engineering
+    responsibility: Build and maintain SDKs, client libraries, and integration tooling.
+    independence_class: production
+    authority_limits: [mission.assigned-work]
+    pool_memberships: [software-engineering]
+  - identity_id: Data_Lead
+    branch_id: data-ai-engineering
+    responsibility: Coordinate data and AI delivery, governance, and technical decomposition.
+    independence_class: production
+    authority_limits: [mission.assigned-work]
+  - identity_id: Database_Engineer
+    branch_id: data-ai-engineering
+    responsibility: Design and maintain transactional, analytical, and vector data stores.
+    independence_class: production
+    authority_limits: [mission.assigned-work]
+  - identity_id: Data_Engineer
+    branch_id: data-ai-engineering
+    responsibility: Build and maintain data ingestion, transformation, quality, and lineage systems.
+    independence_class: production
+    authority_limits: [mission.assigned-work]
+  - identity_id: AI_Engineer
+    branch_id: data-ai-engineering
+    responsibility: Build and evaluate model, retrieval, agentic, and AI application systems.
+    independence_class: production
+    authority_limits: [mission.assigned-work]
+  - identity_id: Platform_Lead
+    branch_id: platform-delivery-reliability
+    responsibility: Coordinate platform, delivery, reliability, and operational readiness work.
+    independence_class: production
+    authority_limits: [mission.assigned-work]
+  - identity_id: Platform_Engineer
+    branch_id: platform-delivery-reliability
+    responsibility: Build and maintain runtime platforms, infrastructure abstractions, and developer environments.
+    independence_class: production
+    authority_limits: [mission.assigned-work]
+  - identity_id: Delivery_Engineer
+    branch_id: platform-delivery-reliability
+    responsibility: Build and maintain CI, release, deployment, and delivery automation.
+    independence_class: production
+    authority_limits: [mission.assigned-work]
+  - identity_id: Reliability_Engineer
+    branch_id: platform-delivery-reliability
+    responsibility: Design and operate observability, resilience, incident, and recovery practices.
+    independence_class: production
+    authority_limits: [mission.assigned-work]
+  - identity_id: Security_Lead
+    branch_id: security-supply-chain
+    responsibility: Coordinate security architecture, risk coverage, and security delivery.
+    independence_class: production
+    authority_limits: [mission.assigned-work]
+  - identity_id: Product_Security_Engineer
+    branch_id: security-supply-chain
+    responsibility: Build product security controls and remediate application security risks.
+    independence_class: production
+    authority_limits: [mission.assigned-work]
+  - identity_id: Platform_Security_Engineer
+    branch_id: security-supply-chain
+    responsibility: Build infrastructure, identity, runtime, and platform security controls.
+    independence_class: production
+    authority_limits: [mission.assigned-work]
+  - identity_id: SupplyChain_Security_Engineer
+    branch_id: security-supply-chain
+    responsibility: Build dependency, build, artifact, and release supply-chain security controls.
+    independence_class: production
+    authority_limits: [mission.assigned-work]
+  - identity_id: Quality_Lead
+    branch_id: independent-assurance
+    responsibility: Coordinate independent evaluation coverage without producing the evaluated artifact.
+    independence_class: independent_assurance
+    authority_limits: [evaluation.assigned-scope]
+    mission_lead_eligible: false
+  - identity_id: Product_Functional_Evaluator
+    branch_id: independent-assurance
+    responsibility: Independently evaluate functional behavior against product acceptance criteria.
+    independence_class: independent_assurance
+    authority_limits: [evaluation.assigned-scope]
+    pool_memberships: [quality-evaluation]
+    mission_lead_eligible: false
+  - identity_id: Software_Technical_Evaluator
+    branch_id: independent-assurance
+    responsibility: Independently evaluate software correctness, maintainability, and contract conformance.
+    independence_class: independent_assurance
+    authority_limits: [evaluation.assigned-scope]
+    pool_memberships: [quality-evaluation]
+    mission_lead_eligible: false
+  - identity_id: Mobile_Application_Evaluator
+    branch_id: independent-assurance
+    responsibility: Independently evaluate Android and Apple application behavior and platform integration.
+    independence_class: independent_assurance
+    authority_limits: [evaluation.assigned-scope]
+    pool_memberships: [quality-evaluation]
+    mission_lead_eligible: false
+  - identity_id: Accessibility_Evaluator
+    branch_id: independent-assurance
+    responsibility: Independently evaluate accessibility requirements and user-impact evidence.
+    independence_class: independent_assurance
+    authority_limits: [evaluation.assigned-scope]
+    pool_memberships: [quality-evaluation]
+    mission_lead_eligible: false
+  - identity_id: Performance_Resilience_Evaluator
+    branch_id: independent-assurance
+    responsibility: Independently evaluate performance, resilience, recovery, and operating limits.
+    independence_class: independent_assurance
+    authority_limits: [evaluation.assigned-scope]
+    pool_memberships: [quality-evaluation]
+    mission_lead_eligible: false
+  - identity_id: Data_AI_Evaluator
+    branch_id: independent-assurance
+    responsibility: Independently evaluate data and AI correctness, quality, and model behavior.
+    independence_class: independent_assurance
+    authority_limits: [evaluation.assigned-scope]
+    pool_memberships: [quality-evaluation]
+    mission_lead_eligible: false
+  - identity_id: Platform_Release_Evaluator
+    branch_id: independent-assurance
+    responsibility: Independently evaluate platform and release readiness evidence.
+    independence_class: independent_assurance
+    authority_limits: [evaluation.assigned-scope]
+    pool_memberships: [quality-evaluation]
+    mission_lead_eligible: false
+  - identity_id: Application_Security_Evaluator
+    branch_id: independent-assurance
+    responsibility: Independently evaluate application security controls and findings.
+    independence_class: independent_assurance
+    authority_limits: [evaluation.assigned-scope]
+    pool_memberships: [security-evaluation]
+    mission_lead_eligible: false
+  - identity_id: Platform_Infrastructure_Security_Evaluator
+    branch_id: independent-assurance
+    responsibility: Independently evaluate platform and infrastructure security evidence.
+    independence_class: independent_assurance
+    authority_limits: [evaluation.assigned-scope]
+    pool_memberships: [security-evaluation]
+    mission_lead_eligible: false
+  - identity_id: Identity_Access_Security_Evaluator
+    branch_id: independent-assurance
+    responsibility: Independently evaluate identity, authentication, authorization, and access controls.
+    independence_class: independent_assurance
+    authority_limits: [evaluation.assigned-scope]
+    pool_memberships: [security-evaluation]
+    mission_lead_eligible: false
+  - identity_id: SupplyChain_Security_Evaluator
+    branch_id: independent-assurance
+    responsibility: Independently evaluate dependency, build, artifact, and release provenance controls.
+    independence_class: independent_assurance
+    authority_limits: [evaluation.assigned-scope]
+    pool_memberships: [security-evaluation]
+    mission_lead_eligible: false
+  - identity_id: Data_AI_Security_Evaluator
+    branch_id: independent-assurance
+    responsibility: Independently evaluate data and AI security, privacy, and abuse controls.
+    independence_class: independent_assurance
+    authority_limits: [evaluation.assigned-scope]
+    pool_memberships: [security-evaluation]
+    mission_lead_eligible: false
+  - identity_id: Product_Delivery_Reporter
+    branch_id: independent-assurance
+    responsibility: Report product scope, acceptance, delivery, and unresolved product evidence.
+    independence_class: independent_assurance
+    authority_limits: [reporting.assigned-scope]
+    pool_memberships: [mission-reporting]
+    mission_lead_eligible: false
+  - identity_id: Technical_Change_Reporter
+    branch_id: independent-assurance
+    responsibility: Report technical changes, verification, limitations, and residual risks.
+    independence_class: independent_assurance
+    authority_limits: [reporting.assigned-scope]
+    pool_memberships: [mission-reporting]
+    mission_lead_eligible: false
+  - identity_id: Incident_Operations_Reporter
+    branch_id: independent-assurance
+    responsibility: Report incident chronology, operational evidence, recovery, and follow-up actions.
+    independence_class: independent_assurance
+    authority_limits: [reporting.assigned-scope]
+    pool_memberships: [mission-reporting]
+    mission_lead_eligible: false
+  - identity_id: Evidence_Auditor
+    branch_id: independent-assurance
+    responsibility: Audit evidence completeness, attribution, integrity, and contradiction without producing outcomes.
+    independence_class: independent_assurance
+    authority_limits: [audit.assigned-scope]
+    mission_lead_eligible: false
+  - identity_id: Research_Clarificator
+    branch_id: research-decision-support
+    responsibility: Clarify ambiguous research questions, claims, scope, and decision needs.
+    independence_class: research
+    authority_limits: [research.assigned-scope]
+  - identity_id: Research_Formulator
+    branch_id: research-decision-support
+    responsibility: Formulate answerable research questions, hypotheses, criteria, and evidence plans.
+    independence_class: research
+    authority_limits: [research.assigned-scope]
+  - identity_id: Research_Investigator
+    branch_id: research-decision-support
+    responsibility: Gather attributable primary and contextual evidence for bounded research questions.
+    independence_class: research
+    authority_limits: [research.assigned-scope]
+  - identity_id: Research_Synthesizer
+    branch_id: research-decision-support
+    responsibility: Synthesize cited evidence, alternatives, uncertainty, and decision implications.
+    independence_class: research
+    authority_limits: [research.assigned-scope]
+  - identity_id: Research_Evaluator
+    branch_id: research-decision-support
+    responsibility: Independently evaluate research method, evidence quality, and supported conclusions.
+    independence_class: research
+    authority_limits: [evaluation.assigned-scope]
+    mission_lead_eligible: false
+  - identity_id: Research_Reporter
+    branch_id: research-decision-support
+    responsibility: Report research findings, provenance, disagreement, and decision-ready conclusions.
+    independence_class: research
+    authority_limits: [reporting.assigned-scope]
+    mission_lead_eligible: false
+  - identity_id: Product_Documentation_Specialist
+    branch_id: documentation-organizational-learning
+    responsibility: Create and maintain product-facing documentation from accepted product evidence.
+    independence_class: documentation
+    authority_limits: [documentation.assigned-scope]
+    pool_memberships: [documentation]
+  - identity_id: Developer_Documentation_Specialist
+    branch_id: documentation-organizational-learning
+    responsibility: Create and maintain developer tutorials, how-to guides, references, and explanations.
+    independence_class: documentation
+    authority_limits: [documentation.assigned-scope]
+    pool_memberships: [documentation]
+  - identity_id: Architecture_Documentation_Specialist
+    branch_id: documentation-organizational-learning
+    responsibility: Create and maintain architecture decisions, models, and system references.
+    independence_class: documentation
+    authority_limits: [documentation.assigned-scope]
+    pool_memberships: [documentation]
+  - identity_id: Operations_Documentation_Specialist
+    branch_id: documentation-organizational-learning
+    responsibility: Create and maintain operational procedures, runbooks, and recovery guidance.
+    independence_class: documentation
+    authority_limits: [documentation.assigned-scope]
+    pool_memberships: [documentation]
+  - identity_id: Security_Documentation_Specialist
+    branch_id: documentation-organizational-learning
+    responsibility: Create and maintain security guidance, threat documentation, and audit references.
+    independence_class: documentation
+    authority_limits: [documentation.assigned-scope]
+    pool_memberships: [documentation]
+  - identity_id: Knowledge_Curator
+    branch_id: documentation-organizational-learning
+    responsibility: Curate attributable organizational knowledge, scope, freshness, and contradictions.
+    independence_class: documentation
+    authority_limits: [curation.assigned-scope]
+  - identity_id: Skill_Curator
+    branch_id: documentation-organizational-learning
+    responsibility: Curate skill provenance, lifecycle evidence, compatibility, and reusable scope.
+    independence_class: documentation
+    authority_limits: [curation.assigned-scope]
