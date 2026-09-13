@@ -127,17 +127,27 @@ class SubprocessRunner:
 
     @staticmethod
     def _terminate(process: subprocess.Popen[bytes]) -> None:
-        try:
-            os.killpg(process.pid, signal.SIGTERM)
-            process.wait(timeout=0.5)
-        except ProcessLookupError:
+        if not SubprocessRunner._signal_group_or_process(process, signal.SIGTERM):
             return
+        try:
+            process.wait(timeout=0.5)
         except subprocess.TimeoutExpired:
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
+            if not SubprocessRunner._signal_group_or_process(process, signal.SIGKILL):
                 return
             process.wait(timeout=1)
+
+    @staticmethod
+    def _signal_group_or_process(process: subprocess.Popen[bytes], signum: signal.Signals) -> bool:
+        try:
+            os.killpg(process.pid, signum)
+        except PermissionError:
+            try:
+                process.send_signal(signum)
+            except ProcessLookupError:
+                return False
+        except ProcessLookupError:
+            return False
+        return True
 
 
 class ContainerCommand:
