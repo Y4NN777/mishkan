@@ -549,6 +549,30 @@ class SQLiteApplicationRepository:
                 CommandResult.model_validate_json(row.result_payload) if row is not None else None
             )
 
+    def has_accepted_result_for_target(
+        self,
+        *,
+        command_type: str,
+        target_type: str,
+        target_id: str,
+        result_payload: Mapping[str, Any],
+    ) -> bool:
+        """Prove an exact candidate was produced by a prior accepted command."""
+
+        with Session(self._engine) as session:
+            rows = session.scalars(
+                select(CommandRow).where(
+                    CommandRow.command_type == command_type,
+                    CommandRow.target_type == target_type,
+                    CommandRow.target_id == target_id,
+                    CommandRow.status == CommandStatus.ACCEPTED.value,
+                )
+            ).all()
+            return any(
+                CommandResult.model_validate_json(row.result_payload).payload == result_payload
+                for row in rows
+            )
+
     def replay(self, command: ApplicationCommand) -> CommandResult | None:
         """Return an identical command result or reject reuse of its UUID."""
         with Session(self._engine) as session:

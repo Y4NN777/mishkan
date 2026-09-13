@@ -833,6 +833,19 @@ async def test_crewai_environment_plan_requires_explicit_acceptance_and_exact_re
         )
         proposed = MissionEnvironmentPlan.model_validate(proposed_response.json()["payload"])
         before_acceptance = await client.get(f"/v1/missions/{mission.mission_id}", headers=headers)
+        resolver_authored = proposed.model_copy(update={"plan_id": uuid4()})
+        refused_resolver_authored = await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=ApplicationCommand(
+                command_type="mission.environment.accept",
+                actor_id=token.principal_id,
+                target_type="mission",
+                target_id=str(proposed.mission_id),
+                expected_revision=3,
+                payload={"plan": resolver_authored.model_dump(mode="json")},
+            ).model_dump(mode="json"),
+        )
         missing_decision_id = uuid4()
         selected = (
             proposed.contexts[0]
@@ -920,6 +933,9 @@ async def test_crewai_environment_plan_requires_explicit_acceptance_and_exact_re
         )
 
     assert proposed_response.json()["status"] == "accepted"
+    assert refused_resolver_authored.status_code == 200
+    assert refused_resolver_authored.json()["status"] == "refused"
+    assert refused_resolver_authored.json()["error"]["code"] == ErrorCode.PLAN.value
     assert refused_consequential.status_code == 200
     assert refused_consequential.json()["status"] == "refused"
     assert refused_consequential.json()["error"]["code"] == ErrorCode.DECISION_VALIDATION.value

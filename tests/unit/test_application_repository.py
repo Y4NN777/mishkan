@@ -221,6 +221,36 @@ def test_exact_command_retry_returns_original_result(tmp_path: Path) -> None:
     assert len(repository.events().events) == 1
 
 
+def test_exact_accepted_candidate_can_be_proved_from_its_command_target(tmp_path: Path) -> None:
+    repository = _repository(tmp_path)
+    command = ApplicationCommand(
+        command_type="mission.environment.propose",
+        actor_id="local-operator",
+        target_type="mission_environment_planning_request",
+        target_id="request-1",
+        payload={"request": "bounded"},
+    )
+    repository.accept(
+        command,
+        target_id="request-1",
+        event_type="mission.environment_plan_proposed",
+        result_payload={"plan_id": "plan-1", "outcome": "host_native"},
+    )
+
+    assert repository.has_accepted_result_for_target(
+        command_type="mission.environment.propose",
+        target_type="mission_environment_planning_request",
+        target_id="request-1",
+        result_payload={"plan_id": "plan-1", "outcome": "host_native"},
+    )
+    assert not repository.has_accepted_result_for_target(
+        command_type="mission.environment.propose",
+        target_type="mission_environment_planning_request",
+        target_id="request-1",
+        result_payload={"plan_id": "resolver-authored", "outcome": "host_native"},
+    )
+
+
 def test_reserved_precondition_is_rechecked_before_effect_dispatch(tmp_path: Path) -> None:
     repository = _repository(tmp_path)
     first = ApplicationCommand(

@@ -2332,6 +2332,16 @@ def _dispatch(
                 for decision_id in consequential_ids
             },
         )
+        if not repository.has_accepted_result_for_target(
+            command_type="mission.environment.propose",
+            target_type="mission_environment_planning_request",
+            target_id=str(accepted_environment_plan.source_request_id),
+            result_payload=accepted_environment_plan.model_dump(mode="json"),
+        ):
+            raise MishkanError(
+                ErrorCode.PLAN,
+                "environment plan was not produced by its accepted CrewAI proposal command",
+            )
         acceptance = MissionEnvironmentPlanAcceptance(
             plan=accepted_environment_plan,
             accepted_by=command.actor_id,
