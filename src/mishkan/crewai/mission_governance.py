@@ -249,16 +249,6 @@ class CrewAIMissionGovernanceRunner:
         *,
         evidence_references: tuple[str, ...],
     ) -> MissionGovernanceResult:
-        allowed_evidence = set(evidence_references)
-        unattributed = (set(pm.evidence_references) | set(cto.evidence_references)) - (
-            allowed_evidence
-        )
-        if unattributed:
-            raise MishkanError(
-                ErrorCode.PLAN,
-                "CrewAI mission governance output invented an evidence reference",
-                details={"references": sorted(unattributed)},
-            )
         proposed = tuple(pm.proposed_identity_ids)
         approved = tuple(member.identity_id for member in cto.approved_members)
         if len(proposed) != len(set(proposed)):
@@ -274,6 +264,26 @@ class CrewAIMissionGovernanceRunner:
                 ErrorCode.MISSION,
                 "mission proposal references unknown professional identities",
                 details={"unknown": sorted(unknown)},
+            )
+        allowed_evidence = set(evidence_references)
+        crew_selection_references = {
+            reference
+            for member in cto.approved_members
+            for reference in (
+                *member.selection_evidence.project_references,
+                *member.selection_evidence.competence_references,
+                *member.selection_evidence.availability_references,
+                *member.selection_evidence.independence_references,
+            )
+        }
+        unattributed = (
+            set(pm.evidence_references) | set(cto.evidence_references) | crew_selection_references
+        ) - allowed_evidence
+        if unattributed:
+            raise MishkanError(
+                ErrorCode.PLAN,
+                "CrewAI mission governance output invented an evidence reference",
+                details={"references": sorted(unattributed)},
             )
         pm_fingerprint = self._fingerprint(pm)
         cto_fingerprint = self._fingerprint(cto)

@@ -280,6 +280,16 @@ def _governance(
         ),
         unresolved_findings=(),
     )
+    selection_references = tuple(
+        reference
+        for member in cto.approved_members
+        for reference in (
+            *member.selection_evidence.project_references,
+            *member.selection_evidence.competence_references,
+            *member.selection_evidence.availability_references,
+            *member.selection_evidence.independence_references,
+        )
+    )
     return mission, runner.compile(
         mission,
         pm,
@@ -287,6 +297,7 @@ def _governance(
         evidence_references=(
             f"fixture:{scenario.scenario_id}:product",
             f"fixture:{scenario.scenario_id}:technical",
+            *selection_references,
         ),
     )
 

@@ -130,13 +130,30 @@ def _cto(
     )
 
 
+def _governance_evidence_references() -> tuple[str, ...]:
+    return (
+        "evidence:product-analysis",
+        "evidence:technical-review",
+        *tuple(
+            reference
+            for member in _cto().approved_members
+            for reference in (
+                *member.selection_evidence.project_references,
+                *member.selection_evidence.competence_references,
+                *member.selection_evidence.availability_references,
+                *member.selection_evidence.independence_references,
+            )
+        ),
+    )
+
+
 def test_pm_cto_outputs_compile_to_confirmed_brief_and_contextual_crew(tmp_path: Path) -> None:
     runner = CrewAIMissionGovernanceRunner(_config(tmp_path))
     result = runner.compile(
         _mission(),
         _pm(),
         _cto(),
-        evidence_references=("evidence:product-analysis", "evidence:technical-review"),
+        evidence_references=_governance_evidence_references(),
     )
 
     assert result.brief.pm_confirmation is not None
@@ -170,15 +187,12 @@ def test_proposal_runs_bounded_pm_then_cto_crewai_work(
 
     result = runner.propose(
         _mission(),
-        (
+        tuple(
             MissionGovernanceEvidence(
-                reference="evidence:product-analysis",
-                summary="Account recovery is absent",
-            ),
-            MissionGovernanceEvidence(
-                reference="evidence:technical-review",
-                summary="Security and quality coverage were reviewed",
-            ),
+                reference=reference,
+                summary=f"Attributable mission evidence for {reference}",
+            )
+            for reference in _governance_evidence_references()
         ),
     )
 
@@ -199,7 +213,7 @@ def test_cto_rejection_compiles_to_actionable_disagreement_without_a_crew(
         _mission(),
         _pm(),
         _cto("rejected"),
-        evidence_references=("evidence:product-analysis", "evidence:technical-review"),
+        evidence_references=_governance_evidence_references(),
     )
 
     assert result.disposition == "disagreement"
@@ -232,7 +246,7 @@ def test_cto_cannot_silently_replace_the_pm_confirmed_composition(tmp_path: Path
             _mission(),
             _pm(),
             changed,
-            evidence_references=("evidence:product-analysis", "evidence:technical-review"),
+            evidence_references=_governance_evidence_references(),
         )
     assert error.value.envelope.code is ErrorCode.MISSION
 
@@ -245,11 +259,40 @@ def test_governance_rejects_evidence_references_absent_from_the_input(tmp_path: 
             _mission(),
             _pm(),
             _cto(),
-            evidence_references=("evidence:product-analysis",),
+            evidence_references=tuple(
+                reference
+                for reference in _governance_evidence_references()
+                if reference != "evidence:technical-review"
+            ),
         )
 
     assert error.value.envelope.code is ErrorCode.PLAN
     assert error.value.envelope.details == {"references": ["evidence:technical-review"]}
+
+
+def test_governance_rejects_unattributed_crew_selection_evidence(tmp_path: Path) -> None:
+    runner = CrewAIMissionGovernanceRunner(_config(tmp_path))
+    cto = _cto()
+    first = cto.approved_members[0]
+    invented = first.model_copy(
+        update={
+            "selection_evidence": first.selection_evidence.model_copy(
+                update={"availability_references": ("availability:invented",)}
+            )
+        }
+    )
+    changed = cto.model_copy(update={"approved_members": (invented, *cto.approved_members[1:])})
+
+    with pytest.raises(MishkanError) as error:
+        runner.compile(
+            _mission(),
+            _pm(),
+            changed,
+            evidence_references=_governance_evidence_references(),
+        )
+
+    assert error.value.envelope.code is ErrorCode.PLAN
+    assert error.value.envelope.details == {"references": ["availability:invented"]}
 
 
 def test_confirmed_cto_review_requires_complete_i06_coverage() -> None:
