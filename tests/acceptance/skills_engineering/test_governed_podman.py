@@ -231,7 +231,8 @@ async def test_real_podman_build_interrupt_cleanup_and_repeatability_through_mis
     paths = DaemonBootstrap().setup(config)
     token = TokenFile(paths.token_file).read()
     headers = {"Authorization": f"Bearer {token.token}"}
-    profile = load_environment_profile(config.environment.profile_source, tmp_path)  # type: ignore[union-attr]
+    assert config.engineering_profile is not None
+    profile = load_environment_profile(config.engineering_profile, tmp_path)
     observation = EnvironmentObserver(profile).observe(
         tmp_path,
         request=EnvironmentObservationRequest(
