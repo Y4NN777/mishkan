@@ -11,6 +11,7 @@ from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
+from uuid import UUID
 
 import httpx
 
@@ -298,6 +299,13 @@ class Mishkan:
             )
         )
         return MissionGovernanceResult.model_validate(result.payload)
+
+    def open_mission_governance_escalation(
+        self,
+        proposal: MissionGovernanceResult,
+        conversation_id: str,
+    ) -> MissionEscalation:
+        return self.open_mission_escalation(proposal.escalation(UUID(conversation_id)))
 
     def propose_mission_environment(
         self,

@@ -55,6 +55,7 @@ from mishkan.conversations.models import (
 from mishkan.crewai.mission_environment import MissionEnvironmentPlanningOutput
 from mishkan.crewai.mission_governance import (
     CTOMissionReview,
+    MissionGovernanceDisagreement,
     MissionGovernanceRequest,
     MissionGovernanceResult,
     PMMissionProposal,
@@ -211,6 +212,7 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "contextual-recommendation-v1.schema.json": ContextualRecommendation,
     "crewai-cto-mission-review-v1.schema.json": CTOMissionReview,
     "crewai-mission-governance-result-v1.schema.json": MissionGovernanceResult,
+    "crewai-mission-governance-disagreement-v1.schema.json": MissionGovernanceDisagreement,
     "crewai-mission-governance-request-v1.schema.json": MissionGovernanceRequest,
     "crewai-pm-mission-proposal-v1.schema.json": PMMissionProposal,
     "crewai-mission-environment-output-v1.schema.json": MissionEnvironmentPlanningOutput,

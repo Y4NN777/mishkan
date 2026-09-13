@@ -113,6 +113,7 @@ def test_public_contract_catalogue_exports_deterministically(tmp_path: Path) -> 
         "contextual-recommendation-v1.schema.json",
         "crewai-cto-mission-review-v1.schema.json",
         "crewai-mission-governance-result-v1.schema.json",
+        "crewai-mission-governance-disagreement-v1.schema.json",
         "crewai-mission-governance-request-v1.schema.json",
         "crewai-pm-mission-proposal-v1.schema.json",
         "crewai-mission-environment-output-v1.schema.json",

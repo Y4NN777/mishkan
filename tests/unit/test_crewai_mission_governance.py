@@ -1,11 +1,13 @@
 from pathlib import Path
 from typing import Literal
+from uuid import uuid4
 
 import pytest
 
 from mishkan.config.loader import ConfigLoader
 from mishkan.config.models import MishkanConfig
 from mishkan.config.presets import preset_text
+from mishkan.conversations import EscalationOption
 from mishkan.crewai.mission_governance import (
     CrewAIMissionGovernanceRunner,
     CTOMissionReview,
@@ -87,6 +89,7 @@ def _member(identity_id: str, kind: CrewAssignmentKind) -> MissionCrewMember:
 def _cto(
     disposition: Literal["confirmed", "rejected"] = "confirmed",
 ) -> CTOMissionReview:
+    rejected = disposition == "rejected"
     return CTOMissionReview(
         disposition=disposition,
         rationale="Technical, security, quality, and reporting coverage is explicit",
@@ -98,7 +101,29 @@ def _cto(
             _member("Product_Functional_Evaluator", CrewAssignmentKind.EVALUATION),
             _member("Technical_Change_Reporter", CrewAssignmentKind.REPORTING),
         ),
-        unresolved_findings=() if disposition == "confirmed" else ("risk unresolved",),
+        unresolved_findings=() if not rejected else ("risk unresolved",),
+        disputed_scope=() if not rejected else ("task:security-design",),
+        alternatives=(
+            ()
+            if not rejected
+            else (
+                EscalationOption(
+                    option_id="pm-proposal",
+                    description="Proceed with the PM recovery design",
+                    consequences=("delivery continues",),
+                    risks=("security coverage remains disputed",),
+                ),
+                EscalationOption(
+                    option_id="cto-remediation",
+                    description="Add security remediation before implementation",
+                    consequences=("delivery is delayed",),
+                    risks=("product milestone may move",),
+                ),
+            )
+        ),
+        pm_recommended_option_id="pm-proposal" if rejected else None,
+        cto_recommended_option_id="cto-remediation" if rejected else None,
+        independent_work_continuing=("task:documentation",) if rejected else (),
     )
 
 
@@ -115,12 +140,25 @@ def test_pm_cto_outputs_compile_to_confirmed_brief_and_contextual_crew(tmp_path:
     )
 
 
-def test_cto_rejection_cannot_be_compiled_as_executive_agreement(tmp_path: Path) -> None:
+def test_cto_rejection_compiles_to_actionable_disagreement_without_a_crew(
+    tmp_path: Path,
+) -> None:
     runner = CrewAIMissionGovernanceRunner(_config(tmp_path))
 
-    with pytest.raises(MishkanError) as error:
-        runner.compile(_mission(), _pm(), _cto("rejected"))
-    assert error.value.envelope.code is ErrorCode.MISSION
+    result = runner.compile(_mission(), _pm(), _cto("rejected"))
+
+    assert result.disposition == "disagreement"
+    assert result.brief.status.value == "rejected"
+    assert result.crew is None
+    assert result.disagreement is not None
+    assert result.disagreement.blocked_scope == ("task:security-design",)
+    assert result.disagreement.independent_work_continuing == ("task:documentation",)
+    assert {item.identity_id for item in result.disagreement.recommendations} == {"PM", "CTO"}
+    escalation = result.escalation(uuid4())
+    assert escalation.blocked_scope == ("task:security-design",)
+    assert escalation.independent_work_continuing == ("task:documentation",)
+    assert escalation.raised_by == "PM+CTO"
+    assert any(item.startswith("crewai-output:") for item in escalation.evidence_references)
 
 
 def test_cto_cannot_silently_replace_the_pm_confirmed_composition(tmp_path: Path) -> None:

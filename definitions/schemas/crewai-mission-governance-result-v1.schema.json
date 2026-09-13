@@ -72,6 +72,47 @@
       "title": "CrewSelectionEvidence",
       "type": "object"
     },
+    "EscalationOption": {
+      "additionalProperties": false,
+      "properties": {
+        "consequences": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Consequences",
+          "type": "array"
+        },
+        "description": {
+          "maxLength": 4096,
+          "minLength": 3,
+          "title": "Description",
+          "type": "string"
+        },
+        "option_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Option Id",
+          "type": "string"
+        },
+        "risks": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Risks",
+          "type": "array"
+        }
+      },
+      "required": [
+        "option_id",
+        "description",
+        "consequences",
+        "risks"
+      ],
+      "title": "EscalationOption",
+      "type": "object"
+    },
     "ExecutiveConfirmation": {
       "additionalProperties": false,
       "properties": {
@@ -132,6 +173,47 @@
         "coverage"
       ],
       "title": "ExecutiveConfirmation",
+      "type": "object"
+    },
+    "ExecutiveRecommendation": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_references": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Evidence References",
+          "type": "array"
+        },
+        "identity_id": {
+          "enum": [
+            "PM",
+            "CTO"
+          ],
+          "title": "Identity Id",
+          "type": "string"
+        },
+        "rationale": {
+          "maxLength": 4096,
+          "minLength": 3,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "recommended_option_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Recommended Option Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "identity_id",
+        "recommended_option_id",
+        "rationale",
+        "evidence_references"
+      ],
+      "title": "ExecutiveRecommendation",
       "type": "object"
     },
     "MissionBrief": {
@@ -541,6 +623,79 @@
       "title": "MissionEnvironmentIntent",
       "type": "object"
     },
+    "MissionGovernanceDisagreement": {
+      "additionalProperties": false,
+      "properties": {
+        "blocked_scope": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Blocked Scope",
+          "type": "array"
+        },
+        "decision_required": {
+          "maxLength": 8192,
+          "minLength": 3,
+          "title": "Decision Required",
+          "type": "string"
+        },
+        "independent_work_continuing": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Independent Work Continuing",
+          "type": "array"
+        },
+        "options": {
+          "items": {
+            "$ref": "#/$defs/EscalationOption"
+          },
+          "minItems": 2,
+          "title": "Options",
+          "type": "array"
+        },
+        "reason": {
+          "maxLength": 8192,
+          "minLength": 3,
+          "title": "Reason",
+          "type": "string"
+        },
+        "recommendations": {
+          "items": {
+            "$ref": "#/$defs/ExecutiveRecommendation"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "title": "Recommendations",
+          "type": "array"
+        },
+        "requires_ceo_escalation": {
+          "default": true,
+          "title": "Requires Ceo Escalation",
+          "type": "boolean"
+        },
+        "uncertainty": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Uncertainty",
+          "type": "array"
+        }
+      },
+      "required": [
+        "decision_required",
+        "reason",
+        "blocked_scope",
+        "options",
+        "recommendations",
+        "uncertainty",
+        "independent_work_continuing"
+      ],
+      "title": "MissionGovernanceDisagreement",
+      "type": "object"
+    },
     "MissionOrigin": {
       "additionalProperties": false,
       "properties": {
@@ -742,11 +897,38 @@
       "$ref": "#/$defs/MissionBrief"
     },
     "crew": {
-      "$ref": "#/$defs/MissionCrewRevision"
+      "anyOf": [
+        {
+          "$ref": "#/$defs/MissionCrewRevision"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "cto_output_fingerprint": {
       "pattern": "^[0-9a-f]{64}$",
       "title": "Cto Output Fingerprint",
+      "type": "string"
+    },
+    "disagreement": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/MissionGovernanceDisagreement"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "disposition": {
+      "default": "agreed",
+      "enum": [
+        "agreed",
+        "disagreement"
+      ],
+      "title": "Disposition",
       "type": "string"
     },
     "mission": {

@@ -10,9 +10,14 @@ from uuid import UUID
 
 from crewai import LLM, Agent, Crew, Process, Task
 from crewai.crews.crew_output import CrewOutput
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from mishkan.config.models import MishkanConfig
+from mishkan.conversations import (
+    EscalationOption,
+    ExecutiveRecommendation,
+    MissionEscalation,
+)
 from mishkan.crewai.routing import CrewAIModelRouter
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.identity import new_id
@@ -75,14 +80,91 @@ class CTOMissionReview(GovernanceOutput):
     mission_lead_id: str = Field(min_length=2, max_length=128)
     approved_members: tuple[MissionCrewMember, ...] = Field(min_length=2)
     unresolved_findings: tuple[str, ...]
+    disputed_scope: tuple[str, ...] = ()
+    alternatives: tuple[EscalationOption, ...] = ()
+    pm_recommended_option_id: str | None = None
+    cto_recommended_option_id: str | None = None
+    independent_work_continuing: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def rejection_is_actionable(self) -> CTOMissionReview:
+        if self.disposition == "confirmed":
+            return self
+        option_ids = {item.option_id for item in self.alternatives}
+        if (
+            not self.unresolved_findings
+            or not self.disputed_scope
+            or len(self.alternatives) < 2
+            or self.pm_recommended_option_id not in option_ids
+            or self.cto_recommended_option_id not in option_ids
+        ):
+            raise ValueError(
+                "rejected CTO review requires disputed scope, two options, findings, and "
+                "PM/CTO recommendations"
+            )
+        return self
+
+
+class MissionGovernanceDisagreement(GovernanceOutput):
+    decision_required: str = Field(min_length=3, max_length=8_192)
+    reason: str = Field(min_length=3, max_length=8_192)
+    blocked_scope: tuple[str, ...] = Field(min_length=1)
+    options: tuple[EscalationOption, ...] = Field(min_length=2)
+    recommendations: tuple[ExecutiveRecommendation, ...] = Field(min_length=2, max_length=2)
+    uncertainty: tuple[str, ...] = Field(min_length=1)
+    independent_work_continuing: tuple[str, ...]
+    requires_ceo_escalation: bool = True
 
 
 class MissionGovernanceResult(GovernanceOutput):
+    disposition: Literal["agreed", "disagreement"] = "agreed"
     mission: MissionRecord
     brief: MissionBrief
-    crew: MissionCrewRevision
+    crew: MissionCrewRevision | None
+    disagreement: MissionGovernanceDisagreement | None = None
     pm_output_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
     cto_output_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @model_validator(mode="after")
+    def disposition_matches_payload(self) -> MissionGovernanceResult:
+        if self.disposition == "agreed" and (self.crew is None or self.disagreement is not None):
+            raise ValueError("agreed governance requires a crew and no disagreement")
+        if self.disposition == "disagreement" and (
+            self.crew is not None or self.disagreement is None
+        ):
+            raise ValueError("governance disagreement requires escalation data and no crew")
+        return self
+
+    def escalation(self, conversation_id: UUID) -> MissionEscalation:
+        if self.disagreement is None:
+            raise ValueError("agreed mission governance has no escalation")
+        evidence = tuple(
+            dict.fromkeys(
+                (
+                    f"mission-brief:{self.brief.fingerprint}",
+                    f"crewai-output:{self.pm_output_fingerprint}",
+                    f"crewai-output:{self.cto_output_fingerprint}",
+                    *(
+                        reference
+                        for recommendation in self.disagreement.recommendations
+                        for reference in recommendation.evidence_references
+                    ),
+                )
+            )
+        )
+        return MissionEscalation(
+            mission_id=self.mission.mission_id,
+            conversation_id=conversation_id,
+            raised_by="PM+CTO",
+            blocked_scope=self.disagreement.blocked_scope,
+            decision_required=self.disagreement.decision_required,
+            reason=self.disagreement.reason,
+            options=self.disagreement.options,
+            recommendations=self.disagreement.recommendations,
+            uncertainty=self.disagreement.uncertainty,
+            independent_work_continuing=self.disagreement.independent_work_continuing,
+            evidence_references=evidence,
+        )
 
 
 class MissionGovernanceRunner(Protocol):
@@ -128,15 +210,11 @@ class CrewAIMissionGovernanceRunner:
         pm: PMMissionProposal,
         cto: CTOMissionReview,
     ) -> MissionGovernanceResult:
-        if cto.disposition != "confirmed":
-            raise MishkanError(
-                ErrorCode.MISSION,
-                "CTO rejected the proposed mission coverage",
-                details={"unresolved_findings": list(cto.unresolved_findings)},
-            )
         proposed = tuple(pm.proposed_identity_ids)
         approved = tuple(member.identity_id for member in cto.approved_members)
-        if len(proposed) != len(set(proposed)) or set(proposed) != set(approved):
+        if len(proposed) != len(set(proposed)):
+            raise MishkanError(ErrorCode.MISSION, "PM proposed duplicate Mission Crew identities")
+        if cto.disposition == "confirmed" and set(proposed) != set(approved):
             raise MishkanError(
                 ErrorCode.MISSION,
                 "PM and CTO did not confirm the same Mission Crew composition",
@@ -159,7 +237,7 @@ class CrewAIMissionGovernanceRunner:
         )
         cto_confirmation = ExecutiveConfirmation(
             identity_id="CTO",
-            disposition="confirmed",
+            disposition=cto.disposition,
             rationale=cto.rationale,
             evidence_references=(*cto.evidence_references, f"crewai-output:{cto_fingerprint}"),
             coverage=cto.coverage,
@@ -169,7 +247,11 @@ class CrewAIMissionGovernanceRunner:
             version=(mission.current_brief_version or 0) + 1,
             organization_id=mission.organization_id,
             organization_version=mission.organization_version,
-            status=MissionBriefStatus.CONFIRMED,
+            status=(
+                MissionBriefStatus.CONFIRMED
+                if cto.disposition == "confirmed"
+                else MissionBriefStatus.REJECTED
+            ),
             objective=mission.origin.objective,
             problem=pm.problem,
             desired_outcome=pm.desired_outcome,
@@ -186,6 +268,40 @@ class CrewAIMissionGovernanceRunner:
             pm_confirmation=pm_confirmation,
             cto_confirmation=cto_confirmation,
         )
+        if cto.disposition == "rejected":
+            assert cto.pm_recommended_option_id is not None
+            assert cto.cto_recommended_option_id is not None
+            disagreement = MissionGovernanceDisagreement(
+                decision_required="Resolve PM and CTO disagreement before disputed work continues",
+                reason=cto.rationale,
+                blocked_scope=cto.disputed_scope,
+                options=cto.alternatives,
+                recommendations=(
+                    ExecutiveRecommendation(
+                        identity_id="PM",
+                        recommended_option_id=cto.pm_recommended_option_id,
+                        rationale=pm.rationale,
+                        evidence_references=pm.evidence_references,
+                    ),
+                    ExecutiveRecommendation(
+                        identity_id="CTO",
+                        recommended_option_id=cto.cto_recommended_option_id,
+                        rationale=cto.rationale,
+                        evidence_references=cto.evidence_references,
+                    ),
+                ),
+                uncertainty=cto.unresolved_findings,
+                independent_work_continuing=cto.independent_work_continuing,
+            )
+            return MissionGovernanceResult(
+                disposition="disagreement",
+                mission=mission,
+                brief=brief,
+                crew=None,
+                disagreement=disagreement,
+                pm_output_fingerprint=pm_fingerprint,
+                cto_output_fingerprint=cto_fingerprint,
+            )
         crew = MissionCrewRevision(
             mission_id=mission.mission_id,
             version=(mission.current_crew_version or 0) + 1,
@@ -199,9 +315,11 @@ class CrewAIMissionGovernanceRunner:
             revision_reason="PM/CTO CrewAI proposal compiled from attributable evidence",
         )
         return MissionGovernanceResult(
+            disposition="agreed",
             mission=mission,
             brief=brief,
             crew=crew,
+            disagreement=None,
             pm_output_fingerprint=pm_fingerprint,
             cto_output_fingerprint=cto_fingerprint,
         )
@@ -308,7 +426,9 @@ class CrewAIMissionGovernanceRunner:
         return (
             "Independently confirm or reject technical, security, quality, operability, and "
             "independence coverage. Keep exactly the PM-proposed identities when confirming; "
-            "otherwise reject with findings. Do not grant tools or authority.\n"
+            "otherwise reject with findings, disputed scope, at least two real options with "
+            "consequences and risks, both PM and CTO recommendations, and the independent work "
+            "that can continue. Do not grant tools or authority.\n"
             f"Mission: {mission.model_dump_json()}\nPM proposal: {pm.model_dump_json()}\n"
             f"Roster: {self._roster_projection()}\nEvidence: {json.dumps(evidence, sort_keys=True)}"
         )

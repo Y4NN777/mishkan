@@ -244,6 +244,14 @@ def test_i06_read_surfaces_use_shared_daemon_client(
         ("mission", "governance-propose", "--request", "missing.json"),
         (
             "mission",
+            "governance-escalate",
+            "--proposal",
+            "missing.json",
+            "--conversation",
+            "00000000-0000-4000-8000-000000000001",
+        ),
+        (
+            "mission",
             "brief-record",
             "--brief",
             "missing.json",

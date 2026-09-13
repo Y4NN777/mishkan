@@ -212,6 +212,21 @@ def propose_mission_governance(
     _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
 
 
+@mission_app.command("governance-escalate")
+def escalate_mission_governance(
+    ctx: typer.Context,
+    proposal_file: Annotated[Path, typer.Option("--proposal")],
+    conversation_id: Annotated[str, typer.Option("--conversation")],
+) -> None:
+    """Explicitly open the actionable escalation from a PM/CTO disagreement."""
+    from mishkan.crewai import MissionGovernanceResult
+
+    proposal = _read_contract(proposal_file, MissionGovernanceResult, "--proposal")
+    with _daemon_client(ctx) as client:
+        escalation = client.open_mission_governance_escalation(proposal, conversation_id)
+    _emit(escalation.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
 @mission_app.command("brief")
 def show_mission_brief(
     ctx: typer.Context,

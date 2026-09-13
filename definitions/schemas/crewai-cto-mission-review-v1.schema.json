@@ -72,6 +72,47 @@
       "title": "CrewSelectionEvidence",
       "type": "object"
     },
+    "EscalationOption": {
+      "additionalProperties": false,
+      "properties": {
+        "consequences": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Consequences",
+          "type": "array"
+        },
+        "description": {
+          "maxLength": 4096,
+          "minLength": 3,
+          "title": "Description",
+          "type": "string"
+        },
+        "option_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Option Id",
+          "type": "string"
+        },
+        "risks": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Risks",
+          "type": "array"
+        }
+      },
+      "required": [
+        "option_id",
+        "description",
+        "consequences",
+        "risks"
+      ],
+      "title": "EscalationOption",
+      "type": "object"
+    },
     "MissionCrewMember": {
       "additionalProperties": false,
       "properties": {
@@ -106,6 +147,14 @@
   },
   "additionalProperties": false,
   "properties": {
+    "alternatives": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/EscalationOption"
+      },
+      "title": "Alternatives",
+      "type": "array"
+    },
     "approved_members": {
       "items": {
         "$ref": "#/$defs/MissionCrewMember"
@@ -122,6 +171,18 @@
       "title": "Coverage",
       "type": "array"
     },
+    "cto_recommended_option_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Cto Recommended Option Id"
+    },
     "disposition": {
       "enum": [
         "confirmed",
@@ -129,6 +190,14 @@
       ],
       "title": "Disposition",
       "type": "string"
+    },
+    "disputed_scope": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Disputed Scope",
+      "type": "array"
     },
     "evidence_references": {
       "items": {
@@ -138,11 +207,31 @@
       "title": "Evidence References",
       "type": "array"
     },
+    "independent_work_continuing": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Independent Work Continuing",
+      "type": "array"
+    },
     "mission_lead_id": {
       "maxLength": 128,
       "minLength": 2,
       "title": "Mission Lead Id",
       "type": "string"
+    },
+    "pm_recommended_option_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Pm Recommended Option Id"
     },
     "rationale": {
       "maxLength": 4096,
