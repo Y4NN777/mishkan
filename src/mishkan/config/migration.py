@@ -63,7 +63,7 @@ def migrate_to_1_2(source: Path) -> Path:
 
 
 def migrate_to_latest(source: Path) -> Path:
-    """Atomically migrate one explicit 1.1 or 1.2 source to schema 1.3."""
+    """Atomically migrate one explicit 1.1-1.4 source to schema 1.5."""
     target = source.expanduser().resolve()
     try:
         document: Any = yaml.safe_load(target.read_text(encoding="utf-8"))
@@ -73,10 +73,15 @@ def migrate_to_latest(source: Path) -> Path:
             "configuration source cannot be migrated",
             details={"source": str(target)},
         ) from exc
-    if not isinstance(document, dict) or document.get("schema_version") not in {"1.1", "1.2"}:
+    if not isinstance(document, dict) or document.get("schema_version") not in {
+        "1.1",
+        "1.2",
+        "1.3",
+        "1.4",
+    }:
         raise MishkanError(
             ErrorCode.VERSION,
-            "configuration migration requires one schema 1.1 or 1.2 source",
+            "configuration migration requires one schema 1.1, 1.2, 1.3, or 1.4 source",
             details={"source": str(target), "automatic_migration": False},
         )
     mode = document.get("mode")
@@ -87,8 +92,18 @@ def migrate_to_latest(source: Path) -> Path:
             details={"mode": mode},
         )
     defaults = yaml.safe_load(preset_text(str(mode)))
-    document["schema_version"] = "1.3"
-    for field in ("daemon", "persistence", "artifacts", "sessions", "web", "browser", "mcp"):
+    document["schema_version"] = "1.5"
+    for field in (
+        "daemon",
+        "persistence",
+        "artifacts",
+        "sessions",
+        "web",
+        "browser",
+        "mcp",
+        "skills",
+        "engineering_profile",
+    ):
         document.setdefault(field, defaults[field])
     payload = yaml.safe_dump(document, sort_keys=False, allow_unicode=True).encode()
     descriptor, staged_name = tempfile.mkstemp(prefix=f".{target.name}.", dir=target.parent)

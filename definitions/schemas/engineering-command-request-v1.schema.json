@@ -1,0 +1,95 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "action": {
+      "pattern": "^[a-z][a-z0-9_.-]{1,127}$",
+      "title": "Action",
+      "type": "string"
+    },
+    "deadline": {
+      "format": "date-time",
+      "title": "Deadline",
+      "type": "string"
+    },
+    "expected_exit_codes": {
+      "default": [
+        0
+      ],
+      "items": {
+        "type": "integer"
+      },
+      "title": "Expected Exit Codes",
+      "type": "array"
+    },
+    "observation_fingerprint": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Observation Fingerprint",
+      "type": "string"
+    },
+    "observation_id": {
+      "format": "uuid",
+      "title": "Observation Id",
+      "type": "string"
+    },
+    "owner_identity": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Owner Identity",
+      "type": "string"
+    },
+    "pack_id": {
+      "pattern": "^[a-z][a-z0-9_.-]{1,127}$",
+      "title": "Pack Id",
+      "type": "string"
+    },
+    "request_id": {
+      "format": "uuid",
+      "title": "Request Id",
+      "type": "string"
+    },
+    "run_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "session_profile": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Session Profile",
+      "type": "string"
+    },
+    "task_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Task Id",
+      "type": "string"
+    },
+    "timeout_seconds": {
+      "maximum": 86400,
+      "minimum": 1,
+      "title": "Timeout Seconds",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "observation_id",
+    "observation_fingerprint",
+    "pack_id",
+    "action",
+    "owner_identity",
+    "run_id",
+    "task_id",
+    "session_profile",
+    "deadline",
+    "timeout_seconds"
+  ],
+  "title": "EngineeringCommandRequest",
+  "type": "object"
+}

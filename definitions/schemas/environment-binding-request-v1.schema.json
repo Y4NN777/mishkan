@@ -1,0 +1,166 @@
+{
+  "$defs": {
+    "EnvironmentOutcome": {
+      "enum": [
+        "reuse_existing",
+        "host_native",
+        "generate",
+        "propose_project_change",
+        "unresolved"
+      ],
+      "title": "EnvironmentOutcome",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "affected_task_ids": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Affected Task Ids",
+      "type": "array"
+    },
+    "allowed_descriptor_formats": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Allowed Descriptor Formats",
+      "type": "array"
+    },
+    "authorized_engine_ids": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Authorized Engine Ids",
+      "type": "array"
+    },
+    "context_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Context Id",
+      "type": "string"
+    },
+    "execution_location": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Execution Location",
+      "type": "string"
+    },
+    "mission_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Mission Id",
+      "type": "string"
+    },
+    "observation_fingerprint": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Observation Fingerprint",
+      "type": "string"
+    },
+    "observation_id": {
+      "format": "uuid",
+      "title": "Observation Id",
+      "type": "string"
+    },
+    "observation_revision": {
+      "minimum": 1,
+      "title": "Observation Revision",
+      "type": "integer"
+    },
+    "owner_identity": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Owner Identity",
+      "type": "string"
+    },
+    "plan_fingerprint": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Plan Fingerprint",
+      "type": "string"
+    },
+    "policy_fingerprint": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Policy Fingerprint",
+      "type": "string"
+    },
+    "rationale": {
+      "maxLength": 4096,
+      "minLength": 1,
+      "title": "Rationale",
+      "type": "string"
+    },
+    "request_id": {
+      "format": "uuid",
+      "title": "Request Id",
+      "type": "string"
+    },
+    "requested_outcome": {
+      "$ref": "#/$defs/EnvironmentOutcome"
+    },
+    "required_engine_ids": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Required Engine Ids",
+      "type": "array"
+    },
+    "required_semantics": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Required Semantics",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "target_architecture": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Target Architecture",
+      "type": "string"
+    },
+    "target_platform": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Target Platform",
+      "type": "string"
+    },
+    "verification_checks": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Verification Checks",
+      "type": "array"
+    }
+  },
+  "required": [
+    "mission_id",
+    "plan_fingerprint",
+    "owner_identity",
+    "context_id",
+    "observation_id",
+    "observation_revision",
+    "observation_fingerprint",
+    "requested_outcome",
+    "target_platform",
+    "target_architecture",
+    "execution_location",
+    "affected_task_ids",
+    "verification_checks",
+    "policy_fingerprint",
+    "rationale"
+  ],
+  "title": "EnvironmentBindingRequest",
+  "type": "object"
+}

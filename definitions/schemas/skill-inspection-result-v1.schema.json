@@ -1,0 +1,153 @@
+{
+  "$defs": {
+    "SkillFindingCategory": {
+      "enum": [
+        "security",
+        "privacy",
+        "unicode",
+        "credential",
+        "prompt_injection",
+        "destructive_action"
+      ],
+      "title": "SkillFindingCategory",
+      "type": "string"
+    },
+    "SkillFindingSeverity": {
+      "enum": [
+        "info",
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "title": "SkillFindingSeverity",
+      "type": "string"
+    },
+    "SkillInspectionFinding": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "$ref": "#/$defs/SkillFindingCategory"
+        },
+        "evidence_fingerprint": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Evidence Fingerprint",
+          "type": "string"
+        },
+        "line": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Line"
+        },
+        "logical_path": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Logical Path",
+          "type": "string"
+        },
+        "rule_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Rule Id",
+          "type": "string"
+        },
+        "severity": {
+          "$ref": "#/$defs/SkillFindingSeverity"
+        },
+        "summary": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rule_id",
+        "category",
+        "severity",
+        "logical_path",
+        "summary",
+        "evidence_fingerprint"
+      ],
+      "title": "SkillInspectionFinding",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "findings": {
+      "items": {
+        "$ref": "#/$defs/SkillInspectionFinding"
+      },
+      "title": "Findings",
+      "type": "array"
+    },
+    "inspected_at": {
+      "format": "date-time",
+      "title": "Inspected At",
+      "type": "string"
+    },
+    "package_fingerprint": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Package Fingerprint",
+      "type": "string"
+    },
+    "profile_fingerprint": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Profile Fingerprint",
+      "type": "string"
+    },
+    "profile_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Profile Id",
+      "type": "string"
+    },
+    "profile_revision": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Profile Revision",
+      "type": "string"
+    },
+    "quarantined": {
+      "title": "Quarantined",
+      "type": "boolean"
+    },
+    "scanned_bytes": {
+      "minimum": 0,
+      "title": "Scanned Bytes",
+      "type": "integer"
+    },
+    "scanned_files": {
+      "minimum": 0,
+      "title": "Scanned Files",
+      "type": "integer"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "profile_id",
+    "profile_revision",
+    "profile_fingerprint",
+    "package_fingerprint",
+    "findings",
+    "scanned_files",
+    "scanned_bytes",
+    "quarantined"
+  ],
+  "title": "SkillInspectionResult",
+  "type": "object"
+}

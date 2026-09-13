@@ -1,0 +1,91 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "description": {
+      "maxLength": 1024,
+      "minLength": 1,
+      "title": "Description",
+      "type": "string"
+    },
+    "fallback_tools": {
+      "additionalProperties": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "title": "Fallback Tools",
+      "type": "object"
+    },
+    "instructions_markdown": {
+      "maxLength": 262144,
+      "minLength": 1,
+      "title": "Instructions Markdown",
+      "type": "string"
+    },
+    "rationale": {
+      "maxLength": 4096,
+      "minLength": 1,
+      "title": "Rationale",
+      "type": "string"
+    },
+    "required_tools": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 256,
+      "title": "Required Tools",
+      "type": "array"
+    },
+    "retrieval_references": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 128,
+      "title": "Retrieval References",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "skill_name": {
+      "maxLength": 64,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+      "title": "Skill Name",
+      "type": "string"
+    },
+    "source_fingerprints": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 128,
+      "minItems": 1,
+      "title": "Source Fingerprints",
+      "type": "array"
+    },
+    "task_classes": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 256,
+      "minItems": 1,
+      "title": "Task Classes",
+      "type": "array"
+    }
+  },
+  "required": [
+    "skill_name",
+    "description",
+    "instructions_markdown",
+    "required_tools",
+    "task_classes",
+    "retrieval_references",
+    "source_fingerprints",
+    "rationale"
+  ],
+  "title": "SkillPackageDraft",
+  "type": "object"
+}

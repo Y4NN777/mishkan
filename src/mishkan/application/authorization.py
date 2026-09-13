@@ -26,10 +26,22 @@ from mishkan.config.models import (
     McpTransport,
     MishkanConfig,
 )
+from mishkan.context import ContextualRecommendationRequest
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.time import utc_now
 from mishkan.edits import ChangeSet
 from mishkan.edits.git import GitEffectMode, GitEffectRequest
+from mishkan.environment import (
+    EngineeringCommandRequest,
+    EnvironmentBindingRequest,
+    EnvironmentDescriptorChangeRequest,
+    EnvironmentDescriptorSet,
+    EnvironmentInvalidation,
+    EnvironmentObservationRequest,
+    EnvironmentOperationPlan,
+    EnvironmentOperationRequest,
+    EnvironmentVerificationRequest,
+)
 from mishkan.execution import ExecutionRequest, ExecutionSession
 from mishkan.policy import (
     AuthorizationDecision,
@@ -40,6 +52,14 @@ from mishkan.policy import (
     PolicyLoader,
     ResourceRequest,
 )
+from mishkan.skills.models import (
+    SkillInvocationRequest,
+    SkillLearningRequest,
+    SkillLifecycleDecision,
+    SkillUsageRecord,
+    SkillVersionRecord,
+)
+from mishkan.telemetry.models import LangSmithFeedbackImportRequest
 from mishkan.tools.models import RegistryEntryKind, RegistryLifecycleAction, RegistryMutation
 
 
@@ -172,6 +192,74 @@ COMMAND_SEMANTICS = MappingProxyType(
         "mcp.call.reconcile": CommandSemantics(
             "application.mcp.control", "external", ("mcp.call.reconcile",), True
         ),
+        "skill.version.register": CommandSemantics(
+            "application.skill.lifecycle", "skill_lifecycle", ("skill.version.register",)
+        ),
+        "skill.version.decide": CommandSemantics(
+            "application.skill.lifecycle", "skill_lifecycle", ("skill.version.decide",)
+        ),
+        "skill.version.archive": CommandSemantics(
+            "application.skill.lifecycle", "skill_lifecycle", ("skill.version.archive",)
+        ),
+        "skill.version.delete": CommandSemantics(
+            "application.skill.lifecycle", "skill_lifecycle", ("skill.delete",)
+        ),
+        "skill.version.restore": CommandSemantics(
+            "application.skill.lifecycle", "skill_lifecycle", ("skill.restore",)
+        ),
+        "skill.version.reset": CommandSemantics(
+            "application.skill.lifecycle", "skill_lifecycle", ("skill.reset",)
+        ),
+        "skill.version.pin": CommandSemantics(
+            "application.skill.lifecycle", "skill_lifecycle", ("skill.version.pin",)
+        ),
+        "skill.version.unpin": CommandSemantics(
+            "application.skill.lifecycle", "skill_lifecycle", ("skill.version.unpin",)
+        ),
+        "skill.usage.record": CommandSemantics(
+            "application.skill.usage", "control", ("skill.usage.record",)
+        ),
+        "skill.invoke": CommandSemantics("application.skill.invoke", "control", ("skill.invoke",)),
+        "skill.learn": CommandSemantics(
+            "application.skill.learn", "skill_lifecycle", ("skill.proposal.create",)
+        ),
+        "environment.observe": CommandSemantics(
+            "application.environment.observe", "read", ("environment.observe",)
+        ),
+        "environment.resolve": CommandSemantics(
+            "application.environment.resolve", "control", ("environment.resolve",)
+        ),
+        "environment.descriptor.validate": CommandSemantics(
+            "application.environment.descriptor", "read", ("environment.descriptor.validate",)
+        ),
+        "environment.descriptor.change.plan": CommandSemantics(
+            "application.environment.descriptor", "control", ("environment.descriptor.change.plan",)
+        ),
+        "environment.operation.plan": CommandSemantics(
+            "application.environment.operation", "control", ("environment.operation.plan",)
+        ),
+        "environment.command.plan": CommandSemantics(
+            "application.environment.command", "control", ("environment.command.plan",)
+        ),
+        "environment.attempt.settle": CommandSemantics(
+            "application.environment.attempt", "control", ("environment.attempt.settle",)
+        ),
+        "environment.verification.record": CommandSemantics(
+            "application.environment.verification",
+            "control",
+            ("environment.verification.record",),
+        ),
+        "environment.binding.invalidate": CommandSemantics(
+            "application.environment.invalidate", "control", ("environment.binding.invalidate",)
+        ),
+        "telemetry.evaluation.import": CommandSemantics(
+            "application.telemetry.evaluation",
+            "artifact",
+            ("telemetry.evaluation.import",),
+        ),
+        "context.recommend": CommandSemantics(
+            "application.context.recommend", "read", ("context.recommend",)
+        ),
         **{
             f"registry.entry.{action.value}": CommandSemantics(
                 "application.registry.lifecycle",
@@ -220,6 +308,28 @@ _COMMAND_TARGETS = MappingProxyType(
         "mcp.connection.connect": ("mcp_connection", "required"),
         "mcp.call.cancel": ("mcp_call", "uuid"),
         "mcp.call.reconcile": ("mcp_call", "uuid"),
+        "skill.version.register": ("skill_version", "uuid"),
+        "skill.version.decide": ("skill_version", "uuid"),
+        "skill.version.archive": ("skill_version", "uuid"),
+        "skill.version.delete": ("skill_version", "uuid"),
+        "skill.version.restore": ("skill_version", "uuid"),
+        "skill.version.reset": ("skill_version", "uuid"),
+        "skill.version.pin": ("skill_version", "uuid"),
+        "skill.version.unpin": ("skill_version", "uuid"),
+        "skill.usage.record": ("skill_usage", "uuid"),
+        "skill.invoke": ("task", "required"),
+        "skill.learn": ("skill_learning", "uuid"),
+        "environment.observe": ("environment_observation", "uuid"),
+        "environment.resolve": ("environment_binding_request", "uuid"),
+        "environment.descriptor.validate": ("environment_descriptor_set", "uuid"),
+        "environment.descriptor.change.plan": ("environment_descriptor_change", "uuid"),
+        "environment.operation.plan": ("environment_operation", "uuid"),
+        "environment.command.plan": ("engineering_command", "uuid"),
+        "environment.attempt.settle": ("environment_operation", "uuid"),
+        "environment.verification.record": ("environment_verification", "uuid"),
+        "environment.binding.invalidate": ("environment_binding", "uuid"),
+        "telemetry.evaluation.import": ("telemetry_evaluation", "uuid"),
+        "context.recommend": ("context_recommendation", "uuid"),
         **{
             f"registry.entry.{action.value}": ("registry_entry", "required")
             for action in RegistryLifecycleAction
@@ -279,6 +389,43 @@ _COMMAND_PAYLOAD_FIELDS = MappingProxyType(
         "mcp.connection.connect": (frozenset(), frozenset()),
         "mcp.call.cancel": (frozenset(), frozenset()),
         "mcp.call.reconcile": (frozenset(), frozenset()),
+        "skill.version.register": (frozenset({"record"}), frozenset()),
+        "skill.version.decide": (frozenset({"decision"}), frozenset()),
+        "skill.version.archive": (
+            frozenset({"decision", "expected_revision"}),
+            frozenset(),
+        ),
+        "skill.version.delete": (
+            frozenset({"decision", "expected_revision"}),
+            frozenset(),
+        ),
+        "skill.version.restore": (
+            frozenset({"decision", "expected_revision"}),
+            frozenset(),
+        ),
+        "skill.version.reset": (
+            frozenset({"decision", "expected_revision"}),
+            frozenset(),
+        ),
+        "skill.version.pin": (frozenset({"expected_revision"}), frozenset()),
+        "skill.version.unpin": (frozenset({"expected_revision"}), frozenset()),
+        "skill.usage.record": (frozenset({"record"}), frozenset()),
+        "skill.invoke": (frozenset({"request"}), frozenset()),
+        "skill.learn": (frozenset({"request"}), frozenset()),
+        "environment.observe": (frozenset({"request"}), frozenset()),
+        "environment.resolve": (frozenset({"request"}), frozenset()),
+        "environment.descriptor.validate": (frozenset({"descriptor_set"}), frozenset()),
+        "environment.descriptor.change.plan": (frozenset({"request"}), frozenset()),
+        "environment.operation.plan": (frozenset({"request"}), frozenset()),
+        "environment.command.plan": (frozenset({"request"}), frozenset()),
+        "environment.attempt.settle": (
+            frozenset({"operation_plan", "session_id"}),
+            frozenset(),
+        ),
+        "environment.verification.record": (frozenset({"request"}), frozenset()),
+        "environment.binding.invalidate": (frozenset({"invalidation"}), frozenset()),
+        "telemetry.evaluation.import": (frozenset({"request"}), frozenset()),
+        "context.recommend": (frozenset({"request"}), frozenset()),
         "registry.entry.add": (frozenset({"entry_kind", "definition"}), frozenset()),
         "registry.entry.enable": (frozenset({"entry_kind"}), frozenset()),
         "registry.entry.disable": (frozenset({"entry_kind"}), frozenset()),
@@ -300,6 +447,22 @@ class AuthorizedApplicationCommand:
     session_request: ExecutionRequest | None = None
     git_request: GitEffectRequest | None = None
     registry_mutation: RegistryMutation | None = None
+    skill_version: SkillVersionRecord | None = None
+    skill_decision: SkillLifecycleDecision | None = None
+    skill_usage: SkillUsageRecord | None = None
+    skill_invocation: SkillInvocationRequest | None = None
+    skill_learning: SkillLearningRequest | None = None
+    environment_observation: EnvironmentObservationRequest | None = None
+    environment_binding: EnvironmentBindingRequest | None = None
+    environment_descriptor_set: EnvironmentDescriptorSet | None = None
+    environment_descriptor_change: EnvironmentDescriptorChangeRequest | None = None
+    environment_operation: EnvironmentOperationRequest | None = None
+    engineering_command: EngineeringCommandRequest | None = None
+    environment_operation_plan: EnvironmentOperationPlan | None = None
+    environment_verification: EnvironmentVerificationRequest | None = None
+    environment_invalidation: EnvironmentInvalidation | None = None
+    telemetry_evaluation: LangSmithFeedbackImportRequest | None = None
+    context_recommendation: ContextualRecommendationRequest | None = None
 
 
 class ApplicationCommandAuthority:
@@ -351,6 +514,22 @@ class ApplicationCommandAuthority:
         session_request: ExecutionRequest | None = None
         git_request: GitEffectRequest | None = None
         registry_mutation: RegistryMutation | None = None
+        skill_version: SkillVersionRecord | None = None
+        skill_decision: SkillLifecycleDecision | None = None
+        skill_usage: SkillUsageRecord | None = None
+        skill_invocation: SkillInvocationRequest | None = None
+        skill_learning: SkillLearningRequest | None = None
+        environment_observation: EnvironmentObservationRequest | None = None
+        environment_binding: EnvironmentBindingRequest | None = None
+        environment_descriptor_set: EnvironmentDescriptorSet | None = None
+        environment_descriptor_change: EnvironmentDescriptorChangeRequest | None = None
+        environment_operation: EnvironmentOperationRequest | None = None
+        engineering_command: EngineeringCommandRequest | None = None
+        environment_operation_plan: EnvironmentOperationPlan | None = None
+        environment_verification: EnvironmentVerificationRequest | None = None
+        environment_invalidation: EnvironmentInvalidation | None = None
+        telemetry_evaluation: LangSmithFeedbackImportRequest | None = None
+        context_recommendation: ContextualRecommendationRequest | None = None
 
         try:
             if normalized.command_type == "run.initialize":
@@ -512,6 +691,295 @@ class ApplicationCommandAuthority:
                 external_resources = (
                     f"registry:{registry_mutation.entry_kind.value}:{registry_mutation.identity}",
                 )
+            elif normalized.command_type == "skill.version.register":
+                skill_version = SkillVersionRecord.model_validate(normalized.payload["record"])
+                if normalized.target_id != str(skill_version.id):
+                    raise ValueError("skill target differs from its immutable version identity")
+                external_resources = (
+                    f"skill:{skill_version.skill_name}@{skill_version.skill_version}",
+                    f"artifact-collection:{skill_version.package_collection_id}",
+                )
+                effects = tuple(sorted({*effects, f"skill.{skill_version.mutation_action.value}"}))
+            elif normalized.command_type in {
+                "skill.version.decide",
+                "skill.version.archive",
+                "skill.version.delete",
+                "skill.version.restore",
+                "skill.version.reset",
+            }:
+                skill_decision = SkillLifecycleDecision.model_validate(
+                    normalized.payload["decision"]
+                )
+                if normalized.target_id != str(skill_decision.version_id):
+                    raise ValueError("skill decision targets another immutable version")
+                effects = tuple(
+                    sorted(
+                        {
+                            *effects,
+                            f"skill.disposition.{skill_decision.disposition.value}",
+                            *(
+                                ("skill.quarantine.override",)
+                                if skill_decision.quarantine_override
+                                else ()
+                            ),
+                        }
+                    )
+                )
+                external_resources = (f"skill-version:{skill_decision.version_id}",)
+            elif normalized.command_type in {"skill.version.pin", "skill.version.unpin"}:
+                external_resources = (f"skill-version:{self._target_uuid(normalized)}",)
+            elif normalized.command_type == "skill.usage.record":
+                skill_usage = SkillUsageRecord.model_validate(normalized.payload["record"])
+                if normalized.target_id != str(skill_usage.id):
+                    raise ValueError("skill usage target differs from its evidence identity")
+                external_resources = (
+                    f"skill:{skill_usage.requested_skill}",
+                    f"task:{skill_usage.task_id}",
+                )
+            elif normalized.command_type == "skill.invoke":
+                skill_invocation = SkillInvocationRequest.model_validate(
+                    normalized.payload["request"]
+                )
+                if normalized.target_id != skill_invocation.context.task_id:
+                    raise ValueError("skill invocation target differs from its task context")
+                if skill_invocation.context.consuming_identity != normalized.actor_id:
+                    raise MishkanError(
+                        ErrorCode.AUTHORITY_NOT_GRANTED,
+                        "skill invocation identity must match the authenticated command actor",
+                    )
+                requested = (
+                    f"skill:{skill_invocation.requested_name}"
+                    if skill_invocation.requested_name is not None
+                    else (
+                        f"skill-bundle:{skill_invocation.bundle_id}"
+                        if skill_invocation.bundle_id is not None
+                        else "skill-selection:automatic"
+                    )
+                )
+                external_resources = (requested, f"task:{skill_invocation.context.task_id}")
+            elif normalized.command_type == "skill.learn":
+                skill_learning = SkillLearningRequest.model_validate(normalized.payload["request"])
+                if normalized.target_id != str(skill_learning.request_id):
+                    raise ValueError("skill learning target differs from its request identity")
+                if skill_learning.consuming_identity != normalized.actor_id:
+                    raise MishkanError(
+                        ErrorCode.AUTHORITY_NOT_GRANTED,
+                        "skill learning identity must match the authenticated command actor",
+                    )
+                resources = [
+                    f"skill-learning:{skill_learning.request_id}",
+                    f"task:{skill_learning.task_id}",
+                ]
+                for source in skill_learning.sources:
+                    resources.append(f"learning-source:{source.kind.value}:{source.locator}")
+                external_resources = tuple(resources)
+            elif normalized.command_type == "environment.observe":
+                environment_observation = EnvironmentObservationRequest.model_validate(
+                    normalized.payload["request"]
+                )
+                if normalized.target_id != str(environment_observation.observation_id):
+                    raise ValueError("environment observation target differs from its request")
+                if environment_observation.actor_identity != normalized.actor_id:
+                    raise MishkanError(
+                        ErrorCode.AUTHORITY_NOT_GRANTED,
+                        "environment observation identity must match the authenticated actor",
+                    )
+                paths = (".",)
+                external_resources = (
+                    f"environment-context:{environment_observation.context_id}",
+                    f"execution-location:{environment_observation.execution_location}",
+                )
+            elif normalized.command_type == "environment.resolve":
+                environment_binding = EnvironmentBindingRequest.model_validate(
+                    normalized.payload["request"]
+                )
+                if normalized.target_id != str(environment_binding.request_id):
+                    raise ValueError("environment binding target differs from its request")
+                if environment_binding.owner_identity != normalized.actor_id:
+                    raise MishkanError(
+                        ErrorCode.AUTHORITY_NOT_GRANTED,
+                        "environment binding owner must match the authenticated actor",
+                    )
+                external_resources = tuple(
+                    dict.fromkeys(
+                        (
+                            f"environment-context:{environment_binding.context_id}",
+                            f"environment-observation:{environment_binding.observation_id}",
+                            *(
+                                f"engine:{engine_id}"
+                                for engine_id in environment_binding.authorized_engine_ids
+                            ),
+                            *(
+                                f"descriptor-format:{format_name}"
+                                for format_name in environment_binding.allowed_descriptor_formats
+                            ),
+                        )
+                    )
+                )
+            elif normalized.command_type == "environment.descriptor.validate":
+                environment_descriptor_set = EnvironmentDescriptorSet.model_validate(
+                    normalized.payload["descriptor_set"]
+                )
+                if normalized.target_id != str(environment_descriptor_set.descriptor_set_id):
+                    raise ValueError("environment descriptor target differs from its identity")
+                paths = tuple(member.logical_path for member in environment_descriptor_set.members)
+                external_resources = (
+                    f"environment-binding:{environment_descriptor_set.binding_id}",
+                    *(member.artifact_reference for member in environment_descriptor_set.members),
+                )
+            elif normalized.command_type == "environment.descriptor.change.plan":
+                environment_descriptor_change = EnvironmentDescriptorChangeRequest.model_validate(
+                    normalized.payload["request"]
+                )
+                if normalized.target_id != str(environment_descriptor_change.request_id):
+                    raise ValueError("descriptor change target differs from its request")
+                if environment_descriptor_change.owner_identity != normalized.actor_id:
+                    raise MishkanError(
+                        ErrorCode.AUTHORITY_NOT_GRANTED,
+                        "descriptor change owner must match the authenticated actor",
+                    )
+                external_resources = (
+                    f"environment-descriptor-set:{environment_descriptor_change.descriptor_set_id}",
+                )
+            elif normalized.command_type == "environment.operation.plan":
+                environment_operation = EnvironmentOperationRequest.model_validate(
+                    normalized.payload["request"]
+                )
+                if normalized.target_id != str(environment_operation.operation_id):
+                    raise ValueError("environment operation target differs from its identity")
+                if environment_operation.owner_identity != normalized.actor_id:
+                    raise MishkanError(
+                        ErrorCode.AUTHORITY_NOT_GRANTED,
+                        "environment operation owner must match the authenticated actor",
+                    )
+                paths = (
+                    (environment_operation.descriptor_path,)
+                    if environment_operation.descriptor_path is not None
+                    else ()
+                )
+                network_destinations = environment_operation.network_destinations
+                environments = tuple(
+                    sorted(
+                        f"{name}={value}"
+                        for name, value in environment_operation.environment.items()
+                    )
+                )
+                credentials = tuple(
+                    dict.fromkeys(
+                        (
+                            *(item.locator for item in environment_operation.credential_references),
+                            *(
+                                item.locator
+                                for item in environment_operation.credential_environment.values()
+                            ),
+                        )
+                    )
+                )
+                external_resources = (
+                    f"environment-binding:{environment_operation.binding_id}",
+                    f"environment-adapter:{environment_operation.adapter_id}",
+                    f"environment-operation:{environment_operation.operation.value}",
+                )
+            elif normalized.command_type == "environment.command.plan":
+                engineering_command = EngineeringCommandRequest.model_validate(
+                    normalized.payload["request"]
+                )
+                if normalized.target_id != str(engineering_command.request_id):
+                    raise ValueError("engineering command target differs from its request")
+                if engineering_command.owner_identity != normalized.actor_id:
+                    raise MishkanError(
+                        ErrorCode.AUTHORITY_NOT_GRANTED,
+                        "engineering command owner must match the authenticated actor",
+                    )
+                external_resources = (
+                    f"environment-observation:{engineering_command.observation_id}",
+                    f"engineering-pack:{engineering_command.pack_id}",
+                    f"engineering-action:{engineering_command.action}",
+                )
+            elif normalized.command_type == "environment.attempt.settle":
+                environment_operation_plan = EnvironmentOperationPlan.model_validate(
+                    normalized.payload["operation_plan"]
+                )
+                session_id = UUID(str(normalized.payload["session_id"]))
+                if normalized.target_id != str(environment_operation_plan.request.operation_id):
+                    raise ValueError("environment attempt target differs from its operation")
+                if session_id != environment_operation_plan.execution.execution_id:
+                    raise ValueError("environment attempt session differs from its operation")
+                if environment_operation_plan.request.owner_identity != normalized.actor_id:
+                    raise MishkanError(
+                        ErrorCode.AUTHORITY_NOT_GRANTED,
+                        "environment attempt owner must match the authenticated actor",
+                    )
+                external_resources = (
+                    f"environment-binding:{environment_operation_plan.request.binding_id}",
+                    f"session:{session_id}",
+                )
+            elif normalized.command_type == "environment.verification.record":
+                environment_verification = EnvironmentVerificationRequest.model_validate(
+                    normalized.payload["request"]
+                )
+                if normalized.target_id != str(environment_verification.verification_id):
+                    raise ValueError("environment verification target differs from its request")
+                if environment_verification.owner_identity != normalized.actor_id:
+                    raise MishkanError(
+                        ErrorCode.AUTHORITY_NOT_GRANTED,
+                        "environment verification owner must match the authenticated actor",
+                    )
+                external_resources = (
+                    f"environment-binding:{environment_verification.binding_id}",
+                    *(
+                        f"environment-attempt:{attempt_id}"
+                        for values in environment_verification.check_attempt_ids.values()
+                        for attempt_id in values
+                    ),
+                )
+            elif normalized.command_type == "environment.binding.invalidate":
+                environment_invalidation = EnvironmentInvalidation.model_validate(
+                    normalized.payload["invalidation"]
+                )
+                if normalized.target_id != str(environment_invalidation.binding_id):
+                    raise ValueError("environment invalidation target differs from its binding")
+                if environment_invalidation.owner_identity != normalized.actor_id:
+                    raise MishkanError(
+                        ErrorCode.AUTHORITY_NOT_GRANTED,
+                        "environment invalidation owner must match the authenticated actor",
+                    )
+                external_resources = (
+                    f"environment-binding:{environment_invalidation.binding_id}",
+                    *(f"task:{task_id}" for task_id in environment_invalidation.affected_task_ids),
+                )
+            elif normalized.command_type == "telemetry.evaluation.import":
+                telemetry_evaluation = LangSmithFeedbackImportRequest.model_validate(
+                    normalized.payload["request"]
+                )
+                if normalized.target_id != str(telemetry_evaluation.import_id):
+                    raise ValueError("telemetry evaluation target differs from its import request")
+                if telemetry_evaluation.owner_identity != normalized.actor_id:
+                    raise MishkanError(
+                        ErrorCode.AUTHORITY_NOT_GRANTED,
+                        "telemetry evaluation owner must match the authenticated actor",
+                    )
+                external_resources = (
+                    f"langsmith-project:{telemetry_evaluation.project_name}",
+                    f"langsmith-run:{telemetry_evaluation.traced_run_id}",
+                    f"langsmith-feedback:{telemetry_evaluation.external_feedback_id}",
+                )
+            elif normalized.command_type == "context.recommend":
+                context_recommendation = ContextualRecommendationRequest.model_validate(
+                    normalized.payload["request"]
+                )
+                if normalized.target_id != str(context_recommendation.request_id):
+                    raise ValueError("context recommendation target differs from its request")
+                if context_recommendation.owner_identity != normalized.actor_id:
+                    raise MishkanError(
+                        ErrorCode.AUTHORITY_NOT_GRANTED,
+                        "context recommendation owner must match the authenticated actor",
+                    )
+                external_resources = (
+                    f"context:{context_recommendation.context_id}",
+                    *(f"candidate:{item}" for item in context_recommendation.candidate_ids),
+                    *(f"evidence:{item}" for item in context_recommendation.project_evidence),
+                )
             elif normalized.target_id is not None:
                 external_resources = (f"{normalized.target_type}:{normalized.target_id}",)
         except (KeyError, TypeError, ValueError, ValidationError) as exc:
@@ -553,6 +1021,22 @@ class ApplicationCommandAuthority:
             session_request=session_request,
             git_request=git_request,
             registry_mutation=registry_mutation,
+            skill_version=skill_version,
+            skill_decision=skill_decision,
+            skill_usage=skill_usage,
+            skill_invocation=skill_invocation,
+            skill_learning=skill_learning,
+            environment_observation=environment_observation,
+            environment_binding=environment_binding,
+            environment_descriptor_set=environment_descriptor_set,
+            environment_descriptor_change=environment_descriptor_change,
+            environment_operation=environment_operation,
+            engineering_command=engineering_command,
+            environment_operation_plan=environment_operation_plan,
+            environment_verification=environment_verification,
+            environment_invalidation=environment_invalidation,
+            telemetry_evaluation=telemetry_evaluation,
+            context_recommendation=context_recommendation,
         )
 
     @staticmethod

@@ -1,0 +1,48 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "accepted": {
+      "title": "Accepted",
+      "type": "boolean"
+    },
+    "draft_fingerprint": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Draft Fingerprint",
+      "type": "string"
+    },
+    "evaluator_identity": {
+      "const": "Research_Evaluator",
+      "default": "Research_Evaluator",
+      "title": "Evaluator Identity",
+      "type": "string"
+    },
+    "findings": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 128,
+      "title": "Findings",
+      "type": "array"
+    },
+    "reason": {
+      "maxLength": 4096,
+      "minLength": 1,
+      "title": "Reason",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "draft_fingerprint",
+    "accepted",
+    "findings",
+    "reason"
+  ],
+  "title": "SkillLearningReview",
+  "type": "object"
+}

@@ -1,6 +1,6 @@
 schema_version: "1.0"
 source_id: bundled.local
-revision: "10"
+revision: "21"
 adoption_authority: MISHKAN release
 priority: 0
 rules:
@@ -143,6 +143,28 @@ rules:
         - registry.entry.update
         - registry.entry.remove
         - registry.entry.set_precedence
+        - skill.version.register
+        - skill.version.decide
+        - skill.version.archive
+        - skill.version.delete
+        - skill.version.restore
+        - skill.version.reset
+        - skill.version.pin
+        - skill.version.unpin
+        - skill.usage.record
+        - skill.invoke
+        - skill.learn
+        - environment.observe
+        - environment.resolve
+        - environment.descriptor.validate
+        - environment.descriptor.change.plan
+        - environment.operation.plan
+        - environment.command.plan
+        - environment.attempt.settle
+        - environment.verification.record
+        - environment.binding.invalidate
+        - telemetry.evaluation.import
+        - context.recommend
       roles: [application-client]
       capabilities:
         - application.system.checkpoint
@@ -166,7 +188,21 @@ rules:
         - application.mcp.connect
         - application.mcp.control
         - application.registry.lifecycle
-      effect_classes: [control, coordination, artifact, filesystem, process, external, registry_lifecycle]
+        - application.skill.lifecycle
+        - application.skill.usage
+        - application.skill.invoke
+        - application.skill.learn
+        - application.environment.observe
+        - application.environment.resolve
+        - application.environment.descriptor
+        - application.environment.operation
+        - application.environment.command
+        - application.environment.attempt
+        - application.environment.verification
+        - application.environment.invalidate
+        - application.telemetry.evaluation
+        - application.context.recommend
+      effect_classes: [read, control, coordination, artifact, filesystem, process, external, registry_lifecycle, skill_lifecycle]
       effects: ["*"]
       paths: ["*"]
       executables: ["*"]

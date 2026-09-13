@@ -1,0 +1,384 @@
+{
+  "$defs": {
+    "AvailabilityFact": {
+      "additionalProperties": false,
+      "properties": {
+        "dimension": {
+          "enum": [
+            "inventoried",
+            "detected",
+            "installed",
+            "executable",
+            "authenticated",
+            "healthy",
+            "project_used",
+            "eligible",
+            "authorized"
+          ],
+          "title": "Dimension",
+          "type": "string"
+        },
+        "evidence": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Evidence",
+          "type": "string"
+        },
+        "freshness_seconds": {
+          "maximum": 31536000,
+          "minimum": 1,
+          "title": "Freshness Seconds",
+          "type": "integer"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "sensitivity": {
+          "enum": [
+            "portable",
+            "machine_local"
+          ],
+          "title": "Sensitivity",
+          "type": "string"
+        },
+        "source": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Source",
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/$defs/AvailabilityState"
+        }
+      },
+      "required": [
+        "dimension",
+        "state",
+        "evidence",
+        "source",
+        "freshness_seconds",
+        "sensitivity"
+      ],
+      "title": "AvailabilityFact",
+      "type": "object"
+    },
+    "AvailabilityState": {
+      "enum": [
+        "true",
+        "false",
+        "unknown"
+      ],
+      "title": "AvailabilityState",
+      "type": "string"
+    },
+    "DescriptorObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Digest",
+          "type": "string"
+        },
+        "format": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Format",
+          "type": "string"
+        },
+        "logical_path": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Logical Path",
+          "type": "string"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "repository_revision": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Repository Revision",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "format",
+        "logical_path",
+        "digest",
+        "size_bytes",
+        "repository_revision"
+      ],
+      "title": "DescriptorObservation",
+      "type": "object"
+    },
+    "EngineObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Adapter Id"
+        },
+        "engine_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Engine Id",
+          "type": "string"
+        },
+        "executable_name": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Executable Name"
+        },
+        "executable_path": {
+          "anyOf": [
+            {
+              "format": "path",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Executable Path"
+        },
+        "facts": {
+          "items": {
+            "$ref": "#/$defs/AvailabilityFact"
+          },
+          "maxItems": 9,
+          "minItems": 9,
+          "title": "Facts",
+          "type": "array"
+        },
+        "platforms": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Platforms",
+          "type": "array"
+        },
+        "safe_probe": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Safe Probe"
+        },
+        "semantics": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Semantics",
+          "type": "array"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version"
+        }
+      },
+      "required": [
+        "engine_id",
+        "semantics",
+        "platforms",
+        "facts"
+      ],
+      "title": "EngineObservation",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "architecture": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Architecture",
+      "type": "string"
+    },
+    "context_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Context Id",
+      "type": "string"
+    },
+    "descriptors": {
+      "items": {
+        "$ref": "#/$defs/DescriptorObservation"
+      },
+      "title": "Descriptors",
+      "type": "array"
+    },
+    "engines": {
+      "items": {
+        "$ref": "#/$defs/EngineObservation"
+      },
+      "title": "Engines",
+      "type": "array"
+    },
+    "execution_location": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Execution Location",
+      "type": "string"
+    },
+    "manifests": {
+      "additionalProperties": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "title": "Manifests",
+      "type": "object"
+    },
+    "observation_id": {
+      "format": "uuid",
+      "title": "Observation Id",
+      "type": "string"
+    },
+    "observed_at": {
+      "format": "date-time",
+      "title": "Observed At",
+      "type": "string"
+    },
+    "path_sensitivity": {
+      "const": "machine_local",
+      "default": "machine_local",
+      "title": "Path Sensitivity",
+      "type": "string"
+    },
+    "platform": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Platform",
+      "type": "string"
+    },
+    "profile_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Profile Id",
+      "type": "string"
+    },
+    "profile_revision": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Profile Revision",
+      "type": "string"
+    },
+    "repository_id": {
+      "anyOf": [
+        {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Repository Id"
+    },
+    "repository_revision": {
+      "anyOf": [
+        {
+          "maxLength": 512,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Repository Revision"
+    },
+    "revision": {
+      "default": 1,
+      "minimum": 1,
+      "title": "Revision",
+      "type": "integer"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "unknowns": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Unknowns",
+      "type": "array"
+    },
+    "workspace": {
+      "format": "path",
+      "title": "Workspace",
+      "type": "string"
+    }
+  },
+  "required": [
+    "context_id",
+    "workspace",
+    "execution_location",
+    "platform",
+    "architecture",
+    "profile_id",
+    "profile_revision",
+    "descriptors",
+    "manifests",
+    "engines",
+    "unknowns"
+  ],
+  "title": "EnvironmentObservation",
+  "type": "object"
+}

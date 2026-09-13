@@ -175,8 +175,8 @@ rules:
 @pytest.mark.parametrize(
     ("effective_from", "retired_at"),
     [
-        (utc_now() + timedelta(minutes=10), None),
-        (None, utc_now() - timedelta(minutes=10)),
+        (utc_now() + timedelta(days=1), None),
+        (None, utc_now() - timedelta(days=1)),
     ],
 )
 def test_inactive_policy_revision_cannot_grant_authority(

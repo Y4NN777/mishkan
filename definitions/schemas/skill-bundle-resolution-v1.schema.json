@@ -1,0 +1,404 @@
+{
+  "$defs": {
+    "SkillActivationState": {
+      "enum": [
+        "candidate",
+        "active",
+        "inactive",
+        "quarantined",
+        "archived"
+      ],
+      "title": "SkillActivationState",
+      "type": "string"
+    },
+    "SkillMetadata": {
+      "additionalProperties": false,
+      "properties": {
+        "activation": {
+          "$ref": "#/$defs/SkillActivationState"
+        },
+        "allowed_tools_hint": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Allowed Tools Hint"
+        },
+        "author_claim": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Author Claim"
+        },
+        "compatibility_summary": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Compatibility Summary"
+        },
+        "description": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "fallback_tools": {
+          "additionalProperties": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": "Fallback Tools",
+          "type": "object"
+        },
+        "license": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "License"
+        },
+        "name": {
+          "maxLength": 64,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "organization_versions": {
+          "default": [
+            "*"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "title": "Organization Versions",
+          "type": "array"
+        },
+        "package_fingerprint": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Package Fingerprint",
+          "type": "string"
+        },
+        "package_uri": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Package Uri",
+          "type": "string"
+        },
+        "platforms": {
+          "default": [
+            "*"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "title": "Platforms",
+          "type": "array"
+        },
+        "required_tools": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Tools",
+          "type": "array"
+        },
+        "resource_paths": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Resource Paths",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "source_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "source_kind": {
+          "$ref": "#/$defs/SkillSourceKind"
+        },
+        "source_revision": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Source Revision",
+          "type": "string"
+        },
+        "task_classes": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Task Classes",
+          "type": "array"
+        },
+        "trust": {
+          "$ref": "#/$defs/SkillTrustState"
+        },
+        "version": {
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$",
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "description",
+        "version",
+        "source_id",
+        "source_kind",
+        "source_revision",
+        "package_uri",
+        "package_fingerprint",
+        "trust",
+        "activation"
+      ],
+      "title": "SkillMetadata",
+      "type": "object"
+    },
+    "SkillSelection": {
+      "additionalProperties": false,
+      "properties": {
+        "context": {
+          "$ref": "#/$defs/SkillSelectionContext"
+        },
+        "fallback_bindings": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Fallback Bindings",
+          "type": "object"
+        },
+        "missing_conditions": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Missing Conditions",
+          "type": "array"
+        },
+        "outcome": {
+          "$ref": "#/$defs/SkillUseOutcome"
+        },
+        "reason": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "requested_name": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Requested Name",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "selected": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SkillMetadata"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "requested_name",
+        "context",
+        "outcome",
+        "reason"
+      ],
+      "title": "SkillSelection",
+      "type": "object"
+    },
+    "SkillSelectionContext": {
+      "additionalProperties": false,
+      "properties": {
+        "available_tools": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Available Tools",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "consuming_identity": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Consuming Identity",
+          "type": "string"
+        },
+        "organization_version": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Organization Version",
+          "type": "string"
+        },
+        "platform": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Platform",
+          "type": "string"
+        },
+        "task_class": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Task Class",
+          "type": "string"
+        },
+        "task_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Task Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "task_id",
+        "task_class",
+        "consuming_identity",
+        "platform",
+        "organization_version"
+      ],
+      "title": "SkillSelectionContext",
+      "type": "object"
+    },
+    "SkillSourceKind": {
+      "enum": [
+        "bundled",
+        "project",
+        "operator",
+        "community",
+        "source_control",
+        "url",
+        "hub"
+      ],
+      "title": "SkillSourceKind",
+      "type": "string"
+    },
+    "SkillTrustState": {
+      "enum": [
+        "untrusted",
+        "trusted",
+        "quarantined"
+      ],
+      "title": "SkillTrustState",
+      "type": "string"
+    },
+    "SkillUseOutcome": {
+      "enum": [
+        "hit",
+        "partial",
+        "miss"
+      ],
+      "title": "SkillUseOutcome",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "bundle_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Bundle Id",
+      "type": "string"
+    },
+    "bundle_version": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Bundle Version",
+      "type": "string"
+    },
+    "context": {
+      "$ref": "#/$defs/SkillSelectionContext"
+    },
+    "outcome": {
+      "$ref": "#/$defs/SkillUseOutcome"
+    },
+    "reason": {
+      "maxLength": 2048,
+      "minLength": 1,
+      "title": "Reason",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "selected_skill_names": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Selected Skill Names",
+      "type": "array"
+    },
+    "selections": {
+      "items": {
+        "$ref": "#/$defs/SkillSelection"
+      },
+      "title": "Selections",
+      "type": "array"
+    }
+  },
+  "required": [
+    "bundle_id",
+    "bundle_version",
+    "context",
+    "outcome",
+    "selections",
+    "selected_skill_names",
+    "reason"
+  ],
+  "title": "SkillBundleResolution",
+  "type": "object"
+}
