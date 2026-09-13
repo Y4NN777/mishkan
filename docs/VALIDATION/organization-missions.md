@@ -7,6 +7,10 @@
 **GitHub Actions:** [run 34775116033](https://github.com/Y7-Labs/mishkan/actions/runs/34775116033)
 **Integrated checkpoint:** `60e3ca7` on `develop`
 **Integration Actions:** [run 34777116085](https://github.com/Y7-Labs/mishkan/actions/runs/34777116085)
+**History synchronization:** `8b5a2b3` on `develop`
+**Synchronization Actions:** [run 34780295929](https://github.com/Y7-Labs/mishkan/actions/runs/34780295929)
+**Promoted checkpoint:** `e171540` on `main`
+**Promotion Actions:** [run 34780769315](https://github.com/Y7-Labs/mishkan/actions/runs/34780769315)
 
 ## Gate result
 
@@ -97,6 +101,7 @@ deterministic authority for policy, effects, evidence, state, and acceptance.
 
 ## Decision
 
-D-044 accepts I06 at `2d1f78c` and its integration into `develop` at `60e3ca7`. The integration
-matrix passed all seven jobs. I07 remains outside the active implementation scope until the
-engineer explicitly authorizes the next increment; `main` remains unchanged.
+D-044 accepts I06 at `2d1f78c`, its integration into `develop` at `60e3ca7`, the
+history-preserving synchronization at `8b5a2b3`, and its promotion to `main` at `e171540`. Every
+remote matrix passed all seven jobs. I07 remains outside the active implementation scope until the
+engineer explicitly authorizes the next increment.
