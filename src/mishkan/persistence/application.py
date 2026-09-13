@@ -824,6 +824,11 @@ class SQLiteApplicationRepository:
                     "status": row.status,
                     "revision": row.revision,
                     "cancellation_requested": row.cancellation_requested,
+                    "execution_context": {
+                        "kind": row.context_kind,
+                        "context_id": row.context_id,
+                        "revision": row.context_revision,
+                    },
                     "repository_revision": row.repository_revision,
                     "created_at": row.created_at,
                     "updated_at": row.updated_at,

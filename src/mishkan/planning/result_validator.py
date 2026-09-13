@@ -1,7 +1,12 @@
 """Deterministic acceptance checks around CrewAI task results."""
 
 from mishkan.domain.errors import ErrorCode, MishkanError
-from mishkan.planning.models import InitializationResult, PlanTask, ReviewDecision
+from mishkan.planning.models import (
+    InitializationResult,
+    PlanExecutionContext,
+    PlanTask,
+    ReviewDecision,
+)
 from mishkan.repository.models import DiscoverySnapshot
 
 
@@ -13,7 +18,13 @@ class ResultValidator:
         discovery: DiscoverySnapshot,
     ) -> InitializationResult:
         violations = []
-        if result.repository_revision != discovery.binding.base_revision:
+        expected_context = PlanExecutionContext.from_binding(discovery.binding)
+        if result.schema_version == "1.1":
+            if result.execution_context != expected_context:
+                violations.append("execution context differs from the accepted plan")
+        elif expected_context.kind != "repository" or (
+            result.repository_revision != expected_context.repository_revision
+        ):
             violations.append("repository revision differs from the accepted plan")
         if result.task_id != task.task_id:
             violations.append("task identifier differs from the accepted task")

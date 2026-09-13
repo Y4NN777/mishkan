@@ -65,8 +65,49 @@ def test_explicit_upgrade_adds_skill_usage_without_changing_existing_events(
         assert connection.execute(text("SELECT count(*) FROM event_outbox")).scalar_one() == 1
         assert (
             connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            == "professional_evolution_v1"
+            == "run_execution_contexts_v1"
         )
+
+
+def test_execution_context_migration_backfills_repository_runs_and_allows_greenfield(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "pre-context.db"
+    config = _migration_config(database)
+    command.upgrade(config, "professional_evolution_v1")
+    with create_engine(f"sqlite:///{database}").begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO runs "
+                "(id, resume_key, repository_id, repository_revision, discovery_fingerprint, "
+                "objective, outcome_id, status, revision, cancellation_requested, created_at, "
+                "updated_at) VALUES "
+                "('run-1', 'resume-1', 'repository-1', 'revision-1', :fingerprint, "
+                "'objective', 'outcome', 'planning', 0, 0, :now, :now)"
+            ),
+            {"fingerprint": "a" * 64, "now": "2026-08-30T00:00:00+00:00"},
+        )
+
+    command.upgrade(config, "head")
+
+    with create_engine(f"sqlite:///{database}").begin() as connection:
+        row = connection.execute(
+            text("SELECT context_kind, context_id, context_revision FROM runs WHERE id = 'run-1'")
+        ).one()
+        connection.execute(
+            text(
+                "INSERT INTO runs "
+                "(id, resume_key, context_kind, context_id, context_revision, repository_id, "
+                "repository_revision, discovery_fingerprint, objective, outcome_id, status, "
+                "revision, cancellation_requested, created_at, updated_at) VALUES "
+                "('run-2', 'resume-2', 'prospective_workspace', 'workspace-1234', "
+                "'discovery-1', NULL, NULL, :fingerprint, 'objective', 'outcome', 'planning', "
+                "0, 0, :now, :now)"
+            ),
+            {"fingerprint": "b" * 64, "now": "2026-08-30T00:00:00+00:00"},
+        )
+
+    assert row == ("repository", "repository-1", "revision-1")
 
 
 def test_exact_legacy_database_is_backed_up_and_upgraded(tmp_path: Path) -> None:

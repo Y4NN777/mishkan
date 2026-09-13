@@ -72,6 +72,14 @@ class ProfessionalCompetenceQuery(FacadeModel):
     subject: str = Field(min_length=1, max_length=512)
 
 
+class ProfessionalHistoryQuery(FacadeModel):
+    identity_id: str = Field(min_length=1, max_length=128)
+    kind: ProfessionalEvidenceKind | None = None
+    subject: str | None = Field(default=None, min_length=1, max_length=512)
+    offset: int = Field(default=0, ge=0)
+    limit: int = Field(default=100, ge=1, le=1_000)
+
+
 class MissionQuery(FacadeModel):
     mission_id: str = Field(min_length=1, max_length=128)
     limit: int = Field(default=100, ge=1, le=1_000)
@@ -181,6 +189,40 @@ class McpFacadeRouter:
                 kind=query.kind,
                 subject=query.subject,
             ).model_dump(mode="json")
+        if operation == "organization.evidence.list":
+            query = self._validate(ProfessionalHistoryQuery, arguments)
+            evolution = self._require_dependency(
+                self._professional_evolution, "professional evolution"
+            )
+            return {
+                "evidence": [
+                    item.model_dump(mode="json")
+                    for item in evolution.evidence(
+                        query.identity_id,
+                        kind=query.kind,
+                        subject=query.subject,
+                        offset=query.offset,
+                        limit=query.limit,
+                    )
+                ]
+            }
+        if operation == "organization.promotions.list":
+            query = self._validate(ProfessionalHistoryQuery, arguments)
+            evolution = self._require_dependency(
+                self._professional_evolution, "professional evolution"
+            )
+            return {
+                "promotions": [
+                    item.model_dump(mode="json")
+                    for item in evolution.promotion_history(
+                        query.identity_id,
+                        kind=query.kind,
+                        subject=query.subject,
+                        offset=query.offset,
+                        limit=query.limit,
+                    )
+                ]
+            }
         if operation == "mission.list":
             query = self._validate(LimitQuery, arguments)
             missions = self._require_dependency(self._missions, "missions")

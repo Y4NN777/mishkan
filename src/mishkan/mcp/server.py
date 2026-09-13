@@ -32,6 +32,7 @@ from mishkan.mcp.facade import (
     MissionTemplateQuery,
     NotificationQuery,
     ProfessionalCompetenceQuery,
+    ProfessionalHistoryQuery,
     RunQuery,
 )
 
@@ -142,6 +143,8 @@ class McpProtocolFacade:
                 "run.get": "Read one durable run projection by identifier.",
                 "organization.get": "Read the canonical organization roster.",
                 "organization.competence.get": "Read attributable competence evidence.",
+                "organization.evidence.list": "List immutable professional evidence records.",
+                "organization.promotions.list": "List professional promotion decisions.",
                 "mission.list": "List bounded durable mission projections.",
                 "mission.get": "Read one durable mission projection.",
                 "mission.inspect": "Inspect one mission and its bounded related records.",
@@ -235,6 +238,8 @@ class McpProtocolFacade:
             "run.get": RunQuery.model_json_schema(),
             "organization.get": empty,
             "organization.competence.get": ProfessionalCompetenceQuery.model_json_schema(),
+            "organization.evidence.list": ProfessionalHistoryQuery.model_json_schema(),
+            "organization.promotions.list": ProfessionalHistoryQuery.model_json_schema(),
             "mission.list": LimitQuery.model_json_schema(),
             "mission.get": MissionQuery.model_json_schema(),
             "mission.inspect": MissionQuery.model_json_schema(),

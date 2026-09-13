@@ -1,6 +1,18 @@
 """Repository identity and cited discovery evidence."""
 
-from mishkan.repository.inspector import RepositoryInspector
-from mishkan.repository.models import DiscoverySnapshot, RepositoryBinding
+from mishkan.repository.inspector import ProspectiveWorkspaceInspector, RepositoryInspector
+from mishkan.repository.models import (
+    DiscoverySnapshot,
+    ProspectiveWorkspaceBinding,
+    RepositoryBinding,
+    RepositoryEstablishment,
+)
 
-__all__ = ["DiscoverySnapshot", "RepositoryBinding", "RepositoryInspector"]
+__all__ = [
+    "DiscoverySnapshot",
+    "ProspectiveWorkspaceBinding",
+    "ProspectiveWorkspaceInspector",
+    "RepositoryBinding",
+    "RepositoryEstablishment",
+    "RepositoryInspector",
+]

@@ -10,7 +10,12 @@ from jsonschema.exceptions import SchemaError, ValidationError  # type: ignore[i
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.schema import SchemaRegistry
 from mishkan.organization.models import OrganizationDefinition, OutcomeDefinition
-from mishkan.planning.models import AcceptedPlan, PlanCandidate, PlannedToolCall
+from mishkan.planning.models import (
+    AcceptedPlan,
+    PlanCandidate,
+    PlanExecutionContext,
+    PlannedToolCall,
+)
 from mishkan.policy import ApprovalEvidence, AuthorizationRequest, Decision, EffectivePolicy
 from mishkan.policy.evaluator import PolicyAuthority
 from mishkan.repository.models import DiscoverySnapshot
@@ -50,7 +55,13 @@ class PlanValidator:
     ) -> AcceptedPlan:
         SchemaRegistry.require_supported("mishkan.plan", candidate.schema_version)
         violations: list[str] = []
-        if candidate.repository_revision != discovery.binding.base_revision:
+        discovered_context = PlanExecutionContext.from_binding(discovery.binding)
+        if candidate.schema_version == "1.2":
+            if candidate.execution_context != discovered_context:
+                violations.append("execution context does not match discovery")
+        elif discovered_context.kind != "repository":
+            violations.append("prospective workspace requires plan schema 1.2")
+        elif candidate.repository_revision != discovered_context.repository_revision:
             violations.append("repository revision does not match discovery")
         if candidate.outcome_id != outcome.outcome_id:
             violations.append("outcome identifier does not match requested outcome")
@@ -214,6 +225,8 @@ class PlanValidator:
     def _violation_categories(violations: list[str]) -> list[str]:
         matchers = (
             ("repository revision", "repository_revision"),
+            ("execution context", "execution_context"),
+            ("prospective workspace", "execution_context"),
             ("outcome identifier", "outcome_identifier"),
             ("task count", "task_count"),
             ("task identifiers", "task_identifier"),
@@ -286,7 +299,7 @@ class PlanValidator:
             plan_fingerprint=plan_fingerprint,
             identity=f"role:{binding.role}",
             objective_class=outcome.objective_class,
-            repository=discovery.binding.repository_id,
+            repository=discovery.binding.context_id,
             outcome=outcome.outcome_id,
             role=binding.role,
             capability=binding.tool_id,
@@ -321,7 +334,7 @@ class PlanValidator:
                 plan_fingerprint=plan_fingerprint,
                 identity=f"role:{binding.role}",
                 objective_class=outcome.objective_class,
-                repository=discovery.binding.repository_id,
+                repository=discovery.binding.context_id,
                 outcome=outcome.outcome_id,
                 role=binding.role,
                 capability=binding.tool_id,

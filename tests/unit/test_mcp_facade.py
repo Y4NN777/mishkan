@@ -55,6 +55,8 @@ async def test_facade_exposes_only_implemented_allowlisted_operations(tmp_path: 
         "run.get",
         "organization.get",
         "organization.competence.get",
+        "organization.evidence.list",
+        "organization.promotions.list",
         "mission.list",
         "mission.get",
         "mission.inspect",

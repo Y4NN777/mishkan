@@ -19,7 +19,7 @@ from mishkan.planning.models import (
 )
 from mishkan.planning.result_validator import ResultValidator
 from mishkan.planning.validator import PlanValidator
-from mishkan.repository.models import DiscoverySnapshot
+from mishkan.repository.models import DiscoverySnapshot, RepositoryBinding
 from mishkan.runtime import BoundedPredicateLoop
 
 
@@ -232,10 +232,16 @@ class CrewAIInitializationFlow(Flow[InitializationFlowState]):
                 self.state.accepted_reviews.append(accepted_review)
                 completed.add(task.task_id)
                 pending.pop(task.task_id)
+        repository = self.state.discovery.binding
+        if not isinstance(repository, RepositoryBinding):
+            raise MishkanError(
+                ErrorCode.PROJECT,
+                "repository initialization cannot report a prospective workspace as a repository",
+            )
         return InitializationReport(
             run_id=self.state.run_id,
-            repository_id=self.state.discovery.binding.repository_id,
-            repository_revision=self.state.discovery.binding.base_revision,
+            repository_id=repository.repository_id,
+            repository_revision=repository.base_revision,
             discovery_fingerprint=self.state.discovery.fingerprint,
             plan_fingerprint=plan.fingerprint,
             resumed=self.state.resumed,

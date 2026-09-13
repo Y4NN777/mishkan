@@ -491,6 +491,8 @@ SUPPORTED_MCP_FACADE_OPERATIONS = frozenset(
         "run.get",
         "organization.get",
         "organization.competence.get",
+        "organization.evidence.list",
+        "organization.promotions.list",
         "mission.list",
         "mission.get",
         "mission.inspect",

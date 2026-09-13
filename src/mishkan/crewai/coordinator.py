@@ -25,7 +25,7 @@ from mishkan.planning.models import (
     ReviewDecision,
 )
 from mishkan.policy import Decision, EffectivePolicy
-from mishkan.repository.models import DiscoverySnapshot
+from mishkan.repository.models import DiscoverySnapshot, RepositoryBinding
 from mishkan.tools.crewai_gateway import GatewayCrewAITool
 from mishkan.tools.gateway import CapabilityGateway
 from mishkan.tools.gateway_models import InvocationContext
@@ -86,6 +86,7 @@ class CrewAIInitializationCoordinator:
         objective: str,
         validation_feedback: tuple[str, ...] = (),
     ) -> PlanCandidate:
+        repository = self._repository_binding(discovery)
         role = self._role("Repository_Planner")
         evidence = [fact.model_dump(mode="json") for fact in discovery.facts]
         cited_paths = sorted(path.as_posix() for path in discovery.cited_paths)
@@ -132,7 +133,7 @@ Propose a bounded repository-specific plan for this initialization outcome.
 
 Objective: {objective}
 Outcome ID: {self._outcome.outcome_id}
-Repository revision: {discovery.binding.base_revision}
+Repository revision: {repository.base_revision}
 Outcome intent: {self._outcome.intent}
 Discovery fingerprint: {discovery.fingerprint}
 Discovery facts: {json.dumps(evidence, sort_keys=True)}
@@ -227,6 +228,7 @@ Rules:
         call_evidence: str,
         review_feedback: ReviewDecision | None = None,
     ) -> InitializationResult:
+        repository = self._repository_binding(discovery)
         role = self._role(task_contract.assigned_role)
         feedback = ""
         if review_feedback is not None:
@@ -240,13 +242,13 @@ Use the supplied immutable evidence and do not repeat unsupported claims.
 Execute this accepted bounded repository task:
 {task_contract.model_dump_json()}
 
-Repository revision: {discovery.binding.base_revision}
+Repository revision: {repository.base_revision}
 MISHKAN has already executed every accepted call exactly once through the governed capability
 gateway. The immutable call evidence is: {call_evidence}
 No capability is exposed during synthesis. Use only that evidence; never invent another observation
 or claim that you executed a call yourself.
 Return task_id exactly as {task_contract.task_id!r} and repository_revision exactly as
-{discovery.binding.base_revision!r}. Cite only the bound evidence paths. Report at least one
+{repository.base_revision!r}. Cite only the bound evidence paths. Report at least one
 concrete finding grounded in the file content and execution output. Do not modify anything.
 
 {feedback}
@@ -454,6 +456,7 @@ another role's work.
         tool_ids: tuple[str, ...],
         planned_task: PlanTask,
     ) -> list[BaseTool]:
+        repository = self._repository_binding(discovery)
         registry = plan.registry
         if (
             self._gateway is None
@@ -474,10 +477,10 @@ another role's work.
                 task_attempt_id=f"{binding_task_id}:1",
                 identity=f"role:{role}",
                 objective_class=self._outcome.objective_class,
-                repository=discovery.binding.repository_id,
-                repository_revision=discovery.binding.base_revision,
-                repository_dirty=discovery.binding.working_tree_dirty,
-                repository_state_fingerprint=discovery.binding.working_tree_fingerprint,
+                repository=repository.repository_id,
+                repository_revision=repository.base_revision,
+                repository_dirty=repository.working_tree_dirty,
+                repository_state_fingerprint=repository.working_tree_fingerprint,
                 outcome=self._outcome.outcome_id,
                 role=role,
                 plan_fingerprint=plan.fingerprint,
@@ -500,6 +503,15 @@ another role's work.
                 )
             )
         return tools
+
+    @staticmethod
+    def _repository_binding(discovery: DiscoverySnapshot) -> RepositoryBinding:
+        if not isinstance(discovery.binding, RepositoryBinding):
+            raise MishkanError(
+                ErrorCode.PROJECT,
+                "repository initialization requires an established repository binding",
+            )
+        return discovery.binding
 
     def _kickoff_structured(
         self,

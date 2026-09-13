@@ -124,12 +124,14 @@ def test_retention_rechecks_holds_and_protects_incomplete_runs(tmp_path: Path) -
             connection.execute(
                 text(
                     """
-                    INSERT INTO runs (
-                        id, resume_key, repository_id, repository_revision,
+                        INSERT INTO runs (
+                            id, resume_key, context_kind, context_id, context_revision,
+                            repository_id, repository_revision,
                         discovery_fingerprint, objective, outcome_id, status, revision,
                         cancellation_requested, created_at, updated_at
-                    ) VALUES (
-                        :id, :resume_key, 'repo', 'rev', :fingerprint, 'objective',
+                        ) VALUES (
+                            :id, :resume_key, 'repository', 'repo', 'rev',
+                            'repo', 'rev', :fingerprint, 'objective',
                         'outcome', :status, 0, 0, :created_at, :updated_at
                     )
                     """

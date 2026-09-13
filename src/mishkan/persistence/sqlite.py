@@ -27,8 +27,17 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, rela
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.identity import new_id
 from mishkan.domain.time import utc_now
-from mishkan.planning.models import AcceptedPlan, InitializationResult, PlanTask, ReviewDecision
-from mishkan.repository.models import DiscoverySnapshot
+from mishkan.planning.models import (
+    AcceptedPlan,
+    InitializationResult,
+    PlanExecutionContext,
+    PlanTask,
+    ReviewDecision,
+)
+from mishkan.repository.models import (
+    DiscoverySnapshot,
+    RepositoryEstablishment,
+)
 from mishkan.runtime import RunState, TaskReviewRejection, TaskState
 from mishkan.tools.execution import EffectSettlement
 from mishkan.tools.gateway_models import AuditEvent, CallStatus, ToolResultEnvelope
@@ -69,8 +78,11 @@ class RunRow(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     resume_key: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
-    repository_id: Mapped[str] = mapped_column(String(64), nullable=False)
-    repository_revision: Mapped[str] = mapped_column(String(128), nullable=False)
+    context_kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    context_id: Mapped[str] = mapped_column(String(256), nullable=False)
+    context_revision: Mapped[str] = mapped_column(String(128), nullable=False)
+    repository_id: Mapped[str | None] = mapped_column(String(64))
+    repository_revision: Mapped[str | None] = mapped_column(String(128))
     discovery_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     objective: Mapped[str] = mapped_column(Text, nullable=False)
     outcome_id: Mapped[str] = mapped_column(String(160), nullable=False)
@@ -80,6 +92,19 @@ class RunRow(Base):
     created_at: Mapped[str] = mapped_column(String(40), nullable=False)
     updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
     plan: Mapped[PlanRow | None] = relationship(back_populates="run", uselist=False)
+
+
+class RepositoryEstablishmentRow(Base):
+    __tablename__ = "repository_establishments"
+
+    establishment_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id"), unique=True, nullable=False)
+    prospective_workspace_id: Mapped[str] = mapped_column(String(256), nullable=False)
+    discovery_revision: Mapped[str] = mapped_column(String(128), nullable=False)
+    repository_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    repository_revision: Mapped[str] = mapped_column(String(128), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    established_at: Mapped[str] = mapped_column(String(40), nullable=False)
 
 
 class PlanRow(Base):
@@ -837,6 +862,8 @@ class RunSnapshot:
     plan: AcceptedPlan | None
     results: tuple[InitializationResult, ...]
     reviews: tuple[ReviewDecision, ...]
+    execution_context: PlanExecutionContext
+    repository_establishment: RepositoryEstablishment | None
 
     @property
     def completed_task_ids(self) -> frozenset[str]:
@@ -877,11 +904,15 @@ class LocalRunRepository:
             resumed = run is not None
             if run is None:
                 now = utc_now().isoformat()
+                context = PlanExecutionContext.from_binding(discovery.binding)
                 run = RunRow(
                     id=str(new_id()),
                     resume_key=resume_key,
-                    repository_id=discovery.binding.repository_id,
-                    repository_revision=discovery.binding.base_revision,
+                    context_kind=context.kind,
+                    context_id=context.context_id,
+                    context_revision=context.revision,
+                    repository_id=context.repository_id,
+                    repository_revision=context.repository_revision,
                     discovery_fingerprint=discovery.fingerprint,
                     objective=objective,
                     outcome_id=outcome_id,
@@ -895,7 +926,7 @@ class LocalRunRepository:
                     session,
                     run.id,
                     "run.started",
-                    {"repository_revision": discovery.binding.base_revision},
+                    {"execution_context": context.model_dump(mode="json")},
                 )
             session.flush()
             return self._snapshot(session, run, resumed=resumed)
@@ -904,6 +935,17 @@ class LocalRunRepository:
         self._require_safe_content(plan.model_dump_json())
         with Session(self._engine) as session, session.begin():
             run = self._require_run(session, run_id)
+            expected_context = self._run_execution_context(run)
+            if plan.schema_version == "1.2" and plan.execution_context != expected_context:
+                raise MishkanError(
+                    ErrorCode.REVISION_MISMATCH,
+                    "accepted plan execution context differs from its run",
+                )
+            if plan.schema_version != "1.2" and run.context_kind != "repository":
+                raise MishkanError(
+                    ErrorCode.PLAN,
+                    "prospective workspace run requires an explicit plan 1.2 context",
+                )
             existing = session.scalar(select(PlanRow).where(PlanRow.run_id == run_id))
             payload = plan.model_dump_json()
             if existing is not None:
@@ -980,6 +1022,75 @@ class LocalRunRepository:
                         },
                     )
             self._add_event(session, run_id, "run.queued", {})
+            session.flush()
+            return self._snapshot(session, run, resumed=False)
+
+    def record_repository_establishment(
+        self,
+        establishment: RepositoryEstablishment,
+    ) -> RunSnapshot:
+        from mishkan.repository.inspector import RepositoryInspector
+
+        observed = RepositoryInspector().bind(establishment.repository.root)
+        if observed != establishment.repository:
+            raise MishkanError(
+                ErrorCode.REVISION_MISMATCH,
+                "repository establishment does not match the currently observed repository",
+            )
+        if establishment.prospective_workspace.root.resolve() != observed.root.resolve():
+            raise MishkanError(
+                ErrorCode.PROJECT,
+                "repository was not established at the prospective workspace root",
+            )
+        self._require_safe_content(establishment.model_dump_json())
+        with Session(self._engine) as session, session.begin():
+            run = self._require_run(session, establishment.run_id)
+            if run.context_kind != "prospective_workspace" or (
+                run.context_id != establishment.prospective_workspace.workspace_id
+                or run.context_revision != establishment.prospective_workspace.discovery_revision
+            ):
+                raise MishkanError(
+                    ErrorCode.REVISION_MISMATCH,
+                    "repository establishment does not descend from the run context",
+                )
+            existing = session.scalar(
+                select(RepositoryEstablishmentRow).where(
+                    RepositoryEstablishmentRow.run_id == run.id
+                )
+            )
+            payload = establishment.model_dump_json()
+            if existing is not None:
+                if existing.payload != payload:
+                    raise MishkanError(
+                        ErrorCode.DUPLICATE_RESULT,
+                        "prospective run already established a different repository",
+                    )
+                return self._snapshot(session, run, resumed=True)
+            session.add(
+                RepositoryEstablishmentRow(
+                    establishment_id=str(establishment.establishment_id),
+                    run_id=run.id,
+                    prospective_workspace_id=(establishment.prospective_workspace.workspace_id),
+                    discovery_revision=(establishment.prospective_workspace.discovery_revision),
+                    repository_id=establishment.repository.repository_id,
+                    repository_revision=establishment.repository.base_revision,
+                    payload=payload,
+                    established_at=establishment.established_at.isoformat(),
+                )
+            )
+            self._add_event(
+                session,
+                run.id,
+                "run.repository_established",
+                {
+                    "prospective_workspace_id": (establishment.prospective_workspace.workspace_id),
+                    "discovery_revision": (establishment.prospective_workspace.discovery_revision),
+                    "repository_id": establishment.repository.repository_id,
+                    "repository_revision": establishment.repository.base_revision,
+                    "establishment_id": str(establishment.establishment_id),
+                    "evidence_references": list(establishment.evidence_references),
+                },
+            )
             session.flush()
             return self._snapshot(session, run, resumed=False)
 
@@ -1085,7 +1196,7 @@ class LocalRunRepository:
                     ErrorCode.OUTPUT_CONTRACT,
                     "rejection evidence does not match the validating task",
                 )
-            if result.repository_revision != run.repository_revision:
+            if not self._result_matches_run_context(result, run):
                 raise MishkanError(
                     ErrorCode.REVISION_MISMATCH,
                     "rejected result revision differs from the run base revision",
@@ -1588,7 +1699,7 @@ class LocalRunRepository:
                     "result does not identify an accepted task",
                     details={"run_id": run_id, "task_id": result.task_id},
                 )
-            if result.repository_revision != run.repository_revision:
+            if not self._result_matches_run_context(result, run):
                 raise MishkanError(
                     ErrorCode.REVISION_MISMATCH,
                     "result revision differs from the run base revision",
@@ -1764,8 +1875,9 @@ class LocalRunRepository:
     ) -> str:
         source = "\0".join(
             (
-                discovery.binding.repository_id,
-                discovery.binding.base_revision,
+                discovery.binding.context_kind,
+                discovery.binding.context_id,
+                discovery.binding.context_revision,
                 discovery.fingerprint,
                 objective,
                 outcome_id,
@@ -1783,6 +1895,39 @@ class LocalRunRepository:
                 details={"run_id": run_id},
             )
         return run
+
+    @staticmethod
+    def _result_matches_run_context(result: InitializationResult, run: RunRow) -> bool:
+        if result.schema_version == "1.1":
+            context = result.execution_context
+            return context is not None and (
+                context.kind == run.context_kind
+                and context.context_id == run.context_id
+                and context.revision == run.context_revision
+                and context.repository_id == run.repository_id
+                and context.repository_revision == run.repository_revision
+            )
+        return run.context_kind == "repository" and (
+            result.repository_revision == run.repository_revision
+        )
+
+    @staticmethod
+    def _run_execution_context(run: RunRow) -> PlanExecutionContext:
+        return PlanExecutionContext.model_validate(
+            {
+                "kind": run.context_kind,
+                "context_id": run.context_id,
+                "revision": run.context_revision,
+                "repository_id": run.repository_id,
+                "repository_revision": run.repository_revision,
+                "prospective_workspace_id": (
+                    run.context_id if run.context_kind == "prospective_workspace" else None
+                ),
+                "discovery_revision": (
+                    run.context_revision if run.context_kind == "prospective_workspace" else None
+                ),
+            }
+        )
 
     @staticmethod
     def _require_task(session: Session, run_id: str, task_id: str) -> TaskRow:
@@ -1839,6 +1984,9 @@ class LocalRunRepository:
             .order_by(AcceptanceRow.accepted_at)
         ).all()
         plan = AcceptedPlan.model_validate_json(plan_row.payload) if plan_row is not None else None
+        establishment_row = session.scalar(
+            select(RepositoryEstablishmentRow).where(RepositoryEstablishmentRow.run_id == run.id)
+        )
         results = tuple(
             InitializationResult.model_validate_json(row.payload) for row in result_rows
         )
@@ -1851,6 +1999,12 @@ class LocalRunRepository:
             plan=plan,
             results=results,
             reviews=reviews,
+            execution_context=LocalRunRepository._run_execution_context(run),
+            repository_establishment=(
+                RepositoryEstablishment.model_validate_json(establishment_row.payload)
+                if establishment_row is not None
+                else None
+            ),
         )
 
     @staticmethod

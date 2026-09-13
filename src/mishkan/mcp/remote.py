@@ -20,6 +20,7 @@ from mishkan.mcp.facade import (
     MissionTemplateQuery,
     NotificationQuery,
     ProfessionalCompetenceQuery,
+    ProfessionalHistoryQuery,
     RunQuery,
 )
 
@@ -102,6 +103,26 @@ class DaemonMcpFacade:
                 f"/v1/organization/profiles/{query.identity_id}/competence",
                 params={"kind": query.kind.value, "subject": query.subject},
             )
+        if operation in {
+            "organization.evidence.list",
+            "organization.promotions.list",
+        }:
+            query = self._validate(ProfessionalHistoryQuery, arguments)
+            params: dict[str, str | int] = {
+                "offset": query.offset,
+                "limit": query.limit,
+            }
+            if query.kind is not None:
+                params["kind"] = query.kind.value
+            if query.subject is not None:
+                params["subject"] = query.subject
+            collection = "evidence" if operation.endswith("evidence.list") else "promotions"
+            records = await self._request(
+                "GET",
+                f"/v1/organization/profiles/{query.identity_id}/{collection}",
+                params=params,
+            )
+            return {collection: self._require_list(records, collection)}
         if operation == "mission.list":
             query = self._validate(LimitQuery, arguments)
             missions = await self._request("GET", "/v1/missions", params={"limit": query.limit})

@@ -137,6 +137,18 @@ from mishkan.organization.evolution import (
     ProfessionalPromotionRequest,
 )
 from mishkan.organization.models import OrganizationRosterDefinition
+from mishkan.planning.models import (
+    AcceptedPlan,
+    InitializationResult,
+    PlanCandidate,
+    PlanExecutionContext,
+)
+from mishkan.repository.models import (
+    DiscoverySnapshot,
+    ProspectiveWorkspaceBinding,
+    RepositoryBinding,
+    RepositoryEstablishment,
+)
 from mishkan.runtime import TaskReviewRejection
 from mishkan.skills.models import (
     SkillBundleDefinition,
@@ -284,6 +296,14 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "mission-task-eligibility-v1.schema.json": MissionTaskEligibility,
     "mission-template-catalogue-v1.schema.json": MissionTemplateCatalogue,
     "mission-template-definition-v1.schema.json": MissionTemplateDefinition,
+    "plan-accepted-v1.schema.json": AcceptedPlan,
+    "plan-candidate-v1.schema.json": PlanCandidate,
+    "plan-execution-context-v1.schema.json": PlanExecutionContext,
+    "planning-result-v1.schema.json": InitializationResult,
+    "project-discovery-v1.schema.json": DiscoverySnapshot,
+    "prospective-workspace-binding-v1.schema.json": ProspectiveWorkspaceBinding,
+    "repository-binding-v1.schema.json": RepositoryBinding,
+    "repository-establishment-v1.schema.json": RepositoryEstablishment,
     "mission-transition-v1.schema.json": MissionTransition,
     "notification-config-v1.schema.json": NotificationConfig,
     "notification-page-v1.schema.json": NotificationPage,
