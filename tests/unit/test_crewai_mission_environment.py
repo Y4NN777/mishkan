@@ -1,7 +1,11 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from mishkan.config.loader import ConfigLoader
+from mishkan.config.models import MishkanConfig
+from mishkan.config.presets import preset_text
 from mishkan.crewai.mission_environment import (
     CrewAIMissionEnvironmentPlanningRunner,
     MissionEnvironmentDecisionOutput,
@@ -35,6 +39,12 @@ from mishkan.missions import (
     MissionTaskAssignment,
 )
 from mishkan.organization import load_canonical_organization
+
+
+def _config(tmp_path: Path) -> MishkanConfig:
+    source = tmp_path / "config.yaml"
+    source.write_text(preset_text("local"), encoding="utf-8")
+    return ConfigLoader().load([source]).value
 
 
 def _mission_contracts() -> tuple[
@@ -278,6 +288,42 @@ def test_crewai_output_compiles_to_exact_agent_authored_constraints(tmp_path: Pa
     assert binding.requested_outcome is EnvironmentOutcome.GENERATE
     assert binding.required_engine_ids == ("podman",)
     assert binding.allowed_descriptor_formats == ("containerfile",)
+
+
+def test_environment_proposal_runs_the_assigned_mission_agent_through_crewai(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request, mission, brief, crew, _assignments, observation = _request(tmp_path)
+    runner = CrewAIMissionEnvironmentPlanningRunner(_config(tmp_path))
+    calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        runner._models,
+        "candidates_for",
+        lambda route_name: (SimpleNamespace(route_name=route_name),),
+    )
+
+    def crew_result(role, llm, _description):  # type: ignore[no-untyped-def]
+        calls.append((role.name, llm.route_name))
+        return SimpleNamespace(pydantic=_output(), raw="")
+
+    monkeypatch.setattr(runner, "_crew", crew_result)
+
+    plan = runner.propose(
+        request,
+        mission=mission,
+        brief=brief,
+        crew=crew,
+        observations=(observation,),
+        plan_version=1,
+    )
+
+    assert calls == [
+        (request.owner_identity, runner._config.crewai.mission_environment_model_route)
+    ]
+    assert plan.lineage.runtime == "crewai-1.x"
+    assert plan.lineage.output_fingerprint
+    assert plan.owner_identity == request.owner_identity
 
 
 def test_environment_planner_cannot_choose_an_unexposed_outcome(tmp_path: Path) -> None:
