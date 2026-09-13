@@ -47,6 +47,16 @@ class _Client:
         )
         return _Payload("competence")
 
+    def professional_evidence(self, identity_id: str, **filters: Any) -> tuple[_Payload, ...]:
+        assert identity_id == "backend-engineer"
+        assert filters == {"kind": None, "subject": None, "offset": 0, "limit": 10}
+        return (_Payload("professional-evidence"),)
+
+    def professional_promotions(self, identity_id: str, **filters: Any) -> tuple[_Payload, ...]:
+        assert identity_id == "backend-engineer"
+        assert filters == {"kind": None, "subject": None, "offset": 0, "limit": 10}
+        return (_Payload("professional-promotion"),)
+
     def missions(self, *, limit: int) -> tuple[_Payload, ...]:
         assert limit == 3
         return (_Payload("mission"),)
@@ -54,6 +64,27 @@ class _Client:
     def mission(self, mission_id: str) -> _Payload:
         assert mission_id == "mission/id"
         return _Payload("mission-detail")
+
+    def mission_inspection(self, mission_id: str, *, limit: int) -> dict[str, str]:
+        assert (mission_id, limit) == ("mission/id", 11)
+        return {"kind": "mission-inspection"}
+
+    def create_prospective_run(self, **request: str) -> dict[str, str]:
+        assert request == {
+            "workspace_id": "prospective:cli-fixture",
+            "objective": "Build the prospective service",
+            "outcome_id": "greenfield",
+        }
+        return {"kind": "prospective-run"}
+
+    def establish_repository(self, run_id: str, **request: Any) -> dict[str, str]:
+        assert run_id == "run-prospective"
+        assert request == {
+            "prospective_workspace_id": "prospective:cli-fixture",
+            "discovery_revision": "a" * 64,
+            "evidence_references": ("artifact:establishment",),
+        }
+        return {"kind": "repository-establishment"}
 
     def mission_templates(
         self,
@@ -187,8 +218,47 @@ def client(monkeypatch: pytest.MonkeyPatch) -> _Client:
             ),
             {"kind": "competence"},
         ),
+        (
+            ("org", "evidence", "backend-engineer", "--limit", "10"),
+            [{"kind": "professional-evidence"}],
+        ),
+        (
+            ("org", "promotions", "backend-engineer", "--limit", "10"),
+            [{"kind": "professional-promotion"}],
+        ),
         (("mission", "list", "--limit", "3"), [{"kind": "mission"}]),
         (("mission", "show", "mission/id"), {"kind": "mission-detail"}),
+        (
+            ("mission", "inspect", "mission/id", "--limit", "11"),
+            {"kind": "mission-inspection"},
+        ),
+        (
+            (
+                "run",
+                "prospective-create",
+                "--workspace-id",
+                "prospective:cli-fixture",
+                "--objective",
+                "Build the prospective service",
+                "--outcome-id",
+                "greenfield",
+            ),
+            {"kind": "prospective-run"},
+        ),
+        (
+            (
+                "run",
+                "repository-establish",
+                "run-prospective",
+                "--workspace-id",
+                "prospective:cli-fixture",
+                "--discovery-revision",
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "--evidence",
+                "artifact:establishment",
+            ),
+            {"kind": "repository-establishment"},
+        ),
         (
             (
                 "mission",

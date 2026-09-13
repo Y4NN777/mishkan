@@ -18,7 +18,12 @@ from uuid import UUID
 
 from pydantic import ValidationError
 
-from mishkan.application.contracts import ApplicationCommand, RunInitializationRequest
+from mishkan.application.contracts import (
+    ApplicationCommand,
+    ProspectiveRunRequest,
+    RepositoryEstablishmentRequest,
+    RunInitializationRequest,
+)
 from mishkan.config.models import (
     CredentialReference,
     McpConfig,
@@ -117,6 +122,12 @@ COMMAND_SEMANTICS = MappingProxyType(
         ),
         "run.initialize": CommandSemantics(
             "application.run.initialize", "coordination", ("run.initialize",), True
+        ),
+        "run.prospective.create": CommandSemantics(
+            "application.run.context", "coordination", ("run.prospective.create",)
+        ),
+        "run.repository.establish": CommandSemantics(
+            "application.run.context", "coordination", ("run.repository.establish",)
         ),
         "run.cancel": CommandSemantics("application.run.control", "coordination", ("run.cancel",)),
         "run.recover": CommandSemantics(
@@ -361,6 +372,8 @@ _COMMAND_TARGETS = MappingProxyType(
     {
         "system.checkpoint": ("system", "optional"),
         "run.initialize": ("run", "absent"),
+        "run.prospective.create": ("run", "absent"),
+        "run.repository.establish": ("run", "required"),
         "run.cancel": ("run", "required"),
         "run.recover": ("run", "required"),
         "artifact.upload.open": ("artifact_service", "absent"),
@@ -444,6 +457,20 @@ _COMMAND_PAYLOAD_FIELDS = MappingProxyType(
     {
         "system.checkpoint": (frozenset(), frozenset({"checkpoint", "index"})),
         "run.initialize": (frozenset({"objective"}), frozenset({"schema_version"})),
+        "run.prospective.create": (
+            frozenset({"workspace_id", "objective", "outcome_id"}),
+            frozenset({"schema_version"}),
+        ),
+        "run.repository.establish": (
+            frozenset(
+                {
+                    "prospective_workspace_id",
+                    "discovery_revision",
+                    "evidence_references",
+                }
+            ),
+            frozenset({"schema_version"}),
+        ),
         "run.cancel": (frozenset(), frozenset()),
         "run.recover": (frozenset(), frozenset()),
         "artifact.upload.open": (
@@ -567,6 +594,8 @@ class AuthorizedApplicationCommand:
     command: ApplicationCommand
     request: AuthorizationRequest
     decision: AuthorizationDecision
+    prospective_run_request: ProspectiveRunRequest | None = None
+    repository_establishment_request: RepositoryEstablishmentRequest | None = None
     session_request: ExecutionRequest | None = None
     git_request: GitEffectRequest | None = None
     registry_mutation: RegistryMutation | None = None
@@ -687,11 +716,33 @@ class ApplicationCommandAuthority:
         professional_evidence: ProfessionalEvidenceRecord | None = None
         professional_promotion_request: ProfessionalPromotionRequest | None = None
         professional_promotion_disposition: ProfessionalPromotionDisposition | None = None
+        prospective_run_request: ProspectiveRunRequest | None = None
+        repository_establishment_request: RepositoryEstablishmentRequest | None = None
 
         try:
             if normalized.command_type == "run.initialize":
                 RunInitializationRequest.model_validate(normalized.payload)
                 timeout = self._config.crewai.model_timeout_seconds
+            elif normalized.command_type == "run.prospective.create":
+                prospective_run_request = ProspectiveRunRequest.model_validate(normalized.payload)
+                paths = (str(self._workspace),)
+                external_resources = (
+                    f"prospective-workspace:{prospective_run_request.workspace_id}",
+                )
+            elif normalized.command_type == "run.repository.establish":
+                repository_establishment_request = RepositoryEstablishmentRequest.model_validate(
+                    normalized.payload
+                )
+                paths = (str(self._workspace),)
+                external_resources = (
+                    f"run:{normalized.target_id}",
+                    "repository:configured-workspace",
+                    f"prospective-workspace:{repository_establishment_request.prospective_workspace_id}",
+                    *(
+                        f"evidence:{reference}"
+                        for reference in repository_establishment_request.evidence_references
+                    ),
+                )
             elif normalized.command_type == "change.plan":
                 change_set = ChangeSet.model_validate(normalized.payload["change_set"])
                 if normalized.target_id != str(change_set.id):
@@ -1448,6 +1499,8 @@ class ApplicationCommandAuthority:
             professional_evidence=professional_evidence,
             professional_promotion_request=professional_promotion_request,
             professional_promotion_disposition=professional_promotion_disposition,
+            prospective_run_request=prospective_run_request,
+            repository_establishment_request=repository_establishment_request,
         )
 
     @staticmethod

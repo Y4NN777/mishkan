@@ -66,6 +66,83 @@ def test_event_export_rejects_unbounded_page_size(tmp_path: Path) -> None:
         client.export_events_jsonl(tmp_path / "events.jsonl", page_size=1001)
 
 
+def test_sdk_emits_versioned_prospective_and_repository_establishment_commands(
+    tmp_path: Path,
+) -> None:
+    token_file = tmp_path / "token.json"
+    TokenFile(token_file).create("PM")
+    commands: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        command = json.loads(request.content)
+        commands.append(command)
+        payload = (
+            {
+                "run_id": "run-prospective",
+                "execution_context": {"kind": "prospective_workspace"},
+            }
+            if command["command_type"] == "run.prospective.create"
+            else {
+                "run_id": "run-prospective",
+                "repository_establishment": {"schema_version": "1.0"},
+            }
+        )
+        return httpx.Response(
+            200,
+            json={
+                "schema_version": "1.0",
+                "command_id": command["command_id"],
+                "status": "accepted",
+                "target_type": command["target_type"],
+                "target_id": command["target_id"],
+                "revision": 1,
+                "event_cursor": len(commands),
+                "payload": payload,
+                "error": None,
+                "completed_at": datetime.now(UTC).isoformat(),
+            },
+        )
+
+    with Mishkan("http://mishkand.test", token_file=token_file) as client:
+        client._client.close()
+        client._client = httpx.Client(
+            base_url="http://mishkand.test",
+            transport=httpx.MockTransport(handler),
+        )
+        created = client.create_prospective_run(
+            workspace_id="prospective:sdk-fixture",
+            objective="Build the prospective service",
+            outcome_id="greenfield",
+        )
+        established = client.establish_repository(
+            "run-prospective",
+            prospective_workspace_id="prospective:sdk-fixture",
+            discovery_revision="a" * 64,
+            evidence_references=("artifact:establishment",),
+        )
+
+    assert created["run_id"] == "run-prospective"
+    assert established["repository_establishment"] == {"schema_version": "1.0"}
+    assert [command["command_type"] for command in commands] == [
+        "run.prospective.create",
+        "run.repository.establish",
+    ]
+    assert commands[0]["target_id"] is None
+    assert commands[0]["payload"] == {
+        "schema_version": "1.0",
+        "workspace_id": "prospective:sdk-fixture",
+        "objective": "Build the prospective service",
+        "outcome_id": "greenfield",
+    }
+    assert commands[1]["target_id"] == "run-prospective"
+    assert commands[1]["payload"] == {
+        "schema_version": "1.0",
+        "prospective_workspace_id": "prospective:sdk-fixture",
+        "discovery_revision": "a" * 64,
+        "evidence_references": ["artifact:establishment"],
+    }
+
+
 def test_sdk_bounded_query_surfaces_use_authenticated_versioned_routes(tmp_path: Path) -> None:
     token_file = tmp_path / "token.json"
     credential = TokenFile(token_file).create("operator")

@@ -106,6 +106,8 @@ rules:
       outcomes:
         - system.checkpoint
         - run.initialize
+        - run.prospective.create
+        - run.repository.establish
         - run.cancel
         - run.recover
         - artifact.upload.open
@@ -186,6 +188,7 @@ rules:
       capabilities:
         - application.system.checkpoint
         - application.run.initialize
+        - application.run.context
         - application.run.control
         - application.artifact.upload
         - application.artifact.reference

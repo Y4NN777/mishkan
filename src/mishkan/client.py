@@ -15,7 +15,13 @@ from uuid import UUID
 
 import httpx
 
-from mishkan.application import ApplicationCommand, CommandResult, SnapshotEnvelope
+from mishkan.application import (
+    ApplicationCommand,
+    CommandResult,
+    ProspectiveRunRequest,
+    RepositoryEstablishmentRequest,
+    SnapshotEnvelope,
+)
 from mishkan.artifacts import (
     ArtifactCollection,
     ArtifactManifest,
@@ -1128,6 +1134,54 @@ class Mishkan:
         )
         response.raise_for_status()
         return tuple(dict(item) for item in response.json())
+
+    def create_prospective_run(
+        self,
+        *,
+        workspace_id: str,
+        objective: str,
+        outcome_id: str,
+    ) -> dict[str, object]:
+        """Create a run bound to observed pre-repository workspace identity."""
+        request = ProspectiveRunRequest(
+            workspace_id=workspace_id,
+            objective=objective,
+            outcome_id=outcome_id,
+        )
+        result = self.command(
+            ApplicationCommand(
+                command_type="run.prospective.create",
+                actor_id=self.principal_id,
+                target_type="run",
+                payload=request.model_dump(mode="json"),
+            )
+        )
+        return dict(result.payload)
+
+    def establish_repository(
+        self,
+        run_id: str,
+        *,
+        prospective_workspace_id: str,
+        discovery_revision: str,
+        evidence_references: tuple[str, ...],
+    ) -> dict[str, object]:
+        """Record proven repository establishment without rewriting run lineage."""
+        request = RepositoryEstablishmentRequest(
+            prospective_workspace_id=prospective_workspace_id,
+            discovery_revision=discovery_revision,
+            evidence_references=evidence_references,
+        )
+        result = self.command(
+            ApplicationCommand(
+                command_type="run.repository.establish",
+                actor_id=self.principal_id,
+                target_type="run",
+                target_id=run_id,
+                payload=request.model_dump(mode="json"),
+            )
+        )
+        return dict(result.payload)
 
     def tasks(
         self,

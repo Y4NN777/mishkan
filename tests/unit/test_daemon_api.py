@@ -13,7 +13,11 @@ import httpx
 import pytest
 from sqlalchemy import create_engine, text
 
-from mishkan.application import ApplicationCommand
+from mishkan.application import (
+    ApplicationCommand,
+    ProspectiveRunRequest,
+    RepositoryEstablishmentRequest,
+)
 from mishkan.config.loader import ConfigLoader
 from mishkan.config.models import MishkanConfig, ProjectConfig, TelemetryConfig
 from mishkan.config.presets import preset_text
@@ -50,6 +54,100 @@ def test_daemon_setup_creates_current_database_and_private_token(tmp_path: Path)
     assert paths.database.is_file()
     assert stat.S_IMODE(paths.token_file.stat().st_mode) == 0o600
     assert TokenFile(paths.token_file).read().principal_id == "operator-1"
+
+
+@pytest.mark.anyio
+async def test_daemon_preserves_prospective_lineage_when_repository_is_established(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "README.md").write_text("# Prospective service\n", encoding="utf-8")
+    config = _config(tmp_path)
+    paths = DaemonBootstrap().setup(config, principal_id="PM")
+    token = TokenFile(paths.token_file).read()
+    headers = {"Authorization": f"Bearer {token.token}"}
+    request = ProspectiveRunRequest(
+        workspace_id="prospective:daemon-fixture",
+        objective="Establish the service from the observed workspace",
+        outcome_id="greenfield-service",
+    )
+    create = ApplicationCommand(
+        command_type="run.prospective.create",
+        actor_id=token.principal_id,
+        target_type="run",
+        payload=request.model_dump(mode="json"),
+    )
+    transport = httpx.ASGITransport(app=create_app(config))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        created_response = await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=create.model_dump(mode="json"),
+        )
+        assert created_response.status_code == 200
+        created = created_response.json()["payload"]
+        context = created["execution_context"]
+        assert context["kind"] == "prospective_workspace"
+        assert context["repository_id"] is None
+        assert context["repository_revision"] is None
+
+        subprocess.run(["git", "init", "-b", "main"], cwd=tmp_path, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.name", "Fixture"],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "fixture@example.invalid"],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(["git", "add", "README.md"], cwd=tmp_path, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "establish repository"],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+        )
+        establishment_request = RepositoryEstablishmentRequest(
+            prospective_workspace_id=request.workspace_id,
+            discovery_revision=context["discovery_revision"],
+            evidence_references=("artifact:repository-establishment",),
+        )
+        establish = ApplicationCommand(
+            command_type="run.repository.establish",
+            actor_id=token.principal_id,
+            target_type="run",
+            target_id=created["run_id"],
+            payload=establishment_request.model_dump(mode="json"),
+        )
+        established_response = await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=establish.model_dump(mode="json"),
+        )
+        assert established_response.status_code == 200
+        established = established_response.json()["payload"]
+        assert established["execution_context"] == context
+        prospective = established["repository_establishment"]["prospective_workspace"]
+        assert prospective["context_kind"] == "prospective_workspace"
+        assert prospective["workspace_id"] == request.workspace_id
+        assert prospective["root"] == str(tmp_path.resolve())
+        assert prospective["discovery_revision"] == context["discovery_revision"]
+        assert len(prospective["workspace_fingerprint"]) == 64
+        assert prospective["repository_id"] is None
+        assert prospective["base_revision"] is None
+        assert established["repository_establishment"]["repository"]["repository_id"]
+
+        replay = await client.post(
+            "/v1/commands",
+            headers=headers,
+            json=establish.model_dump(mode="json"),
+        )
+        assert replay.status_code == 200
+        assert replay.json()["status"] == "accepted"
+        assert replay.json()["payload"] == established
 
 
 @pytest.mark.anyio

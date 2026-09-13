@@ -8,6 +8,8 @@ from pydantic import BaseModel
 from mishkan.application.contracts import (
     ApplicationCommand,
     CommandResult,
+    ProspectiveRunRequest,
+    RepositoryEstablishmentRequest,
     RunInitializationRequest,
     SnapshotEnvelope,
 )
@@ -221,6 +223,8 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "change-set-v1.schema.json": ChangeSet,
     "command-result-v1.schema.json": CommandResult,
     "config-v1.schema.json": MishkanConfig,
+    "prospective-run-request-v1.schema.json": ProspectiveRunRequest,
+    "repository-establishment-request-v1.schema.json": RepositoryEstablishmentRequest,
     "confirmed-engineer-fact-v1.schema.json": ConfirmedEngineerFact,
     "candidate-assessment-v1.schema.json": CandidateAssessment,
     "candidate-constraints-v1.schema.json": CandidateConstraints,

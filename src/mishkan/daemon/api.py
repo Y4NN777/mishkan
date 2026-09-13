@@ -153,6 +153,12 @@ from mishkan.organization.evolution_repository import SQLiteProfessionalEvolutio
 from mishkan.persistence import LocalRunRepository, SchemaManager, SQLiteApplicationRepository
 from mishkan.policy import Decision
 from mishkan.policy.models import EffectivePolicy
+from mishkan.repository import (
+    ProspectiveWorkspaceBinding,
+    ProspectiveWorkspaceInspector,
+    RepositoryEstablishment,
+    RepositoryInspector,
+)
 from mishkan.runtime import TaskReviewRejection
 from mishkan.skills import SkillInspectionProfileLoader, SkillPackageInspector
 from mishkan.skills.catalog import validate_skill_metadata_document
@@ -880,6 +886,7 @@ def create_app(
                                 command_authority.policy,
                                 supervisor,
                                 run_repository,
+                                paths.workspace,
                                 mcp_runner,
                                 mcp_config,
                                 resolved_credentials,
@@ -1999,6 +2006,7 @@ def _dispatch(
     effective_policy: EffectivePolicy,
     supervisor: SessionSupervisor,
     runs: LocalRunRepository,
+    workspace: Path,
     mcp_runner: McpServiceRunner | None,
     mcp_config: McpConfig | None,
     resolved_credentials: dict[str, str],
@@ -2028,6 +2036,58 @@ def _dispatch(
     payload = command.payload
     if command.command_type == "system.checkpoint" and command.target_type == "system":
         return "system.checkpoint_recorded", {"recorded": True}
+    if command.command_type == "run.prospective.create":
+        prospective_request = authorized.prospective_run_request
+        if prospective_request is None:
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT,
+                "authorized prospective run request is absent",
+            )
+        discovery = ProspectiveWorkspaceInspector().inspect(
+            workspace,
+            workspace_id=prospective_request.workspace_id,
+        )
+        snapshot = runs.start_or_resume(
+            discovery,
+            prospective_request.objective,
+            prospective_request.outcome_id,
+        )
+        return "run.prospective_created", {
+            "run_id": snapshot.run_id,
+            "resumed": snapshot.resumed,
+            "execution_context": snapshot.execution_context.model_dump(mode="json"),
+        }
+    if command.command_type == "run.repository.establish" and command.target_id is not None:
+        establishment_request = authorized.repository_establishment_request
+        if establishment_request is None:
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT,
+                "authorized repository establishment request is absent",
+            )
+        discovery = ProspectiveWorkspaceInspector().inspect(
+            workspace,
+            workspace_id=establishment_request.prospective_workspace_id,
+        )
+        if discovery.binding.context_revision != establishment_request.discovery_revision:
+            raise MishkanError(
+                ErrorCode.REVISION_MISMATCH,
+                "prospective workspace discovery revision changed before establishment",
+            )
+        if not isinstance(discovery.binding, ProspectiveWorkspaceBinding):
+            raise MishkanError(ErrorCode.PROJECT, "prospective workspace binding is invalid")
+        establishment = RepositoryEstablishment(
+            run_id=command.target_id,
+            prospective_workspace=discovery.binding,
+            repository=RepositoryInspector().bind(workspace),
+            evidence_references=establishment_request.evidence_references,
+            established_by=command.actor_id,
+        )
+        snapshot = runs.record_repository_establishment(establishment)
+        return "run.repository_established", {
+            "run_id": snapshot.run_id,
+            "execution_context": snapshot.execution_context.model_dump(mode="json"),
+            "repository_establishment": establishment.model_dump(mode="json"),
+        }
     if command.command_type == "telemetry.evaluation.import":
         evaluation_request = authorized.telemetry_evaluation
         if evaluation_request is None:

@@ -1979,6 +1979,44 @@ def list_run_tasks(
     _emit(values, as_json=_state(ctx).json_output)
 
 
+@run_app.command("prospective-create")
+def create_prospective_run(
+    ctx: typer.Context,
+    workspace_id: Annotated[str, typer.Option("--workspace-id")],
+    objective: Annotated[str, typer.Option("--objective")],
+    outcome_id: Annotated[str, typer.Option("--outcome-id")],
+) -> None:
+    """Create a run for the configured workspace before a repository exists."""
+    with _daemon_client(ctx) as client:
+        value = client.create_prospective_run(
+            workspace_id=workspace_id,
+            objective=objective,
+            outcome_id=outcome_id,
+        )
+    _emit(value, as_json=_state(ctx).json_output)
+
+
+@run_app.command("repository-establish")
+def establish_run_repository(
+    ctx: typer.Context,
+    run_id: str,
+    workspace_id: Annotated[str, typer.Option("--workspace-id")],
+    discovery_revision: Annotated[str, typer.Option("--discovery-revision")],
+    evidence: Annotated[list[str], typer.Option("--evidence")],
+) -> None:
+    """Record an explicitly proven repository for a prospective run."""
+    if not evidence:
+        raise typer.BadParameter("at least one --evidence reference is required")
+    with _daemon_client(ctx) as client:
+        value = client.establish_repository(
+            run_id,
+            prospective_workspace_id=workspace_id,
+            discovery_revision=discovery_revision,
+            evidence_references=tuple(evidence),
+        )
+    _emit(value, as_json=_state(ctx).json_output)
+
+
 @run_app.command("cancel")
 def cancel_run(
     ctx: typer.Context,

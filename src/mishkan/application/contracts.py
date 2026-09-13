@@ -59,6 +59,24 @@ class RunInitializationRequest(ApplicationModel):
     objective: str = Field(min_length=3, max_length=2_000)
 
 
+class ProspectiveRunRequest(ApplicationModel):
+    """Create a run bound to the daemon's configured pre-repository workspace."""
+
+    schema_version: Literal["1.0"] = "1.0"
+    workspace_id: str = Field(min_length=12, max_length=256)
+    objective: str = Field(min_length=3, max_length=2_000)
+    outcome_id: str = Field(min_length=1, max_length=160)
+
+
+class RepositoryEstablishmentRequest(ApplicationModel):
+    """Verify and record repository establishment without replacing the source context."""
+
+    schema_version: Literal["1.0"] = "1.0"
+    prospective_workspace_id: str = Field(min_length=12, max_length=256)
+    discovery_revision: str = Field(min_length=7, max_length=128)
+    evidence_references: tuple[str, ...] = Field(min_length=1)
+
+
 class CommandResult(ApplicationModel):
     schema_version: Literal["1.0"] = "1.0"
     command_id: UUID
