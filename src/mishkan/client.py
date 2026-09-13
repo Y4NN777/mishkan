@@ -88,6 +88,7 @@ from mishkan.missions import (
     MissionCrewRevision,
     MissionEnvironmentReadiness,
     MissionRecord,
+    MissionRunBinding,
     MissionTaskAssignment,
     MissionTaskClaim,
     MissionTaskClaimRequest,
@@ -518,6 +519,19 @@ class Mishkan:
         )
         return MissionTaskAssignment.model_validate(result.payload)
 
+    def record_mission_run_binding(self, binding: MissionRunBinding) -> MissionRunBinding:
+        result = self.command(
+            ApplicationCommand(
+                command_type="mission.run-binding.record",
+                actor_id=self.principal_id,
+                target_type="mission_run_binding",
+                target_id=str(binding.binding_id),
+                expected_revision=0,
+                payload={"binding": binding.model_dump(mode="json")},
+            )
+        )
+        return MissionRunBinding.model_validate(result.payload)
+
     def transition_mission(
         self,
         transition: MissionTransition,
@@ -610,6 +624,17 @@ class Mishkan:
         )
         response.raise_for_status()
         return tuple(MissionTaskAssignment.model_validate(item) for item in response.json())
+
+    def mission_run_bindings(
+        self, mission_id: str, *, limit: int = 1_000
+    ) -> tuple[MissionRunBinding, ...]:
+        response = self._client.get(
+            f"/v1/missions/{mission_id}/run-bindings",
+            headers=self._headers(),
+            params={"limit": limit},
+        )
+        response.raise_for_status()
+        return tuple(MissionRunBinding.model_validate(item) for item in response.json())
 
     def mission_transitions(
         self, mission_id: str, *, limit: int = 1_000

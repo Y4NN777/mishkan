@@ -1,0 +1,42 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "mission_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Mission Id"
+    },
+    "organization_fingerprint": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Organization Fingerprint",
+      "type": "string"
+    },
+    "organization_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Organization Id",
+      "type": "string"
+    },
+    "organization_version": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Organization Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "organization_id",
+    "organization_version",
+    "organization_fingerprint"
+  ],
+  "title": "PlanOrganizationBinding",
+  "type": "object"
+}

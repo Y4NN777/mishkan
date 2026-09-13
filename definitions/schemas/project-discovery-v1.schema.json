@@ -1,0 +1,191 @@
+{
+  "$defs": {
+    "DiscoveryFact": {
+      "additionalProperties": false,
+      "properties": {
+        "citations": {
+          "items": {
+            "format": "path",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Citations",
+          "type": "array"
+        },
+        "kind": {
+          "minLength": 1,
+          "title": "Kind",
+          "type": "string"
+        },
+        "value": {
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "value",
+        "citations"
+      ],
+      "title": "DiscoveryFact",
+      "type": "object"
+    },
+    "ProspectiveWorkspaceBinding": {
+      "additionalProperties": false,
+      "properties": {
+        "base_revision": {
+          "default": null,
+          "title": "Base Revision",
+          "type": "null"
+        },
+        "context_kind": {
+          "const": "prospective_workspace",
+          "default": "prospective_workspace",
+          "title": "Context Kind",
+          "type": "string"
+        },
+        "discovery_revision": {
+          "maxLength": 128,
+          "minLength": 7,
+          "title": "Discovery Revision",
+          "type": "string"
+        },
+        "repository_id": {
+          "default": null,
+          "title": "Repository Id",
+          "type": "null"
+        },
+        "root": {
+          "format": "path",
+          "title": "Root",
+          "type": "string"
+        },
+        "workspace_fingerprint": {
+          "maxLength": 64,
+          "minLength": 64,
+          "title": "Workspace Fingerprint",
+          "type": "string"
+        },
+        "workspace_id": {
+          "maxLength": 256,
+          "minLength": 12,
+          "title": "Workspace Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "workspace_id",
+        "root",
+        "discovery_revision",
+        "workspace_fingerprint"
+      ],
+      "title": "ProspectiveWorkspaceBinding",
+      "type": "object"
+    },
+    "RepositoryBinding": {
+      "additionalProperties": false,
+      "properties": {
+        "base_revision": {
+          "minLength": 7,
+          "title": "Base Revision",
+          "type": "string"
+        },
+        "context_kind": {
+          "const": "repository",
+          "default": "repository",
+          "title": "Context Kind",
+          "type": "string"
+        },
+        "remote_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Remote Url"
+        },
+        "repository_id": {
+          "minLength": 12,
+          "title": "Repository Id",
+          "type": "string"
+        },
+        "root": {
+          "format": "path",
+          "title": "Root",
+          "type": "string"
+        },
+        "working_tree_dirty": {
+          "title": "Working Tree Dirty",
+          "type": "boolean"
+        },
+        "working_tree_fingerprint": {
+          "maxLength": 64,
+          "minLength": 64,
+          "title": "Working Tree Fingerprint",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository_id",
+        "root",
+        "base_revision",
+        "working_tree_dirty",
+        "working_tree_fingerprint"
+      ],
+      "title": "RepositoryBinding",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "binding": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RepositoryBinding"
+        },
+        {
+          "$ref": "#/$defs/ProspectiveWorkspaceBinding"
+        }
+      ],
+      "title": "Binding"
+    },
+    "facts": {
+      "items": {
+        "$ref": "#/$defs/DiscoveryFact"
+      },
+      "title": "Facts",
+      "type": "array"
+    },
+    "fingerprint": {
+      "maxLength": 64,
+      "minLength": 64,
+      "title": "Fingerprint",
+      "type": "string"
+    },
+    "schema_version": {
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "unknowns": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Unknowns",
+      "type": "array"
+    }
+  },
+  "required": [
+    "binding",
+    "facts",
+    "unknowns",
+    "fingerprint"
+  ],
+  "title": "DiscoverySnapshot",
+  "type": "object"
+}

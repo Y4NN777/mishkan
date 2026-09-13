@@ -1,5 +1,14 @@
 {
   "$defs": {
+    "AssignmentChangeKind": {
+      "enum": [
+        "in_plan_local",
+        "formal_reassignment",
+        "replanned"
+      ],
+      "title": "AssignmentChangeKind",
+      "type": "string"
+    },
     "CrewAssignmentKind": {
       "enum": [
         "production",
@@ -10,6 +19,176 @@
       ],
       "title": "CrewAssignmentKind",
       "type": "string"
+    },
+    "ExecutiveConfirmation": {
+      "additionalProperties": false,
+      "properties": {
+        "confirmation_id": {
+          "format": "uuid",
+          "title": "Confirmation Id",
+          "type": "string"
+        },
+        "confirmed_at": {
+          "format": "date-time",
+          "title": "Confirmed At",
+          "type": "string"
+        },
+        "coverage": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Coverage",
+          "type": "array"
+        },
+        "disposition": {
+          "enum": [
+            "confirmed",
+            "rejected"
+          ],
+          "title": "Disposition",
+          "type": "string"
+        },
+        "evidence_references": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Evidence References",
+          "type": "array"
+        },
+        "identity_id": {
+          "enum": [
+            "PM",
+            "CTO"
+          ],
+          "title": "Identity Id",
+          "type": "string"
+        },
+        "rationale": {
+          "maxLength": 4096,
+          "minLength": 3,
+          "title": "Rationale",
+          "type": "string"
+        }
+      },
+      "required": [
+        "identity_id",
+        "disposition",
+        "rationale",
+        "evidence_references",
+        "coverage"
+      ],
+      "title": "ExecutiveConfirmation",
+      "type": "object"
+    },
+    "MissionAssignmentChange": {
+      "additionalProperties": false,
+      "properties": {
+        "authority_reference": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Authority Reference",
+          "type": "string"
+        },
+        "change_kind": {
+          "$ref": "#/$defs/AssignmentChangeKind"
+        },
+        "context_references": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Context References",
+          "type": "array"
+        },
+        "cto_coverage_confirmation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExecutiveConfirmation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "effective_plan_fingerprint": {
+          "maxLength": 64,
+          "minLength": 64,
+          "title": "Effective Plan Fingerprint",
+          "type": "string"
+        },
+        "evidence_references": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Evidence References",
+          "type": "array"
+        },
+        "pm_reassignment_confirmation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExecutiveConfirmation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "prior_assignment_id": {
+          "format": "uuid",
+          "title": "Prior Assignment Id",
+          "type": "string"
+        },
+        "prior_assignment_revision": {
+          "minimum": 1,
+          "title": "Prior Assignment Revision",
+          "type": "integer"
+        },
+        "prior_plan_fingerprint": {
+          "maxLength": 64,
+          "minLength": 64,
+          "title": "Prior Plan Fingerprint",
+          "type": "string"
+        },
+        "rationale": {
+          "maxLength": 8192,
+          "minLength": 3,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "replanning_evidence_references": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Replanning Evidence References",
+          "type": "array"
+        },
+        "requested_by_identity": {
+          "maxLength": 128,
+          "minLength": 2,
+          "title": "Requested By Identity",
+          "type": "string"
+        }
+      },
+      "required": [
+        "prior_assignment_id",
+        "prior_assignment_revision",
+        "requested_by_identity",
+        "change_kind",
+        "rationale",
+        "context_references",
+        "evidence_references",
+        "authority_reference",
+        "prior_plan_fingerprint",
+        "effective_plan_fingerprint"
+      ],
+      "title": "MissionAssignmentChange",
+      "type": "object"
     },
     "MissionResourceLimit": {
       "additionalProperties": false,
@@ -70,6 +249,17 @@
       "minItems": 1,
       "title": "Authority Scope",
       "type": "array"
+    },
+    "change": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/MissionAssignmentChange"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "completion_criteria": {
       "items": {
@@ -188,8 +378,11 @@
       "type": "boolean"
     },
     "schema_version": {
-      "const": "1.0",
       "default": "1.0",
+      "enum": [
+        "1.0",
+        "1.1"
+      ],
       "title": "Schema Version",
       "type": "string"
     },

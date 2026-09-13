@@ -25,6 +25,8 @@ from mishkan.missions.models import (
     MissionBriefStatus,
     MissionCrewRevision,
     MissionRecord,
+    MissionRunAcceptance,
+    MissionRunBinding,
     MissionState,
     MissionTaskAssignment,
     MissionTransition,
@@ -32,16 +34,23 @@ from mishkan.missions.models import (
 from mishkan.organization.models import OrganizationRosterDefinition
 from mishkan.persistence.migration import SchemaManager
 from mishkan.persistence.sqlite import (
+    AcceptanceRow,
     MissionAssignmentRow,
     MissionBriefRow,
     MissionCrewRow,
     MissionEnvironmentPlanRow,
     MissionRow,
+    MissionRunBindingRow,
     MissionTransitionRow,
     OrganizationRosterRow,
     OutboxRow,
+    PlanRow,
+    ResultRow,
+    ReviewRejectionRow,
+    RunRow,
     create_local_engine,
 )
+from mishkan.planning.models import AcceptedPlan, PlanExecutionContext
 
 RecordT = TypeVar("RecordT", bound=BaseModel)
 
@@ -737,6 +746,180 @@ class SQLiteMissionRepository:
             )
             return tuple(MissionTaskAssignment.model_validate_json(row.payload) for row in rows)
 
+    def record_run_binding(self, binding: MissionRunBinding) -> MissionRunBinding:
+        payload = self._json(binding)
+        with Session(self._engine) as session, session.begin():
+            existing = session.get(MissionRunBindingRow, str(binding.binding_id))
+            if existing is not None:
+                return self._idempotent(existing.payload, payload, binding)
+            mission = MissionRecord.model_validate_json(
+                self._require_mission_row(session, str(binding.mission_id)).payload
+            )
+            run = session.get(RunRow, binding.run_id)
+            if run is None:
+                raise MishkanError(ErrorCode.MISSION, "mission run binding references no run")
+            if run.context_kind == "repository":
+                observed_context = PlanExecutionContext(
+                    kind="repository",
+                    context_id=run.context_id,
+                    revision=run.context_revision,
+                    repository_id=run.repository_id,
+                    repository_revision=run.repository_revision,
+                )
+            elif run.context_kind == "prospective_workspace":
+                observed_context = PlanExecutionContext(
+                    kind="prospective_workspace",
+                    context_id=run.context_id,
+                    revision=run.context_revision,
+                    prospective_workspace_id=run.context_id,
+                    discovery_revision=run.context_revision,
+                )
+            else:
+                raise MishkanError(
+                    ErrorCode.CONTEXT,
+                    "mission run binding references an unknown run context kind",
+                )
+            if binding.execution_context != observed_context:
+                raise MishkanError(
+                    ErrorCode.REVISION_MISMATCH,
+                    "mission run binding context differs from the exact durable run context",
+                )
+            plan_row = session.scalar(select(PlanRow).where(PlanRow.run_id == binding.run_id))
+            if plan_row is None:
+                raise MishkanError(ErrorCode.PLAN, "mission run binding requires an accepted plan")
+            accepted_plan = AcceptedPlan.model_validate_json(plan_row.payload)
+            organization = accepted_plan.organization_binding
+            if organization is None or (
+                organization.organization_id != mission.organization_id
+                or organization.organization_version != mission.organization_version
+                or organization.mission_id != binding.mission_id
+            ):
+                raise MishkanError(
+                    ErrorCode.PLAN,
+                    "accepted run plan does not carry this mission and organization identity",
+                )
+            plan_task = next(
+                (task for task in accepted_plan.tasks if task.task_id == binding.execution_task_id),
+                None,
+            )
+            if plan_task is None:
+                raise MishkanError(
+                    ErrorCode.PLAN,
+                    "mission run binding references no exact accepted plan task",
+                )
+            assignment_row = session.scalar(
+                select(MissionAssignmentRow)
+                .where(
+                    MissionAssignmentRow.mission_id == str(binding.mission_id),
+                    MissionAssignmentRow.task_id == binding.mission_task_id,
+                )
+                .order_by(MissionAssignmentRow.assignment_revision.desc())
+                .limit(1)
+            )
+            if assignment_row is None:
+                raise MishkanError(
+                    ErrorCode.MISSION,
+                    "mission run binding references no current mission task assignment",
+                )
+            assignment = MissionTaskAssignment.model_validate_json(assignment_row.payload)
+            if (
+                assignment.execution_run_id != binding.run_id
+                or assignment.execution_task_id != binding.execution_task_id
+                or assignment.accountable_owner != plan_task.assigned_role
+                or assignment.exact_tools != plan_task.tools
+                or assignment.authority_scope != binding.authority_scope
+                or assignment.path_scopes != binding.path_scopes
+            ):
+                raise MishkanError(
+                    ErrorCode.AUTHORITY_NOT_GRANTED,
+                    "mission run binding exceeds or contradicts its accepted task assignment",
+                )
+            prior = session.scalar(
+                select(MissionRunBindingRow)
+                .where(
+                    MissionRunBindingRow.mission_id == str(binding.mission_id),
+                    MissionRunBindingRow.binding_key == binding.binding_key,
+                )
+                .order_by(MissionRunBindingRow.binding_revision.desc())
+                .limit(1)
+            )
+            expected_revision = 1 + (prior.binding_revision if prior is not None else 0)
+            if binding.binding_revision != expected_revision:
+                raise MishkanError(
+                    ErrorCode.REVISION_MISMATCH,
+                    "mission run binding revision is stale or skips a revision",
+                    details={"expected": expected_revision, "received": binding.binding_revision},
+                )
+            if prior is not None:
+                self._require_run_binding_transition(
+                    MissionRunBinding.model_validate_json(prior.payload), binding
+                )
+            self._require_run_binding_dependencies(session, binding)
+            self._require_run_binding_settlement(session, binding)
+            same_run_rows = session.scalars(
+                select(MissionRunBindingRow).where(
+                    MissionRunBindingRow.mission_id == str(binding.mission_id),
+                    MissionRunBindingRow.run_id == binding.run_id,
+                    MissionRunBindingRow.binding_key != binding.binding_key,
+                )
+            ).all()
+            duplicate_task = next(
+                (
+                    row
+                    for row in same_run_rows
+                    if MissionRunBinding.model_validate_json(row.payload).execution_task_id
+                    == binding.execution_task_id
+                ),
+                None,
+            )
+            if duplicate_task is not None:
+                raise MishkanError(
+                    ErrorCode.MISSION,
+                    "one run task cannot be bound to multiple mission tasks",
+                )
+            session.add(
+                MissionRunBindingRow(
+                    id=str(binding.binding_id),
+                    mission_id=str(binding.mission_id),
+                    binding_key=binding.binding_key,
+                    binding_revision=binding.binding_revision,
+                    run_id=binding.run_id,
+                    acceptance=binding.acceptance.value,
+                    payload=payload,
+                    created_at=binding.created_at.isoformat(),
+                )
+            )
+            self._event(
+                session,
+                aggregate_id=str(binding.mission_id),
+                entity_type="mission",
+                event_type="mission.run_bound",
+                payload={
+                    "binding_id": str(binding.binding_id),
+                    "binding_key": binding.binding_key,
+                    "binding_revision": binding.binding_revision,
+                    "mission_task_id": binding.mission_task_id,
+                    "run_id": binding.run_id,
+                    "execution_context": binding.execution_context.model_dump(mode="json"),
+                    "acceptance": binding.acceptance.value,
+                },
+            )
+        return binding
+
+    def run_bindings(self, mission_id: str, *, limit: int = 1_000) -> tuple[MissionRunBinding, ...]:
+        with Session(self._engine) as session:
+            self._require_mission_row(session, mission_id)
+            rows = session.scalars(
+                select(MissionRunBindingRow)
+                .where(MissionRunBindingRow.mission_id == mission_id)
+                .order_by(
+                    MissionRunBindingRow.binding_key,
+                    MissionRunBindingRow.binding_revision,
+                )
+                .limit(limit)
+            )
+            return tuple(MissionRunBinding.model_validate_json(row.payload) for row in rows)
+
     def transitions(self, mission_id: str, *, limit: int = 1_000) -> tuple[MissionTransition, ...]:
         with Session(self._engine) as session:
             self._require_mission_row(session, mission_id)
@@ -940,6 +1123,133 @@ class SQLiteMissionRepository:
                 select(MissionRow).order_by(MissionRow.updated_at.desc()).limit(limit)
             ).all()
             return tuple(MissionRecord.model_validate_json(row.payload) for row in rows)
+
+    @staticmethod
+    def _require_run_binding_transition(
+        prior: MissionRunBinding,
+        current: MissionRunBinding,
+    ) -> None:
+        preserved = (
+            "mission_id",
+            "binding_key",
+            "mission_task_id",
+            "run_id",
+            "execution_task_id",
+            "execution_context",
+            "depends_on_binding_keys",
+            "authority_scope",
+            "path_scopes",
+        )
+        if any(getattr(prior, field) != getattr(current, field) for field in preserved):
+            raise MishkanError(
+                ErrorCode.REVISION_MISMATCH,
+                "mission run settlement cannot rewrite its accepted binding lineage",
+            )
+        if prior.acceptance is not MissionRunAcceptance.PENDING:
+            raise MishkanError(
+                ErrorCode.DUPLICATE_RESULT,
+                "settled mission run binding is terminal",
+            )
+        if current.acceptance is MissionRunAcceptance.PENDING:
+            raise MishkanError(
+                ErrorCode.REVISION_MISMATCH,
+                "mission run binding revision must settle its pending relationship",
+            )
+
+    @staticmethod
+    def _require_run_binding_dependencies(
+        session: Session,
+        binding: MissionRunBinding,
+    ) -> None:
+        rows = session.scalars(
+            select(MissionRunBindingRow)
+            .where(MissionRunBindingRow.mission_id == str(binding.mission_id))
+            .order_by(MissionRunBindingRow.binding_revision.desc())
+        ).all()
+        latest: dict[str, MissionRunBinding] = {}
+        for row in rows:
+            latest.setdefault(row.binding_key, MissionRunBinding.model_validate_json(row.payload))
+        missing = set(binding.depends_on_binding_keys) - set(latest)
+        if missing:
+            raise MishkanError(
+                ErrorCode.PLAN,
+                "mission run binding references unknown mission-level dependencies",
+                details={"missing_binding_keys": sorted(missing)},
+            )
+        graph = {key: set(item.depends_on_binding_keys) for key, item in latest.items()}
+        graph[binding.binding_key] = set(binding.depends_on_binding_keys)
+        visiting: set[str] = set()
+        visited: set[str] = set()
+
+        def visit(key: str) -> None:
+            if key in visiting:
+                raise MishkanError(ErrorCode.PLAN, "mission run dependencies contain a cycle")
+            if key in visited:
+                return
+            visiting.add(key)
+            for dependency in graph.get(key, set()):
+                visit(dependency)
+            visiting.remove(key)
+            visited.add(key)
+
+        for key in graph:
+            visit(key)
+
+    @staticmethod
+    def _require_run_binding_settlement(
+        session: Session,
+        binding: MissionRunBinding,
+    ) -> None:
+        if binding.acceptance is MissionRunAcceptance.PENDING:
+            return
+        result_reference = f"run-result:{binding.run_id}:{binding.execution_task_id}"
+        if result_reference not in binding.result_references:
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT,
+                "mission run settlement omits its exact durable result reference",
+            )
+        if binding.acceptance is MissionRunAcceptance.ACCEPTED:
+            result = session.scalar(
+                select(ResultRow).where(
+                    ResultRow.run_id == binding.run_id,
+                    ResultRow.task_key == binding.execution_task_id,
+                )
+            )
+            acceptance = session.scalar(
+                select(AcceptanceRow).where(
+                    AcceptanceRow.run_id == binding.run_id,
+                    AcceptanceRow.task_key == binding.execution_task_id,
+                )
+            )
+            expected = f"run-acceptance:{binding.run_id}:{binding.execution_task_id}"
+            if (
+                result is None
+                or acceptance is None
+                or expected not in binding.acceptance_references
+            ):
+                raise MishkanError(
+                    ErrorCode.DECISION_VALIDATION,
+                    "mission run acceptance is not backed by durable task acceptance",
+                )
+            return
+        rejection = session.scalar(
+            select(ReviewRejectionRow)
+            .where(
+                ReviewRejectionRow.run_id == binding.run_id,
+                ReviewRejectionRow.task_key == binding.execution_task_id,
+            )
+            .order_by(
+                ReviewRejectionRow.task_attempt.desc(),
+                ReviewRejectionRow.review_sequence.desc(),
+            )
+            .limit(1)
+        )
+        expected = f"run-rejection:{binding.run_id}:{binding.execution_task_id}"
+        if rejection is None or expected not in binding.acceptance_references:
+            raise MishkanError(
+                ErrorCode.DECISION_VALIDATION,
+                "mission run rejection is not backed by durable review evidence",
+            )
 
     @staticmethod
     def _require_assignment_authority(

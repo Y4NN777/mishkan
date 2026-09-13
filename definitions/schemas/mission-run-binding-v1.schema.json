@@ -1,0 +1,219 @@
+{
+  "$defs": {
+    "MissionRunAcceptance": {
+      "enum": [
+        "pending",
+        "accepted",
+        "rejected"
+      ],
+      "title": "MissionRunAcceptance",
+      "type": "string"
+    },
+    "PlanExecutionContext": {
+      "additionalProperties": false,
+      "properties": {
+        "context_id": {
+          "maxLength": 256,
+          "minLength": 12,
+          "title": "Context Id",
+          "type": "string"
+        },
+        "discovery_revision": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 7,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Discovery Revision"
+        },
+        "kind": {
+          "enum": [
+            "repository",
+            "prospective_workspace"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "prospective_workspace_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 12,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prospective Workspace Id"
+        },
+        "repository_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 12,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repository Id"
+        },
+        "repository_revision": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 7,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repository Revision"
+        },
+        "revision": {
+          "maxLength": 128,
+          "minLength": 7,
+          "title": "Revision",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "context_id",
+        "revision"
+      ],
+      "title": "PlanExecutionContext",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "acceptance": {
+      "$ref": "#/$defs/MissionRunAcceptance",
+      "default": "pending"
+    },
+    "acceptance_references": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Acceptance References",
+      "type": "array"
+    },
+    "authority_scope": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Authority Scope",
+      "type": "array"
+    },
+    "binding_id": {
+      "format": "uuid",
+      "title": "Binding Id",
+      "type": "string"
+    },
+    "binding_key": {
+      "pattern": "^[a-z][a-z0-9-]{1,127}$",
+      "title": "Binding Key",
+      "type": "string"
+    },
+    "binding_revision": {
+      "default": 1,
+      "minimum": 1,
+      "title": "Binding Revision",
+      "type": "integer"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "depends_on_binding_keys": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Depends On Binding Keys",
+      "type": "array"
+    },
+    "execution_context": {
+      "$ref": "#/$defs/PlanExecutionContext"
+    },
+    "execution_task_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Execution Task Id",
+      "type": "string"
+    },
+    "mission_id": {
+      "format": "uuid",
+      "title": "Mission Id",
+      "type": "string"
+    },
+    "mission_task_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Mission Task Id",
+      "type": "string"
+    },
+    "path_scopes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Path Scopes",
+      "type": "array"
+    },
+    "recorded_by": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Recorded By",
+      "type": "string"
+    },
+    "result_references": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Result References",
+      "type": "array"
+    },
+    "run_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "mission_id",
+    "binding_key",
+    "mission_task_id",
+    "run_id",
+    "execution_task_id",
+    "execution_context",
+    "authority_scope",
+    "path_scopes",
+    "recorded_by"
+  ],
+  "title": "MissionRunBinding",
+  "type": "object"
+}

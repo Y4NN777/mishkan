@@ -1,4 +1,6 @@
+import subprocess
 from pathlib import Path
+from typing import Literal
 
 import pytest
 
@@ -19,17 +21,27 @@ from mishkan.missions import (
     MissionOriginKind,
     MissionRecord,
     MissionResourceLimit,
+    MissionRunAcceptance,
+    MissionRunBinding,
     MissionState,
     MissionTaskAssignment,
     MissionTransition,
     SQLiteMissionRepository,
 )
 from mishkan.organization import load_canonical_organization
-from mishkan.persistence import SQLiteApplicationRepository
+from mishkan.persistence import LocalRunRepository, SQLiteApplicationRepository
 from mishkan.persistence.migration import SchemaManager
+from mishkan.planning import (
+    AcceptedPlan,
+    PlanExecutionContext,
+    PlanOrganizationBinding,
+    PlanTask,
+)
+from mishkan.planning.models import InitializationResult, ReviewDecision
+from mishkan.repository import RepositoryInspector
 
 
-def _confirmation(identity_id: str) -> ExecutiveConfirmation:
+def _confirmation(identity_id: Literal["PM", "CTO"]) -> ExecutiveConfirmation:
     return ExecutiveConfirmation(
         identity_id=identity_id,
         disposition="confirmed",
@@ -635,3 +647,148 @@ def test_assignment_change_refuses_non_lead_and_unplanned_contract_change(
     with pytest.raises(MishkanError) as replan:
         repository.record_assignment(unplanned)
     assert replan.value.envelope.code is ErrorCode.PLAN
+
+
+def _repository_discovery(root: Path, name: str):  # type: ignore[no-untyped-def]
+    repository = root / name
+    repository.mkdir()
+    (repository / "README.md").write_text(f"# {name}\n", encoding="utf-8")
+    subprocess.run(["git", "init", "-b", "main"], cwd=repository, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.name", "Fixture"],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "fixture@example.invalid"],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(["git", "add", "."], cwd=repository, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "fixture"],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+    )
+    return RepositoryInspector().inspect(repository)
+
+
+def test_multi_repository_mission_binds_exact_runs_dependencies_and_acceptance(
+    tmp_path: Path,
+) -> None:
+    database, missions, mission = _setup(tmp_path)
+    brief = _brief(mission)
+    missions.record_brief(brief, expected_revision=mission.revision)
+    current = missions.mission(str(mission.mission_id))
+    crew = _crew(brief)
+    missions.record_crew(crew, expected_revision=current.revision)
+    organization = load_canonical_organization()
+    runs = LocalRunRepository(database)
+
+    pending_bindings: list[MissionRunBinding] = []
+    for index, repository_name in enumerate(("api-service", "worker-service"), start=1):
+        discovery = _repository_discovery(tmp_path, repository_name)
+        run = runs.start_or_resume(
+            discovery,
+            f"Deliver mission work in {repository_name}",
+            f"mission-{repository_name}",
+        )
+        execution_task_id = f"change-repository-{index}"
+        mission_task_id = f"deliver-{repository_name}"
+        task = PlanTask(
+            task_id=execution_task_id,
+            title=f"Change {repository_name}",
+            purpose=f"Implement the accepted mission scope in {repository_name}.",
+            assigned_role="Backend_Service_Engineer",
+            tools=("repository.read_file",),
+            evidence_paths=("README.md",),
+        )
+        plan = AcceptedPlan(
+            objective=f"Deliver mission work in {repository_name}",
+            outcome_id=f"mission-{repository_name}",
+            repository_revision=discovery.binding.base_revision,
+            tasks=(task,),
+            fingerprint=(str(index) * 64),
+            discovery_fingerprint=discovery.fingerprint,
+            organization_binding=PlanOrganizationBinding(
+                organization_id=organization.organization_id,
+                organization_version=organization.organization_version,
+                organization_fingerprint=organization.fingerprint,
+                mission_id=mission.mission_id,
+            ),
+        )
+        runs.accept_plan(run.run_id, plan)
+        scope = (f"repository:{repository_name}",)
+        assignment = MissionTaskAssignment(
+            mission_id=mission.mission_id,
+            crew_version=crew.version,
+            task_id=mission_task_id,
+            accountable_owner="Backend_Service_Engineer",
+            assignment_kind=CrewAssignmentKind.PRODUCTION,
+            expected_result=f"A verified change in {repository_name}",
+            completion_criteria=("independent task result accepted",),
+            dependencies=(("deliver-api-service",) if index == 2 else ()),
+            execution_run_id=run.run_id,
+            execution_task_id=execution_task_id,
+            authority_scope=scope,
+            exact_tools=task.tools,
+            path_scopes=scope,
+            limits=(MissionResourceLimit(name="timeout", value=120, unit="seconds"),),
+            required_evidence=("accepted run result",),
+        )
+        missions.record_assignment(assignment)
+        binding_key = f"repo-{index}"
+        pending = MissionRunBinding(
+            mission_id=mission.mission_id,
+            binding_key=binding_key,
+            mission_task_id=mission_task_id,
+            run_id=run.run_id,
+            execution_task_id=execution_task_id,
+            execution_context=PlanExecutionContext.from_binding(discovery.binding),
+            depends_on_binding_keys=(("repo-1",) if index == 2 else ()),
+            authority_scope=scope,
+            path_scopes=scope,
+            recorded_by="Backend_Service_Engineer",
+        )
+        assert missions.record_run_binding(pending) == pending
+        pending_bindings.append(pending)
+
+    first = pending_bindings[0]
+    runs.start_run(first.run_id)
+    runs.claim_task(first.run_id, first.execution_task_id)
+    runs.mark_validating(first.run_id, first.execution_task_id)
+    result = InitializationResult(
+        repository_revision=first.execution_context.repository_revision,
+        task_id=first.execution_task_id,
+        summary="The API repository change has accepted evidence.",
+        cited_paths=("README.md",),
+        findings=("The exact repository context was independently reviewed.",),
+    )
+    runs.accept_result(
+        first.run_id,
+        result,
+        ReviewDecision(
+            task_id=first.execution_task_id,
+            verdict="accepted",
+            summary="Independent review accepted the repository result.",
+            checked_citations=("README.md",),
+        ),
+    )
+    settled = first.model_copy(
+        update={
+            "binding_id": new_id(),
+            "binding_revision": 2,
+            "result_references": (f"run-result:{first.run_id}:{first.execution_task_id}",),
+            "acceptance_references": (f"run-acceptance:{first.run_id}:{first.execution_task_id}",),
+            "acceptance": MissionRunAcceptance.ACCEPTED,
+        }
+    )
+    assert missions.record_run_binding(settled) == settled
+
+    durable = SQLiteMissionRepository(database).run_bindings(str(mission.mission_id))
+    assert durable == (first, settled, pending_bindings[1])
+    assert durable[2].depends_on_binding_keys == ("repo-1",)
+    assert durable[0].execution_context.context_id != durable[2].execution_context.context_id

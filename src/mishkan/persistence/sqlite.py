@@ -802,6 +802,20 @@ class MissionAssignmentRow(Base):
     created_at: Mapped[str] = mapped_column(String(40), nullable=False)
 
 
+class MissionRunBindingRow(Base):
+    __tablename__ = "mission_run_bindings"
+    __table_args__ = (UniqueConstraint("mission_id", "binding_key", "binding_revision"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    mission_id: Mapped[str] = mapped_column(ForeignKey("missions.id"), nullable=False)
+    binding_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    binding_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id"), nullable=False)
+    acceptance: Mapped[str] = mapped_column(String(32), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
 class MissionTransitionRow(Base):
     __tablename__ = "mission_transitions"
 

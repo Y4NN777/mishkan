@@ -1,0 +1,52 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "base_revision": {
+      "default": null,
+      "title": "Base Revision",
+      "type": "null"
+    },
+    "context_kind": {
+      "const": "prospective_workspace",
+      "default": "prospective_workspace",
+      "title": "Context Kind",
+      "type": "string"
+    },
+    "discovery_revision": {
+      "maxLength": 128,
+      "minLength": 7,
+      "title": "Discovery Revision",
+      "type": "string"
+    },
+    "repository_id": {
+      "default": null,
+      "title": "Repository Id",
+      "type": "null"
+    },
+    "root": {
+      "format": "path",
+      "title": "Root",
+      "type": "string"
+    },
+    "workspace_fingerprint": {
+      "maxLength": 64,
+      "minLength": 64,
+      "title": "Workspace Fingerprint",
+      "type": "string"
+    },
+    "workspace_id": {
+      "maxLength": 256,
+      "minLength": 12,
+      "title": "Workspace Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "workspace_id",
+    "root",
+    "discovery_revision",
+    "workspace_fingerprint"
+  ],
+  "title": "ProspectiveWorkspaceBinding",
+  "type": "object"
+}

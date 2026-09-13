@@ -126,6 +126,7 @@ from mishkan.missions.models import (
     MissionOrigin,
     MissionRecord,
     MissionResourceLimit,
+    MissionRunBinding,
     MissionTaskAssignment,
     MissionTransition,
 )
@@ -294,6 +295,7 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "mission-intervention-v1.schema.json": MissionIntervention,
     "mission-record-v1.schema.json": MissionRecord,
     "mission-resource-limit-v1.schema.json": MissionResourceLimit,
+    "mission-run-binding-v1.schema.json": MissionRunBinding,
     "mission-task-assignment-v1.schema.json": MissionTaskAssignment,
     "mission-task-acceptance-status-v1.schema.json": MissionTaskAcceptanceStatus,
     "mission-task-claim-request-v1.schema.json": MissionTaskClaimRequest,

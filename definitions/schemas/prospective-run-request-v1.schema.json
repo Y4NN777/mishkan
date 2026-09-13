@@ -1,0 +1,37 @@
+{
+  "additionalProperties": false,
+  "description": "Create a run bound to the daemon's configured pre-repository workspace.",
+  "properties": {
+    "objective": {
+      "maxLength": 2000,
+      "minLength": 3,
+      "title": "Objective",
+      "type": "string"
+    },
+    "outcome_id": {
+      "maxLength": 160,
+      "minLength": 1,
+      "title": "Outcome Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "workspace_id": {
+      "maxLength": 256,
+      "minLength": 12,
+      "title": "Workspace Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "workspace_id",
+    "objective",
+    "outcome_id"
+  ],
+  "title": "ProspectiveRunRequest",
+  "type": "object"
+}

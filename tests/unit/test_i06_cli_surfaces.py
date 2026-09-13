@@ -108,6 +108,10 @@ class _Client:
         assert (mission_id, limit) == ("mission/id", 4)
         return (_Payload("mission-assignment"),)
 
+    def mission_run_bindings(self, mission_id: str, *, limit: int) -> tuple[_Payload, ...]:
+        assert (mission_id, limit) == ("mission/id", 12)
+        return (_Payload("mission-run-binding"),)
+
     def mission_transitions(self, mission_id: str, *, limit: int) -> tuple[_Payload, ...]:
         assert (mission_id, limit) == ("mission/id", 5)
         return (_Payload("mission-transition"),)
@@ -277,6 +281,10 @@ def client(monkeypatch: pytest.MonkeyPatch) -> _Client:
         (
             ("mission", "assignments", "mission/id", "--limit", "4"),
             [{"kind": "mission-assignment"}],
+        ),
+        (
+            ("mission", "run-bindings", "mission/id", "--limit", "12"),
+            [{"kind": "mission-run-binding"}],
         ),
         (
             ("mission", "transitions", "mission/id", "--limit", "5"),

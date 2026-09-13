@@ -60,6 +60,7 @@ from mishkan.missions import (
     MissionBrief,
     MissionCrewRevision,
     MissionRecord,
+    MissionRunBinding,
     MissionTaskAssignment,
     MissionTaskClaimRequest,
     MissionTransition,
@@ -323,6 +324,11 @@ COMMAND_SEMANTICS = MappingProxyType(
         "mission.assignment.record": CommandSemantics(
             "application.mission.assignment", "coordination", ("mission.assignment.record",)
         ),
+        "mission.run-binding.record": CommandSemantics(
+            "application.mission.run-binding",
+            "coordination",
+            ("mission.run-binding.record",),
+        ),
         "mission.task.claim": CommandSemantics(
             "application.mission.task", "coordination", ("mission.task.claim",)
         ),
@@ -438,6 +444,7 @@ _COMMAND_TARGETS = MappingProxyType(
         "mission.escalation.open": ("mission_escalation", "uuid"),
         "mission.intervention.apply": ("mission", "uuid"),
         "mission.assignment.record": ("mission_assignment", "uuid"),
+        "mission.run-binding.record": ("mission_run_binding", "uuid"),
         "mission.task.claim": ("mission_task", "required"),
         "mission.transition": ("mission", "uuid"),
         "mission.governance.propose": ("mission_governance_request", "uuid"),
@@ -565,6 +572,7 @@ _COMMAND_PAYLOAD_FIELDS = MappingProxyType(
         "mission.escalation.open": (frozenset({"escalation"}), frozenset()),
         "mission.intervention.apply": (frozenset({"intervention"}), frozenset()),
         "mission.assignment.record": (frozenset({"assignment"}), frozenset()),
+        "mission.run-binding.record": (frozenset({"binding"}), frozenset()),
         "mission.task.claim": (frozenset({"request"}), frozenset()),
         "mission.transition": (frozenset({"transition"}), frozenset()),
         "mission.governance.propose": (frozenset({"request"}), frozenset()),
@@ -624,6 +632,7 @@ class AuthorizedApplicationCommand:
     mission_escalation: MissionEscalation | None = None
     mission_intervention: MissionIntervention | None = None
     mission_assignment: MissionTaskAssignment | None = None
+    mission_run_binding: MissionRunBinding | None = None
     mission_task_claim: MissionTaskClaimRequest | None = None
     mission_transition: MissionTransition | None = None
     mission_governance_request: MissionGovernanceRequest | None = None
@@ -708,6 +717,7 @@ class ApplicationCommandAuthority:
         mission_escalation: MissionEscalation | None = None
         mission_intervention: MissionIntervention | None = None
         mission_assignment: MissionTaskAssignment | None = None
+        mission_run_binding: MissionRunBinding | None = None
         mission_task_claim: MissionTaskClaimRequest | None = None
         mission_transition: MissionTransition | None = None
         mission_governance_request: MissionGovernanceRequest | None = None
@@ -1325,6 +1335,29 @@ class ApplicationCommandAuthority:
                         else ()
                     ),
                 )
+            elif normalized.command_type == "mission.run-binding.record":
+                mission_run_binding = MissionRunBinding.model_validate(
+                    normalized.payload["binding"]
+                )
+                if normalized.target_id != str(mission_run_binding.binding_id):
+                    raise ValueError("mission run binding target differs from its identity")
+                if mission_run_binding.recorded_by != normalized.actor_id:
+                    raise MishkanError(
+                        ErrorCode.AUTHORITY_NOT_GRANTED,
+                        "mission run binding recorder must match the authenticated actor",
+                    )
+                external_resources = (
+                    f"mission:{mission_run_binding.mission_id}",
+                    f"run:{mission_run_binding.run_id}",
+                    f"task:{mission_run_binding.execution_task_id}",
+                    f"identity:{mission_run_binding.recorded_by}",
+                    *(
+                        f"mission-run-binding:{dependency}"
+                        for dependency in mission_run_binding.depends_on_binding_keys
+                    ),
+                    *(f"evidence:{item}" for item in mission_run_binding.result_references),
+                    *(f"acceptance:{item}" for item in mission_run_binding.acceptance_references),
+                )
             elif normalized.command_type == "mission.task.claim":
                 mission_task_claim = MissionTaskClaimRequest.model_validate(
                     normalized.payload["request"]
@@ -1426,6 +1459,11 @@ class ApplicationCommandAuthority:
                 )
                 if normalized.target_id != str(professional_evidence.evidence_id):
                     raise ValueError("professional evidence target differs from its identity")
+                if professional_evidence.recorded_by != normalized.actor_id:
+                    raise MishkanError(
+                        ErrorCode.AUTHORITY_NOT_GRANTED,
+                        "professional evidence recorder must match the authenticated actor",
+                    )
                 external_resources = (
                     f"identity:{professional_evidence.identity_id}",
                     f"identity:{professional_evidence.evaluator_identity}",
@@ -1522,6 +1560,7 @@ class ApplicationCommandAuthority:
             mission_escalation=mission_escalation,
             mission_intervention=mission_intervention,
             mission_assignment=mission_assignment,
+            mission_run_binding=mission_run_binding,
             mission_task_claim=mission_task_claim,
             mission_transition=mission_transition,
             mission_governance_request=mission_governance_request,

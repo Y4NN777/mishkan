@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from mishkan.domain.identity import new_id
 from mishkan.domain.time import require_aware, utc_now
+from mishkan.planning.models import PlanExecutionContext
 
 
 class MissionModel(BaseModel):
@@ -64,6 +65,12 @@ class AssignmentChangeKind(StrEnum):
     IN_PLAN_LOCAL = "in_plan_local"
     FORMAL_REASSIGNMENT = "formal_reassignment"
     REPLANNED = "replanned"
+
+
+class MissionRunAcceptance(StrEnum):
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
 
 
 class MissionOrigin(MissionModel):
@@ -371,6 +378,48 @@ class MissionTaskAssignment(MissionModel):
                 raise ValueError("initial task assignment cannot claim reassignment lineage")
         elif self.schema_version != "1.1" or self.change is None:
             raise ValueError("revised task assignment requires the versioned change contract")
+        return self
+
+
+class MissionRunBinding(MissionModel):
+    schema_version: Literal["1.0"] = "1.0"
+    binding_id: UUID = Field(default_factory=new_id)
+    mission_id: UUID
+    binding_key: str = Field(pattern=r"^[a-z][a-z0-9-]{1,127}$")
+    binding_revision: int = Field(default=1, ge=1)
+    mission_task_id: str = Field(min_length=1, max_length=256)
+    run_id: str = Field(min_length=1, max_length=256)
+    execution_task_id: str = Field(min_length=1, max_length=256)
+    execution_context: PlanExecutionContext
+    depends_on_binding_keys: tuple[str, ...] = ()
+    authority_scope: tuple[str, ...] = Field(min_length=1)
+    path_scopes: tuple[str, ...]
+    result_references: tuple[str, ...] = ()
+    acceptance_references: tuple[str, ...] = ()
+    acceptance: MissionRunAcceptance = MissionRunAcceptance.PENDING
+    recorded_by: str = Field(min_length=1, max_length=256)
+    created_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("created_at")
+    @classmethod
+    def run_binding_time_is_aware(cls, value: datetime) -> datetime:
+        return require_aware(value)
+
+    @model_validator(mode="after")
+    def result_and_acceptance_are_explicit(self) -> MissionRunBinding:
+        if len(self.depends_on_binding_keys) != len(set(self.depends_on_binding_keys)):
+            raise ValueError("mission run dependencies must be unique")
+        if self.binding_key in self.depends_on_binding_keys:
+            raise ValueError("mission run binding cannot depend on itself")
+        if len(self.result_references) != len(set(self.result_references)) or len(
+            self.acceptance_references
+        ) != len(set(self.acceptance_references)):
+            raise ValueError("mission run result and acceptance references must be unique")
+        if self.acceptance is MissionRunAcceptance.PENDING:
+            if self.result_references or self.acceptance_references:
+                raise ValueError("pending mission run cannot claim result acceptance")
+        elif not self.result_references or not self.acceptance_references:
+            raise ValueError("settled mission run requires result and acceptance references")
         return self
 
 

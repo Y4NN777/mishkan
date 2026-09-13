@@ -373,6 +373,32 @@ def record_mission_assignment(
     _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
 
 
+@mission_app.command("run-bindings")
+def list_mission_run_bindings(
+    ctx: typer.Context,
+    mission_id: str,
+    limit: Annotated[int, typer.Option(min=1, max=10_000)] = 1_000,
+) -> None:
+    """List exact durable mission-to-run bindings and their acceptance state."""
+    with _daemon_client(ctx) as client:
+        bindings = client.mission_run_bindings(mission_id, limit=limit)
+    _emit(_dump_models(bindings), as_json=_state(ctx).json_output)
+
+
+@mission_app.command("run-binding-record")
+def record_mission_run_binding(
+    ctx: typer.Context,
+    binding_file: Annotated[Path, typer.Option("--binding")],
+) -> None:
+    """Bind a mission task to one exact run context and durable result state."""
+    from mishkan.missions import MissionRunBinding
+
+    binding = _read_contract(binding_file, MissionRunBinding, "--binding")
+    with _daemon_client(ctx) as client:
+        result = client.record_mission_run_binding(binding)
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
 @mission_app.command("transitions")
 def list_mission_transitions(
     ctx: typer.Context,

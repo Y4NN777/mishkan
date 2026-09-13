@@ -176,6 +176,7 @@ rules:
         - mission.escalation.open
         - mission.intervention.apply
         - mission.assignment.record
+        - mission.run-binding.record
         - mission.task.claim
         - mission.transition
         - mission.governance.propose
@@ -233,6 +234,7 @@ rules:
         - application.mission.escalation
         - application.mission.intervention
         - application.mission.assignment
+        - application.mission.run-binding
         - application.mission.task
         - application.mission.governance
       effect_classes: [read, control, coordination, artifact, filesystem, process, external, registry_lifecycle, skill_lifecycle]

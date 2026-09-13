@@ -370,6 +370,10 @@ class McpFacadeRouter:
                 query.mission_id
             ).model_dump(mode="json"),
             "assignments": [item.model_dump(mode="json") for item in assignments],
+            "run_bindings": [
+                item.model_dump(mode="json")
+                for item in missions.run_bindings(query.mission_id, limit=query.limit)
+            ],
             "transitions": [
                 item.model_dump(mode="json")
                 for item in missions.transitions(query.mission_id, limit=query.limit)

@@ -125,6 +125,7 @@ from mishkan.missions import (
     MissionEnvironmentReadiness,
     MissionEnvironmentReadinessService,
     MissionRecord,
+    MissionRunBinding,
     MissionState,
     MissionTaskClaimService,
     MissionTaskEligibility,
@@ -1268,6 +1269,19 @@ def create_app(
         records = await _thread_call(mission_repository.assignments, str(mission_id), limit=limit)
         return tuple(record.model_dump(mode="json") for record in records)
 
+    @app.get("/v1/missions/{mission_id}/run-bindings", response_model=None)
+    async def mission_run_bindings(
+        mission_id: UUID,
+        _principal: TokenRecord = authenticated,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 1_000,
+    ) -> tuple[dict[str, object], ...]:
+        records = await _thread_call(
+            mission_repository.run_bindings,
+            str(mission_id),
+            limit=limit,
+        )
+        return tuple(record.model_dump(mode="json") for record in records)
+
     @app.get("/v1/missions/{mission_id}/transitions", response_model=None)
     async def mission_transitions(
         mission_id: UUID,
@@ -1385,6 +1399,11 @@ def create_app(
             _thread_call(conversation_repository.escalations, identity, limit=limit),
             _thread_call(conversation_repository.interventions, identity, limit=limit),
         )
+        run_bindings = await _thread_call(
+            mission_repository.run_bindings,
+            identity,
+            limit=limit,
+        )
         mission_events = await _thread_call(
             repository.events,
             after_cursor=0,
@@ -1416,6 +1435,7 @@ def create_app(
                 await _thread_call(mission_task_claims.inspect_completion, identity)
             ).model_dump(mode="json"),
             "assignments": [item.model_dump(mode="json") for item in assignments],
+            "run_bindings": [item.model_dump(mode="json") for item in run_bindings],
             "transitions": [item.model_dump(mode="json") for item in transitions],
             "conversations": [item.model_dump(mode="json") for item in channels],
             "decisions": [item.model_dump(mode="json") for item in decisions],
@@ -2187,6 +2207,15 @@ def _dispatch(
             raise MishkanError(ErrorCode.OUTPUT_CONTRACT, "authorized mission assignment is absent")
         recorded_assignment = mission_repository.record_assignment(assignment)
         return "mission.task_assigned", recorded_assignment.model_dump(mode="json")
+    if command.command_type == "mission.run-binding.record":
+        run_binding = authorized.mission_run_binding
+        if run_binding is None:
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT,
+                "authorized mission run binding is absent",
+            )
+        recorded_run_binding: MissionRunBinding = mission_repository.record_run_binding(run_binding)
+        return "mission.run_bound", recorded_run_binding.model_dump(mode="json")
     if command.command_type == "mission.task.claim":
         claim_request = authorized.mission_task_claim
         if claim_request is None:

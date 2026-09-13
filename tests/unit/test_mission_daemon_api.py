@@ -54,6 +54,8 @@ from mishkan.missions import (
     MissionOriginKind,
     MissionRecord,
     MissionResourceLimit,
+    MissionRunAcceptance,
+    MissionRunBinding,
     MissionState,
     MissionTaskAssignment,
     MissionTaskClaimRequest,
@@ -62,7 +64,7 @@ from mishkan.missions import (
 )
 from mishkan.organization import load_canonical_organization
 from mishkan.persistence import LocalRunRepository
-from mishkan.planning import AcceptedPlan, PlanTask
+from mishkan.planning import AcceptedPlan, PlanExecutionContext, PlanOrganizationBinding, PlanTask
 from mishkan.planning.models import InitializationResult, ReviewDecision
 from mishkan.repository.models import DiscoverySnapshot, RepositoryBinding
 
@@ -1018,6 +1020,7 @@ async def test_mission_completion_requires_separated_accepted_task_chain(tmp_pat
     token = TokenFile(paths.token_file).read()
     headers = {"Authorization": f"Bearer {token.token}"}
     organization = load_canonical_organization()
+    mission_identity = uuid4()
     runs = LocalRunRepository(paths.database)
     discovery = DiscoverySnapshot(
         binding=RepositoryBinding(
@@ -1069,10 +1072,17 @@ async def test_mission_completion_requires_separated_accepted_task_chain(tmp_pat
             tasks=task_contracts,
             fingerprint="e" * 64,
             discovery_fingerprint=discovery.fingerprint,
+            organization_binding=PlanOrganizationBinding(
+                organization_id=organization.organization_id,
+                organization_version=organization.organization_version,
+                organization_fingerprint=organization.fingerprint,
+                mission_id=mission_identity,
+            ),
         ),
     )
     runs.start_run(run.run_id)
     mission = MissionRecord(
+        mission_id=mission_identity,
         origin=MissionOrigin(
             kind=MissionOriginKind.CEO,
             actor_id="CEO",
@@ -1136,6 +1146,21 @@ async def test_mission_completion_requires_separated_accepted_task_chain(tmp_pat
             required_evidence=("report:mission",),
         ),
     )
+    run_bindings = tuple(
+        MissionRunBinding(
+            mission_id=mission.mission_id,
+            binding_key=assignment.task_id,
+            mission_task_id=assignment.task_id,
+            run_id=run.run_id,
+            execution_task_id=assignment.execution_task_id or assignment.task_id,
+            execution_context=PlanExecutionContext.from_binding(discovery.binding),
+            depends_on_binding_keys=assignment.dependencies,
+            authority_scope=assignment.authority_scope,
+            path_scopes=assignment.path_scopes,
+            recorded_by=token.principal_id,
+        )
+        for assignment in assignments
+    )
     planned = MissionTransition(
         mission_id=mission.mission_id,
         from_state=MissionState.CLARIFYING,
@@ -1195,6 +1220,17 @@ async def test_mission_completion_requires_separated_accepted_task_chain(tmp_pat
                 )
                 for assignment in assignments
             ),
+            *(
+                ApplicationCommand(
+                    command_type="mission.run-binding.record",
+                    actor_id=token.principal_id,
+                    target_type="mission_run_binding",
+                    target_id=str(binding.binding_id),
+                    expected_revision=0,
+                    payload={"binding": binding.model_dump(mode="json")},
+                )
+                for binding in run_bindings
+            ),
             ApplicationCommand(
                 command_type="mission.transition",
                 actor_id=token.principal_id,
@@ -1223,7 +1259,7 @@ async def test_mission_completion_requires_separated_accepted_task_chain(tmp_pat
         )
         assert before.status_code == 200
         assert not before.json()["ready"]
-        for assignment in assignments:
+        for assignment, run_binding in zip(assignments, run_bindings, strict=True):
             claim_request = MissionTaskClaimRequest(
                 mission_id=mission.mission_id,
                 mission_revision=5,
@@ -1259,6 +1295,39 @@ async def test_mission_completion_requires_separated_accepted_task_chain(tmp_pat
                     checked_citations=("README.md",),
                 ),
             )
+            settled_binding = run_binding.model_copy(
+                update={
+                    "binding_id": uuid4(),
+                    "binding_revision": 2,
+                    "result_references": (f"run-result:{run.run_id}:{assignment.task_id}",),
+                    "acceptance_references": (f"run-acceptance:{run.run_id}:{assignment.task_id}",),
+                    "acceptance": MissionRunAcceptance.ACCEPTED,
+                }
+            )
+            settled_response = await client.post(
+                "/v1/commands",
+                headers=headers,
+                json=ApplicationCommand(
+                    command_type="mission.run-binding.record",
+                    actor_id=token.principal_id,
+                    target_type="mission_run_binding",
+                    target_id=str(settled_binding.binding_id),
+                    expected_revision=0,
+                    payload={"binding": settled_binding.model_dump(mode="json")},
+                ).model_dump(mode="json"),
+            )
+            assert settled_response.status_code == 200, settled_response.json()
+        bindings_response = await client.get(
+            f"/v1/missions/{mission.mission_id}/run-bindings",
+            headers=headers,
+        )
+        inspection_response = await client.get(
+            f"/v1/missions/{mission.mission_id}/inspection",
+            headers=headers,
+        )
+        assert bindings_response.status_code == 200
+        assert len(bindings_response.json()) == 6
+        assert len(inspection_response.json()["run_bindings"]) == 6
         evaluating = MissionTransition(
             mission_id=mission.mission_id,
             from_state=MissionState.ACTIVE,
