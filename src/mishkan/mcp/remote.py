@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 from pydantic import BaseModel, ValidationError
@@ -19,6 +20,7 @@ from mishkan.mcp.facade import (
     MissionQuery,
     MissionTemplateQuery,
     NotificationQuery,
+    OrganizationBranchQuery,
     ProfessionalCompetenceQuery,
     ProfessionalHistoryQuery,
     RunQuery,
@@ -96,11 +98,25 @@ class DaemonMcpFacade:
         if operation == "organization.get":
             self._require_empty(arguments)
             return await self._request_object("GET", "/v1/organization")
+        if operation == "organization.inspect":
+            query = self._validate(LimitQuery, arguments)
+            return await self._request_object(
+                "GET",
+                "/v1/organization/inspection",
+                params={"limit": query.limit},
+            )
+        if operation == "organization.branch.inspect":
+            query = self._validate(OrganizationBranchQuery, arguments)
+            return await self._request_object(
+                "GET",
+                f"/v1/organization/branches/{quote(query.branch_id, safe='')}/inspection",
+                params={"limit": query.limit},
+            )
         if operation == "organization.competence.get":
             query = self._validate(ProfessionalCompetenceQuery, arguments)
             return await self._request_object(
                 "GET",
-                f"/v1/organization/profiles/{query.identity_id}/competence",
+                f"/v1/organization/profiles/{quote(query.identity_id, safe='')}/competence",
                 params={"kind": query.kind.value, "subject": query.subject},
             )
         if operation in {
@@ -119,7 +135,7 @@ class DaemonMcpFacade:
             collection = "evidence" if operation.endswith("evidence.list") else "promotions"
             records = await self._request(
                 "GET",
-                f"/v1/organization/profiles/{query.identity_id}/{collection}",
+                f"/v1/organization/profiles/{quote(query.identity_id, safe='')}/{collection}",
                 params=params,
             )
             return {collection: self._require_list(records, collection)}
@@ -129,14 +145,25 @@ class DaemonMcpFacade:
             return {"missions": self._require_list(missions, "mission")}
         if operation == "mission.get":
             query = self._validate(MissionQuery, arguments)
-            return await self._request_object("GET", f"/v1/missions/{query.mission_id}")
+            mission_id = quote(query.mission_id, safe="")
+            return await self._request_object("GET", f"/v1/missions/{mission_id}")
         if operation == "mission.inspect":
             query = self._validate(MissionQuery, arguments)
+            mission_id = quote(query.mission_id, safe="")
             return await self._request_object(
                 "GET",
-                f"/v1/missions/{query.mission_id}/inspection",
+                f"/v1/missions/{mission_id}/inspection",
                 params={"limit": query.limit},
             )
+        if operation == "mission.run-reports.list":
+            query = self._validate(MissionQuery, arguments)
+            mission_id = quote(query.mission_id, safe="")
+            reports = await self._request(
+                "GET",
+                f"/v1/missions/{mission_id}/run-reports",
+                params={"limit": query.limit},
+            )
+            return {"reports": self._require_list(reports, "mission run report")}
         if operation == "mission.templates.list":
             query = self._validate(MissionTemplateQuery, arguments)
             template_params: list[tuple[str, str]] = [
@@ -157,11 +184,11 @@ class DaemonMcpFacade:
         if operation == "conversation.get":
             query = self._validate(ConversationQuery, arguments)
             channel = await self._request_object(
-                "GET", f"/v1/conversations/{query.conversation_id}"
+                "GET", f"/v1/conversations/{quote(query.conversation_id, safe='')}"
             )
             messages = await self._request(
                 "GET",
-                f"/v1/conversations/{query.conversation_id}/messages",
+                f"/v1/conversations/{quote(query.conversation_id, safe='')}/messages",
                 params={"limit": query.limit},
             )
             return {

@@ -99,6 +99,21 @@ async def test_remote_facade_forwards_queries_commands_and_resources(tmp_path: P
         {"mission_id": str(mission.mission_id), "limit": 10},
         principal_id=token.principal_id,
     )
+    organization_inspection = await facade.invoke(
+        "organization.inspect",
+        {"limit": 10},
+        principal_id=token.principal_id,
+    )
+    branch_inspection = await facade.invoke(
+        "organization.branch.inspect",
+        {"branch_id": roster.branches[0].branch_id, "limit": 10},
+        principal_id=token.principal_id,
+    )
+    run_reports = await facade.invoke(
+        "mission.run-reports.list",
+        {"mission_id": str(mission.mission_id), "limit": 10},
+        principal_id=token.principal_id,
+    )
     notifications = await facade.read_resource(
         "mishkan://notifications", principal_id=token.principal_id
     )
@@ -116,6 +131,9 @@ async def test_remote_facade_forwards_queries_commands_and_resources(tmp_path: P
     assert mission_projection["mission_id"] == str(mission.mission_id)
     assert mission_inspection["mission"] == mission_projection
     assert mission_inspection["brief"] is None
+    assert organization_inspection["organization"]["organization_id"] == roster.organization_id
+    assert branch_inspection["branch"]["branch_id"] == roster.branches[0].branch_id
+    assert run_reports == {"reports": []}
     assert len(events["events"]) == 3
 
 
