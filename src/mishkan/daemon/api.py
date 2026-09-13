@@ -595,12 +595,14 @@ def create_app(
         paths.database,
         busy_timeout_ms=persistence.busy_timeout_ms,
     )
-    mission_governance = mission_governance_runner or CrewAIMissionGovernanceRunner(config)
-    mission_environment_planning = (
-        mission_environment_runner or CrewAIMissionEnvironmentPlanningRunner(config)
-    )
     mission_templates = MissionTemplateService(
         MissionTemplateLoader().load(config.mission_template_sources, paths.workspace)
+    )
+    mission_governance = mission_governance_runner or CrewAIMissionGovernanceRunner(
+        config, mission_templates=mission_templates
+    )
+    mission_environment_planning = (
+        mission_environment_runner or CrewAIMissionEnvironmentPlanningRunner(config)
     )
     mission_readiness = MissionEnvironmentReadinessService(
         mission_repository,

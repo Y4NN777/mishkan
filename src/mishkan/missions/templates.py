@@ -167,3 +167,22 @@ class MissionTemplateService:
             catalogue_revision=self._catalogue.revision,
             definition_fingerprint=selected.fingerprint,
         )
+
+    def resolve(self, reference: MissionTemplateReference) -> MissionTemplateDefinition:
+        expected = self.reference(reference.template_id, version=reference.version)
+        if expected != reference:
+            raise MishkanError(
+                ErrorCode.MISSION,
+                "mission template reference does not match the configured catalogue",
+                details={
+                    "template_id": reference.template_id,
+                    "version": reference.version,
+                    "catalogue_id": reference.catalogue_id,
+                    "catalogue_revision": reference.catalogue_revision,
+                },
+            )
+        return next(
+            item
+            for item in self._catalogue.templates
+            if item.template_id == reference.template_id and item.version == reference.version
+        )

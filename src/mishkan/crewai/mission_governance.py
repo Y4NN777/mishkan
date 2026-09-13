@@ -30,6 +30,7 @@ from mishkan.missions import (
     MissionCrewRevision,
     MissionEnvironmentIntent,
     MissionRecord,
+    MissionTemplateService,
 )
 from mishkan.organization import OrganizationRosterDefinition, load_canonical_organization
 from mishkan.organization.models import RoleDefinition
@@ -228,10 +229,12 @@ class CrewAIMissionGovernanceRunner:
         self,
         config: MishkanConfig,
         organization: OrganizationRosterDefinition | None = None,
+        mission_templates: MissionTemplateService | None = None,
     ) -> None:
         self._config = config
         self._models = CrewAIModelRouter(config)
         self._organization = organization or load_canonical_organization()
+        self._mission_templates = mission_templates
 
     def propose(
         self, mission: MissionRecord, evidence: tuple[MissionGovernanceEvidence, ...]
@@ -495,6 +498,7 @@ class CrewAIMissionGovernanceRunner:
             "authority, tools, or a fixed workflow. Select identities only from the supplied "
             "roster.\n"
             f"Mission: {mission.model_dump_json()}\n"
+            f"Optional template guidance: {self._template_projection(mission)}\n"
             f"Roster: {self._roster_projection()}\n"
             f"Evidence: {self._evidence_projection(evidence)}"
         )
@@ -512,6 +516,7 @@ class CrewAIMissionGovernanceRunner:
             "consequences and risks, both PM and CTO recommendations, and the independent work "
             "that can continue. Do not grant tools or authority.\n"
             f"Mission: {mission.model_dump_json()}\nPM proposal: {pm.model_dump_json()}\n"
+            f"Optional template guidance: {self._template_projection(mission)}\n"
             f"Roster: {self._roster_projection()}\n"
             f"Evidence: {self._evidence_projection(evidence)}"
         )
@@ -534,6 +539,37 @@ class CrewAIMissionGovernanceRunner:
                 }
                 for item in self._organization.identities
             ],
+            sort_keys=True,
+        )
+
+    def _template_projection(self, mission: MissionRecord) -> str:
+        reference = mission.origin.template_reference
+        if reference is None:
+            return json.dumps({"selected": False}, sort_keys=True)
+        if self._mission_templates is None:
+            raise MishkanError(
+                ErrorCode.REQUIRED_DEPENDENCY,
+                "selected mission template requires the configured template catalogue",
+            )
+        template = self._mission_templates.resolve(reference)
+        return json.dumps(
+            {
+                "selected": True,
+                "template_id": template.template_id,
+                "version": template.version,
+                "objective_guidance": template.objective_guidance,
+                "constraint_guidance": template.constraint_guidance,
+                "risk_guidance": template.risk_guidance,
+                "evidence_guidance": template.evidence_guidance,
+                "completion_guidance": template.completion_guidance,
+                "required_responsibility_classes": template.required_responsibility_classes,
+                "declared_configuration_conditions": template.declared_configuration_conditions,
+                "declared_skill_conditions": template.declared_skill_conditions,
+                "declared_tool_conditions": template.declared_tool_conditions,
+                "declared_execution_conditions": template.declared_execution_conditions,
+                "validation_expectations": template.validation_expectations,
+                "reporting_expectations": template.reporting_expectations,
+            },
             sort_keys=True,
         )
 

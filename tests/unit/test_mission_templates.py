@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from mishkan.domain.errors import MishkanError
 from mishkan.missions import (
     MissionOrigin,
     MissionOriginKind,
@@ -115,3 +116,6 @@ def test_exact_template_reference_cannot_be_partial_or_mismatched(tmp_path: Path
         MissionOrigin.model_validate(
             {**base, "template_id": "research", "template_reference": reference}
         )
+    forged = reference.model_copy(update={"definition_fingerprint": "0" * 64})
+    with pytest.raises(MishkanError, match="does not match the configured catalogue"):
+        MissionTemplateService(catalogue).resolve(forged)

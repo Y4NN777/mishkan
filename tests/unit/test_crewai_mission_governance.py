@@ -25,6 +25,8 @@ from mishkan.missions import (
     MissionOrigin,
     MissionOriginKind,
     MissionRecord,
+    MissionTemplateLoader,
+    MissionTemplateService,
 )
 from mishkan.organization import load_canonical_organization
 
@@ -205,6 +207,59 @@ def test_proposal_runs_bounded_pm_then_cto_crewai_work(
     assert calls[1][1] == runner._config.crewai.mission_cto_model_route
     assert calls[0][2] is PMMissionProposal
     assert calls[1][2] is CTOMissionReview
+
+
+def test_selected_optional_template_guidance_reaches_both_crewai_tasks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    templates = MissionTemplateService(
+        MissionTemplateLoader().load(
+            ("package://mishkan.resources.organization/mission-templates.yaml",), tmp_path
+        )
+    )
+    reference = templates.reference("greenfield")
+    organization = load_canonical_organization()
+    mission = MissionRecord(
+        origin=MissionOrigin(
+            schema_version="1.1",
+            kind=MissionOriginKind.CEO,
+            actor_id="CEO",
+            objective="Create a service in a prospective workspace",
+            template_id=reference.template_id,
+            template_reference=reference,
+        ),
+        organization_id=organization.organization_id,
+        organization_version=organization.organization_version,
+    )
+    runner = CrewAIMissionGovernanceRunner(_config(tmp_path), mission_templates=templates)
+    prompts: list[str] = []
+    monkeypatch.setattr(
+        runner._models,
+        "candidates_for",
+        lambda route_name: (SimpleNamespace(route_name=route_name),),
+    )
+
+    def crew_result(  # type: ignore[no-untyped-def]
+        role, _llm, description, _expected_output, _output_model
+    ):
+        prompts.append(description)
+        return SimpleNamespace(pydantic=_pm() if role.name == "PM" else _cto(), raw="")
+
+    monkeypatch.setattr(runner, "_crew", crew_result)
+
+    runner.propose(
+        mission,
+        tuple(
+            MissionGovernanceEvidence(reference=item, summary=f"Evidence for {item}")
+            for item in _governance_evidence_references()
+        ),
+    )
+
+    assert len(prompts) == 2
+    assert all('"template_id": "greenfield"' in prompt for prompt in prompts)
+    assert all("Clarify the intended users" in prompt for prompt in prompts)
+    assert all("fixed_crew" not in prompt and '"tasks"' not in prompt for prompt in prompts)
 
 
 def test_cto_rejection_compiles_to_actionable_disagreement_without_a_crew(
