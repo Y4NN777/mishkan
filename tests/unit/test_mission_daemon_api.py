@@ -18,6 +18,10 @@ from mishkan.conversations import (
     MissionEscalation,
     MissionIntervention,
 )
+from mishkan.crewai.mission_governance import (
+    MissionGovernanceRequest,
+    MissionGovernanceResult,
+)
 from mishkan.daemon import DaemonBootstrap, create_app
 from mishkan.daemon.auth import TokenFile
 from mishkan.missions import (
@@ -145,6 +149,20 @@ def _crew(brief: MissionBrief) -> MissionCrewRevision:
         cto_coverage_confirmation_id=brief.cto_confirmation.confirmation_id,
         revision_reason="Initial evidence-based composition",
     )
+
+
+class _MissionGovernanceRunner:
+    def propose(
+        self, mission: MissionRecord, _evidence: tuple[dict[str, object], ...]
+    ) -> MissionGovernanceResult:
+        brief = _brief(mission)
+        return MissionGovernanceResult(
+            mission=mission,
+            brief=brief,
+            crew=_crew(brief),
+            pm_output_fingerprint="a" * 64,
+            cto_output_fingerprint="b" * 64,
+        )
 
 
 @pytest.mark.anyio
@@ -337,6 +355,71 @@ async def test_mission_command_refuses_a_stale_application_revision(tmp_path: Pa
 
     assert response.status_code == 409
     assert response.json()["code"] == "ERR-REV-001"
+
+
+@pytest.mark.anyio
+async def test_crewai_governance_command_returns_candidate_without_implicit_mutation(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    paths = DaemonBootstrap().setup(config)
+    token = TokenFile(paths.token_file).read()
+    organization = load_canonical_organization()
+    mission = MissionRecord(
+        origin=MissionOrigin(
+            kind=MissionOriginKind.CEO,
+            actor_id="CEO",
+            objective="Propose a governed account recovery mission",
+        ),
+        organization_id=organization.organization_id,
+        organization_version=organization.organization_version,
+    )
+    request = MissionGovernanceRequest(
+        mission_id=mission.mission_id,
+        mission_revision=1,
+        evidence=(
+            {
+                "reference": "artifact:discovery",
+                "summary": "Repository evidence for account recovery",
+            },
+        ),
+    )
+    create = ApplicationCommand(
+        command_type="mission.create",
+        actor_id=token.principal_id,
+        target_type="mission",
+        target_id=str(mission.mission_id),
+        expected_revision=0,
+        payload={"record": mission.model_dump(mode="json")},
+    )
+    propose = ApplicationCommand(
+        command_type="mission.governance.propose",
+        actor_id=token.principal_id,
+        target_type="mission_governance_request",
+        target_id=str(request.request_id),
+        expected_revision=0,
+        payload={"request": request.model_dump(mode="json")},
+    )
+    headers = {"Authorization": f"Bearer {token.token}"}
+    transport = httpx.ASGITransport(
+        app=create_app(config, mission_governance_runner=_MissionGovernanceRunner())
+    )
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        created = await client.post(
+            "/v1/commands", headers=headers, json=create.model_dump(mode="json")
+        )
+        proposed = await client.post(
+            "/v1/commands", headers=headers, json=propose.model_dump(mode="json")
+        )
+        durable = await client.get(f"/v1/missions/{mission.mission_id}", headers=headers)
+
+    assert created.json()["status"] == "accepted"
+    assert proposed.json()["status"] == "accepted"
+    result = MissionGovernanceResult.model_validate(proposed.json()["payload"])
+    assert result.brief.status is MissionBriefStatus.CONFIRMED
+    assert durable.json()["revision"] == 1
+    assert durable.json()["current_brief_version"] is None
+    assert durable.json()["current_crew_version"] is None
 
 
 @pytest.mark.anyio

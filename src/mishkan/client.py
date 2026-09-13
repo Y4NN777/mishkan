@@ -40,6 +40,10 @@ from mishkan.conversations import (
     MissionEscalation,
     MissionIntervention,
 )
+from mishkan.crewai.mission_governance import (
+    MissionGovernanceRequest,
+    MissionGovernanceResult,
+)
 from mishkan.daemon.auth import TokenFile
 from mishkan.edits import ChangeSetResult
 from mishkan.environment import (
@@ -211,6 +215,21 @@ class Mishkan:
             )
         )
         return MissionRecord.model_validate(result.payload)
+
+    def propose_mission_governance(
+        self, request: MissionGovernanceRequest
+    ) -> MissionGovernanceResult:
+        result = self.command(
+            ApplicationCommand(
+                command_type="mission.governance.propose",
+                actor_id=self.principal_id,
+                target_type="mission_governance_request",
+                target_id=str(request.request_id),
+                expected_revision=0,
+                payload={"request": request.model_dump(mode="json")},
+            )
+        )
+        return MissionGovernanceResult.model_validate(result.payload)
 
     def record_mission_brief(
         self,

@@ -34,6 +34,7 @@ from mishkan.conversations import (
     MissionEscalation,
     MissionIntervention,
 )
+from mishkan.crewai.mission_governance import MissionGovernanceRequest
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.time import utc_now
 from mishkan.edits import ChangeSet
@@ -304,6 +305,9 @@ COMMAND_SEMANTICS = MappingProxyType(
         "mission.transition": CommandSemantics(
             "application.mission.lifecycle", "coordination", ("mission.transition",)
         ),
+        "mission.governance.propose": CommandSemantics(
+            "application.mission.governance", "coordination", ("mission.governance.propose",)
+        ),
         **{
             f"registry.entry.{action.value}": CommandSemantics(
                 "application.registry.lifecycle",
@@ -384,6 +388,7 @@ _COMMAND_TARGETS = MappingProxyType(
         "mission.intervention.apply": ("mission", "uuid"),
         "mission.assignment.record": ("mission_assignment", "uuid"),
         "mission.transition": ("mission", "uuid"),
+        "mission.governance.propose": ("mission_governance_request", "uuid"),
         **{
             f"registry.entry.{action.value}": ("registry_entry", "required")
             for action in RegistryLifecycleAction
@@ -490,6 +495,7 @@ _COMMAND_PAYLOAD_FIELDS = MappingProxyType(
         "mission.intervention.apply": (frozenset({"intervention"}), frozenset()),
         "mission.assignment.record": (frozenset({"assignment"}), frozenset()),
         "mission.transition": (frozenset({"transition"}), frozenset()),
+        "mission.governance.propose": (frozenset({"request"}), frozenset()),
         "registry.entry.add": (frozenset({"entry_kind", "definition"}), frozenset()),
         "registry.entry.enable": (frozenset({"entry_kind"}), frozenset()),
         "registry.entry.disable": (frozenset({"entry_kind"}), frozenset()),
@@ -537,6 +543,7 @@ class AuthorizedApplicationCommand:
     mission_intervention: MissionIntervention | None = None
     mission_assignment: MissionTaskAssignment | None = None
     mission_transition: MissionTransition | None = None
+    mission_governance_request: MissionGovernanceRequest | None = None
 
 
 class ApplicationCommandAuthority:
@@ -614,6 +621,7 @@ class ApplicationCommandAuthority:
         mission_intervention: MissionIntervention | None = None
         mission_assignment: MissionTaskAssignment | None = None
         mission_transition: MissionTransition | None = None
+        mission_governance_request: MissionGovernanceRequest | None = None
 
         try:
             if normalized.command_type == "run.initialize":
@@ -1182,6 +1190,19 @@ class ApplicationCommandAuthority:
                     f"mission:{mission_transition.mission_id}",
                     *(f"evidence:{item}" for item in mission_transition.evidence_references),
                 )
+            elif normalized.command_type == "mission.governance.propose":
+                mission_governance_request = MissionGovernanceRequest.model_validate(
+                    normalized.payload["request"]
+                )
+                if normalized.target_id != str(mission_governance_request.request_id):
+                    raise ValueError("governance request target differs from its identity")
+                external_resources = (
+                    f"mission:{mission_governance_request.mission_id}",
+                    *(
+                        f"evidence:{item.get('reference', index)}"
+                        for index, item in enumerate(mission_governance_request.evidence)
+                    ),
+                )
             elif normalized.target_id is not None:
                 external_resources = (f"{normalized.target_type}:{normalized.target_id}",)
         except (KeyError, TypeError, ValueError, ValidationError) as exc:
@@ -1249,6 +1270,7 @@ class ApplicationCommandAuthority:
             mission_intervention=mission_intervention,
             mission_assignment=mission_assignment,
             mission_transition=mission_transition,
+            mission_governance_request=mission_governance_request,
         )
 
     @staticmethod

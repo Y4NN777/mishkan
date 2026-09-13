@@ -57,6 +57,11 @@ from mishkan.conversations import (
     SQLiteConversationRepository,
 )
 from mishkan.crewai.credentials import CredentialPoolResolver
+from mishkan.crewai.mission_governance import (
+    CrewAIMissionGovernanceRunner,
+    MissionGovernanceResult,
+    MissionGovernanceRunner,
+)
 from mishkan.crewai.skill_learning import CrewAISkillLearningRunner
 from mishkan.daemon.auth import TokenFile, TokenRecord
 from mishkan.daemon.bootstrap import DaemonPaths
@@ -317,6 +322,7 @@ def create_app(
     *,
     mcp_stdio_commands: Mapping[str, McpStdioCommandBuilder] | None = None,
     skill_learning_runner: SkillLearningRunner | None = None,
+    mission_governance_runner: MissionGovernanceRunner | None = None,
     telemetry_exporter_factory: Callable[[], TelemetryExporter] | None = None,
 ) -> FastAPI:
     paths = DaemonPaths.from_config(config)
@@ -545,6 +551,7 @@ def create_app(
         paths.database,
         busy_timeout_ms=persistence.busy_timeout_ms,
     )
+    mission_governance = mission_governance_runner or CrewAIMissionGovernanceRunner(config)
     telemetry_tasks: set[asyncio.Task[object]] = set()
 
     def project_telemetry(
@@ -840,6 +847,7 @@ def create_app(
                                 community_recommendations,
                                 mission_repository,
                                 conversation_repository,
+                                mission_governance,
                             )
                         except MishkanError as error:
                             result = repository.fail_reserved(
@@ -1714,6 +1722,7 @@ def _dispatch(
     community_recommendations: ContextualRecommendationService,
     mission_repository: SQLiteMissionRepository,
     conversation_repository: SQLiteConversationRepository,
+    mission_governance: MissionGovernanceRunner,
 ) -> tuple[str, dict[str, object]]:
     payload = command.payload
     if command.command_type == "system.checkpoint" and command.target_type == "system":
@@ -1828,6 +1837,31 @@ def _dispatch(
             transition, expected_revision=command.expected_revision
         )
         return "mission.state_transitioned", recorded_transition.model_dump(mode="json")
+    if command.command_type == "mission.governance.propose":
+        governance_request = authorized.mission_governance_request
+        if governance_request is None:
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT, "authorized mission governance request is absent"
+            )
+        mission = mission_repository.mission(str(governance_request.mission_id))
+        if mission.revision != governance_request.mission_revision:
+            raise MishkanError(
+                ErrorCode.REVISION_MISMATCH,
+                "mission changed after the governance request was authored",
+                details={
+                    "expected": mission.revision,
+                    "received": governance_request.mission_revision,
+                },
+            )
+        proposal: MissionGovernanceResult = mission_governance.propose(
+            mission, governance_request.evidence
+        )
+        if proposal.mission != mission:
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT,
+                "CrewAI governance proposal returned a different mission snapshot",
+            )
+        return "mission.governance_proposed", proposal.model_dump(mode="json")
     if command.command_type == "artifact.upload.open":
         upload = artifacts.open_upload(
             expected_size=int(payload["expected_size"]),

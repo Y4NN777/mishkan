@@ -4,15 +4,19 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Literal, TypeVar, cast
+from datetime import datetime
+from typing import Literal, Protocol, TypeVar, cast
+from uuid import UUID
 
 from crewai import LLM, Agent, Crew, Process, Task
 from crewai.crews.crew_output import CrewOutput
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from mishkan.config.models import MishkanConfig
 from mishkan.crewai.routing import CrewAIModelRouter
 from mishkan.domain.errors import ErrorCode, MishkanError
+from mishkan.domain.identity import new_id
+from mishkan.domain.time import require_aware, utc_now
 from mishkan.missions import (
     ExecutiveConfirmation,
     MissionBrief,
@@ -30,6 +34,20 @@ OutputT = TypeVar("OutputT", bound=BaseModel)
 
 class GovernanceOutput(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class MissionGovernanceRequest(GovernanceOutput):
+    schema_version: Literal["1.0"] = "1.0"
+    request_id: UUID = Field(default_factory=new_id)
+    mission_id: UUID
+    mission_revision: int = Field(ge=1)
+    evidence: tuple[dict[str, object], ...] = Field(min_length=1)
+    requested_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("requested_at")
+    @classmethod
+    def _validate_timestamp(cls, value: datetime) -> datetime:
+        return require_aware(value)
 
 
 class PMMissionProposal(GovernanceOutput):
@@ -65,6 +83,12 @@ class MissionGovernanceResult(GovernanceOutput):
     crew: MissionCrewRevision
     pm_output_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
     cto_output_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class MissionGovernanceRunner(Protocol):
+    def propose(
+        self, mission: MissionRecord, evidence: tuple[dict[str, object], ...]
+    ) -> MissionGovernanceResult: ...
 
 
 class CrewAIMissionGovernanceRunner:
