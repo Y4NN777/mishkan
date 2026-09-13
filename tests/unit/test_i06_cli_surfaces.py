@@ -81,6 +81,10 @@ class _Client:
         assert (mission_id, limit) == ("mission/id", 5)
         return (_Payload("mission-transition"),)
 
+    def mission_decisions(self, mission_id: str, *, limit: int) -> tuple[_Payload, ...]:
+        assert (mission_id, limit) == ("mission/id", 10)
+        return (_Payload("mission-decision"),)
+
     def mission_environment_plan(self, mission_id: str, *, version: int | None) -> _Payload:
         assert (mission_id, version) == ("mission/id", 2)
         return _Payload("environment-plan")
@@ -141,6 +145,13 @@ class _Client:
         )
         return _Payload("notifications")
 
+    def post_message(self, message: Any) -> _Payload:
+        assert str(message.conversation_id) == "00000000-0000-4000-8000-000000000001"
+        assert message.author_identity == "CEO"
+        assert message.body == "Ship the verified scope"
+        assert message.evidence_references == ("evidence:42",)
+        return _Payload("chat-message")
+
 
 runner = CliRunner()
 
@@ -192,6 +203,10 @@ def client(monkeypatch: pytest.MonkeyPatch) -> _Client:
         (
             ("mission", "transitions", "mission/id", "--limit", "5"),
             [{"kind": "mission-transition"}],
+        ),
+        (
+            ("mission", "decisions", "mission/id", "--limit", "10"),
+            [{"kind": "mission-decision"}],
         ),
         (
             ("mission", "environment-plan", "mission/id", "--version", "2"),
@@ -256,6 +271,28 @@ def test_i06_read_surfaces_use_shared_daemon_client(
 
     assert result.exit_code == 0, result.output
     assert json.loads(result.stdout) == expected
+
+
+def test_chat_posts_through_the_same_durable_message_contract(client: _Client) -> None:
+    del client
+    result = runner.invoke(
+        cli.app,
+        [
+            "--json",
+            "chat",
+            "--conversation",
+            "00000000-0000-4000-8000-000000000001",
+            "--author",
+            "CEO",
+            "--message",
+            "Ship the verified scope",
+            "--evidence",
+            "evidence:42",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {"kind": "chat-message"}
 
 
 @pytest.mark.parametrize(

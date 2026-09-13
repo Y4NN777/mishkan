@@ -312,6 +312,17 @@ class SQLiteConversationRepository:
             rows = session.scalars(query.order_by(MissionEscalationRow.created_at).limit(limit))
             return tuple(MissionEscalation.model_validate_json(row.payload) for row in rows)
 
+    def decisions(self, mission_id: str, *, limit: int = 100) -> tuple[MissionDecision, ...]:
+        with Session(self._engine) as session:
+            self._require_mission(session, mission_id)
+            rows = session.scalars(
+                select(MissionDecisionRow)
+                .where(MissionDecisionRow.mission_id == mission_id)
+                .order_by(MissionDecisionRow.created_at)
+                .limit(limit)
+            )
+            return tuple(MissionDecision.model_validate_json(row.payload) for row in rows)
+
     def interventions(
         self, mission_id: str, *, limit: int = 100
     ) -> tuple[MissionIntervention, ...]:

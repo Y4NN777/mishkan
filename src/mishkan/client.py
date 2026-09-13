@@ -640,6 +640,17 @@ class Mishkan:
         response.raise_for_status()
         return tuple(MissionEscalation.model_validate(item) for item in response.json())
 
+    def mission_decisions(
+        self, mission_id: str, *, limit: int = 100
+    ) -> tuple[MissionDecision, ...]:
+        response = self._client.get(
+            f"/v1/missions/{mission_id}/decisions",
+            headers=self._headers(),
+            params={"limit": limit},
+        )
+        response.raise_for_status()
+        return tuple(MissionDecision.model_validate(item) for item in response.json())
+
     def mission_interventions(
         self, mission_id: str, *, limit: int = 100
     ) -> tuple[MissionIntervention, ...]:

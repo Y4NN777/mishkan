@@ -11,6 +11,7 @@ from mishkan.conversations import (
     ExecutiveRecommendation,
     InterventionKind,
     InterventionTargetKind,
+    MissionDecision,
     MissionEscalation,
     MissionIntervention,
     SQLiteConversationRepository,
@@ -260,3 +261,24 @@ def test_mission_pause_and_resume_are_explicit_revision_checked_interventions(
     with pytest.raises(MishkanError) as stale:
         conversations.apply_intervention(stale_stop, expected_revision=paused.revision)
     assert stale.value.envelope.code is ErrorCode.REVISION_MISMATCH
+
+
+def test_mission_decisions_are_queryable_after_restart(tmp_path: Path) -> None:
+    _missions, conversations, mission = _setup(tmp_path)
+    channel = conversations.create_channel(_mission_channel(mission))
+    decision = MissionDecision(
+        mission_id=mission.mission_id,
+        conversation_id=channel.conversation_id,
+        actor_id="PM",
+        subject="Mission scope",
+        disposition="accepted",
+        reason="The scope is within the approved product envelope",
+        scope=("task:independent",),
+        evidence_references=("evidence:scope-review",),
+        authority_reference="authority:pm-product",
+    )
+    conversations.record_decision(decision)
+
+    reopened = SQLiteConversationRepository(tmp_path / "mishkan.db")
+
+    assert reopened.decisions(str(mission.mission_id)) == (decision,)

@@ -327,6 +327,10 @@ class McpFacadeRouter:
                     limit=query.limit,
                 )
             ],
+            "decisions": [
+                item.model_dump(mode="json")
+                for item in conversations.decisions(query.mission_id, limit=query.limit)
+            ],
             "escalations": [
                 item.model_dump(mode="json")
                 for item in conversations.escalations(query.mission_id, limit=query.limit)
@@ -334,6 +338,15 @@ class McpFacadeRouter:
             "interventions": [
                 item.model_dump(mode="json")
                 for item in conversations.interventions(query.mission_id, limit=query.limit)
+            ],
+            "events": [
+                item.model_dump(mode="json")
+                for item in self._repository.events(
+                    after_cursor=0,
+                    limit=query.limit,
+                    entity_type="mission",
+                    entity_id=query.mission_id,
+                ).events
             ],
         }
 

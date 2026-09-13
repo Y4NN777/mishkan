@@ -1238,6 +1238,19 @@ def create_app(
         )
         return tuple(record.model_dump(mode="json") for record in records)
 
+    @app.get("/v1/missions/{mission_id}/decisions", response_model=None)
+    async def mission_decisions(
+        mission_id: UUID,
+        _principal: TokenRecord = authenticated,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
+    ) -> tuple[dict[str, object], ...]:
+        records = await _thread_call(
+            conversation_repository.decisions,
+            str(mission_id),
+            limit=limit,
+        )
+        return tuple(record.model_dump(mode="json") for record in records)
+
     @app.get("/v1/missions/{mission_id}/interventions", response_model=None)
     async def mission_interventions(
         mission_id: UUID,
@@ -1272,12 +1285,27 @@ def create_app(
             if mission.current_environment_plan_version is not None
             else None
         )
-        assignments, transitions, channels, escalations, interventions = await asyncio.gather(
+        (
+            assignments,
+            transitions,
+            channels,
+            decisions,
+            escalations,
+            interventions,
+        ) = await asyncio.gather(
             _thread_call(mission_repository.assignments, identity, limit=limit),
             _thread_call(mission_repository.transitions, identity, limit=limit),
             _thread_call(conversation_repository.channels, mission_id=identity, limit=limit),
+            _thread_call(conversation_repository.decisions, identity, limit=limit),
             _thread_call(conversation_repository.escalations, identity, limit=limit),
             _thread_call(conversation_repository.interventions, identity, limit=limit),
+        )
+        mission_events = await _thread_call(
+            repository.events,
+            after_cursor=0,
+            limit=limit,
+            entity_type="mission",
+            entity_id=identity,
         )
         return {
             "mission": mission.model_dump(mode="json"),
@@ -1292,8 +1320,10 @@ def create_app(
             "assignments": [item.model_dump(mode="json") for item in assignments],
             "transitions": [item.model_dump(mode="json") for item in transitions],
             "conversations": [item.model_dump(mode="json") for item in channels],
+            "decisions": [item.model_dump(mode="json") for item in decisions],
             "escalations": [item.model_dump(mode="json") for item in escalations],
             "interventions": [item.model_dump(mode="json") for item in interventions],
+            "events": [item.model_dump(mode="json") for item in mission_events.events],
         }
 
     @app.get("/v1/tools/registry")

@@ -334,6 +334,18 @@ def transition_mission(
     _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
 
 
+@mission_app.command("decisions")
+def list_mission_decisions(
+    ctx: typer.Context,
+    mission_id: str,
+    limit: Annotated[int, typer.Option(min=1, max=1_000)] = 100,
+) -> None:
+    """List durable decisions governing one mission."""
+    with _daemon_client(ctx) as client:
+        decisions = client.mission_decisions(mission_id, limit=limit)
+    _emit(_dump_models(decisions), as_json=_state(ctx).json_output)
+
+
 @mission_app.command("environment-plan")
 def show_mission_environment_plan(
     ctx: typer.Context,
@@ -452,6 +464,35 @@ def post_conversation_message(
     message = _read_contract(message_file, ConversationMessage, "--message")
     with _daemon_client(ctx) as client:
         result = client.post_message(message)
+    _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
+@app.command("chat")
+def chat(
+    ctx: typer.Context,
+    conversation_id: Annotated[str, typer.Option("--conversation")],
+    author: Annotated[str, typer.Option("--author")],
+    message: Annotated[str, typer.Option("--message")],
+    reply_to: Annotated[str | None, typer.Option("--reply-to")] = None,
+    evidence: Annotated[list[str] | None, typer.Option("--evidence")] = None,
+) -> None:
+    """Post one durable message through the same governed daemon contract."""
+    from uuid import UUID
+
+    from mishkan.conversations import ConversationMessage
+
+    try:
+        record = ConversationMessage(
+            conversation_id=UUID(conversation_id),
+            author_identity=author,
+            body=message,
+            reply_to_message_id=UUID(reply_to) if reply_to is not None else None,
+            evidence_references=tuple(evidence or ()),
+        )
+    except ValueError as exc:
+        raise typer.BadParameter("conversation and reply identities must be UUIDs") from exc
+    with _daemon_client(ctx) as client:
+        result = client.post_message(record)
     _emit(result.model_dump(mode="json"), as_json=_state(ctx).json_output)
 
 
