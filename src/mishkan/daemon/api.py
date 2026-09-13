@@ -1056,6 +1056,24 @@ def create_app(
     ) -> MissionCrewRevision:
         return await _thread_call(mission_repository.crew, str(mission_id), version)
 
+    @app.get("/v1/missions/{mission_id}/assignments", response_model=None)
+    async def mission_assignments(
+        mission_id: UUID,
+        _principal: TokenRecord = authenticated,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 1_000,
+    ) -> tuple[dict[str, object], ...]:
+        records = await _thread_call(mission_repository.assignments, str(mission_id), limit=limit)
+        return tuple(record.model_dump(mode="json") for record in records)
+
+    @app.get("/v1/missions/{mission_id}/transitions", response_model=None)
+    async def mission_transitions(
+        mission_id: UUID,
+        _principal: TokenRecord = authenticated,
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 1_000,
+    ) -> tuple[dict[str, object], ...]:
+        records = await _thread_call(mission_repository.transitions, str(mission_id), limit=limit)
+        return tuple(record.model_dump(mode="json") for record in records)
+
     @app.get("/v1/conversations", response_model=None)
     async def conversation_list(
         _principal: TokenRecord = authenticated,
@@ -1793,6 +1811,23 @@ def _dispatch(
             intervention, expected_revision=command.expected_revision
         )
         return "mission.intervention_applied", applied.model_dump(mode="json")
+    if command.command_type == "mission.assignment.record":
+        assignment = authorized.mission_assignment
+        if assignment is None:
+            raise MishkanError(ErrorCode.OUTPUT_CONTRACT, "authorized mission assignment is absent")
+        recorded_assignment = mission_repository.record_assignment(assignment)
+        return "mission.task_assigned", recorded_assignment.model_dump(mode="json")
+    if command.command_type == "mission.transition":
+        transition = authorized.mission_transition
+        if transition is None or command.expected_revision is None:
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT,
+                "mission transition requires an authorized record and expected revision",
+            )
+        recorded_transition = mission_repository.transition(
+            transition, expected_revision=command.expected_revision
+        )
+        return "mission.state_transitioned", recorded_transition.model_dump(mode="json")
     if command.command_type == "artifact.upload.open":
         upload = artifacts.open_upload(
             expected_size=int(payload["expected_size"]),

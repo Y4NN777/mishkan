@@ -50,7 +50,13 @@ from mishkan.environment import (
     EnvironmentVerificationRequest,
 )
 from mishkan.execution import ExecutionRequest, ExecutionSession
-from mishkan.missions import MissionBrief, MissionCrewRevision, MissionRecord
+from mishkan.missions import (
+    MissionBrief,
+    MissionCrewRevision,
+    MissionRecord,
+    MissionTaskAssignment,
+    MissionTransition,
+)
 from mishkan.policy import (
     AuthorizationDecision,
     AuthorizationRequest,
@@ -292,6 +298,12 @@ COMMAND_SEMANTICS = MappingProxyType(
         "mission.intervention.apply": CommandSemantics(
             "application.mission.intervention", "coordination", ("mission.intervention.apply",)
         ),
+        "mission.assignment.record": CommandSemantics(
+            "application.mission.assignment", "coordination", ("mission.assignment.record",)
+        ),
+        "mission.transition": CommandSemantics(
+            "application.mission.lifecycle", "coordination", ("mission.transition",)
+        ),
         **{
             f"registry.entry.{action.value}": CommandSemantics(
                 "application.registry.lifecycle",
@@ -370,6 +382,8 @@ _COMMAND_TARGETS = MappingProxyType(
         "mission.decision.record": ("mission_decision", "uuid"),
         "mission.escalation.open": ("mission_escalation", "uuid"),
         "mission.intervention.apply": ("mission", "uuid"),
+        "mission.assignment.record": ("mission_assignment", "uuid"),
+        "mission.transition": ("mission", "uuid"),
         **{
             f"registry.entry.{action.value}": ("registry_entry", "required")
             for action in RegistryLifecycleAction
@@ -474,6 +488,8 @@ _COMMAND_PAYLOAD_FIELDS = MappingProxyType(
         "mission.decision.record": (frozenset({"decision"}), frozenset()),
         "mission.escalation.open": (frozenset({"escalation"}), frozenset()),
         "mission.intervention.apply": (frozenset({"intervention"}), frozenset()),
+        "mission.assignment.record": (frozenset({"assignment"}), frozenset()),
+        "mission.transition": (frozenset({"transition"}), frozenset()),
         "registry.entry.add": (frozenset({"entry_kind", "definition"}), frozenset()),
         "registry.entry.enable": (frozenset({"entry_kind"}), frozenset()),
         "registry.entry.disable": (frozenset({"entry_kind"}), frozenset()),
@@ -519,6 +535,8 @@ class AuthorizedApplicationCommand:
     mission_decision: MissionDecision | None = None
     mission_escalation: MissionEscalation | None = None
     mission_intervention: MissionIntervention | None = None
+    mission_assignment: MissionTaskAssignment | None = None
+    mission_transition: MissionTransition | None = None
 
 
 class ApplicationCommandAuthority:
@@ -594,6 +612,8 @@ class ApplicationCommandAuthority:
         mission_decision: MissionDecision | None = None
         mission_escalation: MissionEscalation | None = None
         mission_intervention: MissionIntervention | None = None
+        mission_assignment: MissionTaskAssignment | None = None
+        mission_transition: MissionTransition | None = None
 
         try:
             if normalized.command_type == "run.initialize":
@@ -1137,6 +1157,31 @@ class ApplicationCommandAuthority:
                     f"authority:{mission_intervention.authority_reference}",
                     *(f"evidence:{item}" for item in mission_intervention.evidence_references),
                 )
+            elif normalized.command_type == "mission.assignment.record":
+                mission_assignment = MissionTaskAssignment.model_validate(
+                    normalized.payload["assignment"]
+                )
+                if normalized.target_id != str(mission_assignment.assignment_id):
+                    raise ValueError("assignment target differs from its immutable identity")
+                external_resources = (
+                    f"mission:{mission_assignment.mission_id}",
+                    f"identity:{mission_assignment.accountable_owner}",
+                    *(f"identity:{item}" for item in mission_assignment.contributors),
+                    *(f"tool:{item}" for item in mission_assignment.exact_tools),
+                    *(f"path:{item}" for item in mission_assignment.path_scopes),
+                )
+            elif normalized.command_type == "mission.transition":
+                mission_transition = MissionTransition.model_validate(
+                    normalized.payload["transition"]
+                )
+                if normalized.target_id != str(mission_transition.mission_id):
+                    raise ValueError("transition target differs from its mission identity")
+                if normalized.expected_revision is None:
+                    raise ValueError("mission transition requires expected mission revision")
+                external_resources = (
+                    f"mission:{mission_transition.mission_id}",
+                    *(f"evidence:{item}" for item in mission_transition.evidence_references),
+                )
             elif normalized.target_id is not None:
                 external_resources = (f"{normalized.target_type}:{normalized.target_id}",)
         except (KeyError, TypeError, ValueError, ValidationError) as exc:
@@ -1202,6 +1247,8 @@ class ApplicationCommandAuthority:
             mission_decision=mission_decision,
             mission_escalation=mission_escalation,
             mission_intervention=mission_intervention,
+            mission_assignment=mission_assignment,
+            mission_transition=mission_transition,
         )
 
     @staticmethod

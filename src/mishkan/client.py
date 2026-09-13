@@ -71,7 +71,13 @@ from mishkan.events import (
     EventHold as EventEvidenceHold,
 )
 from mishkan.execution import CursorRead, ExecutionSession
-from mishkan.missions import MissionBrief, MissionCrewRevision, MissionRecord
+from mishkan.missions import (
+    MissionBrief,
+    MissionCrewRevision,
+    MissionRecord,
+    MissionTaskAssignment,
+    MissionTransition,
+)
 from mishkan.organization import OrganizationRosterDefinition
 from mishkan.skills.models import (
     SkillCurationProposal,
@@ -242,6 +248,37 @@ class Mishkan:
         )
         return MissionCrewRevision.model_validate(result.payload)
 
+    def record_mission_assignment(self, assignment: MissionTaskAssignment) -> MissionTaskAssignment:
+        result = self.command(
+            ApplicationCommand(
+                command_type="mission.assignment.record",
+                actor_id=self.principal_id,
+                target_type="mission_assignment",
+                target_id=str(assignment.assignment_id),
+                expected_revision=0,
+                payload={"assignment": assignment.model_dump(mode="json")},
+            )
+        )
+        return MissionTaskAssignment.model_validate(result.payload)
+
+    def transition_mission(
+        self,
+        transition: MissionTransition,
+        *,
+        expected_revision: int,
+    ) -> MissionTransition:
+        result = self.command(
+            ApplicationCommand(
+                command_type="mission.transition",
+                actor_id=self.principal_id,
+                target_type="mission",
+                target_id=str(transition.mission_id),
+                expected_revision=expected_revision,
+                payload={"transition": transition.model_dump(mode="json")},
+            )
+        )
+        return MissionTransition.model_validate(result.payload)
+
     def missions(self, *, limit: int = 100) -> tuple[MissionRecord, ...]:
         response = self._client.get(
             "/v1/missions",
@@ -280,6 +317,28 @@ class Mishkan:
         )
         response.raise_for_status()
         return MissionCrewRevision.model_validate(response.json())
+
+    def mission_assignments(
+        self, mission_id: str, *, limit: int = 1_000
+    ) -> tuple[MissionTaskAssignment, ...]:
+        response = self._client.get(
+            f"/v1/missions/{mission_id}/assignments",
+            headers=self._headers(),
+            params={"limit": limit},
+        )
+        response.raise_for_status()
+        return tuple(MissionTaskAssignment.model_validate(item) for item in response.json())
+
+    def mission_transitions(
+        self, mission_id: str, *, limit: int = 1_000
+    ) -> tuple[MissionTransition, ...]:
+        response = self._client.get(
+            f"/v1/missions/{mission_id}/transitions",
+            headers=self._headers(),
+            params={"limit": limit},
+        )
+        response.raise_for_status()
+        return tuple(MissionTransition.model_validate(item) for item in response.json())
 
     def create_conversation(self, channel: ConversationChannel) -> ConversationChannel:
         result = self.command(

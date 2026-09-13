@@ -32,6 +32,10 @@ from mishkan.missions import (
     MissionOrigin,
     MissionOriginKind,
     MissionRecord,
+    MissionResourceLimit,
+    MissionState,
+    MissionTaskAssignment,
+    MissionTransition,
 )
 from mishkan.organization import load_canonical_organization
 
@@ -163,6 +167,37 @@ async def test_mission_brief_and_contextual_crew_use_the_common_daemon_authority
     )
     brief = _brief(mission)
     crew = _crew(brief)
+    assignment = MissionTaskAssignment(
+        mission_id=mission.mission_id,
+        crew_version=crew.version,
+        task_id="implement-recovery",
+        accountable_owner="Backend_Service_Engineer",
+        expected_result="A verified recovery implementation",
+        completion_criteria=("independent recovery test passes",),
+        authority_scope=("repository:api",),
+        exact_tools=("file.read", "file.patch", "process.run"),
+        path_scopes=("repository:api",),
+        limits=(MissionResourceLimit(name="wall_time", value=1800, unit="seconds"),),
+        required_evidence=("test report", "change set"),
+    )
+    planned = MissionTransition(
+        mission_id=mission.mission_id,
+        from_state=MissionState.CLARIFYING,
+        to_state=MissionState.PLANNED,
+        actor_or_cause="PM+CTO",
+        reason="Brief, crew, and task assignment are ready",
+        affected_scope=("mission:all",),
+        evidence_references=(f"brief:{brief.brief_id}", f"crew:{crew.crew_id}"),
+    )
+    active = MissionTransition(
+        mission_id=mission.mission_id,
+        from_state=MissionState.PLANNED,
+        to_state=MissionState.ACTIVE,
+        actor_or_cause="Backend_Service_Engineer",
+        reason="The accountable task assignment is eligible",
+        affected_scope=("task:implement-recovery",),
+        evidence_references=(f"assignment:{assignment.assignment_id}",),
+    )
 
     commands = (
         ApplicationCommand(
@@ -202,6 +237,38 @@ async def test_mission_brief_and_contextual_crew_use_the_common_daemon_authority
             assert response.json()["status"] == "accepted"
             results.append(response.json())
 
+        for command in (
+            ApplicationCommand(
+                command_type="mission.assignment.record",
+                actor_id=token.principal_id,
+                target_type="mission_assignment",
+                target_id=str(assignment.assignment_id),
+                expected_revision=0,
+                payload={"assignment": assignment.model_dump(mode="json")},
+            ),
+            ApplicationCommand(
+                command_type="mission.transition",
+                actor_id=token.principal_id,
+                target_type="mission",
+                target_id=str(mission.mission_id),
+                expected_revision=3,
+                payload={"transition": planned.model_dump(mode="json")},
+            ),
+            ApplicationCommand(
+                command_type="mission.transition",
+                actor_id=token.principal_id,
+                target_type="mission",
+                target_id=str(mission.mission_id),
+                expected_revision=4,
+                payload={"transition": active.model_dump(mode="json")},
+            ),
+        ):
+            response = await client.post(
+                "/v1/commands", headers=headers, json=command.model_dump(mode="json")
+            )
+            assert response.status_code == 200
+            assert response.json()["status"] == "accepted"
+
         replay = await client.post(
             "/v1/commands", headers=headers, json=commands[-1].model_dump(mode="json")
         )
@@ -211,13 +278,22 @@ async def test_mission_brief_and_contextual_crew_use_the_common_daemon_authority
             f"/v1/missions/{mission.mission_id}/brief", headers=headers
         )
         crew_response = await client.get(f"/v1/missions/{mission.mission_id}/crew", headers=headers)
+        assignment_response = await client.get(
+            f"/v1/missions/{mission.mission_id}/assignments", headers=headers
+        )
+        transition_response = await client.get(
+            f"/v1/missions/{mission.mission_id}/transitions", headers=headers
+        )
 
     assert replay.json() == results[-1]
     assert len(roster_response.json()["identities"]) == 59
     durable = MissionRecord.model_validate(mission_response.json())
-    assert durable.revision == 3
+    assert durable.revision == 5
+    assert durable.state is MissionState.ACTIVE
     assert MissionBrief.model_validate(brief_response.json()) == brief
     assert MissionCrewRevision.model_validate(crew_response.json()) == crew
+    assert MissionTaskAssignment.model_validate(assignment_response.json()[0]) == assignment
+    assert [item["to_state"] for item in transition_response.json()] == ["planned", "active"]
 
 
 @pytest.mark.anyio

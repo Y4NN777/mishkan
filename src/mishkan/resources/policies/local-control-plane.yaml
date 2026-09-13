@@ -1,6 +1,6 @@
 schema_version: "1.0"
 source_id: bundled.local
-revision: "23"
+revision: "24"
 adoption_authority: MISHKAN release
 priority: 0
 rules:
@@ -173,6 +173,8 @@ rules:
         - mission.decision.record
         - mission.escalation.open
         - mission.intervention.apply
+        - mission.assignment.record
+        - mission.transition
       roles: [application-client]
       capabilities:
         - application.system.checkpoint
@@ -218,6 +220,7 @@ rules:
         - application.mission.decision
         - application.mission.escalation
         - application.mission.intervention
+        - application.mission.assignment
       effect_classes: [read, control, coordination, artifact, filesystem, process, external, registry_lifecycle, skill_lifecycle]
       effects: ["*"]
       paths: ["*"]
