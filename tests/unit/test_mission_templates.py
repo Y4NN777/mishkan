@@ -25,6 +25,34 @@ def test_bundled_templates_are_optional_guidance_without_crews_or_task_graphs(
     assert all("crew" not in item and "tasks" not in item for item in documents)
 
 
+def test_bundled_guidance_covers_every_required_mission_class_without_becoming_a_catalogue(
+    tmp_path: Path,
+) -> None:
+    catalogue = MissionTemplateLoader().load(
+        ("package://mishkan.resources.organization/mission-templates.yaml",), tmp_path
+    )
+    service = MissionTemplateService(catalogue)
+    expected = {
+        "greenfield": "greenfield",
+        "existing-repository": "existing-system-change",
+        "multi-repository": "multi-repository-change",
+        "product": "product-delivery",
+        "research": "research",
+        "incident": "incident-response",
+        "modernization": "system-modernization",
+        "platform": "platform-capability",
+        "operations": "operational-change",
+    }
+
+    assert {
+        signal: tuple(
+            item.template_id for item in service.applicable((signal,), organization_version="1")
+        )
+        for signal in expected
+    } == {signal: (template_id,) for signal, template_id in expected.items()}
+    assert service.applicable(("unclassified-free-form-objective",), organization_version="1") == ()
+
+
 def test_template_schema_refuses_static_crew_or_task_graph_fields() -> None:
     base = {
         "template_id": "invalid-static-workflow",

@@ -1,6 +1,6 @@
 schema_version: "1.0"
 catalogue_id: bundled-mission-guidance
-revision: "1"
+revision: "2"
 templates:
   - template_id: greenfield
     version: "1"
@@ -81,3 +81,103 @@ templates:
     declared_execution_conditions: []
     validation_expectations: [An independent evaluator checks attribution and unsupported claims.]
     reporting_expectations: [Report findings, sources, confidence, gaps, and decision impact.]
+
+  - template_id: multi-repository-change
+    version: "1"
+    source: mishkan:bundled
+    provenance: [SRS-Appendix-B, PRD-UC-12]
+    applicability_signals: [multi-repository]
+    applicability_exclusions: []
+    objective_guidance: [State the system outcome and the responsibility of each repository or prospective workspace.]
+    constraint_guidance: [Keep revisions, authority, paths, environments, and acceptance relationships explicit per context.]
+    risk_guidance: [Identify contract drift, partial delivery, ordering, compatibility, and cross-context rollback risks.]
+    evidence_guidance: [Require attributable boundary evidence and a context-specific result for every participating repository or workspace.]
+    completion_guidance: [Verify the integrated system outcome without treating one context as proof for another.]
+    compatible_organization_versions: ["1"]
+    required_responsibility_classes: [architecture, engineering, integration, independent-assurance, reporting]
+    declared_configuration_conditions: []
+    declared_skill_conditions: []
+    declared_tool_conditions: []
+    declared_execution_conditions: [Every material context requires its own compatible verified execution binding.]
+    validation_expectations: [Independent evaluation covers each changed boundary and the integrated behavior.]
+    reporting_expectations: [Report per-context revisions, changes, evidence, integration status, and unresolved dependencies.]
+
+  - template_id: product-delivery
+    version: "1"
+    source: mishkan:bundled
+    provenance: [SRS-Appendix-B, PRD-UC-12]
+    applicability_signals: [product]
+    applicability_exclusions: []
+    objective_guidance: [Connect the requested behavior to users, product purpose, and measurable acceptance.]
+    constraint_guidance: [Record accessibility, privacy, compatibility, delivery, and support boundaries that apply.]
+    risk_guidance: [Identify user harm, adoption, regression, accessibility, data, and delivery risks.]
+    evidence_guidance: [Require product evidence and independent functional evidence for the accepted behavior.]
+    completion_guidance: [Confirm the user-visible outcome and document residual product risk.]
+    compatible_organization_versions: ["1"]
+    required_responsibility_classes: [product, experience, engineering, independent-assurance, reporting]
+    declared_configuration_conditions: []
+    declared_skill_conditions: []
+    declared_tool_conditions: []
+    declared_execution_conditions: []
+    validation_expectations: [Independent acceptance evaluates functional behavior and applicable experience constraints.]
+    reporting_expectations: [Report delivered outcome, acceptance evidence, exclusions, and remaining product decisions.]
+
+  - template_id: system-modernization
+    version: "1"
+    source: mishkan:bundled
+    provenance: [SRS-Appendix-B, PRD-UC-12]
+    applicability_signals: [modernization]
+    applicability_exclusions: []
+    objective_guidance: [Define the capability or risk to improve and the behavior that must remain compatible.]
+    constraint_guidance: [Make migration, coexistence, rollback, data, and operational constraints explicit.]
+    risk_guidance: [Identify semantic drift, irreversible migration, hidden coupling, performance, and operability risks.]
+    evidence_guidance: [Require current-state evidence, compatibility proof, migration validation, and rollback evidence.]
+    completion_guidance: [Verify the intended improvement and preserved behavior across the transition boundary.]
+    compatible_organization_versions: ["1"]
+    required_responsibility_classes: [architecture, engineering, data, reliability, independent-assurance, reporting]
+    declared_configuration_conditions: []
+    declared_skill_conditions: []
+    declared_tool_conditions: []
+    declared_execution_conditions: [Existing and proposed execution contexts are evaluated independently.]
+    validation_expectations: [Independent evaluation covers compatibility, migration, rollback, and protected behavior.]
+    reporting_expectations: [Report baseline, transition evidence, compatibility, residual debt, and reversal options.]
+
+  - template_id: platform-capability
+    version: "1"
+    source: mishkan:bundled
+    provenance: [SRS-Appendix-B, PRD-UC-12]
+    applicability_signals: [platform]
+    applicability_exclusions: []
+    objective_guidance: [Define the developer or operational capability and the consumers it must serve.]
+    constraint_guidance: [Record target platforms, architectures, locations, security boundaries, service levels, and portability needs.]
+    risk_guidance: [Identify lock-in, privilege, supply-chain, capacity, resilience, and adoption risks.]
+    evidence_guidance: [Require measured compatibility, security, operability, and consumer integration evidence.]
+    completion_guidance: [Verify the capability on every declared target and expose unsupported combinations.]
+    compatible_organization_versions: ["1"]
+    required_responsibility_classes: [architecture, platform, reliability, security, independent-assurance, reporting]
+    declared_configuration_conditions: []
+    declared_skill_conditions: []
+    declared_tool_conditions: []
+    declared_execution_conditions: [Each target location and platform requires a compatible verified binding.]
+    validation_expectations: [Independent evaluation covers portability, security, resilience, and consumer use.]
+    reporting_expectations: [Report supported targets, measurements, limits, operational evidence, and residual risks.]
+
+  - template_id: operational-change
+    version: "1"
+    source: mishkan:bundled
+    provenance: [SRS-Appendix-B, PRD-UC-12]
+    applicability_signals: [operations]
+    applicability_exclusions: [incident]
+    objective_guidance: [Define the intended service-state change, operator outcome, and observable success condition.]
+    constraint_guidance: [Record service windows, safety controls, reversibility, access, data, and continuity requirements.]
+    risk_guidance: [Identify availability, integrity, capacity, security, rollback, and incomplete-settlement risks.]
+    evidence_guidance: [Require pre-change state, authorized effects, health evidence, settlement, and rollback readiness.]
+    completion_guidance: [Confirm the intended state and preserve all residual or uncertain effects for follow-up.]
+    compatible_organization_versions: ["1"]
+    required_responsibility_classes: [operations, reliability, security, independent-assurance, reporting]
+    declared_configuration_conditions: []
+    declared_skill_conditions: []
+    declared_tool_conditions: []
+    declared_execution_conditions: [Operational effects require scoped authority and observable settlement.]
+    validation_expectations: [Independent evaluation checks resulting state, continuity, and rollback readiness.]
+    reporting_expectations: [Report authorization, timeline, observed effects, settlement, and residual operational risk.]
