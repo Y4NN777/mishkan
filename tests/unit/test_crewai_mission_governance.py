@@ -158,6 +158,9 @@ def test_pm_cto_outputs_compile_to_confirmed_brief_and_contextual_crew(tmp_path:
 
     assert result.brief.pm_confirmation is not None
     assert result.brief.cto_confirmation is not None
+    assert result.lineage.runtime == "crewai-1.x"
+    assert result.lineage.pm_model_route == runner._config.crewai.mission_pm_model_route
+    assert result.lineage.cto_model_route == runner._config.crewai.mission_cto_model_route
     assert result.crew.mission_lead_id == "Backend_Service_Engineer"
     assert {item.identity_id for item in result.crew.members} == set(result.brief.proposed_crew)
     assert any(

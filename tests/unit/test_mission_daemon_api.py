@@ -26,6 +26,7 @@ from mishkan.crewai.mission_environment import (
     MissionEnvironmentPlanningOutput,
 )
 from mishkan.crewai.mission_governance import (
+    CrewAIGovernanceLineage,
     MissionGovernanceEvidence,
     MissionGovernanceRequest,
     MissionGovernanceResult,
@@ -215,8 +216,12 @@ class _MissionGovernanceRunner:
             mission=mission,
             brief=brief,
             crew=_crew(brief),
-            pm_output_fingerprint="a" * 64,
-            cto_output_fingerprint="b" * 64,
+            lineage=CrewAIGovernanceLineage(
+                pm_model_route="fixture-pm",
+                cto_model_route="fixture-cto",
+                pm_output_fingerprint="a" * 64,
+                cto_output_fingerprint="b" * 64,
+            ),
         )
 
 

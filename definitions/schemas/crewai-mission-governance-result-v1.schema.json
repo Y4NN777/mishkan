@@ -1,5 +1,66 @@
 {
   "$defs": {
+    "CrewAIGovernanceLineage": {
+      "additionalProperties": false,
+      "properties": {
+        "coordination_id": {
+          "format": "uuid",
+          "title": "Coordination Id",
+          "type": "string"
+        },
+        "cto_model_route": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Cto Model Route",
+          "type": "string"
+        },
+        "cto_output_fingerprint": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Cto Output Fingerprint",
+          "type": "string"
+        },
+        "cto_task_id": {
+          "format": "uuid",
+          "title": "Cto Task Id",
+          "type": "string"
+        },
+        "pm_model_route": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Pm Model Route",
+          "type": "string"
+        },
+        "pm_output_fingerprint": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Pm Output Fingerprint",
+          "type": "string"
+        },
+        "pm_task_id": {
+          "format": "uuid",
+          "title": "Pm Task Id",
+          "type": "string"
+        },
+        "produced_at": {
+          "format": "date-time",
+          "title": "Produced At",
+          "type": "string"
+        },
+        "runtime": {
+          "const": "crewai-1.x",
+          "default": "crewai-1.x",
+          "title": "Runtime",
+          "type": "string"
+        }
+      },
+      "required": [
+        "pm_model_route",
+        "cto_model_route",
+        "pm_output_fingerprint",
+        "cto_output_fingerprint"
+      ],
+      "title": "CrewAIGovernanceLineage",
+      "type": "object"
+    },
     "CrewAssignmentKind": {
       "enum": [
         "production",
@@ -978,11 +1039,6 @@
         }
       ]
     },
-    "cto_output_fingerprint": {
-      "pattern": "^[0-9a-f]{64}$",
-      "title": "Cto Output Fingerprint",
-      "type": "string"
-    },
     "disagreement": {
       "anyOf": [
         {
@@ -1003,21 +1059,18 @@
       "title": "Disposition",
       "type": "string"
     },
+    "lineage": {
+      "$ref": "#/$defs/CrewAIGovernanceLineage"
+    },
     "mission": {
       "$ref": "#/$defs/MissionRecord"
-    },
-    "pm_output_fingerprint": {
-      "pattern": "^[0-9a-f]{64}$",
-      "title": "Pm Output Fingerprint",
-      "type": "string"
     }
   },
   "required": [
     "mission",
     "brief",
     "crew",
-    "pm_output_fingerprint",
-    "cto_output_fingerprint"
+    "lineage"
   ],
   "title": "MissionGovernanceResult",
   "type": "object"

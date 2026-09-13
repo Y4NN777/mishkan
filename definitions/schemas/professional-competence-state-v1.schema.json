@@ -70,6 +70,19 @@
       "title": "Failure Evidence Ids",
       "type": "array"
     },
+    "fresh_supporting_evidence_ids": {
+      "items": {
+        "format": "uuid",
+        "type": "string"
+      },
+      "title": "Fresh Supporting Evidence Ids",
+      "type": "array"
+    },
+    "freshness_evaluated_at": {
+      "format": "date-time",
+      "title": "Freshness Evaluated At",
+      "type": "string"
+    },
     "identity_id": {
       "title": "Identity Id",
       "type": "string"
@@ -95,10 +108,18 @@
       "type": "integer"
     },
     "schema_version": {
-      "const": "1.0",
-      "default": "1.0",
+      "const": "1.1",
+      "default": "1.1",
       "title": "Schema Version",
       "type": "string"
+    },
+    "stale_supporting_evidence_ids": {
+      "items": {
+        "format": "uuid",
+        "type": "string"
+      },
+      "title": "Stale Supporting Evidence Ids",
+      "type": "array"
     },
     "subject": {
       "title": "Subject",
@@ -120,7 +141,10 @@
     "effective_scope",
     "revision",
     "latest_decision_id",
+    "freshness_evaluated_at",
     "supporting_evidence_ids",
+    "fresh_supporting_evidence_ids",
+    "stale_supporting_evidence_ids",
     "contradictory_evidence_ids",
     "failure_evidence_ids"
   ],

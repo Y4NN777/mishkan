@@ -71,6 +71,32 @@
           "title": "Alternative Id",
           "type": "string"
         },
+        "consequential_decision_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Consequential Decision Id"
+        },
+        "consequential_option_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9-]{1,63}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Consequential Option Id"
+        },
         "constraints": {
           "default": [],
           "items": {
@@ -113,6 +139,11 @@
           },
           "title": "Required Semantics",
           "type": "array"
+        },
+        "requires_consequential_decision": {
+          "default": false,
+          "title": "Requires Consequential Decision",
+          "type": "boolean"
         }
       },
       "required": [
@@ -233,6 +264,32 @@
           "title": "Cleanup Criteria",
           "type": "array"
         },
+        "consequential_decision_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Consequential Decision Id"
+        },
+        "consequential_option_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9-]{1,63}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Consequential Option Id"
+        },
         "constraints": {
           "items": {
             "type": "string"
@@ -293,6 +350,11 @@
           },
           "title": "Required Semantics",
           "type": "array"
+        },
+        "requires_consequential_decision": {
+          "default": false,
+          "title": "Requires Consequential Decision",
+          "type": "boolean"
         },
         "selected_alternative_id": {
           "pattern": "^[a-z][a-z0-9_.-]{1,127}$",

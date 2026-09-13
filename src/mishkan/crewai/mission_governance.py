@@ -148,14 +148,30 @@ class MissionGovernanceDisagreement(GovernanceOutput):
     requires_ceo_escalation: bool = True
 
 
+class CrewAIGovernanceLineage(GovernanceOutput):
+    runtime: Literal["crewai-1.x"] = "crewai-1.x"
+    coordination_id: UUID = Field(default_factory=new_id)
+    pm_task_id: UUID = Field(default_factory=new_id)
+    cto_task_id: UUID = Field(default_factory=new_id)
+    pm_model_route: str = Field(min_length=1, max_length=256)
+    cto_model_route: str = Field(min_length=1, max_length=256)
+    pm_output_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    cto_output_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    produced_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("produced_at")
+    @classmethod
+    def produced_at_is_aware(cls, value: datetime) -> datetime:
+        return require_aware(value)
+
+
 class MissionGovernanceResult(GovernanceOutput):
     disposition: Literal["agreed", "disagreement"] = "agreed"
     mission: MissionRecord
     brief: MissionBrief
     crew: MissionCrewRevision | None
     disagreement: MissionGovernanceDisagreement | None = None
-    pm_output_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
-    cto_output_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    lineage: CrewAIGovernanceLineage
 
     @model_validator(mode="after")
     def disposition_matches_payload(self) -> MissionGovernanceResult:
@@ -174,8 +190,8 @@ class MissionGovernanceResult(GovernanceOutput):
             dict.fromkeys(
                 (
                     f"mission-brief:{self.brief.fingerprint}",
-                    f"crewai-output:{self.pm_output_fingerprint}",
-                    f"crewai-output:{self.cto_output_fingerprint}",
+                    f"crewai-output:{self.lineage.pm_output_fingerprint}",
+                    f"crewai-output:{self.lineage.cto_output_fingerprint}",
                     *(
                         reference
                         for recommendation in self.disagreement.recommendations
@@ -287,6 +303,12 @@ class CrewAIMissionGovernanceRunner:
             )
         pm_fingerprint = self._fingerprint(pm)
         cto_fingerprint = self._fingerprint(cto)
+        lineage = CrewAIGovernanceLineage(
+            pm_model_route=self._config.crewai.mission_pm_model_route,
+            cto_model_route=self._config.crewai.mission_cto_model_route,
+            pm_output_fingerprint=pm_fingerprint,
+            cto_output_fingerprint=cto_fingerprint,
+        )
         pm_confirmation = ExecutiveConfirmation(
             identity_id="PM",
             disposition="confirmed",
@@ -358,8 +380,7 @@ class CrewAIMissionGovernanceRunner:
                 brief=brief,
                 crew=None,
                 disagreement=disagreement,
-                pm_output_fingerprint=pm_fingerprint,
-                cto_output_fingerprint=cto_fingerprint,
+                lineage=lineage,
             )
         crew = MissionCrewRevision(
             mission_id=mission.mission_id,
@@ -379,8 +400,7 @@ class CrewAIMissionGovernanceRunner:
             brief=brief,
             crew=crew,
             disagreement=None,
-            pm_output_fingerprint=pm_fingerprint,
-            cto_output_fingerprint=cto_fingerprint,
+            lineage=lineage,
         )
 
     def _kickoff_structured(

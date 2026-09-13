@@ -8,6 +8,7 @@ from mishkan.crewai.mission_environment import (
     MissionEnvironmentPlanningRunner,
 )
 from mishkan.crewai.mission_governance import (
+    CrewAIGovernanceLineage,
     CrewAIMissionGovernanceRunner,
     MissionGovernanceDisagreement,
     MissionGovernanceEvidence,
@@ -17,6 +18,7 @@ from mishkan.crewai.mission_governance import (
 )
 
 __all__ = [
+    "CrewAIGovernanceLineage",
     "CrewAIMissionEnvironmentPlanningRunner",
     "CrewAIMissionGovernanceRunner",
     "MissionEnvironmentDecisionOutput",

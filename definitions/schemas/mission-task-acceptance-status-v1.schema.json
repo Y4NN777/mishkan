@@ -10,6 +10,15 @@
       ],
       "title": "CrewAssignmentKind",
       "type": "string"
+    },
+    "MissionRunAcceptance": {
+      "enum": [
+        "pending",
+        "accepted",
+        "rejected"
+      ],
+      "title": "MissionRunAcceptance",
+      "type": "string"
     }
   },
   "additionalProperties": false,
@@ -53,6 +62,17 @@
       ],
       "default": null,
       "title": "Execution Task Id"
+    },
+    "mission_run_acceptance": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/MissionRunAcceptance"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "run_state": {
       "anyOf": [
