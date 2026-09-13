@@ -117,6 +117,8 @@ from mishkan.missions import (
     MissionBrief,
     MissionCrewRevision,
     MissionRecord,
+    MissionTemplateLoader,
+    MissionTemplateService,
     SQLiteMissionRepository,
 )
 from mishkan.organization import load_canonical_organization
@@ -552,6 +554,9 @@ def create_app(
         busy_timeout_ms=persistence.busy_timeout_ms,
     )
     mission_governance = mission_governance_runner or CrewAIMissionGovernanceRunner(config)
+    mission_templates = MissionTemplateService(
+        MissionTemplateLoader().load(config.mission_template_sources, paths.workspace)
+    )
     telemetry_tasks: set[asyncio.Task[object]] = set()
 
     def project_telemetry(
@@ -1039,6 +1044,21 @@ def create_app(
         limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
     ) -> tuple[dict[str, object], ...]:
         records = await _thread_call(mission_repository.list_missions, limit=limit)
+        return tuple(record.model_dump(mode="json") for record in records)
+
+    @app.get("/v1/mission-templates", response_model=None)
+    async def mission_template_list(
+        _principal: TokenRecord = authenticated,
+        signal: Annotated[list[str] | None, Query()] = None,
+        organization_version: str = "1",
+    ) -> tuple[dict[str, object], ...]:
+        records = (
+            mission_templates.catalogue.templates
+            if signal is None
+            else mission_templates.applicable(
+                tuple(signal), organization_version=organization_version
+            )
+        )
         return tuple(record.model_dump(mode="json") for record in records)
 
     @app.get("/v1/missions/{mission_id}", response_model=MissionRecord)

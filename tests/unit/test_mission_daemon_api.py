@@ -56,6 +56,27 @@ def _config(tmp_path: Path) -> MishkanConfig:
     return loaded.model_copy(update={"project": ProjectConfig(workspace=tmp_path)})
 
 
+@pytest.mark.anyio
+async def test_daemon_exposes_optional_template_guidance_and_allows_no_match(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    paths = DaemonBootstrap().setup(config)
+    token = TokenFile(paths.token_file).read()
+    headers = {"Authorization": f"Bearer {token.token}"}
+    transport = httpx.ASGITransport(app=create_app(config))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        matched = await client.get(
+            "/v1/mission-templates", headers=headers, params=[("signal", "incident")]
+        )
+        unmatched = await client.get(
+            "/v1/mission-templates", headers=headers, params=[("signal", "unknown")]
+        )
+
+    assert [item["template_id"] for item in matched.json()] == ["incident-response"]
+    assert unmatched.json() == []
+
+
 def _confirmation(identity_id: str) -> ExecutiveConfirmation:
     return ExecutiveConfirmation(
         identity_id=identity_id,

@@ -113,6 +113,7 @@ from mishkan.missions.models import (
     MissionTaskAssignment,
     MissionTransition,
 )
+from mishkan.missions.templates import MissionTemplateCatalogue, MissionTemplateDefinition
 from mishkan.organization.models import OrganizationRosterDefinition
 from mishkan.runtime import TaskReviewRejection
 from mishkan.skills.models import (
@@ -248,6 +249,8 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "mission-record-v1.schema.json": MissionRecord,
     "mission-resource-limit-v1.schema.json": MissionResourceLimit,
     "mission-task-assignment-v1.schema.json": MissionTaskAssignment,
+    "mission-template-catalogue-v1.schema.json": MissionTemplateCatalogue,
+    "mission-template-definition-v1.schema.json": MissionTemplateDefinition,
     "mission-transition-v1.schema.json": MissionTransition,
     "organization-roster-v1.schema.json": OrganizationRosterDefinition,
     "langsmith-feedback-import-request-v1.schema.json": LangSmithFeedbackImportRequest,

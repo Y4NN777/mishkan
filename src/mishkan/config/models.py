@@ -666,6 +666,9 @@ class MishkanConfig(StrictConfigModel):
         default=("package://mishkan.resources.environment/technical-packs.yaml",),
         min_length=1,
     )
+    mission_template_sources: tuple[str, ...] = (
+        "package://mishkan.resources.organization/mission-templates.yaml",
+    )
     telemetry: TelemetryConfig = Field(default_factory=TelemetryConfig)
 
     @field_validator("timezone")

@@ -18,6 +18,12 @@ from mishkan.missions.models import (
     MissionTransition,
 )
 from mishkan.missions.repository import SQLiteMissionRepository
+from mishkan.missions.templates import (
+    MissionTemplateCatalogue,
+    MissionTemplateDefinition,
+    MissionTemplateLoader,
+    MissionTemplateService,
+)
 
 __all__ = [
     "CrewAssignmentKind",
@@ -34,6 +40,10 @@ __all__ = [
     "MissionResourceLimit",
     "MissionState",
     "MissionTaskAssignment",
+    "MissionTemplateCatalogue",
+    "MissionTemplateDefinition",
+    "MissionTemplateLoader",
+    "MissionTemplateService",
     "MissionTransition",
     "SQLiteMissionRepository",
 ]

@@ -2054,6 +2054,16 @@
       ],
       "default": null
     },
+    "mission_template_sources": {
+      "default": [
+        "package://mishkan.resources.organization/mission-templates.yaml"
+      ],
+      "items": {
+        "type": "string"
+      },
+      "title": "Mission Template Sources",
+      "type": "array"
+    },
     "mode": {
       "$ref": "#/$defs/OperatingMode"
     },

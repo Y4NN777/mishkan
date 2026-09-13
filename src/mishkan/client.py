@@ -80,6 +80,7 @@ from mishkan.missions import (
     MissionCrewRevision,
     MissionRecord,
     MissionTaskAssignment,
+    MissionTemplateDefinition,
     MissionTransition,
 )
 from mishkan.organization import OrganizationRosterDefinition
@@ -306,6 +307,19 @@ class Mishkan:
         )
         response.raise_for_status()
         return tuple(MissionRecord.model_validate(item) for item in response.json())
+
+    def mission_templates(
+        self,
+        *,
+        signals: tuple[str, ...] | None = None,
+        organization_version: str = "1",
+    ) -> tuple[MissionTemplateDefinition, ...]:
+        params: dict[str, str | tuple[str, ...]] = {"organization_version": organization_version}
+        if signals is not None:
+            params["signal"] = signals
+        response = self._client.get("/v1/mission-templates", headers=self._headers(), params=params)
+        response.raise_for_status()
+        return tuple(MissionTemplateDefinition.model_validate(item) for item in response.json())
 
     def mission(self, mission_id: str) -> MissionRecord:
         response = self._client.get(f"/v1/missions/{mission_id}", headers=self._headers())

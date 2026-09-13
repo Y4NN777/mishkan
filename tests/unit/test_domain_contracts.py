@@ -165,6 +165,8 @@ def test_public_contract_catalogue_exports_deterministically(tmp_path: Path) -> 
         "mission-record-v1.schema.json",
         "mission-resource-limit-v1.schema.json",
         "mission-task-assignment-v1.schema.json",
+        "mission-template-catalogue-v1.schema.json",
+        "mission-template-definition-v1.schema.json",
         "mission-transition-v1.schema.json",
         "organization-roster-v1.schema.json",
         "recommendation-criterion-v1.schema.json",
