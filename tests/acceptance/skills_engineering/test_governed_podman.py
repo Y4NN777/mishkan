@@ -376,7 +376,7 @@ async def test_real_podman_build_interrupt_cleanup_and_repeatability_through_mis
                         payload={},
                     ),
                 )
-                assert cancelled["payload"]["cancellation_requested_at"] is not None  # type: ignore[index]
+                assert cancelled["payload"]["cancellation_requested"] is True  # type: ignore[index]
                 await _wait_for_state(
                     client,
                     headers,
