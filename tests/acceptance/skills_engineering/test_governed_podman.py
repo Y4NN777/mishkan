@@ -188,6 +188,8 @@ async def _run_terminal(
     client: httpx.AsyncClient,
     headers: dict[str, str],
     plan: EnvironmentOperationPlan,
+    *,
+    require_success: bool = True,
 ) -> EnvironmentAttempt:
     session_id = await _start(client, headers, plan)
     session = await _wait_for_state(
@@ -197,8 +199,10 @@ async def _run_terminal(
         {"settled", "failed", "lost", "uncertain"},
     )
     assert session["result"] is not None
-    assert session["result"]["exit_code"] == 0  # type: ignore[index]
-    return await _settle_attempt(client, headers, plan, session_id)
+    attempt = await _settle_attempt(client, headers, plan, session_id)
+    if require_success:
+        assert session["result"]["exit_code"] == 0, session  # type: ignore[index]
+    return attempt
 
 
 @pytest.mark.anyio
@@ -354,16 +358,27 @@ async def test_real_podman_build_interrupt_cleanup_and_repeatability_through_mis
                     {"running", "ready", "settled", "failed", "lost", "uncertain"},
                 )
                 assert running["state"] in {"running", "ready"}, running
-                readiness_plan = await _plan(
-                    client,
-                    headers,
-                    binding_id=str(binding.binding_id),
-                    descriptor_set_id=str(descriptor_set.descriptor_set_id),
-                    principal_id=token.principal_id,
-                    operation=EnvironmentOperation.READINESS,
-                    parameters={"resource": resource},
-                )
-                readiness = await _run_terminal(client, headers, readiness_plan)
+                readiness: EnvironmentAttempt | None = None
+                for _readiness_attempt in range(50):
+                    readiness_plan = await _plan(
+                        client,
+                        headers,
+                        binding_id=str(binding.binding_id),
+                        descriptor_set_id=str(descriptor_set.descriptor_set_id),
+                        principal_id=token.principal_id,
+                        operation=EnvironmentOperation.READINESS,
+                        parameters={"resource": resource},
+                    )
+                    readiness = await _run_terminal(
+                        client,
+                        headers,
+                        readiness_plan,
+                        require_success=False,
+                    )
+                    if readiness.settlement is EnvironmentSettlement.VERIFIED:
+                        break
+                    await asyncio.sleep(0.1)
+                assert readiness is not None
                 assert readiness.settlement is EnvironmentSettlement.VERIFIED
                 cancelled = await _command(
                     client,
