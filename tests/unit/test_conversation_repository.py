@@ -7,6 +7,17 @@ from mishkan.conversations import (
     ChannelClass,
     ConversationChannel,
     ConversationMessage,
+    DecisionAlternative,
+    DecisionContext,
+    DecisionContextElement,
+    DecisionCriterion,
+    DecisionCriterionAssessment,
+    DecisionEvidenceClaim,
+    DecisionEvidenceClass,
+    DecisionRecommendation,
+    DecisionStatus,
+    DecisionValidation,
+    DecisionValidationStatus,
     EscalationOption,
     ExecutiveRecommendation,
     InterventionKind,
@@ -456,3 +467,265 @@ def test_mission_decisions_are_queryable_after_restart(tmp_path: Path) -> None:
     reopened = SQLiteConversationRepository(tmp_path / "mishkan.db")
 
     assert reopened.decisions(str(mission.mission_id)) == (decision,)
+
+
+def _consequential_decision(
+    mission: MissionRecord,
+    channel: ConversationChannel,
+) -> MissionDecision:
+    context = DecisionContext(
+        question="Which persistence option satisfies the mission constraints?",
+        objective_reference="objective:mission",
+        effective_policy_reference="policy:mission-v1",
+        requirements=(
+            DecisionContextElement(
+                statement="Preserve transactional acceptance",
+                provenance_reference="requirement:RUN-008",
+            ),
+        ),
+        repository_evidence=(
+            DecisionContextElement(
+                statement="The current local authority uses SQLite WAL",
+                provenance_reference="evidence:repository-inspection",
+            ),
+        ),
+        constraints=(
+            DecisionContextElement(
+                statement="Local mode must remain self-contained",
+                provenance_reference="constraint:local-mode",
+            ),
+        ),
+        declared_preferences=(
+            DecisionContextElement(
+                statement="Prefer an OSS local-first dependency",
+                provenance_reference="preference:oss-local",
+            ),
+        ),
+        risks=(
+            DecisionContextElement(
+                statement="Concurrent writers could exceed the local profile",
+                provenance_reference="risk:writer-contention",
+            ),
+        ),
+        material_unknowns=(
+            DecisionContextElement(
+                statement="Peak writer concurrency is not measured yet",
+                provenance_reference="unknown:peak-writers",
+            ),
+        ),
+    )
+    criteria = (
+        DecisionCriterion(
+            criterion_id="transactional-acceptance",
+            description="Preserves atomic durable result acceptance",
+            provenance_references=("requirement:RUN-008",),
+        ),
+        DecisionCriterion(
+            criterion_id="writer-contention",
+            description="Operates within measured concurrent writer demand",
+            provenance_references=("risk:writer-contention", "unknown:peak-writers"),
+        ),
+    )
+
+    def assessments(prefix: str) -> tuple[DecisionCriterionAssessment, ...]:
+        return tuple(
+            DecisionCriterionAssessment(
+                criterion_id=criterion.criterion_id,
+                assessment=f"{prefix}: {criterion.description}",
+                evidence_references=("evidence:repository-inspection",),
+            )
+            for criterion in criteria
+        )
+
+    return MissionDecision(
+        schema_version="1.1",
+        mission_id=mission.mission_id,
+        conversation_id=channel.conversation_id,
+        actor_id="backend-engineer",
+        producer_identity="backend-engineer",
+        subject="Local persistence architecture",
+        disposition="staged",
+        decision_status=DecisionStatus.STAGED,
+        reason="The recommendation is staged until its benchmark is independently evaluated",
+        scope=("architecture:persistence",),
+        evidence_references=("evidence:repository-inspection",),
+        authority_reference="authority:architecture-decision",
+        changes_durable_authority=True,
+        context=context,
+        evidence=(
+            DecisionEvidenceClaim(
+                claim="SQLite WAL is the current local metadata authority",
+                classification=DecisionEvidenceClass.VERIFIED,
+                source_reference="evidence:repository-inspection",
+            ),
+            DecisionEvidenceClaim(
+                claim="Expected writer concurrency may remain low",
+                classification=DecisionEvidenceClass.ASSUMPTION,
+            ),
+            DecisionEvidenceClaim(
+                claim="The engineer prefers an OSS local-first dependency",
+                classification=DecisionEvidenceClass.ENGINEER_PREFERENCE,
+                source_reference="preference:oss-local",
+            ),
+        ),
+        criteria=criteria,
+        alternatives=(
+            DecisionAlternative(
+                option_id="sqlite-wal",
+                description="Retain SQLite with WAL for local mode",
+                credible=True,
+                assessments=assessments("SQLite evidence"),
+            ),
+            DecisionAlternative(
+                option_id="postgres-local",
+                description="Require PostgreSQL for local mode",
+                credible=True,
+                assessments=assessments("PostgreSQL evidence"),
+            ),
+        ),
+        alternatives_search="Compared the current store with the distributed-mode database",
+        recommendation=DecisionRecommendation(
+            recommended_option_id="sqlite-wal",
+            rationale="It preserves the local operating constraint with the existing authority",
+            tradeoffs=("It supports fewer concurrent writers than PostgreSQL",),
+            risks=("Unmeasured writer contention could invalidate the choice",),
+            confidence=0.72,
+            confidence_basis="Repository evidence exists but peak concurrency remains unknown",
+            unresolved_questions=("What is the peak concurrent writer count?",),
+            expected_consequences=("Local setup remains self-contained",),
+            reversal_or_migration=("Migrate metadata through explicit Alembic revisions",),
+        ),
+        validation=DecisionValidation(
+            validation_type="focused write-contention benchmark",
+            planned_evidence=("Benchmark concurrent local writers",),
+            status=DecisionValidationStatus.PENDING,
+            findings=("The independent benchmark has not run yet",),
+        ),
+    )
+
+
+def test_consequential_decision_requires_complete_context_and_independent_validation(
+    tmp_path: Path,
+) -> None:
+    _missions, conversations, mission = _setup(tmp_path)
+    channel = conversations.create_channel(_mission_channel(mission))
+    staged = _consequential_decision(mission, channel)
+
+    with pytest.raises(ValidationError, match="complete consequential decision evidence"):
+        MissionDecision(
+            schema_version="1.1",
+            mission_id=mission.mission_id,
+            conversation_id=channel.conversation_id,
+            actor_id="backend-engineer",
+            subject="Incomplete architecture choice",
+            disposition="staged",
+            reason="Context was omitted",
+            scope=("architecture:persistence",),
+            evidence_references=("evidence:repository-inspection",),
+            authority_reference="authority:architecture-decision",
+        )
+
+    with pytest.raises(ValidationError, match="producer cannot evaluate"):
+        assert staged.validation is not None
+        MissionDecision.model_validate(
+            staged.model_copy(
+                update={
+                    "validation": staged.validation.model_copy(
+                        update={
+                            "status": DecisionValidationStatus.PASSED,
+                            "evaluator_identity": staged.producer_identity,
+                            "evidence_references": ("evidence:benchmark",),
+                        }
+                    )
+                }
+            ).model_dump(mode="json")
+        )
+
+
+def test_consequential_decision_rejects_false_evidence_and_unfair_comparison(
+    tmp_path: Path,
+) -> None:
+    _missions, conversations, mission = _setup(tmp_path)
+    channel = conversations.create_channel(_mission_channel(mission))
+    staged = _consequential_decision(mission, channel)
+
+    payload = staged.model_dump(mode="json")
+    payload["evidence"][0]["source_reference"] = "evidence:unsupported-claim"
+    with pytest.raises(ValidationError, match="absent from evidence lineage"):
+        MissionDecision.model_validate(payload)
+
+    payload = staged.model_dump(mode="json")
+    payload["alternatives"][1]["assessments"] = payload["alternatives"][1]["assessments"][:1]
+    with pytest.raises(ValidationError, match="same declared criteria exactly"):
+        MissionDecision.model_validate(payload)
+
+    payload = staged.model_dump(mode="json")
+    payload["alternatives"] = payload["alternatives"][:1]
+    payload["alternatives_search"] = None
+    with pytest.raises(ValidationError, match="single credible option"):
+        MissionDecision.model_validate(payload)
+
+    payload = staged.model_dump(mode="json")
+    payload.update(
+        {
+            "actor_id": "CTO",
+            "deciding_identity": "CTO",
+            "disposition": "accepted",
+            "decision_status": "accepted",
+            "supersedes_decision_id": str(new_id()),
+        }
+    )
+    with pytest.raises(ValidationError, match="passed independent validation"):
+        MissionDecision.model_validate(payload)
+
+
+def test_consequential_decision_settlement_preserves_staged_lineage(
+    tmp_path: Path,
+) -> None:
+    _missions, conversations, mission = _setup(tmp_path)
+    channel = conversations.create_channel(_mission_channel(mission))
+    staged = _consequential_decision(mission, channel)
+    conversations.record_decision(staged)
+    assert staged.validation is not None
+    accepted = staged.model_copy(
+        update={
+            "decision_id": new_id(),
+            "actor_id": "CTO",
+            "deciding_identity": "CTO",
+            "disposition": DecisionStatus.ACCEPTED.value,
+            "decision_status": DecisionStatus.ACCEPTED,
+            "supersedes_decision_id": staged.decision_id,
+            "reason": "Independent evidence confirms the staged recommendation",
+            "evidence_references": (
+                *staged.evidence_references,
+                "evidence:writer-benchmark",
+            ),
+            "validation": staged.validation.model_copy(
+                update={
+                    "status": DecisionValidationStatus.PASSED,
+                    "evaluator_identity": "quality-engineer",
+                    "evidence_references": ("evidence:writer-benchmark",),
+                    "findings": ("The measured contention remains inside the local profile",),
+                }
+            ),
+        }
+    )
+    accepted = MissionDecision.model_validate(accepted.model_dump(mode="json"))
+
+    assert conversations.record_decision(accepted) == accepted
+    assert conversations.decisions(str(mission.mission_id)) == (staged, accepted)
+
+    conflicting = accepted.model_copy(update={"decision_id": new_id()})
+    with pytest.raises(MishkanError, match="already has a durable disposition") as caught:
+        conversations.record_decision(conflicting)
+    assert caught.value.envelope.code is ErrorCode.DECISION_VALIDATION
+
+    changed = accepted.model_copy(
+        update={
+            "decision_id": new_id(),
+            "supersedes_decision_id": staged.decision_id,
+            "subject": "A different architecture question",
+        }
+    )
+    with pytest.raises(MishkanError, match="changes its staged recommendation"):
+        conversations.record_decision(changed)

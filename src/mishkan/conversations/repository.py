@@ -14,6 +14,7 @@ from mishkan.conversations.models import (
     ChannelClass,
     ConversationChannel,
     ConversationMessage,
+    DecisionStatus,
     EscalationState,
     InterventionKind,
     InterventionTargetKind,
@@ -170,6 +171,17 @@ class SQLiteConversationRepository:
                 "decision_id": str(decision.decision_id),
                 "actor_id": decision.actor_id,
                 "scope": list(decision.scope),
+                "decision_status": (
+                    decision.decision_status.value
+                    if decision.decision_status is not None
+                    else decision.disposition
+                ),
+                "supersedes_decision_id": (
+                    str(decision.supersedes_decision_id)
+                    if decision.supersedes_decision_id is not None
+                    else None
+                ),
+                "changes_durable_authority": decision.changes_durable_authority,
             },
         )
 
@@ -379,6 +391,7 @@ class SQLiteConversationRepository:
             if existing is not None:
                 return self._idempotent(existing.payload, payload, record)
             self._require_mission_channel(session, mission_id, conversation_id)
+            self._require_decision_lineage(session, record)
             session.add(
                 MissionDecisionRow(
                     id=identity,
@@ -396,6 +409,67 @@ class SQLiteConversationRepository:
                 payload=event_payload,
             )
         return record
+
+    @staticmethod
+    def _require_decision_lineage(session: Session, decision: MissionDecision) -> None:
+        if decision.schema_version != "1.1" or decision.decision_status not in {
+            DecisionStatus.ACCEPTED,
+            DecisionStatus.REJECTED,
+        }:
+            return
+        assert decision.supersedes_decision_id is not None
+        prior_row = session.get(MissionDecisionRow, str(decision.supersedes_decision_id))
+        if prior_row is None:
+            raise MishkanError(
+                ErrorCode.DECISION_VALIDATION,
+                "settled decision does not reference an existing staged recommendation",
+            )
+        prior = MissionDecision.model_validate_json(prior_row.payload)
+        if prior.schema_version != "1.1" or prior.decision_status is not DecisionStatus.STAGED:
+            raise MishkanError(
+                ErrorCode.DECISION_VALIDATION,
+                "settled decision lineage must reference a staged decision 1.1",
+            )
+        preserved = (
+            "mission_id",
+            "conversation_id",
+            "producer_identity",
+            "subject",
+            "scope",
+            "authority_reference",
+            "changes_durable_authority",
+            "context",
+            "evidence",
+            "criteria",
+            "alternatives",
+            "alternatives_search",
+            "recommendation",
+        )
+        if any(getattr(prior, field) != getattr(decision, field) for field in preserved):
+            raise MishkanError(
+                ErrorCode.DECISION_VALIDATION,
+                "settled decision changes its staged recommendation or context",
+            )
+        if not set(prior.evidence_references).issubset(decision.evidence_references):
+            raise MishkanError(
+                ErrorCode.DECISION_VALIDATION,
+                "settled decision dropped staged evidence lineage",
+            )
+        settled_rows = session.scalars(
+            select(MissionDecisionRow).where(
+                MissionDecisionRow.mission_id == str(decision.mission_id)
+            )
+        )
+        for row in settled_rows:
+            candidate = MissionDecision.model_validate_json(row.payload)
+            if (
+                candidate.schema_version == "1.1"
+                and candidate.supersedes_decision_id == decision.supersedes_decision_id
+            ):
+                raise MishkanError(
+                    ErrorCode.DECISION_VALIDATION,
+                    "staged recommendation already has a durable disposition",
+                )
 
     @staticmethod
     def _transition_state(

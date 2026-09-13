@@ -1251,10 +1251,21 @@ class ApplicationCommandAuthority:
                 mission_decision = MissionDecision.model_validate(normalized.payload["decision"])
                 if normalized.target_id != str(mission_decision.decision_id):
                     raise ValueError("decision target differs from its immutable identity")
+                if mission_decision.actor_id != normalized.actor_id:
+                    raise MishkanError(
+                        ErrorCode.AUTHORITY_NOT_GRANTED,
+                        "decision actor must match the authenticated command actor",
+                    )
                 external_resources = (
                     f"mission:{mission_decision.mission_id}",
                     f"conversation:{mission_decision.conversation_id}",
                     f"authority:{mission_decision.authority_reference}",
+                    *(f"evidence:{item}" for item in mission_decision.evidence_references),
+                    *(
+                        (f"decision:{mission_decision.supersedes_decision_id}",)
+                        if mission_decision.supersedes_decision_id is not None
+                        else ()
+                    ),
                 )
             elif normalized.command_type == "mission.escalation.open":
                 mission_escalation = MissionEscalation.model_validate(

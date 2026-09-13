@@ -32,6 +32,27 @@ class EscalationState(StrEnum):
     WITHDRAWN = "withdrawn"
 
 
+class DecisionEvidenceClass(StrEnum):
+    VERIFIED = "verified"
+    ASSUMPTION = "assumption"
+    ENGINEER_PREFERENCE = "engineer_preference"
+    INFERENCE = "inference"
+    UNRESOLVED_UNKNOWN = "unresolved_unknown"
+
+
+class DecisionStatus(StrEnum):
+    STAGED = "staged"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+    INCONCLUSIVE = "inconclusive"
+
+
+class DecisionValidationStatus(StrEnum):
+    PENDING = "pending"
+    PASSED = "passed"
+    FAILED = "failed"
+
+
 class InterventionKind(StrEnum):
     COMMENT = "comment"
     ANSWER_ESCALATION = "answer_escalation"
@@ -108,8 +129,125 @@ class ConversationMessage(ConversationModel):
         return require_aware(value)
 
 
+class DecisionContextElement(ConversationModel):
+    statement: str = Field(min_length=1, max_length=4_096)
+    provenance_reference: str = Field(min_length=1, max_length=1_024)
+
+
+class DecisionContext(ConversationModel):
+    question: str = Field(min_length=3, max_length=8_192)
+    objective_reference: str = Field(min_length=1, max_length=1_024)
+    effective_policy_reference: str = Field(min_length=1, max_length=1_024)
+    requirements: tuple[DecisionContextElement, ...] = Field(min_length=1)
+    repository_evidence: tuple[DecisionContextElement, ...] = Field(min_length=1)
+    constraints: tuple[DecisionContextElement, ...] = Field(min_length=1)
+    declared_preferences: tuple[DecisionContextElement, ...] = Field(min_length=1)
+    risks: tuple[DecisionContextElement, ...] = Field(min_length=1)
+    material_unknowns: tuple[DecisionContextElement, ...] = Field(min_length=1)
+
+    @property
+    def provenance_references(self) -> frozenset[str]:
+        groups = (
+            self.requirements,
+            self.repository_evidence,
+            self.constraints,
+            self.declared_preferences,
+            self.risks,
+            self.material_unknowns,
+        )
+        return frozenset(
+            {
+                self.objective_reference,
+                self.effective_policy_reference,
+                *(item.provenance_reference for group in groups for item in group),
+            }
+        )
+
+
+class DecisionEvidenceClaim(ConversationModel):
+    claim: str = Field(min_length=1, max_length=8_192)
+    classification: DecisionEvidenceClass
+    source_reference: str | None = Field(default=None, min_length=1, max_length=1_024)
+
+    @model_validator(mode="after")
+    def verified_claim_has_a_source(self) -> DecisionEvidenceClaim:
+        if self.classification is DecisionEvidenceClass.VERIFIED and self.source_reference is None:
+            raise ValueError("verified decision evidence requires an attributable source")
+        return self
+
+
+class DecisionCriterion(ConversationModel):
+    criterion_id: str = Field(pattern=r"^[a-z][a-z0-9-]{1,63}$")
+    description: str = Field(min_length=3, max_length=4_096)
+    provenance_references: tuple[str, ...] = Field(min_length=1)
+    weight: float | None = Field(default=None, gt=0)
+
+
+class DecisionCriterionAssessment(ConversationModel):
+    criterion_id: str = Field(pattern=r"^[a-z][a-z0-9-]{1,63}$")
+    assessment: str = Field(min_length=1, max_length=4_096)
+    evidence_references: tuple[str, ...] = Field(min_length=1)
+
+
+class DecisionAlternative(ConversationModel):
+    option_id: str = Field(pattern=r"^[a-z][a-z0-9-]{1,63}$")
+    description: str = Field(min_length=3, max_length=4_096)
+    credible: bool
+    rejection_reason: str | None = Field(default=None, min_length=3, max_length=4_096)
+    assessments: tuple[DecisionCriterionAssessment, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def rejected_candidate_explains_why_it_is_not_credible(self) -> DecisionAlternative:
+        if not self.credible and self.rejection_reason is None:
+            raise ValueError("non-credible decision alternative requires a rejection reason")
+        if self.credible and self.rejection_reason is not None:
+            raise ValueError("credible decision alternative cannot carry a rejection reason")
+        return self
+
+
+class DecisionRecommendation(ConversationModel):
+    recommended_option_id: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9-]{1,63}$")
+    evidence_insufficient: bool = False
+    rationale: str = Field(min_length=3, max_length=8_192)
+    tradeoffs: tuple[str, ...] = Field(min_length=1)
+    risks: tuple[str, ...] = Field(min_length=1)
+    confidence: float = Field(ge=0, le=1)
+    confidence_basis: str = Field(min_length=3, max_length=4_096)
+    unresolved_questions: tuple[str, ...] = Field(min_length=1)
+    expected_consequences: tuple[str, ...] = Field(min_length=1)
+    reversal_or_migration: tuple[str, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def recommends_exactly_one_option_or_declares_insufficiency(
+        self,
+    ) -> DecisionRecommendation:
+        if self.evidence_insufficient == (self.recommended_option_id is not None):
+            raise ValueError(
+                "decision result must recommend one option or declare evidence insufficient"
+            )
+        return self
+
+
+class DecisionValidation(ConversationModel):
+    validation_type: str = Field(min_length=2, max_length=256)
+    planned_evidence: tuple[str, ...] = Field(min_length=1)
+    status: DecisionValidationStatus
+    evaluator_identity: str | None = Field(default=None, min_length=1, max_length=256)
+    evidence_references: tuple[str, ...] = ()
+    findings: tuple[str, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def settled_validation_has_evaluator_and_evidence(self) -> DecisionValidation:
+        if self.status is DecisionValidationStatus.PENDING:
+            if self.evaluator_identity is not None or self.evidence_references:
+                raise ValueError("pending validation cannot claim evaluator evidence")
+        elif self.evaluator_identity is None or not self.evidence_references:
+            raise ValueError("settled validation requires evaluator and evidence")
+        return self
+
+
 class MissionDecision(ConversationModel):
-    schema_version: Literal["1.0"] = "1.0"
+    schema_version: Literal["1.0", "1.1"] = "1.0"
     decision_id: UUID = Field(default_factory=new_id)
     mission_id: UUID
     conversation_id: UUID
@@ -120,12 +258,130 @@ class MissionDecision(ConversationModel):
     scope: tuple[str, ...] = Field(min_length=1)
     evidence_references: tuple[str, ...] = Field(min_length=1)
     authority_reference: str = Field(min_length=1, max_length=512)
+    decision_status: DecisionStatus | None = None
+    producer_identity: str | None = Field(default=None, min_length=1, max_length=256)
+    deciding_identity: str | None = Field(default=None, min_length=1, max_length=256)
+    changes_durable_authority: bool | None = None
+    context: DecisionContext | None = None
+    evidence: tuple[DecisionEvidenceClaim, ...] = ()
+    criteria: tuple[DecisionCriterion, ...] = ()
+    alternatives: tuple[DecisionAlternative, ...] = ()
+    alternatives_search: str | None = Field(default=None, min_length=3, max_length=8_192)
+    recommendation: DecisionRecommendation | None = None
+    validation: DecisionValidation | None = None
+    supersedes_decision_id: UUID | None = None
     created_at: datetime = Field(default_factory=utc_now)
 
     @field_validator("created_at")
     @classmethod
     def created_at_is_aware(cls, value: datetime) -> datetime:
         return require_aware(value)
+
+    @model_validator(mode="after")
+    def consequential_decision_contract_is_complete(self) -> MissionDecision:
+        structured = (
+            self.decision_status,
+            self.producer_identity,
+            self.changes_durable_authority,
+            self.context,
+            self.recommendation,
+            self.validation,
+        )
+        if self.schema_version == "1.0":
+            if any(item is not None for item in structured) or any(
+                (
+                    self.evidence,
+                    self.criteria,
+                    self.alternatives,
+                    self.alternatives_search is not None,
+                    self.deciding_identity is not None,
+                    self.supersedes_decision_id is not None,
+                )
+            ):
+                raise ValueError("decision 1.0 cannot carry partial 1.1 decision fields")
+            return self
+        if any(item is None for item in structured) or not all(
+            (self.evidence, self.criteria, self.alternatives)
+        ):
+            raise ValueError("decision 1.1 requires complete consequential decision evidence")
+        assert self.decision_status is not None
+        assert self.producer_identity is not None
+        assert self.context is not None
+        assert self.recommendation is not None
+        assert self.validation is not None
+        if self.disposition != self.decision_status.value:
+            raise ValueError("decision disposition must match its structured status")
+        if self.decision_status in {DecisionStatus.STAGED, DecisionStatus.INCONCLUSIVE}:
+            if self.actor_id != self.producer_identity:
+                raise ValueError("staged decision actor must be its producing identity")
+            if self.deciding_identity is not None or self.supersedes_decision_id is not None:
+                raise ValueError("unsettled decision cannot claim a deciding identity or lineage")
+        else:
+            if self.deciding_identity != self.actor_id or self.supersedes_decision_id is None:
+                raise ValueError("settled decision requires deciding actor and staged lineage")
+        if self.decision_status is DecisionStatus.INCONCLUSIVE:
+            if not self.recommendation.evidence_insufficient:
+                raise ValueError("inconclusive decision must declare insufficient evidence")
+        elif self.recommendation.evidence_insufficient:
+            raise ValueError("only an inconclusive decision may declare insufficient evidence")
+        if (
+            self.validation.evaluator_identity is not None
+            and self.validation.evaluator_identity == self.producer_identity
+        ):
+            raise ValueError("decision producer cannot evaluate its own recommendation")
+        if self.decision_status is DecisionStatus.ACCEPTED and (
+            self.validation.status is not DecisionValidationStatus.PASSED
+        ):
+            raise ValueError("accepted decision requires passed independent validation")
+        criterion_ids = tuple(item.criterion_id for item in self.criteria)
+        if len(criterion_ids) != len(set(criterion_ids)):
+            raise ValueError("decision criteria must have unique identities")
+        option_ids = tuple(item.option_id for item in self.alternatives)
+        if len(option_ids) != len(set(option_ids)):
+            raise ValueError("decision alternatives must have unique identities")
+        expected_criteria = set(criterion_ids)
+        for alternative in self.alternatives:
+            assessment_ids = tuple(item.criterion_id for item in alternative.assessments)
+            if (
+                len(assessment_ids) != len(set(assessment_ids))
+                or set(assessment_ids) != expected_criteria
+            ):
+                raise ValueError("every alternative must use the same declared criteria exactly")
+        credible = tuple(item for item in self.alternatives if item.credible)
+        if len(credible) == 1 and (
+            self.alternatives_search is None
+            or not any(not item.credible for item in self.alternatives)
+        ):
+            raise ValueError(
+                "single credible option requires documented search and rejected candidates"
+            )
+        if len(credible) > 1 and self.alternatives_search is None:
+            raise ValueError("multiple credible alternatives require documented search")
+        selected = self.recommendation.recommended_option_id
+        if selected is not None and selected not in {item.option_id for item in credible}:
+            raise ValueError("recommendation must select a credible compared alternative")
+        if not credible and not self.recommendation.evidence_insufficient:
+            raise ValueError("absence of a credible option requires an inconclusive result")
+        allowed_provenance = self.context.provenance_references | frozenset(
+            {
+                claim.source_reference
+                for claim in self.evidence
+                if claim.source_reference is not None
+            }
+        )
+        if any(
+            reference not in allowed_provenance
+            for criterion in self.criteria
+            for reference in criterion.provenance_references
+        ):
+            raise ValueError("decision criterion is not traceable to declared context")
+        if any(
+            claim.classification is DecisionEvidenceClass.VERIFIED
+            and claim.source_reference not in self.evidence_references
+            for claim in self.evidence
+        ):
+            raise ValueError("verified decision evidence source is absent from evidence lineage")
+        return self
 
 
 class EscalationOption(ConversationModel):
