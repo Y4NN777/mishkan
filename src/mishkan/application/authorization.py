@@ -1471,6 +1471,11 @@ class ApplicationCommandAuthority:
                                 for decision in mission_environment_plan.decisions
                                 for engine_id in decision.eligible_engine_ids
                             ),
+                            *(
+                                f"decision:{decision.consequential_decision_id}"
+                                for decision in mission_environment_plan.decisions
+                                if decision.consequential_decision_id is not None
+                            ),
                         )
                     )
                 )

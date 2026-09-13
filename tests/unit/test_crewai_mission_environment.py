@@ -1,11 +1,26 @@
 from pathlib import Path
 from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
 
 from mishkan.config.loader import ConfigLoader
 from mishkan.config.models import MishkanConfig
 from mishkan.config.presets import preset_text
+from mishkan.conversations import (
+    DecisionAlternative,
+    DecisionContext,
+    DecisionContextElement,
+    DecisionCriterion,
+    DecisionCriterionAssessment,
+    DecisionEvidenceClaim,
+    DecisionEvidenceClass,
+    DecisionRecommendation,
+    DecisionStatus,
+    DecisionValidation,
+    DecisionValidationStatus,
+    MissionDecision,
+)
 from mishkan.crewai.mission_environment import (
     CrewAIMissionEnvironmentPlanningRunner,
     MissionEnvironmentDecisionOutput,
@@ -263,6 +278,124 @@ def _output() -> MissionEnvironmentPlanningOutput:
     )
 
 
+def _accepted_environment_decision(
+    mission: MissionRecord,
+    *,
+    selected_option: str,
+) -> MissionDecision:
+    evidence = "observation:podman"
+    criterion = DecisionCriterion(
+        criterion_id="mission-fit",
+        description="Satisfies the mission environment constraints",
+        provenance_references=("requirement:environment",),
+    )
+
+    def alternative(option_id: str, description: str) -> DecisionAlternative:
+        return DecisionAlternative(
+            option_id=option_id,
+            description=description,
+            credible=True,
+            assessments=(
+                DecisionCriterionAssessment(
+                    criterion_id=criterion.criterion_id,
+                    assessment=f"Evidence assessment for {option_id}",
+                    evidence_references=(evidence,),
+                ),
+            ),
+        )
+
+    return MissionDecision(
+        schema_version="1.1",
+        mission_id=mission.mission_id,
+        conversation_id=uuid4(),
+        actor_id="CTO",
+        producer_identity="Backend_Service_Engineer",
+        deciding_identity="CTO",
+        subject="Mission environment architecture",
+        disposition=DecisionStatus.ACCEPTED.value,
+        decision_status=DecisionStatus.ACCEPTED,
+        reason="Independent validation accepted the environment choice",
+        scope=("environment:repository:api", "task:build-project"),
+        evidence_references=(evidence,),
+        authority_reference="authority:mission-environment",
+        changes_durable_authority=True,
+        context=DecisionContext(
+            question="Which environment should the mission adopt?",
+            objective_reference="objective:mission",
+            effective_policy_reference="policy:effective",
+            requirements=(
+                DecisionContextElement(
+                    statement="The build must be isolated",
+                    provenance_reference="requirement:environment",
+                ),
+            ),
+            repository_evidence=(
+                DecisionContextElement(
+                    statement="Podman is observed on the target",
+                    provenance_reference=evidence,
+                ),
+            ),
+            constraints=(
+                DecisionContextElement(
+                    statement="Preserve the project workspace",
+                    provenance_reference="constraint:workspace",
+                ),
+            ),
+            declared_preferences=(
+                DecisionContextElement(
+                    statement="Prefer a reproducible local environment",
+                    provenance_reference="preference:local",
+                ),
+            ),
+            risks=(
+                DecisionContextElement(
+                    statement="Container compatibility can drift",
+                    provenance_reference="risk:compatibility",
+                ),
+            ),
+            material_unknowns=(
+                DecisionContextElement(
+                    statement="The final base image remains unselected",
+                    provenance_reference="unknown:base-image",
+                ),
+            ),
+        ),
+        evidence=(
+            DecisionEvidenceClaim(
+                claim="Podman is available on the target",
+                classification=DecisionEvidenceClass.VERIFIED,
+                source_reference=evidence,
+            ),
+        ),
+        criteria=(criterion,),
+        alternatives=(
+            alternative("podman-containerfile", "Generate a Podman Containerfile"),
+            alternative("host-native", "Use the observed host toolchain"),
+        ),
+        alternatives_search="Compared isolated generation with host-native execution",
+        recommendation=DecisionRecommendation(
+            recommended_option_id=selected_option,
+            rationale="The selected option best satisfies the mission constraints",
+            tradeoffs=("It adds environment lifecycle work",),
+            risks=("Compatibility still requires verification",),
+            confidence=0.8,
+            confidence_basis="The engine observation is attributable",
+            unresolved_questions=("Which immutable base image should be used?",),
+            expected_consequences=("The project gains an isolated build environment",),
+            reversal_or_migration=("Remove the descriptor and return to host-native execution",),
+        ),
+        validation=DecisionValidation(
+            validation_type="independent compatibility review",
+            planned_evidence=("Verify target compatibility",),
+            status=DecisionValidationStatus.PASSED,
+            evaluator_identity="Software_Technical_Evaluator",
+            evidence_references=(evidence,),
+            findings=("The choice is compatible with the observed target",),
+        ),
+        supersedes_decision_id=uuid4(),
+    )
+
+
 def test_crewai_output_compiles_to_exact_agent_authored_constraints(tmp_path: Path) -> None:
     request, mission, brief, crew, assignments, observation = _request(tmp_path)
     plan = CrewAIMissionEnvironmentPlanningRunner.compile(
@@ -324,6 +457,71 @@ def test_environment_proposal_runs_the_assigned_mission_agent_through_crewai(
     assert plan.lineage.runtime == "crewai-1.x"
     assert plan.lineage.output_fingerprint
     assert plan.owner_identity == request.owner_identity
+
+
+def test_consequential_environment_choice_requires_accepted_pln_decision(
+    tmp_path: Path,
+) -> None:
+    request, mission, *_rest = _request(tmp_path)
+    accepted = _accepted_environment_decision(
+        mission,
+        selected_option="podman-containerfile",
+    )
+    context = request.contexts[0]
+    selected = context.alternatives[0].model_copy(
+        update={
+            "requires_consequential_decision": True,
+            "consequential_decision_id": accepted.decision_id,
+            "consequential_option_id": "podman-containerfile",
+        }
+    )
+    linked_request = request.model_copy(
+        update={
+            "contexts": (
+                context.model_copy(update={"alternatives": (selected, *context.alternatives[1:])}),
+            )
+        }
+    )
+
+    plan = CrewAIMissionEnvironmentPlanningRunner.compile(
+        linked_request,
+        _output(),
+        plan_version=1,
+        model_route="planning",
+    )
+
+    assert plan.decisions[0].consequential_decision_id == accepted.decision_id
+    with pytest.raises(MishkanError, match="no durable decision"):
+        MissionEnvironmentPlanValidator.validate_consequential_decisions(plan, {})
+
+    MissionEnvironmentPlanValidator.validate_consequential_decisions(
+        plan,
+        {accepted.decision_id: accepted},
+    )
+
+    wrong_option = accepted.model_copy(
+        update={
+            "recommendation": accepted.recommendation.model_copy(
+                update={"recommended_option_id": "host-native"}
+            )
+        }
+    )
+    with pytest.raises(MishkanError, match="lacks its accepted PLN-012-018 decision"):
+        MissionEnvironmentPlanValidator.validate_consequential_decisions(
+            plan,
+            {accepted.decision_id: wrong_option},
+        )
+
+
+def test_consequential_environment_alternative_requires_complete_decision_link() -> None:
+    with pytest.raises(ValueError, match="requires a decision and option reference"):
+        MissionEnvironmentAlternative(
+            alternative_id="generated",
+            requested_outcome=EnvironmentOutcome.GENERATE,
+            allowed_descriptor_formats=("containerfile",),
+            evidence_references=("observation:podman",),
+            requires_consequential_decision=True,
+        )
 
 
 def test_environment_planner_cannot_choose_an_unexposed_outcome(tmp_path: Path) -> None:

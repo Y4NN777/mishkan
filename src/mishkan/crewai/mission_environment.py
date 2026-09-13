@@ -149,6 +149,9 @@ class CrewAIMissionEnvironmentPlanningRunner:
                     allowed_descriptor_formats=selected.allowed_descriptor_formats,
                     required_engine_ids=selected.required_engine_ids,
                     eligible_engine_ids=selected.eligible_engine_ids,
+                    requires_consequential_decision=(selected.requires_consequential_decision),
+                    consequential_decision_id=selected.consequential_decision_id,
+                    consequential_option_id=selected.consequential_option_id,
                 )
             )
         fingerprint = hashlib.sha256(output.model_dump_json().encode()).hexdigest()

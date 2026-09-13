@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from datetime import datetime
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 from uuid import UUID, uuid5
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -28,6 +29,9 @@ from mishkan.missions.models import (
     MissionTaskAssignment,
 )
 
+if TYPE_CHECKING:
+    from mishkan.conversations import MissionDecision
+
 
 class MissionEnvironmentModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -44,6 +48,9 @@ class MissionEnvironmentAlternative(MissionEnvironmentModel):
     eligible_engine_ids: tuple[str, ...] = ()
     constraints: tuple[str, ...] = ()
     evidence_references: tuple[str, ...] = Field(min_length=1)
+    requires_consequential_decision: bool = False
+    consequential_decision_id: UUID | None = None
+    consequential_option_id: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9-]{1,63}$")
 
     @model_validator(mode="after")
     def outcome_has_compatible_shape(self) -> MissionEnvironmentAlternative:
@@ -62,6 +69,13 @@ class MissionEnvironmentAlternative(MissionEnvironmentModel):
             raise ValueError("generated environment alternative requires descriptor constraints")
         if set(self.required_engine_ids) - set(self.eligible_engine_ids):
             raise ValueError("required engines must be present in the eligible candidate set")
+        linked = self.consequential_decision_id is not None and (
+            self.consequential_option_id is not None
+        )
+        if self.requires_consequential_decision != linked:
+            raise ValueError(
+                "consequential environment alternative requires a decision and option reference"
+            )
         return self
 
 
@@ -129,6 +143,20 @@ class MissionEnvironmentDecision(MissionEnvironmentModel):
     allowed_descriptor_formats: tuple[str, ...] = ()
     required_engine_ids: tuple[str, ...] = ()
     eligible_engine_ids: tuple[str, ...] = ()
+    requires_consequential_decision: bool = False
+    consequential_decision_id: UUID | None = None
+    consequential_option_id: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9-]{1,63}$")
+
+    @model_validator(mode="after")
+    def consequential_link_is_complete(self) -> MissionEnvironmentDecision:
+        linked = self.consequential_decision_id is not None and (
+            self.consequential_option_id is not None
+        )
+        if self.requires_consequential_decision != linked:
+            raise ValueError(
+                "consequential environment decision requires a decision and option reference"
+            )
+        return self
 
 
 class CrewAIPlanningLineage(MissionEnvironmentModel):
@@ -383,12 +411,18 @@ class MissionEnvironmentPlanValidator:
                 selected.allowed_descriptor_formats,
                 selected.required_engine_ids,
                 selected.eligible_engine_ids,
+                selected.requires_consequential_decision,
+                selected.consequential_decision_id,
+                selected.consequential_option_id,
             )
             received = (
                 decision.required_semantics,
                 decision.allowed_descriptor_formats,
                 decision.required_engine_ids,
                 decision.eligible_engine_ids,
+                decision.requires_consequential_decision,
+                decision.consequential_decision_id,
+                decision.consequential_option_id,
             )
             if received != expected:
                 raise MishkanError(
@@ -404,6 +438,51 @@ class MissionEnvironmentPlanValidator:
                 raise MishkanError(
                     ErrorCode.PLAN,
                     "environment decision references evidence absent from its planning input",
+                )
+
+    @staticmethod
+    def validate_consequential_decisions(
+        plan: MissionEnvironmentPlan,
+        decisions: Mapping[UUID, MissionDecision],
+    ) -> None:
+        from mishkan.conversations import DecisionStatus
+
+        contexts = {item.context_id: item for item in plan.contexts}
+        for environment_decision in plan.decisions:
+            if not environment_decision.requires_consequential_decision:
+                continue
+            decision_id = environment_decision.consequential_decision_id
+            option_id = environment_decision.consequential_option_id
+            assert decision_id is not None
+            assert option_id is not None
+            decision = decisions.get(decision_id)
+            if decision is None:
+                raise MishkanError(
+                    ErrorCode.DECISION_VALIDATION,
+                    "consequential environment choice has no durable decision",
+                )
+            context = contexts[environment_decision.context_id]
+            required_scope = {
+                f"environment:{context.context_id}",
+                *(f"task:{task_id}" for task_id in context.affected_task_ids),
+            }
+            recommendation = decision.recommendation
+            if (
+                decision.mission_id != plan.mission_id
+                or decision.schema_version != "1.1"
+                or decision.decision_status is not DecisionStatus.ACCEPTED
+                or decision.changes_durable_authority is not True
+                or recommendation is None
+                or recommendation.recommended_option_id != option_id
+                or not required_scope.issubset(decision.scope)
+                or not set(environment_decision.evidence_references).issubset(
+                    decision.evidence_references
+                )
+            ):
+                raise MishkanError(
+                    ErrorCode.DECISION_VALIDATION,
+                    "consequential environment choice lacks its accepted PLN-012-018 decision",
+                    details={"decision_id": str(decision_id)},
                 )
 
     @staticmethod

@@ -2320,6 +2320,18 @@ def _dispatch(
             observations=observations,
             profile=environment_profile,
         )
+        consequential_ids = {
+            decision.consequential_decision_id
+            for decision in accepted_environment_plan.decisions
+            if decision.consequential_decision_id is not None
+        }
+        MissionEnvironmentPlanValidator.validate_consequential_decisions(
+            accepted_environment_plan,
+            {
+                decision_id: conversation_repository.decision(str(decision_id))
+                for decision_id in consequential_ids
+            },
+        )
         acceptance = MissionEnvironmentPlanAcceptance(
             plan=accepted_environment_plan,
             accepted_by=command.actor_id,

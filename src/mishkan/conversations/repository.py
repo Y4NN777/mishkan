@@ -365,6 +365,16 @@ class SQLiteConversationRepository:
             )
             return tuple(MissionDecision.model_validate_json(row.payload) for row in rows)
 
+    def decision(self, decision_id: str) -> MissionDecision:
+        with Session(self._engine) as session:
+            row = session.get(MissionDecisionRow, decision_id)
+            if row is None:
+                raise MishkanError(
+                    ErrorCode.DECISION_VALIDATION,
+                    "mission decision does not exist",
+                )
+            return MissionDecision.model_validate_json(row.payload)
+
     def interventions(
         self, mission_id: str, *, limit: int = 100
     ) -> tuple[MissionIntervention, ...]:
