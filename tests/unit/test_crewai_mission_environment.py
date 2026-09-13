@@ -86,7 +86,7 @@ def _mission_contracts() -> tuple[
         disposition="confirmed",
         rationale="Product requirements are covered",
         evidence_references=("evidence:product",),
-        coverage=("product",),
+        coverage=("product", "composition"),
     )
     cto = ExecutiveConfirmation(
         identity_id="CTO",

@@ -25,7 +25,11 @@ def _confirmation(identity_id: str) -> ExecutiveConfirmation:
         disposition="confirmed",
         rationale=f"{identity_id} confirms its accountable coverage",
         evidence_references=(f"evidence:{identity_id.lower()}",),
-        coverage=("product" if identity_id == "PM" else "technical",),
+        coverage=(
+            ("product", "composition")
+            if identity_id == "PM"
+            else ("technical", "security", "quality")
+        ),
     )
 
 
@@ -108,6 +112,14 @@ def test_confirmed_brief_requires_joint_pm_cto_evidence() -> None:
 
     with pytest.raises(ValidationError, match="requires PM and CTO confirmation"):
         _brief(mission_id, cto_confirmation=None)
+
+    incomplete_pm = _confirmation("PM").model_copy(update={"coverage": ("product",)})
+    with pytest.raises(ValidationError, match="PM composition coverage"):
+        _brief(mission_id, pm_confirmation=incomplete_pm)
+
+    incomplete_cto = _confirmation("CTO").model_copy(update={"coverage": ("technical", "quality")})
+    with pytest.raises(ValidationError, match="CTO technical, security, and quality"):
+        _brief(mission_id, cto_confirmation=incomplete_cto)
 
 
 def test_environment_dependency_requires_evidence_or_explicit_unknown() -> None:
