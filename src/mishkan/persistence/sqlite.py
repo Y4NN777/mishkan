@@ -763,6 +763,30 @@ class MissionInterventionRow(Base):
     created_at: Mapped[str] = mapped_column(String(40), nullable=False)
 
 
+class MissionAssignmentRow(Base):
+    __tablename__ = "mission_assignments"
+    __table_args__ = (UniqueConstraint("mission_id", "task_id", "assignment_revision"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    mission_id: Mapped[str] = mapped_column(ForeignKey("missions.id"), nullable=False)
+    task_id: Mapped[str] = mapped_column(String(256), nullable=False)
+    assignment_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    accountable_owner: Mapped[str] = mapped_column(String(128), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class MissionTransitionRow(Base):
+    __tablename__ = "mission_transitions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    mission_id: Mapped[str] = mapped_column(ForeignKey("missions.id"), nullable=False)
+    from_state: Mapped[str] = mapped_column(String(32), nullable=False)
+    to_state: Mapped[str] = mapped_column(String(32), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
 @dataclass(frozen=True, slots=True)
 class RunSnapshot:
     run_id: str

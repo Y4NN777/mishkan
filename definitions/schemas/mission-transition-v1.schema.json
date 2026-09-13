@@ -1,0 +1,103 @@
+{
+  "$defs": {
+    "MissionState": {
+      "enum": [
+        "proposed",
+        "clarifying",
+        "planned",
+        "active",
+        "paused",
+        "blocked",
+        "evaluating",
+        "remediating",
+        "completed",
+        "failed",
+        "cancelled"
+      ],
+      "title": "MissionState",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "actor_or_cause": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Actor Or Cause",
+      "type": "string"
+    },
+    "affected_scope": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Affected Scope",
+      "type": "array"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "decision_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Decision Id"
+    },
+    "evidence_references": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Evidence References",
+      "type": "array"
+    },
+    "from_state": {
+      "$ref": "#/$defs/MissionState"
+    },
+    "mission_id": {
+      "format": "uuid",
+      "title": "Mission Id",
+      "type": "string"
+    },
+    "reason": {
+      "maxLength": 8192,
+      "minLength": 3,
+      "title": "Reason",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "to_state": {
+      "$ref": "#/$defs/MissionState"
+    },
+    "transition_id": {
+      "format": "uuid",
+      "title": "Transition Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "mission_id",
+    "from_state",
+    "to_state",
+    "actor_or_cause",
+    "reason",
+    "affected_scope",
+    "evidence_references"
+  ],
+  "title": "MissionTransition",
+  "type": "object"
+}

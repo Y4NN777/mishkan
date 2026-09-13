@@ -16,7 +16,10 @@ from mishkan.missions import (
     MissionOrigin,
     MissionOriginKind,
     MissionRecord,
+    MissionResourceLimit,
     MissionState,
+    MissionTaskAssignment,
+    MissionTransition,
     SQLiteMissionRepository,
 )
 from mishkan.organization import load_canonical_organization
@@ -237,3 +240,79 @@ def test_crew_assignment_uses_profile_authority_and_confirmed_composition(tmp_pa
     with pytest.raises(MishkanError) as conflict:
         repository.record_crew(invalid_crew, expected_revision=current.revision)
     assert conflict.value.envelope.code is ErrorCode.ROLE_CONFLICT
+
+
+def test_accountable_assignment_and_lifecycle_are_explicit_and_durable(tmp_path: Path) -> None:
+    _, repository, mission = _setup(tmp_path)
+    brief = _brief(mission)
+    repository.record_brief(brief, expected_revision=mission.revision)
+    after_brief = repository.mission(str(mission.mission_id))
+    crew = _crew(brief)
+    repository.record_crew(crew, expected_revision=after_brief.revision)
+    ready = repository.mission(str(mission.mission_id))
+    assignment = MissionTaskAssignment(
+        mission_id=mission.mission_id,
+        crew_version=crew.version,
+        task_id="implement-recovery",
+        accountable_owner="Backend_Service_Engineer",
+        contributors=(),
+        expected_result="A verified recovery implementation",
+        completion_criteria=("independent recovery test passes",),
+        dependencies=(),
+        authority_scope=("repository:api",),
+        exact_tools=("file.read", "file.patch", "process.run"),
+        path_scopes=("repository:api",),
+        limits=(MissionResourceLimit(name="wall_time", value=1800, unit="seconds"),),
+        required_evidence=("test report", "change set"),
+    )
+    repository.record_assignment(assignment)
+    planned = MissionTransition(
+        mission_id=mission.mission_id,
+        from_state=MissionState.CLARIFYING,
+        to_state=MissionState.PLANNED,
+        actor_or_cause="PM+CTO",
+        reason="Jointly confirmed Brief, crew, and assignment are ready",
+        affected_scope=("mission:all",),
+        evidence_references=(f"brief:{brief.brief_id}", f"crew:{crew.crew_id}"),
+    )
+    repository.transition(planned, expected_revision=ready.revision)
+    after_planned = repository.mission(str(mission.mission_id))
+    active = MissionTransition(
+        mission_id=mission.mission_id,
+        from_state=MissionState.PLANNED,
+        to_state=MissionState.ACTIVE,
+        actor_or_cause="Mission_Lead responsibility",
+        reason="Accountable task assignment is eligible",
+        affected_scope=("task:implement-recovery",),
+        evidence_references=(f"assignment:{assignment.assignment_id}",),
+    )
+    repository.transition(active, expected_revision=after_planned.revision)
+
+    assert repository.assignments(str(mission.mission_id)) == (assignment,)
+    assert repository.transitions(str(mission.mission_id)) == (planned, active)
+    assert repository.mission(str(mission.mission_id)).state is MissionState.ACTIVE
+
+
+def test_assignment_rejects_identity_outside_current_contextual_crew(tmp_path: Path) -> None:
+    _, repository, mission = _setup(tmp_path)
+    brief = _brief(mission)
+    repository.record_brief(brief, expected_revision=mission.revision)
+    after_brief = repository.mission(str(mission.mission_id))
+    repository.record_crew(_crew(brief), expected_revision=after_brief.revision)
+    assignment = MissionTaskAssignment(
+        mission_id=mission.mission_id,
+        crew_version=1,
+        task_id="unscoped-work",
+        accountable_owner="Android_Engineer",
+        expected_result="An unauthorized result",
+        completion_criteria=("result exists",),
+        authority_scope=("repository:api",),
+        exact_tools=(),
+        path_scopes=(),
+        limits=(MissionResourceLimit(name="wall_time", value=60, unit="seconds"),),
+        required_evidence=("result",),
+    )
+
+    with pytest.raises(MishkanError) as error:
+        repository.record_assignment(assignment)
+    assert error.value.envelope.code is ErrorCode.MISSION

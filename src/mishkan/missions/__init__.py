@@ -12,7 +12,10 @@ from mishkan.missions.models import (
     MissionOrigin,
     MissionOriginKind,
     MissionRecord,
+    MissionResourceLimit,
     MissionState,
+    MissionTaskAssignment,
+    MissionTransition,
 )
 from mishkan.missions.repository import SQLiteMissionRepository
 
@@ -28,6 +31,9 @@ __all__ = [
     "MissionOrigin",
     "MissionOriginKind",
     "MissionRecord",
+    "MissionResourceLimit",
     "MissionState",
+    "MissionTaskAssignment",
+    "MissionTransition",
     "SQLiteMissionRepository",
 ]

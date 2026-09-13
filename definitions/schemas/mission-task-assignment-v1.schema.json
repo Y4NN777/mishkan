@@ -1,0 +1,163 @@
+{
+  "$defs": {
+    "MissionResourceLimit": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "unit": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Unit",
+          "type": "string"
+        },
+        "value": {
+          "minimum": 0,
+          "title": "Value",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "value",
+        "unit"
+      ],
+      "title": "MissionResourceLimit",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "accountable_owner": {
+      "maxLength": 128,
+      "minLength": 2,
+      "title": "Accountable Owner",
+      "type": "string"
+    },
+    "assignment_id": {
+      "format": "uuid",
+      "title": "Assignment Id",
+      "type": "string"
+    },
+    "assignment_revision": {
+      "default": 1,
+      "minimum": 1,
+      "title": "Assignment Revision",
+      "type": "integer"
+    },
+    "authority_scope": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Authority Scope",
+      "type": "array"
+    },
+    "completion_criteria": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Completion Criteria",
+      "type": "array"
+    },
+    "contributors": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Contributors",
+      "type": "array"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "crew_version": {
+      "minimum": 1,
+      "title": "Crew Version",
+      "type": "integer"
+    },
+    "dependencies": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Dependencies",
+      "type": "array"
+    },
+    "exact_tools": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Exact Tools",
+      "type": "array"
+    },
+    "expected_result": {
+      "maxLength": 8192,
+      "minLength": 3,
+      "title": "Expected Result",
+      "type": "string"
+    },
+    "limits": {
+      "items": {
+        "$ref": "#/$defs/MissionResourceLimit"
+      },
+      "minItems": 1,
+      "title": "Limits",
+      "type": "array"
+    },
+    "mission_id": {
+      "format": "uuid",
+      "title": "Mission Id",
+      "type": "string"
+    },
+    "path_scopes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Path Scopes",
+      "type": "array"
+    },
+    "required_evidence": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Required Evidence",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "task_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Task Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "mission_id",
+    "crew_version",
+    "task_id",
+    "accountable_owner",
+    "expected_result",
+    "completion_criteria",
+    "authority_scope",
+    "exact_tools",
+    "path_scopes",
+    "limits",
+    "required_evidence"
+  ],
+  "title": "MissionTaskAssignment",
+  "type": "object"
+}

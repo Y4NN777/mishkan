@@ -256,3 +256,69 @@ class MissionRecord(MissionModel):
         ):
             raise ValueError("advanced mission states require a durable Mission Brief")
         return self
+
+
+class MissionResourceLimit(MissionModel):
+    name: str = Field(min_length=1, max_length=128)
+    value: int = Field(ge=0)
+    unit: str = Field(min_length=1, max_length=64)
+
+
+class MissionTaskAssignment(MissionModel):
+    schema_version: Literal["1.0"] = "1.0"
+    assignment_id: UUID = Field(default_factory=new_id)
+    mission_id: UUID
+    crew_version: int = Field(ge=1)
+    task_id: str = Field(min_length=1, max_length=256)
+    assignment_revision: int = Field(default=1, ge=1)
+    accountable_owner: str = Field(min_length=2, max_length=128)
+    contributors: tuple[str, ...] = ()
+    expected_result: str = Field(min_length=3, max_length=8_192)
+    completion_criteria: tuple[str, ...] = Field(min_length=1)
+    dependencies: tuple[str, ...] = ()
+    authority_scope: tuple[str, ...] = Field(min_length=1)
+    exact_tools: tuple[str, ...]
+    path_scopes: tuple[str, ...]
+    limits: tuple[MissionResourceLimit, ...] = Field(min_length=1)
+    required_evidence: tuple[str, ...] = Field(min_length=1)
+    created_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("created_at")
+    @classmethod
+    def created_at_is_aware(cls, value: datetime) -> datetime:
+        return require_aware(value)
+
+    @model_validator(mode="after")
+    def ownership_is_unambiguous(self) -> MissionTaskAssignment:
+        if self.accountable_owner in self.contributors:
+            raise ValueError("accountable owner cannot also be listed as a contributor")
+        if len(self.contributors) != len(set(self.contributors)):
+            raise ValueError("task contributors must be unique")
+        if len(self.dependencies) != len(set(self.dependencies)):
+            raise ValueError("task dependencies must be unique")
+        return self
+
+
+class MissionTransition(MissionModel):
+    schema_version: Literal["1.0"] = "1.0"
+    transition_id: UUID = Field(default_factory=new_id)
+    mission_id: UUID
+    from_state: MissionState
+    to_state: MissionState
+    actor_or_cause: str = Field(min_length=1, max_length=256)
+    reason: str = Field(min_length=3, max_length=8_192)
+    decision_id: UUID | None = None
+    affected_scope: tuple[str, ...] = Field(min_length=1)
+    evidence_references: tuple[str, ...] = Field(min_length=1)
+    created_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("created_at")
+    @classmethod
+    def created_at_is_aware(cls, value: datetime) -> datetime:
+        return require_aware(value)
+
+    @model_validator(mode="after")
+    def transition_changes_state(self) -> MissionTransition:
+        if self.from_state is self.to_state:
+            raise ValueError("mission transition must change state")
+        return self

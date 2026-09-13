@@ -21,19 +21,64 @@ from mishkan.missions.models import (
     MissionCrewRevision,
     MissionRecord,
     MissionState,
+    MissionTaskAssignment,
+    MissionTransition,
 )
 from mishkan.organization.models import OrganizationRosterDefinition
 from mishkan.persistence.migration import SchemaManager
 from mishkan.persistence.sqlite import (
+    MissionAssignmentRow,
     MissionBriefRow,
     MissionCrewRow,
     MissionRow,
+    MissionTransitionRow,
     OrganizationRosterRow,
     OutboxRow,
     create_local_engine,
 )
 
 RecordT = TypeVar("RecordT", bound=BaseModel)
+
+_MISSION_TRANSITIONS: dict[MissionState, frozenset[MissionState]] = {
+    MissionState.PROPOSED: frozenset({MissionState.CLARIFYING, MissionState.CANCELLED}),
+    MissionState.CLARIFYING: frozenset(
+        {MissionState.PLANNED, MissionState.BLOCKED, MissionState.CANCELLED}
+    ),
+    MissionState.PLANNED: frozenset(
+        {MissionState.ACTIVE, MissionState.PAUSED, MissionState.BLOCKED, MissionState.CANCELLED}
+    ),
+    MissionState.ACTIVE: frozenset(
+        {
+            MissionState.PAUSED,
+            MissionState.BLOCKED,
+            MissionState.EVALUATING,
+            MissionState.FAILED,
+            MissionState.CANCELLED,
+        }
+    ),
+    MissionState.PAUSED: frozenset(
+        {MissionState.ACTIVE, MissionState.BLOCKED, MissionState.CANCELLED}
+    ),
+    MissionState.BLOCKED: frozenset(
+        {MissionState.ACTIVE, MissionState.PAUSED, MissionState.FAILED, MissionState.CANCELLED}
+    ),
+    MissionState.EVALUATING: frozenset(
+        {
+            MissionState.REMEDIATING,
+            MissionState.COMPLETED,
+            MissionState.FAILED,
+            MissionState.PAUSED,
+        }
+    ),
+    MissionState.REMEDIATING: frozenset(
+        {
+            MissionState.ACTIVE,
+            MissionState.EVALUATING,
+            MissionState.FAILED,
+            MissionState.CANCELLED,
+        }
+    ),
+}
 
 
 class SQLiteMissionRepository:
@@ -328,6 +373,195 @@ class SQLiteMissionRepository:
             )
         return crew
 
+    def record_assignment(self, assignment: MissionTaskAssignment) -> MissionTaskAssignment:
+        payload = self._json(assignment)
+        with Session(self._engine) as session, session.begin():
+            existing = session.get(MissionAssignmentRow, str(assignment.assignment_id))
+            if existing is not None:
+                return self._idempotent(existing.payload, payload, assignment)
+            mission = MissionRecord.model_validate_json(
+                self._require_mission_row(session, str(assignment.mission_id)).payload
+            )
+            if assignment.crew_version != mission.current_crew_version:
+                raise MishkanError(
+                    ErrorCode.REVISION_MISMATCH,
+                    "task assignment does not reference the current Mission Crew",
+                )
+            crew = self._crew_row(session, str(assignment.mission_id), assignment.crew_version)
+            members = {member.identity_id for member in crew.members}
+            assigned = {assignment.accountable_owner, *assignment.contributors}
+            unknown = assigned - members
+            if unknown:
+                raise MishkanError(
+                    ErrorCode.MISSION,
+                    "task assignment contains identities outside the current Mission Crew",
+                    details={"unknown": sorted(unknown)},
+                )
+            expected_revision = 1 + (
+                session.scalar(
+                    select(MissionAssignmentRow.assignment_revision)
+                    .where(
+                        MissionAssignmentRow.mission_id == str(assignment.mission_id),
+                        MissionAssignmentRow.task_id == assignment.task_id,
+                    )
+                    .order_by(MissionAssignmentRow.assignment_revision.desc())
+                    .limit(1)
+                )
+                or 0
+            )
+            if assignment.assignment_revision != expected_revision:
+                raise MishkanError(
+                    ErrorCode.REVISION_MISMATCH,
+                    "task assignment revision is stale or skips a revision",
+                    details={
+                        "expected": expected_revision,
+                        "received": assignment.assignment_revision,
+                    },
+                )
+            session.add(
+                MissionAssignmentRow(
+                    id=str(assignment.assignment_id),
+                    mission_id=str(assignment.mission_id),
+                    task_id=assignment.task_id,
+                    assignment_revision=assignment.assignment_revision,
+                    accountable_owner=assignment.accountable_owner,
+                    payload=payload,
+                    created_at=assignment.created_at.isoformat(),
+                )
+            )
+            self._event(
+                session,
+                aggregate_id=str(assignment.mission_id),
+                entity_type="mission",
+                event_type="mission.task_assigned",
+                payload={
+                    "assignment_id": str(assignment.assignment_id),
+                    "task_id": assignment.task_id,
+                    "assignment_revision": assignment.assignment_revision,
+                    "accountable_owner": assignment.accountable_owner,
+                    "crew_version": assignment.crew_version,
+                },
+            )
+        return assignment
+
+    def transition(
+        self,
+        transition: MissionTransition,
+        *,
+        expected_revision: int,
+    ) -> MissionTransition:
+        payload = self._json(transition)
+        with Session(self._engine) as session, session.begin():
+            existing = session.get(MissionTransitionRow, str(transition.transition_id))
+            if existing is not None:
+                return self._idempotent(existing.payload, payload, transition)
+            mission_row = self._require_mission_row(session, str(transition.mission_id))
+            mission = MissionRecord.model_validate_json(mission_row.payload)
+            self._require_revision(mission, expected_revision)
+            if transition.from_state is not mission.state:
+                raise MishkanError(
+                    ErrorCode.REVISION_MISMATCH,
+                    "mission transition starts from a stale state",
+                    details={
+                        "expected": mission.state.value,
+                        "received": transition.from_state.value,
+                    },
+                )
+            allowed = _MISSION_TRANSITIONS.get(mission.state, frozenset())
+            if transition.to_state not in allowed:
+                raise MishkanError(
+                    ErrorCode.MISSION,
+                    "mission lifecycle transition is not permitted",
+                    details={
+                        "from": mission.state.value,
+                        "to": transition.to_state.value,
+                    },
+                )
+            if transition.to_state not in {
+                MissionState.CLARIFYING,
+                MissionState.CANCELLED,
+            } and (mission.current_brief_version is None or mission.current_crew_version is None):
+                raise MishkanError(
+                    ErrorCode.MISSION,
+                    "mission cannot advance without a current Brief and Mission Crew",
+                )
+            if transition.to_state is MissionState.ACTIVE:
+                assignment = session.scalar(
+                    select(MissionAssignmentRow.id)
+                    .where(MissionAssignmentRow.mission_id == str(mission.mission_id))
+                    .limit(1)
+                )
+                if assignment is None:
+                    raise MishkanError(
+                        ErrorCode.MISSION,
+                        "mission cannot become active without an accountable task assignment",
+                    )
+            updated = mission.model_copy(
+                update={
+                    "state": transition.to_state,
+                    "revision": mission.revision + 1,
+                    "updated_at": utc_now(),
+                }
+            )
+            self._update_mission_row(mission_row, updated)
+            session.add(
+                MissionTransitionRow(
+                    id=str(transition.transition_id),
+                    mission_id=str(transition.mission_id),
+                    from_state=transition.from_state.value,
+                    to_state=transition.to_state.value,
+                    payload=payload,
+                    created_at=transition.created_at.isoformat(),
+                )
+            )
+            self._event(
+                session,
+                aggregate_id=str(transition.mission_id),
+                entity_type="mission",
+                event_type="mission.state_transitioned",
+                payload={
+                    "transition_id": str(transition.transition_id),
+                    "from_state": transition.from_state.value,
+                    "to_state": transition.to_state.value,
+                    "actor_or_cause": transition.actor_or_cause,
+                    "reason": transition.reason,
+                    "decision_id": (
+                        str(transition.decision_id) if transition.decision_id is not None else None
+                    ),
+                    "affected_scope": list(transition.affected_scope),
+                    "evidence_references": list(transition.evidence_references),
+                    "revision": updated.revision,
+                },
+            )
+        return transition
+
+    def assignments(
+        self, mission_id: str, *, limit: int = 1_000
+    ) -> tuple[MissionTaskAssignment, ...]:
+        with Session(self._engine) as session:
+            self._require_mission_row(session, mission_id)
+            rows = session.scalars(
+                select(MissionAssignmentRow)
+                .where(MissionAssignmentRow.mission_id == mission_id)
+                .order_by(
+                    MissionAssignmentRow.task_id,
+                    MissionAssignmentRow.assignment_revision,
+                )
+                .limit(limit)
+            )
+            return tuple(MissionTaskAssignment.model_validate_json(row.payload) for row in rows)
+
+    def transitions(self, mission_id: str, *, limit: int = 1_000) -> tuple[MissionTransition, ...]:
+        with Session(self._engine) as session:
+            self._require_mission_row(session, mission_id)
+            rows = session.scalars(
+                select(MissionTransitionRow)
+                .where(MissionTransitionRow.mission_id == mission_id)
+                .order_by(MissionTransitionRow.created_at)
+                .limit(limit)
+            )
+            return tuple(MissionTransition.model_validate_json(row.payload) for row in rows)
+
     def mission(self, mission_id: str) -> MissionRecord:
         with Session(self._engine) as session:
             return MissionRecord.model_validate_json(
@@ -428,6 +662,18 @@ class SQLiteMissionRepository:
         if row is None:
             raise MishkanError(ErrorCode.MISSION, "Mission Brief revision does not exist")
         return MissionBrief.model_validate_json(row.payload)
+
+    @staticmethod
+    def _crew_row(session: Session, mission_id: str, version: int) -> MissionCrewRevision:
+        row = session.scalar(
+            select(MissionCrewRow).where(
+                MissionCrewRow.mission_id == mission_id,
+                MissionCrewRow.version == version,
+            )
+        )
+        if row is None:
+            raise MishkanError(ErrorCode.MISSION, "Mission Crew revision does not exist")
+        return MissionCrewRevision.model_validate_json(row.payload)
 
     @staticmethod
     def _update_mission_row(row: MissionRow, record: MissionRecord) -> None:

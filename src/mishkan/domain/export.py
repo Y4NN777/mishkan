@@ -103,6 +103,9 @@ from mishkan.missions.models import (
     MissionEnvironmentIntent,
     MissionOrigin,
     MissionRecord,
+    MissionResourceLimit,
+    MissionTaskAssignment,
+    MissionTransition,
 )
 from mishkan.organization.models import OrganizationRosterDefinition
 from mishkan.runtime import TaskReviewRejection
@@ -233,6 +236,9 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "mission-escalation-v1.schema.json": MissionEscalation,
     "mission-intervention-v1.schema.json": MissionIntervention,
     "mission-record-v1.schema.json": MissionRecord,
+    "mission-resource-limit-v1.schema.json": MissionResourceLimit,
+    "mission-task-assignment-v1.schema.json": MissionTaskAssignment,
+    "mission-transition-v1.schema.json": MissionTransition,
     "organization-roster-v1.schema.json": OrganizationRosterDefinition,
     "langsmith-feedback-import-request-v1.schema.json": LangSmithFeedbackImportRequest,
     "run-initialization-request-v1.schema.json": RunInitializationRequest,
