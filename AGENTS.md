@@ -26,8 +26,9 @@ and is promoted to `main` at `ef185b9`. D-043 authorized I06 on
 `feat/i06-organization-missions-communication`; its accepted scope is organization, missions,
 communication, governed intervention, and evidence-based professional evolution. D-044 accepts
 the completed I06 gate at `2d1f78c` after the final conformance review, local branch-coverage gate,
-and seven-job Linux/macOS Python 3.11–3.13 matrix passed. I06 may be promoted to `develop`; I07 is
-not authorized until that integration gate passes and the engineer explicitly starts it.
+and seven-job Linux/macOS Python 3.11–3.13 matrix passed. I06 is integrated into `develop` at
+`60e3ca7`, whose seven-job integration matrix also passed. `main` remains unchanged, and I07 is not
+authorized until the engineer explicitly starts it.
 The rejected
 universal workflow, mandatory outcome catalogue, capability-family matrix, static role/tool matrix,
 competing runtime, and private operational deny-list must not return.

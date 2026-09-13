@@ -1,10 +1,12 @@
 # I06 Organization, Missions, and Communication — Validation Evidence
 
-**Status:** Passed — D-044  
-**Observed:** 2026-09-13  
-**Branch:** `feat/i06-organization-missions-communication`  
-**Accepted checkpoint:** `2d1f78c`  
+**Status:** Passed and integrated — D-044
+**Observed:** 2026-09-13
+**Branch:** `feat/i06-organization-missions-communication`
+**Accepted checkpoint:** `2d1f78c`
 **GitHub Actions:** [run 34775116033](https://github.com/Y7-Labs/mishkan/actions/runs/34775116033)
+**Integrated checkpoint:** `60e3ca7` on `develop`
+**Integration Actions:** [run 34777116085](https://github.com/Y7-Labs/mishkan/actions/runs/34777116085)
 
 ## Gate result
 
@@ -95,6 +97,6 @@ deterministic authority for policy, effects, evidence, state, and acceptance.
 
 ## Decision
 
-D-044 accepts I06 at `2d1f78c`. I06 may be promoted from its topic branch to `develop`. I07 remains
-outside the active implementation scope until that promotion passes its integrated gate and the
-engineer explicitly authorizes the next increment.
+D-044 accepts I06 at `2d1f78c` and its integration into `develop` at `60e3ca7`. The integration
+matrix passed all seven jobs. I07 remains outside the active implementation scope until the
+engineer explicitly authorizes the next increment; `main` remains unchanged.
