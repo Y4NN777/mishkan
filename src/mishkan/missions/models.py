@@ -398,14 +398,17 @@ class MissionTaskAssignment(MissionModel):
 
 
 class MissionRunBinding(MissionModel):
-    schema_version: Literal["1.0"] = "1.0"
+    schema_version: Literal["1.0", "1.1"] = "1.1"
     binding_id: UUID = Field(default_factory=new_id)
     mission_id: UUID
     binding_key: str = Field(pattern=r"^[a-z][a-z0-9-]{1,127}$")
     binding_revision: int = Field(default=1, ge=1)
     mission_task_id: str = Field(min_length=1, max_length=256)
+    assignment_id: UUID | None = None
+    assignment_revision: int | None = Field(default=None, ge=1)
     run_id: str = Field(min_length=1, max_length=256)
     execution_task_id: str = Field(min_length=1, max_length=256)
+    plan_fingerprint: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     execution_context: PlanExecutionContext
     depends_on_binding_keys: tuple[str, ...] = ()
     authority_scope: tuple[str, ...] = Field(min_length=1)
@@ -423,6 +426,17 @@ class MissionRunBinding(MissionModel):
 
     @model_validator(mode="after")
     def result_and_acceptance_are_explicit(self) -> MissionRunBinding:
+        versioned_lineage = (
+            self.assignment_id,
+            self.assignment_revision,
+            self.plan_fingerprint,
+        )
+        if self.schema_version == "1.1" and any(item is None for item in versioned_lineage):
+            raise ValueError(
+                "mission run binding 1.1 requires assignment revision and plan lineage"
+            )
+        if self.schema_version == "1.0" and any(item is not None for item in versioned_lineage):
+            raise ValueError("mission run binding 1.0 cannot carry partial 1.1 lineage")
         if len(self.depends_on_binding_keys) != len(set(self.depends_on_binding_keys)):
             raise ValueError("mission run dependencies must be unique")
         if self.binding_key in self.depends_on_binding_keys:

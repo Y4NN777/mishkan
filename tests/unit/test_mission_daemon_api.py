@@ -3,6 +3,7 @@ from uuid import uuid4
 
 import httpx
 import pytest
+from support.capabilities import resolved_tool_lineage
 
 from mishkan.application import ApplicationCommand
 from mishkan.config.loader import ConfigLoader
@@ -409,6 +410,7 @@ async def test_daemon_claims_only_an_explicitly_bound_eligible_mission_task(
     token = TokenFile(paths.token_file).read()
     headers = {"Authorization": f"Bearer {token.token}"}
     organization = load_canonical_organization()
+    mission_identity = uuid4()
     runs = LocalRunRepository(paths.database)
     discovery = DiscoverySnapshot(
         binding=RepositoryBinding(
@@ -423,31 +425,41 @@ async def test_daemon_claims_only_an_explicitly_bound_eligible_mission_task(
         fingerprint="d" * 64,
     )
     run = runs.start_or_resume(discovery, "Execute the accepted mission task", "mission")
+    task_contract = PlanTask(
+        task_id="implement-recovery",
+        title="Implement recovery",
+        purpose="Produce the accepted mission result",
+        assigned_role="Backend_Service_Engineer",
+        tools=("file.read",),
+        evidence_paths=("README.md",),
+    )
+    registry, tool_bindings = resolved_tool_lineage(tmp_path, (task_contract,))
+    accepted_plan = AcceptedPlan(
+        objective="Execute the accepted mission task",
+        outcome_id="mission",
+        repository_revision=discovery.binding.base_revision,
+        tasks=(task_contract,),
+        fingerprint="e" * 64,
+        discovery_fingerprint=discovery.fingerprint,
+        registry=registry,
+        tool_bindings=tool_bindings,
+        organization_binding=PlanOrganizationBinding(
+            organization_id=organization.organization_id,
+            organization_version=organization.organization_version,
+            organization_fingerprint=organization.fingerprint,
+            mission_id=mission_identity,
+        ),
+    )
     runs.accept_plan(
         run.run_id,
-        AcceptedPlan(
-            objective="Execute the accepted mission task",
-            outcome_id="mission",
-            repository_revision=discovery.binding.base_revision,
-            tasks=(
-                PlanTask(
-                    task_id="implement-recovery",
-                    title="Implement recovery",
-                    purpose="Produce the accepted mission result",
-                    assigned_role="Backend_Service_Engineer",
-                    tools=("file.read",),
-                    evidence_paths=("README.md",),
-                ),
-            ),
-            fingerprint="e" * 64,
-            discovery_fingerprint=discovery.fingerprint,
-        ),
+        accepted_plan,
     )
     runs.start_run(run.run_id)
     missions = SQLiteMissionRepository(paths.database)
     missions.record_organization(organization, emit_event=False)
     mission = missions.create_mission(
         MissionRecord(
+            mission_id=mission_identity,
             origin=MissionOrigin(
                 kind=MissionOriginKind.CEO,
                 actor_id="CEO",
@@ -478,6 +490,22 @@ async def test_daemon_claims_only_an_explicitly_bound_eligible_mission_task(
         required_evidence=("test report",),
     )
     missions.record_assignment(assignment)
+    missions.record_run_binding(
+        MissionRunBinding(
+            mission_id=mission.mission_id,
+            binding_key="implement-recovery",
+            mission_task_id=assignment.task_id,
+            assignment_id=assignment.assignment_id,
+            assignment_revision=assignment.assignment_revision,
+            run_id=run.run_id,
+            execution_task_id=assignment.execution_task_id or assignment.task_id,
+            plan_fingerprint=accepted_plan.fingerprint,
+            execution_context=PlanExecutionContext.from_binding(discovery.binding),
+            authority_scope=assignment.authority_scope,
+            path_scopes=assignment.path_scopes,
+            recorded_by=token.principal_id,
+        )
+    )
     missions.transition(
         MissionTransition(
             mission_id=mission.mission_id,
@@ -1070,22 +1098,26 @@ async def test_mission_completion_requires_separated_accepted_task_chain(tmp_pat
             depends_on=("evaluate-change",),
         ),
     )
+    registry, tool_bindings = resolved_tool_lineage(tmp_path, task_contracts)
+    accepted_plan = AcceptedPlan(
+        objective="Deliver one governed mission",
+        outcome_id="mission-chain",
+        repository_revision=discovery.binding.base_revision,
+        tasks=task_contracts,
+        fingerprint="e" * 64,
+        discovery_fingerprint=discovery.fingerprint,
+        registry=registry,
+        tool_bindings=tool_bindings,
+        organization_binding=PlanOrganizationBinding(
+            organization_id=organization.organization_id,
+            organization_version=organization.organization_version,
+            organization_fingerprint=organization.fingerprint,
+            mission_id=mission_identity,
+        ),
+    )
     runs.accept_plan(
         run.run_id,
-        AcceptedPlan(
-            objective="Deliver one governed mission",
-            outcome_id="mission-chain",
-            repository_revision=discovery.binding.base_revision,
-            tasks=task_contracts,
-            fingerprint="e" * 64,
-            discovery_fingerprint=discovery.fingerprint,
-            organization_binding=PlanOrganizationBinding(
-                organization_id=organization.organization_id,
-                organization_version=organization.organization_version,
-                organization_fingerprint=organization.fingerprint,
-                mission_id=mission_identity,
-            ),
-        ),
+        accepted_plan,
     )
     runs.start_run(run.run_id)
     mission = MissionRecord(
@@ -1158,8 +1190,11 @@ async def test_mission_completion_requires_separated_accepted_task_chain(tmp_pat
             mission_id=mission.mission_id,
             binding_key=assignment.task_id,
             mission_task_id=assignment.task_id,
+            assignment_id=assignment.assignment_id,
+            assignment_revision=assignment.assignment_revision,
             run_id=run.run_id,
             execution_task_id=assignment.execution_task_id or assignment.task_id,
+            plan_fingerprint=accepted_plan.fingerprint,
             execution_context=PlanExecutionContext.from_binding(discovery.binding),
             depends_on_binding_keys=assignment.dependencies,
             authority_scope=assignment.authority_scope,

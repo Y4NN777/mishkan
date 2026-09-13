@@ -18,6 +18,8 @@ from mishkan.missions import (
     MissionOriginKind,
     MissionRecord,
     MissionResourceLimit,
+    MissionRunAcceptance,
+    MissionRunBinding,
     MissionRunReport,
     MissionState,
     MissionTaskAssignment,
@@ -26,7 +28,7 @@ from mishkan.missions import (
     MissionTaskEnvironmentReadiness,
     MissionTaskGateState,
 )
-from mishkan.planning import PlanTask
+from mishkan.planning import PlanExecutionContext, PlanTask
 from mishkan.runtime import RunState, TaskState
 
 
@@ -34,6 +36,7 @@ from mishkan.runtime import RunState, TaskState
 class _Missions:
     mission_record: MissionRecord
     assignments_: tuple[MissionTaskAssignment, ...]
+    bindings_: tuple[MissionRunBinding, ...] = ()
     reports_: tuple[MissionRunReport, ...] = ()
 
     def mission(self, mission_id: str) -> MissionRecord:
@@ -51,6 +54,11 @@ class _Missions:
         assert mission_id == str(self.mission_record.mission_id)
         assert limit == 1_000
         return self.reports_
+
+    def run_bindings(self, mission_id: str, *, limit: int = 1_000) -> tuple[MissionRunBinding, ...]:
+        assert mission_id == str(self.mission_record.mission_id)
+        assert limit == 1_000
+        return self.bindings_
 
 
 @dataclass
@@ -105,6 +113,45 @@ class _Runs:
 
     def task_count(self, run_id: str) -> int:
         return len(self.states[run_id])
+
+
+def _binding(
+    assignment: MissionTaskAssignment,
+    *,
+    acceptance: MissionRunAcceptance = MissionRunAcceptance.PENDING,
+) -> MissionRunBinding:
+    references: dict[str, object] = {}
+    if acceptance is MissionRunAcceptance.ACCEPTED:
+        references = {
+            "result_references": (
+                f"run-result:{assignment.execution_run_id}:{assignment.execution_task_id}",
+            ),
+            "acceptance_references": (
+                f"run-acceptance:{assignment.execution_run_id}:{assignment.execution_task_id}",
+            ),
+        }
+    return MissionRunBinding(
+        mission_id=assignment.mission_id,
+        binding_key=assignment.task_id,
+        mission_task_id=assignment.task_id,
+        assignment_id=assignment.assignment_id,
+        assignment_revision=assignment.assignment_revision,
+        run_id=assignment.execution_run_id or "missing-run",
+        execution_task_id=assignment.execution_task_id or "missing-task",
+        plan_fingerprint="a" * 64,
+        execution_context=PlanExecutionContext(
+            kind="repository",
+            context_id="b" * 64,
+            revision="c" * 40,
+            repository_id="b" * 64,
+            repository_revision="c" * 40,
+        ),
+        authority_scope=assignment.authority_scope,
+        path_scopes=assignment.path_scopes,
+        acceptance=acceptance,
+        recorded_by="Mission_Lead",
+        **references,
+    )
 
 
 def _fixture(
@@ -182,7 +229,7 @@ def _fixture(
     )
     conversations = _Conversations()
     service = MissionTaskClaimService(
-        _Missions(mission, (assignment,)),
+        _Missions(mission, (assignment,), (_binding(assignment),)),
         conversations,  # type: ignore[arg-type]
         _Readiness(readiness),  # type: ignore[arg-type]
         runs,
@@ -239,6 +286,29 @@ def test_claim_starts_exact_bound_run_task_after_all_gates_pass() -> None:
     assert claim.execution_task_id == "build-api"
     assert claim.attempt == 1
     assert runs.claims == [("run-1", "build-api")]
+
+
+def test_claim_refuses_assignment_without_its_durable_mission_run_binding() -> None:
+    service, mission, assignment, runs, _conversations = _fixture(environment_ready=True)
+    service._missions.bindings_ = ()  # type: ignore[attr-defined]
+
+    eligibility = service.inspect(str(mission.mission_id), assignment.task_id)
+
+    assert eligibility.state is MissionTaskGateState.BLOCKED
+    assert "no exact durable mission run binding" in " ".join(eligibility.blockers)
+    assert runs.claims == []
+
+
+def test_claim_refuses_binding_from_an_obsolete_assignment_revision() -> None:
+    service, mission, assignment, runs, _conversations = _fixture(environment_ready=True)
+    revised = assignment.model_copy(update={"assignment_id": uuid4(), "assignment_revision": 2})
+    service._missions.assignments_ = (revised,)  # type: ignore[attr-defined]
+
+    eligibility = service.inspect(str(mission.mission_id), revised.task_id)
+
+    assert eligibility.state is MissionTaskGateState.BLOCKED
+    assert "assignment revision" in " ".join(eligibility.blockers)
+    assert runs.claims == []
 
 
 def test_open_escalation_pauses_only_matching_task_scope() -> None:
@@ -316,7 +386,11 @@ def test_open_escalation_pauses_only_matching_task_scope() -> None:
         blocked_task_ids=(),
     )
     service = MissionTaskClaimService(
-        _Missions(mission, (assignment, independent_assignment)),
+        _Missions(
+            mission,
+            (assignment, independent_assignment),
+            (_binding(assignment), _binding(independent_assignment)),
+        ),
         conversations,  # type: ignore[arg-type]
         _Readiness(readiness),  # type: ignore[arg-type]
         runs,
@@ -391,7 +465,11 @@ def test_cross_run_mission_dependency_must_be_durably_accepted() -> None:
         blocked_task_ids=(),
     )
     service = MissionTaskClaimService(
-        _Missions(mission, (dependency, dependent)),
+        _Missions(
+            mission,
+            (dependency, dependent),
+            (_binding(dependency), _binding(dependent)),
+        ),
         conversations,  # type: ignore[arg-type]
         _Readiness(readiness),  # type: ignore[arg-type]
         runs,
@@ -419,7 +497,11 @@ def test_completion_requires_current_environment_and_durable_run_acceptance() ->
         blocked_task_ids=(),
     )
     service = MissionTaskClaimService(
-        _Missions(evaluating, (assignment,)),
+        _Missions(
+            evaluating,
+            (assignment,),
+            (_binding(assignment, acceptance=MissionRunAcceptance.ACCEPTED),),
+        ),
         conversations,  # type: ignore[arg-type]
         _Readiness(readiness),  # type: ignore[arg-type]
         runs,

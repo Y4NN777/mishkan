@@ -15,6 +15,8 @@ from mishkan.missions.assignment_graph import MissionAssignmentGraphValidator
 from mishkan.missions.models import (
     CrewAssignmentKind,
     MissionRecord,
+    MissionRunAcceptance,
+    MissionRunBinding,
     MissionRunReport,
     MissionState,
     MissionTaskAssignment,
@@ -95,6 +97,7 @@ class MissionTaskAcceptanceStatus(MissionExecutionModel):
     execution_task_id: str | None = None
     run_state: str | None = None
     run_task_state: str | None = None
+    mission_run_acceptance: MissionRunAcceptance | None = None
     environment_ready: bool
     accepted: bool
 
@@ -119,6 +122,10 @@ class MissionExecutionRepository(Protocol):
     def run_reports(
         self, mission_id: str, *, limit: int = 1_000
     ) -> tuple[MissionRunReport, ...]: ...
+
+    def run_bindings(
+        self, mission_id: str, *, limit: int = 1_000
+    ) -> tuple[MissionRunBinding, ...]: ...
 
 
 class MissionConversationLookup(Protocol):
@@ -183,6 +190,7 @@ class MissionTaskClaimService:
             )
         blockers: list[str] = []
         state = MissionTaskGateState.ELIGIBLE
+        run_binding = self._binding_for_assignment(mission_id, assignment)
         if mission.state is MissionState.CANCELLED:
             state = MissionTaskGateState.CANCELLED
             blockers.append("mission is cancelled")
@@ -227,6 +235,14 @@ class MissionTaskClaimService:
             state = MissionTaskGateState.BLOCKED
             blockers.append("task has no explicit durable run-task binding")
         else:
+            if run_binding is None:
+                state = MissionTaskGateState.BLOCKED
+                blockers.append(
+                    "task has no exact durable mission run binding for its assignment revision"
+                )
+            elif run_binding.acceptance is not MissionRunAcceptance.PENDING:
+                state = MissionTaskGateState.BLOCKED
+                blockers.append(f"mission run binding is already {run_binding.acceptance.value}")
             try:
                 contract = self._runs.task_contract(
                     assignment.execution_run_id,
@@ -341,6 +357,10 @@ class MissionTaskClaimService:
     def inspect_completion(self, mission_id: str) -> MissionCompletionReadiness:
         mission = self._missions.mission(mission_id)
         assignments = tuple(self._latest_assignments(mission_id).values())
+        run_bindings = {
+            assignment.task_id: self._binding_for_assignment(mission_id, assignment)
+            for assignment in assignments
+        }
         blockers: list[str] = []
         try:
             MissionAssignmentGraphValidator.validate(assignments)
@@ -364,9 +384,19 @@ class MissionTaskClaimService:
             environment_ready = readiness is not None and readiness.environment_ready
             run_state: str | None = None
             task_state: str | None = None
+            run_binding = run_bindings[assignment.task_id]
             if assignment.execution_run_id is None or assignment.execution_task_id is None:
                 blockers.append(f"task {assignment.task_id} has no durable run binding")
             else:
+                if run_binding is None:
+                    blockers.append(
+                        f"task {assignment.task_id} has no exact mission run binding for its "
+                        "assignment revision"
+                    )
+                elif run_binding.acceptance is not MissionRunAcceptance.ACCEPTED:
+                    blockers.append(
+                        f"task {assignment.task_id} mission run binding is not accepted"
+                    )
                 try:
                     states = self._runs.task_states(assignment.execution_run_id)
                     task_state = states.get(assignment.execution_task_id)
@@ -394,10 +424,15 @@ class MissionTaskClaimService:
                     execution_task_id=assignment.execution_task_id,
                     run_state=run_state,
                     run_task_state=task_state,
+                    mission_run_acceptance=(
+                        run_binding.acceptance if run_binding is not None else None
+                    ),
                     environment_ready=environment_ready,
                     accepted=(
                         task_state == TaskState.ACCEPTED.value
                         and run_state == RunState.COMPLETED.value
+                        and run_binding is not None
+                        and run_binding.acceptance is MissionRunAcceptance.ACCEPTED
                         and environment_ready
                         and assignment.crew_version == mission.current_crew_version
                     ),
@@ -430,6 +465,28 @@ class MissionTaskClaimService:
             if current is None or assignment.assignment_revision > current.assignment_revision:
                 latest[assignment.task_id] = assignment
         return latest
+
+    def _binding_for_assignment(
+        self,
+        mission_id: str,
+        assignment: MissionTaskAssignment,
+    ) -> MissionRunBinding | None:
+        latest: dict[str, MissionRunBinding] = {}
+        for binding in self._missions.run_bindings(mission_id, limit=1_000):
+            current = latest.get(binding.binding_key)
+            if current is None or binding.binding_revision > current.binding_revision:
+                latest[binding.binding_key] = binding
+        matches = tuple(
+            binding
+            for binding in latest.values()
+            if binding.schema_version == "1.1"
+            and binding.mission_task_id == assignment.task_id
+            and binding.assignment_id == assignment.assignment_id
+            and binding.assignment_revision == assignment.assignment_revision
+            and binding.run_id == assignment.execution_run_id
+            and binding.execution_task_id == assignment.execution_task_id
+        )
+        return matches[0] if len(matches) == 1 else None
 
     def _latest_scoped_intervention(
         self,

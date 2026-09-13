@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Literal
 
 import pytest
+from support.capabilities import resolved_tool_lineage
 
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.identity import new_id
@@ -677,6 +678,120 @@ def _repository_discovery(root: Path, name: str):  # type: ignore[no-untyped-def
     return RepositoryInspector().inspect(repository)
 
 
+def _run_binding_fixture(
+    tmp_path: Path,
+    *,
+    tool_id: str,
+    requires_independent_evaluation: bool = False,
+    omit_registry: bool = False,
+    corrupt_tool_version: bool = False,
+) -> tuple[SQLiteMissionRepository, MissionRunBinding]:
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    database, missions, mission = _setup(tmp_path)
+    brief = _brief(mission)
+    missions.record_brief(brief, expected_revision=mission.revision)
+    current = missions.mission(str(mission.mission_id))
+    crew = _crew(brief)
+    missions.record_crew(crew, expected_revision=current.revision)
+    discovery = _repository_discovery(tmp_path, "binding-repository")
+    runs = LocalRunRepository(database)
+    run = runs.start_or_resume(discovery, "Execute exact mission work", "mission-binding")
+    task = PlanTask(
+        task_id="execute-work",
+        title="Execute exact work",
+        purpose="Exercise the exact accepted mission authority.",
+        assigned_role="Backend_Service_Engineer",
+        tools=(tool_id,),
+        evidence_paths=("README.md",),
+    )
+    registry, tool_bindings = resolved_tool_lineage(discovery.binding.root, (task,))
+    if corrupt_tool_version:
+        tool_bindings = (tool_bindings[0].model_copy(update={"tool_version": "99.0.0"}),)
+    plan = AcceptedPlan(
+        objective="Execute exact mission work",
+        outcome_id="mission-binding",
+        repository_revision=discovery.binding.base_revision,
+        tasks=(task,),
+        fingerprint="a" * 64,
+        discovery_fingerprint=discovery.fingerprint,
+        registry=None if omit_registry else registry,
+        tool_bindings=() if omit_registry else tool_bindings,
+        organization_binding=PlanOrganizationBinding(
+            organization_id=mission.organization_id,
+            organization_version=mission.organization_version,
+            organization_fingerprint=load_canonical_organization().fingerprint,
+            mission_id=mission.mission_id,
+            mission_origin_id=mission.origin.origin_id,
+        ),
+    )
+    runs.accept_plan(run.run_id, plan)
+    assignment = MissionTaskAssignment(
+        mission_id=mission.mission_id,
+        crew_version=crew.version,
+        task_id="execute-work",
+        accountable_owner="Backend_Service_Engineer",
+        assignment_kind=CrewAssignmentKind.PRODUCTION,
+        expected_result="A bounded result produced with exact tool authority",
+        completion_criteria=("the result is reviewable",),
+        execution_run_id=run.run_id,
+        execution_task_id=task.task_id,
+        authority_scope=("repository:binding",),
+        exact_tools=task.tools,
+        path_scopes=("repository:binding",),
+        limits=(MissionResourceLimit(name="wall_time", value=120, unit="seconds"),),
+        required_evidence=("artifact:result",),
+        requires_independent_evaluation=requires_independent_evaluation,
+    )
+    missions.record_assignment(assignment)
+    return missions, MissionRunBinding(
+        mission_id=mission.mission_id,
+        binding_key="execute-work",
+        mission_task_id=assignment.task_id,
+        assignment_id=assignment.assignment_id,
+        assignment_revision=assignment.assignment_revision,
+        run_id=run.run_id,
+        execution_task_id=task.task_id,
+        plan_fingerprint=plan.fingerprint,
+        execution_context=PlanExecutionContext.from_binding(discovery.binding),
+        authority_scope=assignment.authority_scope,
+        path_scopes=assignment.path_scopes,
+        recorded_by="Mission_Lead",
+    )
+
+
+def test_mission_run_binding_requires_immutable_tool_identity_and_version(
+    tmp_path: Path,
+) -> None:
+    missions, missing_registry = _run_binding_fixture(
+        tmp_path / "missing", tool_id="file.read", omit_registry=True
+    )
+    with pytest.raises(MishkanError, match="registry snapshot") as absent:
+        missions.record_run_binding(missing_registry)
+    assert absent.value.envelope.code is ErrorCode.PLAN
+
+    missions, drifted_version = _run_binding_fixture(
+        tmp_path / "drift", tool_id="file.read", corrupt_tool_version=True
+    )
+    with pytest.raises(MishkanError, match="identity or version") as drift:
+        missions.record_run_binding(drifted_version)
+    assert drift.value.envelope.code is ErrorCode.PLAN
+
+
+def test_workspace_changing_production_requires_independent_evaluation(
+    tmp_path: Path,
+) -> None:
+    missions, binding = _run_binding_fixture(
+        tmp_path,
+        tool_id="core.process.exec",
+        requires_independent_evaluation=False,
+    )
+
+    with pytest.raises(MishkanError, match="independent downstream evaluation") as conflict:
+        missions.record_run_binding(binding)
+
+    assert conflict.value.envelope.code is ErrorCode.ROLE_CONFLICT
+
+
 def test_multi_repository_mission_binds_exact_runs_dependencies_and_acceptance(
     tmp_path: Path,
 ) -> None:
@@ -707,6 +822,7 @@ def test_multi_repository_mission_binds_exact_runs_dependencies_and_acceptance(
             tools=("repository.read_file",),
             evidence_paths=("README.md",),
         )
+        registry, tool_bindings = resolved_tool_lineage(discovery.binding.root, (task,))
         plan = AcceptedPlan(
             objective=f"Deliver mission work in {repository_name}",
             outcome_id=f"mission-{repository_name}",
@@ -714,6 +830,8 @@ def test_multi_repository_mission_binds_exact_runs_dependencies_and_acceptance(
             tasks=(task,),
             fingerprint=(str(index) * 64),
             discovery_fingerprint=discovery.fingerprint,
+            registry=registry,
+            tool_bindings=tool_bindings,
             organization_binding=PlanOrganizationBinding(
                 organization_id=organization.organization_id,
                 organization_version=organization.organization_version,
@@ -747,8 +865,11 @@ def test_multi_repository_mission_binds_exact_runs_dependencies_and_acceptance(
             mission_id=mission.mission_id,
             binding_key=binding_key,
             mission_task_id=mission_task_id,
+            assignment_id=assignment.assignment_id,
+            assignment_revision=assignment.assignment_revision,
             run_id=run.run_id,
             execution_task_id=execution_task_id,
+            plan_fingerprint=plan.fingerprint,
             execution_context=PlanExecutionContext.from_binding(discovery.binding),
             depends_on_binding_keys=(("repo-1",) if index == 2 else ()),
             authority_scope=scope,

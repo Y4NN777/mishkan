@@ -53,6 +53,7 @@ from mishkan.persistence.sqlite import (
     create_local_engine,
 )
 from mishkan.planning.models import AcceptedPlan, PlanExecutionContext
+from mishkan.tools.models import EffectClass
 
 RecordT = TypeVar("RecordT", bound=BaseModel)
 
@@ -833,10 +834,14 @@ class SQLiteMissionRepository:
                 )
             assignment = MissionTaskAssignment.model_validate_json(assignment_row.payload)
             if (
-                assignment.execution_run_id != binding.run_id
+                binding.schema_version != "1.1"
+                or binding.assignment_id != assignment.assignment_id
+                or binding.assignment_revision != assignment.assignment_revision
+                or assignment.execution_run_id != binding.run_id
                 or assignment.execution_task_id != binding.execution_task_id
                 or assignment.accountable_owner != plan_task.assigned_role
                 or assignment.exact_tools != plan_task.tools
+                or binding.plan_fingerprint != accepted_plan.fingerprint
                 or assignment.authority_scope != binding.authority_scope
                 or assignment.path_scopes != binding.path_scopes
             ):
@@ -844,6 +849,7 @@ class SQLiteMissionRepository:
                     ErrorCode.AUTHORITY_NOT_GRANTED,
                     "mission run binding exceeds or contradicts its accepted task assignment",
                 )
+            self._require_exact_tool_resolution(accepted_plan, plan_task.task_id, assignment)
             prior = session.scalar(
                 select(MissionRunBindingRow)
                 .where(
@@ -909,7 +915,10 @@ class SQLiteMissionRepository:
                     "binding_key": binding.binding_key,
                     "binding_revision": binding.binding_revision,
                     "mission_task_id": binding.mission_task_id,
+                    "assignment_id": str(binding.assignment_id),
+                    "assignment_revision": binding.assignment_revision,
                     "run_id": binding.run_id,
+                    "plan_fingerprint": binding.plan_fingerprint,
                     "execution_context": binding.execution_context.model_dump(mode="json"),
                     "acceptance": binding.acceptance.value,
                 },
@@ -1335,11 +1344,15 @@ class SQLiteMissionRepository:
         current: MissionRunBinding,
     ) -> None:
         preserved = (
+            "schema_version",
             "mission_id",
             "binding_key",
             "mission_task_id",
+            "assignment_id",
+            "assignment_revision",
             "run_id",
             "execution_task_id",
+            "plan_fingerprint",
             "execution_context",
             "depends_on_binding_keys",
             "authority_scope",
@@ -1359,6 +1372,59 @@ class SQLiteMissionRepository:
             raise MishkanError(
                 ErrorCode.REVISION_MISMATCH,
                 "mission run binding revision must settle its pending relationship",
+            )
+
+    @staticmethod
+    def _require_exact_tool_resolution(
+        plan: AcceptedPlan,
+        execution_task_id: str,
+        assignment: MissionTaskAssignment,
+    ) -> None:
+        if plan.registry is None:
+            raise MishkanError(
+                ErrorCode.PLAN,
+                "mission execution requires an immutable tool registry snapshot",
+            )
+        bindings = tuple(
+            item
+            for item in plan.tool_bindings
+            if item.task_id == execution_task_id and item.role == assignment.accountable_owner
+        )
+        bound_ids = tuple(item.tool_id for item in bindings)
+        if len(bound_ids) != len(set(bound_ids)) or set(bound_ids) != set(assignment.exact_tools):
+            raise MishkanError(
+                ErrorCode.AUTHORITY_NOT_GRANTED,
+                "mission task does not have one exact resolved binding for every assigned tool",
+            )
+        for item in bindings:
+            try:
+                contract = plan.registry.require(item.tool_id)
+            except ValueError as exc:
+                raise MishkanError(
+                    ErrorCode.PLAN,
+                    "mission tool binding is absent from its immutable registry snapshot",
+                ) from exc
+            if (
+                item.tool_version != contract.version
+                or item.contract_fingerprint != contract.provenance_fingerprint
+                or item.registry_fingerprint != plan.registry.fingerprint
+            ):
+                raise MishkanError(
+                    ErrorCode.PLAN,
+                    "mission tool identity or version differs from its immutable registry snapshot",
+                )
+        can_change_workspace = any(
+            plan.registry.require(tool_id).effect_class is not EffectClass.READ
+            for tool_id in assignment.exact_tools
+        )
+        if (
+            assignment.assignment_kind is CrewAssignmentKind.PRODUCTION
+            and can_change_workspace
+            and not assignment.requires_independent_evaluation
+        ):
+            raise MishkanError(
+                ErrorCode.ROLE_CONFLICT,
+                "workspace-changing production requires independent downstream evaluation",
             )
 
     @staticmethod
