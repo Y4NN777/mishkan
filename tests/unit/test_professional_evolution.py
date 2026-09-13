@@ -233,6 +233,60 @@ def test_competence_scope_expires_without_erasing_promotion_history(
     assert repository.promotion_history(evidence.identity_id) == (decision,)
 
 
+def test_rejected_broader_promotion_does_not_revoke_prior_accepted_scope(
+    tmp_path: Path,
+) -> None:
+    repository = _repositories(tmp_path)
+    evidence = repository.record_evidence(
+        _evidence(outcome=ProfessionalEvidenceOutcome.DEMONSTRATED)
+    )
+    accepted_request = ProfessionalPromotionRequest(
+        identity_id=evidence.identity_id,
+        kind=evidence.kind,
+        subject=evidence.subject,
+        source_scope=evidence.scope,
+        target_scope=_scope(LearningScopeLevel.PROJECT, "project:api"),
+        supporting_evidence_ids=(evidence.evidence_id,),
+        requested_by="PM",
+        rationale="Accept the demonstrated project scope",
+    )
+    accepted = repository.decide_promotion(
+        accepted_request,
+        disposition=ProfessionalPromotionDisposition.ACCEPTED,
+        decided_by="CTO",
+        policy_fingerprint="d" * 64,
+        reason="The project scope is independently supported",
+    )
+    rejected_request = ProfessionalPromotionRequest(
+        identity_id=evidence.identity_id,
+        kind=evidence.kind,
+        subject=evidence.subject,
+        source_scope=evidence.scope,
+        target_scope=_scope(LearningScopeLevel.ORGANIZATION, "organization:mishkan"),
+        supporting_evidence_ids=(evidence.evidence_id,),
+        requested_by="PM",
+        rationale="Ask whether one project result supports organization-wide scope",
+    )
+    rejected = repository.decide_promotion(
+        rejected_request,
+        disposition=ProfessionalPromotionDisposition.REJECTED,
+        decided_by="CTO",
+        policy_fingerprint="e" * 64,
+        reason="One project does not prove organization-wide mastery",
+    )
+
+    state = repository.competence_state(
+        evidence.identity_id,
+        kind=evidence.kind,
+        subject=evidence.subject,
+    )
+
+    assert state.effective_scope == accepted.request.target_scope
+    assert state.revision == rejected.revision
+    assert state.latest_decision_id == rejected.decision_id
+    assert repository.promotion_history(evidence.identity_id) == (accepted, rejected)
+
+
 def test_promotion_scope_must_expand_in_explicit_order() -> None:
     with pytest.raises(ValidationError, match="broader"):
         ProfessionalPromotionRequest(

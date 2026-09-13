@@ -233,9 +233,26 @@ class SQLiteProfessionalEvolutionRepository:
                 .order_by(ProfessionalPromotionRow.revision.desc())
                 .limit(1)
             )
-            decision = (
+            latest_decision = (
                 ProfessionalPromotionDecision.model_validate_json(latest.payload)
                 if latest is not None
+                else None
+            )
+            latest_accepted = session.scalar(
+                select(ProfessionalPromotionRow)
+                .where(
+                    ProfessionalPromotionRow.identity_id == identity_id,
+                    ProfessionalPromotionRow.kind == kind.value,
+                    ProfessionalPromotionRow.subject == subject,
+                    ProfessionalPromotionRow.disposition
+                    == ProfessionalPromotionDisposition.ACCEPTED.value,
+                )
+                .order_by(ProfessionalPromotionRow.revision.desc())
+                .limit(1)
+            )
+            effective_decision = (
+                ProfessionalPromotionDecision.model_validate_json(latest_accepted.payload)
+                if latest_accepted is not None
                 else None
             )
             freshness_evaluated_at = utc_now()
@@ -252,22 +269,22 @@ class SQLiteProfessionalEvolutionRepository:
                 for item in demonstrated
                 if item.fresh_until <= freshness_evaluated_at
             )
-            decision_has_fresh_support = decision is not None and bool(
-                set(decision.supporting_evidence_ids).intersection(fresh_support)
+            decision_has_fresh_support = effective_decision is not None and bool(
+                set(effective_decision.supporting_evidence_ids).intersection(fresh_support)
             )
             return ProfessionalCompetenceState(
                 identity_id=identity_id,
                 kind=kind,
                 subject=subject,
                 effective_scope=(
-                    decision.request.target_scope
-                    if decision is not None
-                    and decision.disposition is ProfessionalPromotionDisposition.ACCEPTED
-                    and decision_has_fresh_support
+                    effective_decision.request.target_scope
+                    if effective_decision is not None and decision_has_fresh_support
                     else None
                 ),
-                revision=decision.revision if decision is not None else 0,
-                latest_decision_id=decision.decision_id if decision is not None else None,
+                revision=latest_decision.revision if latest_decision is not None else 0,
+                latest_decision_id=(
+                    latest_decision.decision_id if latest_decision is not None else None
+                ),
                 freshness_evaluated_at=freshness_evaluated_at,
                 supporting_evidence_ids=tuple(item.evidence_id for item in demonstrated),
                 fresh_supporting_evidence_ids=fresh_support,
