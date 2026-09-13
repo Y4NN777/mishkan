@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 from support.capabilities import plan_validator
 
 from mishkan.domain.errors import ErrorCode, MishkanError
-from mishkan.organization import load_initialization_definitions
+from mishkan.organization import load_canonical_organization, load_initialization_definitions
 from mishkan.planning import PlanCandidate, PlanTask
 from mishkan.repository import RepositoryInspector
 
@@ -68,15 +69,24 @@ def test_plan_acceptance_binds_discovery_and_authority(tmp_path: Path) -> None:
     discovery = RepositoryInspector().inspect(_repository(tmp_path))
     organization, outcome = load_initialization_definitions()
 
+    mission_id = uuid4()
     accepted = plan_validator(discovery.binding.root).accept(
         _candidate(discovery.binding.base_revision),
         discovery,
         organization,
         outcome,
+        mission_id=mission_id,
     )
 
     assert accepted.discovery_fingerprint == discovery.fingerprint
     assert len(accepted.fingerprint) == 64
+    roster = load_canonical_organization()
+    assert len(roster.identities) == 59
+    assert accepted.organization_binding is not None
+    assert accepted.organization_binding.organization_id == roster.organization_id
+    assert accepted.organization_binding.organization_version == roster.organization_version
+    assert accepted.organization_binding.organization_fingerprint == roster.fingerprint
+    assert accepted.organization_binding.mission_id == mission_id
 
 
 @pytest.mark.parametrize(

@@ -144,6 +144,7 @@ from mishkan.planning.models import (
     InitializationResult,
     PlanCandidate,
     PlanExecutionContext,
+    PlanOrganizationBinding,
 )
 from mishkan.repository.models import (
     DiscoverySnapshot,
@@ -303,6 +304,7 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "plan-accepted-v1.schema.json": AcceptedPlan,
     "plan-candidate-v1.schema.json": PlanCandidate,
     "plan-execution-context-v1.schema.json": PlanExecutionContext,
+    "plan-organization-binding-v1.schema.json": PlanOrganizationBinding,
     "planning-result-v1.schema.json": InitializationResult,
     "project-discovery-v1.schema.json": DiscoverySnapshot,
     "prospective-workspace-binding-v1.schema.json": ProspectiveWorkspaceBinding,

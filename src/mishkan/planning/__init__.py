@@ -5,6 +5,7 @@ from mishkan.planning.models import (
     PlanCandidate,
     PlanExecutionContext,
     PlannedToolCall,
+    PlanOrganizationBinding,
     PlanTask,
 )
 from mishkan.planning.validator import PlanValidator
@@ -13,6 +14,7 @@ __all__ = [
     "AcceptedPlan",
     "PlanCandidate",
     "PlanExecutionContext",
+    "PlanOrganizationBinding",
     "PlanTask",
     "PlanValidator",
     "PlannedToolCall",

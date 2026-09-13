@@ -1,6 +1,7 @@
 """Structured planning, execution, and review envelopes."""
 
 from typing import Any, Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -64,6 +65,13 @@ class PlanExecutionContext(PlanModel):
             prospective_workspace_id=binding.workspace_id,
             discovery_revision=binding.discovery_revision,
         )
+
+
+class PlanOrganizationBinding(PlanModel):
+    organization_id: str = Field(min_length=1, max_length=128)
+    organization_version: str = Field(min_length=1, max_length=64)
+    organization_fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
+    mission_id: UUID | None = None
 
 
 class PlannedToolCall(PlanModel):
@@ -147,6 +155,7 @@ class AcceptedPlan(PlanCandidate):
     policy_fingerprint: str | None = None
     approvals: tuple[ApprovalEvidence, ...] = ()
     authorizations: tuple[AuthorizationDecision, ...] = ()
+    organization_binding: PlanOrganizationBinding | None = None
 
     @model_validator(mode="after")
     def governed_plan_has_complete_lineage(self) -> "AcceptedPlan":

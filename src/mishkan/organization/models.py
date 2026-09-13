@@ -1,5 +1,7 @@
 """Versioned organization, professional-profile, and initialization definitions."""
 
+import hashlib
+import json
 from enum import StrEnum
 from typing import Literal
 
@@ -123,3 +125,13 @@ class OrganizationRosterDefinition(DefinitionModel):
             if set(pool.members) != declared_memberships[pool.pool_id]:
                 raise ValueError(f"pool membership mismatch: {pool.pool_id}")
         return self
+
+    @property
+    def fingerprint(self) -> str:
+        return hashlib.sha256(
+            json.dumps(
+                self.model_dump(mode="json"),
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest()
