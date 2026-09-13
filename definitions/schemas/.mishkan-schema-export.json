@@ -82,6 +82,7 @@
     "mission-environment-plan-acceptance-v1.schema.json",
     "mission-environment-plan-v1.schema.json",
     "mission-environment-planning-request-v1.schema.json",
+    "mission-environment-readiness-v1.schema.json",
     "mission-escalation-v1.schema.json",
     "mission-executive-confirmation-v1.schema.json",
     "mission-intervention-v1.schema.json",

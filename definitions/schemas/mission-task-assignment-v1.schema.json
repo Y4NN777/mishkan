@@ -91,6 +91,14 @@
       "title": "Dependencies",
       "type": "array"
     },
+    "environment_context_ids": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Environment Context Ids",
+      "type": "array"
+    },
     "exact_tools": {
       "items": {
         "type": "string"

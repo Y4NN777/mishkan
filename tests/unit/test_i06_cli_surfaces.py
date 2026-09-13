@@ -84,6 +84,10 @@ class _Client:
         assert (mission_id, version) == ("mission/id", 2)
         return _Payload("environment-plan")
 
+    def mission_environment_readiness(self, mission_id: str) -> _Payload:
+        assert mission_id == "mission/id"
+        return _Payload("environment-readiness")
+
     def conversations(
         self,
         *,
@@ -175,6 +179,10 @@ def client(monkeypatch: pytest.MonkeyPatch) -> _Client:
         (
             ("mission", "environment-plan", "mission/id", "--version", "2"),
             {"kind": "environment-plan"},
+        ),
+        (
+            ("mission", "readiness", "mission/id"),
+            {"kind": "environment-readiness"},
         ),
         (
             ("conversation", "list", "--mission", "mission/id", "--limit", "6"),

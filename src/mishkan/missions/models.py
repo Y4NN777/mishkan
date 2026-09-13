@@ -277,6 +277,7 @@ class MissionTaskAssignment(MissionModel):
     expected_result: str = Field(min_length=3, max_length=8_192)
     completion_criteria: tuple[str, ...] = Field(min_length=1)
     dependencies: tuple[str, ...] = ()
+    environment_context_ids: tuple[str, ...] = ()
     authority_scope: tuple[str, ...] = Field(min_length=1)
     exact_tools: tuple[str, ...]
     path_scopes: tuple[str, ...]
@@ -297,6 +298,8 @@ class MissionTaskAssignment(MissionModel):
             raise ValueError("task contributors must be unique")
         if len(self.dependencies) != len(set(self.dependencies)):
             raise ValueError("task dependencies must be unique")
+        if len(self.environment_context_ids) != len(set(self.environment_context_ids)):
+            raise ValueError("task environment context dependencies must be unique")
         return self
 
 

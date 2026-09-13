@@ -331,6 +331,14 @@ def show_mission_environment_plan(
     _emit(plan.model_dump(mode="json"), as_json=_state(ctx).json_output)
 
 
+@mission_app.command("readiness")
+def show_mission_readiness(ctx: typer.Context, mission_id: str) -> None:
+    """Show which task environment dependencies are proved ready or blocked."""
+    with _daemon_client(ctx) as client:
+        readiness = client.mission_environment_readiness(mission_id)
+    _emit(readiness.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
 @mission_app.command("environment-propose")
 def propose_mission_environment(
     ctx: typer.Context,

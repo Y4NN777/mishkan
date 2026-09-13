@@ -534,6 +534,7 @@ async def test_crewai_environment_plan_requires_explicit_acceptance_and_exact_re
             "assignment_id": uuid4(),
             "task_id": "build-project",
             "expected_result": "A verified project build",
+            "environment_context_ids": ("repository:api",),
         }
     )
     observation_request = EnvironmentObservationRequest(
@@ -685,6 +686,9 @@ async def test_crewai_environment_plan_requires_explicit_acceptance_and_exact_re
         durable_plan_response = await client.get(
             f"/v1/missions/{mission.mission_id}/environment-plan", headers=headers
         )
+        readiness_response = await client.get(
+            f"/v1/missions/{mission.mission_id}/readiness", headers=headers
+        )
 
     assert proposed_response.json()["status"] == "accepted"
     assert before_acceptance.json()["revision"] == 3
@@ -697,6 +701,10 @@ async def test_crewai_environment_plan_requires_explicit_acceptance_and_exact_re
     assert resolved_response.json()["payload"]["state"] == EnvironmentBindingState.UNRESOLVED
     assert resolved_response.json()["payload"]["request"]["requested_outcome"] == "unresolved"
     assert duplicate_resolution.json()["payload"] == resolved_response.json()["payload"]
+    readiness = readiness_response.json()
+    assert readiness["ready_task_ids"] == ["plan-environment"]
+    assert readiness["blocked_task_ids"] == ["build-project"]
+    assert readiness["tasks"][0]["state"] == "unresolved"
 
 
 @pytest.mark.anyio

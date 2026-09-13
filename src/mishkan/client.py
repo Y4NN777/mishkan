@@ -78,6 +78,7 @@ from mishkan.execution import CursorRead, ExecutionSession
 from mishkan.missions import (
     MissionBrief,
     MissionCrewRevision,
+    MissionEnvironmentReadiness,
     MissionRecord,
     MissionTaskAssignment,
     MissionTemplateDefinition,
@@ -362,6 +363,15 @@ class Mishkan:
         )
         response.raise_for_status()
         return MissionEnvironmentPlanAcceptance.model_validate(response.json())
+
+    def mission_environment_readiness(self, mission_id: str) -> MissionEnvironmentReadiness:
+        identity = quote(mission_id, safe="")
+        response = self._client.get(
+            f"/v1/missions/{identity}/readiness",
+            headers=self._headers(),
+        )
+        response.raise_for_status()
+        return MissionEnvironmentReadiness.model_validate(response.json())
 
     def record_mission_brief(
         self,

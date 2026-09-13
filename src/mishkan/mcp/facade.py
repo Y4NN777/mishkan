@@ -13,7 +13,11 @@ from mishkan.context import ContextualRecommendationService
 from mishkan.conversations import SQLiteConversationRepository
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.events import EventPage
-from mishkan.missions import MissionTemplateService, SQLiteMissionRepository
+from mishkan.missions import (
+    MissionEnvironmentReadinessService,
+    MissionTemplateService,
+    SQLiteMissionRepository,
+)
 from mishkan.organization import (
     OrganizationRosterDefinition,
     ProfessionalEvidenceKind,
@@ -105,6 +109,7 @@ class McpFacadeRouter:
         professional_evolution: SQLiteProfessionalEvolutionRepository | None = None,
         mission_templates: MissionTemplateService | None = None,
         advisory: ContextualRecommendationService | None = None,
+        readiness: MissionEnvironmentReadinessService | None = None,
     ) -> None:
         profile = config.exposure_profiles[config.facade.exposure_profile]
         self.operations = profile.operations
@@ -119,6 +124,7 @@ class McpFacadeRouter:
         self._professional_evolution = professional_evolution
         self._mission_templates = mission_templates
         self._advisory = advisory
+        self._readiness = readiness
 
     async def invoke(
         self,
@@ -276,11 +282,13 @@ class McpFacadeRouter:
             if mission.current_environment_plan_version is not None
             else None
         )
+        readiness = self._require_dependency(self._readiness, "mission readiness")
         return {
             "mission": mission.model_dump(mode="json"),
             "brief": brief,
             "crew": crew,
             "environment_plan": environment_plan,
+            "readiness": readiness.inspect(query.mission_id).model_dump(mode="json"),
             "assignments": [
                 item.model_dump(mode="json")
                 for item in missions.assignments(query.mission_id, limit=query.limit)

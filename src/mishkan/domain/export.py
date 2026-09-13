@@ -119,6 +119,7 @@ from mishkan.missions.models import (
     MissionTaskAssignment,
     MissionTransition,
 )
+from mishkan.missions.readiness import MissionEnvironmentReadiness
 from mishkan.missions.templates import MissionTemplateCatalogue, MissionTemplateDefinition
 from mishkan.organization.evolution import (
     ProfessionalCompetenceState,
@@ -257,6 +258,7 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "mission-environment-plan-v1.schema.json": MissionEnvironmentPlan,
     "mission-environment-plan-acceptance-v1.schema.json": MissionEnvironmentPlanAcceptance,
     "mission-environment-planning-request-v1.schema.json": MissionEnvironmentPlanningRequest,
+    "mission-environment-readiness-v1.schema.json": MissionEnvironmentReadiness,
     "mission-executive-confirmation-v1.schema.json": ExecutiveConfirmation,
     "mission-origin-v1.schema.json": MissionOrigin,
     "mission-decision-v1.schema.json": MissionDecision,

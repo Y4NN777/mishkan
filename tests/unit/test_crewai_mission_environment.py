@@ -141,6 +141,7 @@ def _mission_contracts() -> tuple[
             path_scopes=("repository:api",),
             limits=(MissionResourceLimit(name="wall_time", value=600, unit="seconds"),),
             required_evidence=("artifact:result",),
+            environment_context_ids=(("repository:api",) if task_id == "build-project" else ()),
         )
         for task_id, owner, expected in (
             (

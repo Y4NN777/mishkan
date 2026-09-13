@@ -291,6 +291,17 @@ class MissionEnvironmentPlanValidator:
                 "environment planning task is not assigned to the declared accountable owner",
             )
         observed = {item.observation_id: item for item in observations}
+        declared_by_context: dict[str, set[str]] = {}
+        for assignment in latest.values():
+            for context_id in assignment.environment_context_ids:
+                declared_by_context.setdefault(context_id, set()).add(assignment.task_id)
+        requested_context_ids = {item.context_id for item in request.contexts}
+        if undeclared_contexts := set(declared_by_context) - requested_context_ids:
+            raise MishkanError(
+                ErrorCode.PLAN,
+                "environment planning omits declared task contexts",
+                details={"context_ids": sorted(undeclared_contexts)},
+            )
         for context in request.contexts:
             unknown_tasks = set(context.affected_task_ids) - set(latest)
             if unknown_tasks:
@@ -298,6 +309,17 @@ class MissionEnvironmentPlanValidator:
                     ErrorCode.PLAN,
                     "environment context references unassigned mission tasks",
                     details={"unknown_task_ids": sorted(unknown_tasks)},
+                )
+            declared_tasks = declared_by_context.get(context.context_id, set())
+            if set(context.affected_task_ids) != declared_tasks:
+                raise MishkanError(
+                    ErrorCode.PLAN,
+                    "environment context task scope differs from assignment dependencies",
+                    details={
+                        "context_id": context.context_id,
+                        "declared_task_ids": sorted(declared_tasks),
+                        "received_task_ids": sorted(context.affected_task_ids),
+                    },
                 )
             observation = observed.get(context.observation_id)
             if observation is None:

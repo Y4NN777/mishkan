@@ -182,6 +182,30 @@ class SQLiteEnvironmentRepository:
                 }
             )
 
+    def binding_for_request(self, request_id: str) -> EnvironmentBinding | None:
+        with Session(self._engine) as session:
+            row = session.scalar(
+                select(EnvironmentBindingRow).where(EnvironmentBindingRow.request_id == request_id)
+            )
+            if row is None:
+                return None
+        return self.binding(row.id)
+
+    def verifications_for_binding(
+        self,
+        binding_id: str,
+        *,
+        limit: int = 1_000,
+    ) -> tuple[EnvironmentVerification, ...]:
+        with Session(self._engine) as session:
+            rows = session.scalars(
+                select(EnvironmentVerificationRow)
+                .where(EnvironmentVerificationRow.binding_id == binding_id)
+                .order_by(EnvironmentVerificationRow.recorded_at)
+                .limit(limit)
+            )
+            return tuple(EnvironmentVerification.model_validate_json(row.payload) for row in rows)
+
     def invalidate(self, record: EnvironmentInvalidation) -> EnvironmentInvalidation:
         payload = self._json(record)
         with Session(self._engine) as session, session.begin():

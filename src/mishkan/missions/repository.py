@@ -393,6 +393,15 @@ class SQLiteMissionRepository:
                     "task assignment does not reference the current Mission Crew",
                 )
             crew = self._crew_row(session, str(assignment.mission_id), assignment.crew_version)
+            brief = self._brief_row(session, str(assignment.mission_id), crew.brief_version)
+            if assignment.environment_context_ids and not (
+                brief.environment_intent.environment_dependent
+            ):
+                raise MishkanError(
+                    ErrorCode.PLAN,
+                    "task cannot declare environment contexts when the Brief has no "
+                    "environment-dependent work",
+                )
             members = {member.identity_id for member in crew.members}
             assigned = {assignment.accountable_owner, *assignment.contributors}
             unknown = assigned - members

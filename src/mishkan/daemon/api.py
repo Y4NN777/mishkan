@@ -121,6 +121,8 @@ from mishkan.mcp.sdk import McpStdioCommandBuilder
 from mishkan.missions import (
     MissionBrief,
     MissionCrewRevision,
+    MissionEnvironmentReadiness,
+    MissionEnvironmentReadinessService,
     MissionRecord,
     MissionTemplateLoader,
     MissionTemplateService,
@@ -581,6 +583,10 @@ def create_app(
     mission_templates = MissionTemplateService(
         MissionTemplateLoader().load(config.mission_template_sources, paths.workspace)
     )
+    mission_readiness = MissionEnvironmentReadinessService(
+        mission_repository,
+        environment_repository,
+    )
     telemetry_tasks: set[asyncio.Task[object]] = set()
 
     def project_telemetry(
@@ -962,6 +968,7 @@ def create_app(
             professional_evolution=professional_evolution,
             mission_templates=mission_templates,
             advisory=community_recommendations,
+            readiness=mission_readiness,
         )
         mcp_http = McpHttpFacade(
             router,
@@ -1149,6 +1156,16 @@ def create_app(
             version,
         )
 
+    @app.get(
+        "/v1/missions/{mission_id}/readiness",
+        response_model=MissionEnvironmentReadiness,
+    )
+    async def mission_environment_readiness(
+        mission_id: UUID,
+        _principal: TokenRecord = authenticated,
+    ) -> MissionEnvironmentReadiness:
+        return await _thread_call(mission_readiness.inspect, str(mission_id))
+
     @app.get("/v1/missions/{mission_id}/assignments", response_model=None)
     async def mission_assignments(
         mission_id: UUID,
@@ -1260,6 +1277,9 @@ def create_app(
             "crew": crew.model_dump(mode="json") if crew is not None else None,
             "environment_plan": (
                 environment_plan.model_dump(mode="json") if environment_plan is not None else None
+            ),
+            "readiness": (await _thread_call(mission_readiness.inspect, identity)).model_dump(
+                mode="json"
             ),
             "assignments": [item.model_dump(mode="json") for item in assignments],
             "transitions": [item.model_dump(mode="json") for item in transitions],
