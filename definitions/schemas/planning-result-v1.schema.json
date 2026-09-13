@@ -1,0 +1,165 @@
+{
+  "$defs": {
+    "PlanExecutionContext": {
+      "additionalProperties": false,
+      "properties": {
+        "context_id": {
+          "maxLength": 256,
+          "minLength": 12,
+          "title": "Context Id",
+          "type": "string"
+        },
+        "discovery_revision": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 7,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Discovery Revision"
+        },
+        "kind": {
+          "enum": [
+            "repository",
+            "prospective_workspace"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "prospective_workspace_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 12,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prospective Workspace Id"
+        },
+        "repository_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 12,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repository Id"
+        },
+        "repository_revision": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 7,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repository Revision"
+        },
+        "revision": {
+          "maxLength": 128,
+          "minLength": 7,
+          "title": "Revision",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "context_id",
+        "revision"
+      ],
+      "title": "PlanExecutionContext",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "cited_paths": {
+      "description": "Exact repository-relative evidence paths from the accepted task.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Cited Paths",
+      "type": "array"
+    },
+    "execution_context": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PlanExecutionContext"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "findings": {
+      "description": "Factual findings directly supported by the cited repository paths.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Findings",
+      "type": "array"
+    },
+    "repository_revision": {
+      "anyOf": [
+        {
+          "minLength": 7,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Repository Revision"
+    },
+    "schema_version": {
+      "default": "1.0",
+      "enum": [
+        "1.0",
+        "1.1"
+      ],
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "summary": {
+      "maxLength": 2000,
+      "minLength": 3,
+      "title": "Summary",
+      "type": "string"
+    },
+    "task_id": {
+      "minLength": 2,
+      "title": "Task Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "task_id",
+    "summary",
+    "cited_paths",
+    "findings"
+  ],
+  "title": "InitializationResult",
+  "type": "object"
+}

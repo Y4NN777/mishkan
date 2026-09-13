@@ -314,6 +314,27 @@ def test_crewai_binding_refuses_argument_drift_from_the_accepted_call(tmp_path: 
     assert caught.value.envelope.code is ErrorCode.AUTHORITY_NOT_GRANTED
 
 
+def test_crewai_argument_validation_preserves_omitted_optional_fields(tmp_path: Path) -> None:
+    policy = policy_for("search.text", Decision.ALLOW, effect_class="read", paths=(".",))
+    context = context_for(tmp_path, "search.text", policy, (".",))
+    contract = context.registry.require("search.text")
+    tool = GatewayCrewAITool(
+        contract,
+        CapabilityGateway(
+            tmp_path,
+            PolicyAuthority(),
+            MappingCredentialResolver({}),
+            inspector(tmp_path),
+            {},
+            MemoryEvidenceSink(),
+        ),
+        context,
+    )
+    arguments = {"path": ".", "query": "test framework", "semantics": "literal"}
+
+    assert tool._validate_kwargs(arguments) == arguments
+
+
 def test_exact_planned_call_cannot_dispatch_twice_through_one_binding(tmp_path: Path) -> None:
     (tmp_path / "README.md").write_text("governed evidence", encoding="utf-8")
     arguments = {"path": "README.md"}

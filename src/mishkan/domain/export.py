@@ -8,6 +8,8 @@ from pydantic import BaseModel
 from mishkan.application.contracts import (
     ApplicationCommand,
     CommandResult,
+    ProspectiveRunRequest,
+    RepositoryEstablishmentRequest,
     RunInitializationRequest,
     SnapshotEnvelope,
 )
@@ -45,6 +47,22 @@ from mishkan.context.candidates import (
 )
 from mishkan.context.models import ContextPackManifest, ContextPackMaterialization
 from mishkan.context.profile import ConfirmedEngineerFact, EngineerProfile
+from mishkan.conversations.models import (
+    ConversationChannel,
+    ConversationMessage,
+    DecisionExplanationPreference,
+    MissionDecision,
+    MissionEscalation,
+    MissionIntervention,
+)
+from mishkan.crewai.mission_environment import MissionEnvironmentPlanningOutput
+from mishkan.crewai.mission_governance import (
+    CTOMissionReview,
+    MissionGovernanceDisagreement,
+    MissionGovernanceRequest,
+    MissionGovernanceResult,
+    PMMissionProposal,
+)
 from mishkan.domain.errors import ErrorEnvelope
 from mishkan.domain.identity import DomainRecord
 from mishkan.edits.git import GitEffectRequest, GitEffectResult
@@ -88,6 +106,56 @@ from mishkan.mcp.models import (
     McpDiscoverySnapshot,
     McpPrimitiveDescriptor,
     McpProgressEvent,
+)
+from mishkan.missions.environment import (
+    MissionEnvironmentPlan,
+    MissionEnvironmentPlanAcceptance,
+    MissionEnvironmentPlanningRequest,
+)
+from mishkan.missions.execution import (
+    MissionCompletionReadiness,
+    MissionTaskAcceptanceStatus,
+    MissionTaskClaim,
+    MissionTaskClaimRequest,
+    MissionTaskEligibility,
+)
+from mishkan.missions.models import (
+    ExecutiveConfirmation,
+    MissionBrief,
+    MissionCrewRevision,
+    MissionEnvironmentIntent,
+    MissionOrigin,
+    MissionRecord,
+    MissionResourceLimit,
+    MissionRunBinding,
+    MissionRunReport,
+    MissionRunReportTask,
+    MissionTaskAssignment,
+    MissionTransition,
+)
+from mishkan.missions.readiness import MissionEnvironmentReadiness
+from mishkan.missions.templates import MissionTemplateCatalogue, MissionTemplateDefinition
+from mishkan.notifications import NotificationConfig, NotificationPage, NotificationRecord
+from mishkan.organization.evolution import (
+    ProfessionalCompetenceState,
+    ProfessionalEvidenceRecord,
+    ProfessionalPromotionDecision,
+    ProfessionalPromotionRequest,
+)
+from mishkan.organization.models import OrganizationRosterDefinition
+from mishkan.planning.models import (
+    AcceptedPlan,
+    InitializationResult,
+    MissionTemplateReference,
+    PlanCandidate,
+    PlanExecutionContext,
+    PlanOrganizationBinding,
+)
+from mishkan.repository.models import (
+    DiscoverySnapshot,
+    ProspectiveWorkspaceBinding,
+    RepositoryBinding,
+    RepositoryEstablishment,
 )
 from mishkan.runtime import TaskReviewRejection
 from mishkan.skills.models import (
@@ -161,6 +229,8 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "change-set-v1.schema.json": ChangeSet,
     "command-result-v1.schema.json": CommandResult,
     "config-v1.schema.json": MishkanConfig,
+    "prospective-run-request-v1.schema.json": ProspectiveRunRequest,
+    "repository-establishment-request-v1.schema.json": RepositoryEstablishmentRequest,
     "confirmed-engineer-fact-v1.schema.json": ConfirmedEngineerFact,
     "candidate-assessment-v1.schema.json": CandidateAssessment,
     "candidate-constraints-v1.schema.json": CandidateConstraints,
@@ -170,6 +240,15 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "context-pack-materialization-v1.schema.json": ContextPackMaterialization,
     "contextual-recommendation-request-v1.schema.json": ContextualRecommendationRequest,
     "contextual-recommendation-v1.schema.json": ContextualRecommendation,
+    "crewai-cto-mission-review-v1.schema.json": CTOMissionReview,
+    "crewai-mission-governance-result-v1.schema.json": MissionGovernanceResult,
+    "crewai-mission-governance-disagreement-v1.schema.json": MissionGovernanceDisagreement,
+    "crewai-mission-governance-request-v1.schema.json": MissionGovernanceRequest,
+    "crewai-pm-mission-proposal-v1.schema.json": PMMissionProposal,
+    "crewai-mission-environment-output-v1.schema.json": MissionEnvironmentPlanningOutput,
+    "conversation-channel-v1.schema.json": ConversationChannel,
+    "conversation-message-v1.schema.json": ConversationMessage,
+    "decision-explanation-preference-v1.schema.json": DecisionExplanationPreference,
     "domain-record-v1.schema.json": DomainRecord,
     "error-envelope-v1.schema.json": ErrorEnvelope,
     "engineering-command-candidate-v1.schema.json": EngineeringCommandCandidate,
@@ -206,6 +285,50 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "mcp-discovery-v1.schema.json": McpDiscoverySnapshot,
     "mcp-primitive-v1.schema.json": McpPrimitiveDescriptor,
     "mcp-progress-v1.schema.json": McpProgressEvent,
+    "mission-brief-v1.schema.json": MissionBrief,
+    "mission-completion-readiness-v1.schema.json": MissionCompletionReadiness,
+    "mission-crew-revision-v1.schema.json": MissionCrewRevision,
+    "mission-environment-intent-v1.schema.json": MissionEnvironmentIntent,
+    "mission-environment-plan-v1.schema.json": MissionEnvironmentPlan,
+    "mission-environment-plan-acceptance-v1.schema.json": MissionEnvironmentPlanAcceptance,
+    "mission-environment-planning-request-v1.schema.json": MissionEnvironmentPlanningRequest,
+    "mission-environment-readiness-v1.schema.json": MissionEnvironmentReadiness,
+    "mission-executive-confirmation-v1.schema.json": ExecutiveConfirmation,
+    "mission-origin-v1.schema.json": MissionOrigin,
+    "mission-decision-v1.schema.json": MissionDecision,
+    "mission-escalation-v1.schema.json": MissionEscalation,
+    "mission-intervention-v1.schema.json": MissionIntervention,
+    "mission-record-v1.schema.json": MissionRecord,
+    "mission-resource-limit-v1.schema.json": MissionResourceLimit,
+    "mission-run-binding-v1.schema.json": MissionRunBinding,
+    "mission-run-report-v1.schema.json": MissionRunReport,
+    "mission-run-report-task-v1.schema.json": MissionRunReportTask,
+    "mission-task-assignment-v1.schema.json": MissionTaskAssignment,
+    "mission-task-acceptance-status-v1.schema.json": MissionTaskAcceptanceStatus,
+    "mission-task-claim-request-v1.schema.json": MissionTaskClaimRequest,
+    "mission-task-claim-v1.schema.json": MissionTaskClaim,
+    "mission-task-eligibility-v1.schema.json": MissionTaskEligibility,
+    "mission-template-catalogue-v1.schema.json": MissionTemplateCatalogue,
+    "mission-template-definition-v1.schema.json": MissionTemplateDefinition,
+    "mission-template-reference-v1.schema.json": MissionTemplateReference,
+    "plan-accepted-v1.schema.json": AcceptedPlan,
+    "plan-candidate-v1.schema.json": PlanCandidate,
+    "plan-execution-context-v1.schema.json": PlanExecutionContext,
+    "plan-organization-binding-v1.schema.json": PlanOrganizationBinding,
+    "planning-result-v1.schema.json": InitializationResult,
+    "project-discovery-v1.schema.json": DiscoverySnapshot,
+    "prospective-workspace-binding-v1.schema.json": ProspectiveWorkspaceBinding,
+    "repository-binding-v1.schema.json": RepositoryBinding,
+    "repository-establishment-v1.schema.json": RepositoryEstablishment,
+    "mission-transition-v1.schema.json": MissionTransition,
+    "notification-config-v1.schema.json": NotificationConfig,
+    "notification-page-v1.schema.json": NotificationPage,
+    "notification-record-v1.schema.json": NotificationRecord,
+    "organization-roster-v1.schema.json": OrganizationRosterDefinition,
+    "professional-competence-state-v1.schema.json": ProfessionalCompetenceState,
+    "professional-evidence-record-v1.schema.json": ProfessionalEvidenceRecord,
+    "professional-promotion-decision-v1.schema.json": ProfessionalPromotionDecision,
+    "professional-promotion-request-v1.schema.json": ProfessionalPromotionRequest,
     "langsmith-feedback-import-request-v1.schema.json": LangSmithFeedbackImportRequest,
     "run-initialization-request-v1.schema.json": RunInitializationRequest,
     "skill-bundle-definition-v1.schema.json": SkillBundleDefinition,

@@ -29,6 +29,7 @@ This index is the entry point for durable MISHKAN documentation.
 | [`VALIDATION/durability.md`](VALIDATION/durability.md) | Passed — D-038 | Local, live CrewAI/Ollama, and remote Linux/macOS evidence for the durable daemon, mutations, artifacts, sessions, recovery, security, and performance |
 | [`VALIDATION/web-browser-mcp.md`](VALIDATION/web-browser-mcp.md) | Passed and integrated — D-040 | Original evidence, corrected local/remote conformance gate, and green `develop`/`main` integration matrices for Web, Browser, MCP, and governed harness clients |
 | [`VALIDATION/skills-engineering.md`](VALIDATION/skills-engineering.md) | Passed — D-042 | Complete local and remote evidence for skills, context packages, telemetry, recommendations, engineering environments, and real Docker/Compose/Dev Container/Podman adapters |
+| [`VALIDATION/organization-missions.md`](VALIDATION/organization-missions.md) | Passed and integrated — D-044 | Local, remote, and `develop` integration evidence for the 59-identity organization, contextual missions and crews, PM/CTO governance, communication, interventions, environment planning, and professional evolution |
 
 ## Authority rules
 

@@ -1,0 +1,78 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "assignment_revision": {
+      "minimum": 1,
+      "title": "Assignment Revision",
+      "type": "integer"
+    },
+    "attempt": {
+      "minimum": 1,
+      "title": "Attempt",
+      "type": "integer"
+    },
+    "claimed_at": {
+      "format": "date-time",
+      "title": "Claimed At",
+      "type": "string"
+    },
+    "environment_plan_version": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Environment Plan Version"
+    },
+    "execution_run_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Execution Run Id",
+      "type": "string"
+    },
+    "execution_task_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Execution Task Id",
+      "type": "string"
+    },
+    "mission_id": {
+      "format": "uuid",
+      "title": "Mission Id",
+      "type": "string"
+    },
+    "mission_revision": {
+      "minimum": 1,
+      "title": "Mission Revision",
+      "type": "integer"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "task_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Task Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "mission_id",
+    "mission_revision",
+    "task_id",
+    "assignment_revision",
+    "execution_run_id",
+    "execution_task_id",
+    "attempt"
+  ],
+  "title": "MissionTaskClaim",
+  "type": "object"
+}

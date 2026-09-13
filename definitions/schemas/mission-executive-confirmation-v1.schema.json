@@ -1,0 +1,62 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "confirmation_id": {
+      "format": "uuid",
+      "title": "Confirmation Id",
+      "type": "string"
+    },
+    "confirmed_at": {
+      "format": "date-time",
+      "title": "Confirmed At",
+      "type": "string"
+    },
+    "coverage": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Coverage",
+      "type": "array"
+    },
+    "disposition": {
+      "enum": [
+        "confirmed",
+        "rejected"
+      ],
+      "title": "Disposition",
+      "type": "string"
+    },
+    "evidence_references": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Evidence References",
+      "type": "array"
+    },
+    "identity_id": {
+      "enum": [
+        "PM",
+        "CTO"
+      ],
+      "title": "Identity Id",
+      "type": "string"
+    },
+    "rationale": {
+      "maxLength": 4096,
+      "minLength": 3,
+      "title": "Rationale",
+      "type": "string"
+    }
+  },
+  "required": [
+    "identity_id",
+    "disposition",
+    "rationale",
+    "evidence_references",
+    "coverage"
+  ],
+  "title": "ExecutiveConfirmation",
+  "type": "object"
+}

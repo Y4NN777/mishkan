@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 from pathlib import Path
@@ -13,13 +14,6 @@ from mishkan.application.initialize import MishkanInitializer
 from mishkan.config.loader import ConfigLoader
 from mishkan.crewai.flow import CrewAIInitializationFlow
 from mishkan.persistence import LocalRunRepository
-from mishkan.planning.models import (
-    InitializationResult,
-    PlanCandidate,
-    PlannedToolCall,
-    PlanTask,
-    ReviewDecision,
-)
 from mishkan.repository import RepositoryInspector
 
 
@@ -84,48 +78,43 @@ def test_production_crewai_task_uses_accepted_gateway_binding_and_durable_eviden
         assert crew.agents[0].max_retry_limit == 0
         task = crew.tasks[0]
         output_model = task.output_pydantic
-        value: PlanCandidate | InitializationResult | ReviewDecision
-        if issubclass(output_model, PlanCandidate):
+        output_fields = set(output_model.model_fields)
+        if output_fields == {"tasks"}:
             assert output_model.model_json_schema()["properties"]["tasks"]["maxItems"] == 1
             assert "Create at most 1 task(s)" in task.description
             assert "assigned_role must be Repository_Investigator" in task.description
             assert '"core.process.exec"' in task.description
             assert executable in task.description
             assert "public policy permits none unattended" not in task.description
-            revision = task.description.split("Repository revision: ", 1)[1].splitlines()[0]
-            value = PlanCandidate(
-                schema_version="1.1",
-                objective="Initialize governed repository",
-                outcome_id="mishkan.init",
-                repository_revision=revision,
-                tasks=(
-                    PlanTask(
-                        task_id="inspect-governed-readme",
-                        title="Inspect governed repository overview",
-                        purpose="Ground initialization in the accepted repository evidence.",
-                        assigned_role="Repository_Investigator",
-                        tools=("repository.read_file", "core.process.exec"),
-                        tool_calls=(
-                            PlannedToolCall(
-                                call_id="read-governed-readme",
-                                tool_id="repository.read_file",
-                                arguments={"path": "README.md"},
-                            ),
-                            PlannedToolCall(
-                                call_id="probe-governed-project",
-                                tool_id="core.process.exec",
-                                arguments=process_arguments,
-                            ),
-                        ),
-                        evidence_paths=("README.md",),
-                    ),
-                ),
-            )
+            value = {
+                "tasks": [
+                    {
+                        "task_id": "inspect-governed-readme",
+                        "title": "Inspect governed repository overview",
+                        "purpose": "Ground initialization in the accepted repository evidence.",
+                        "assigned_role": "Repository_Investigator",
+                        "tool_calls": [
+                            {
+                                "call_id": "read-governed-readme",
+                                "tool_id": "repository.read_file",
+                                "arguments": {"path": "README.md"},
+                            },
+                            {
+                                "call_id": "probe-governed-project",
+                                "tool_id": "core.process.exec",
+                                "arguments": process_arguments,
+                            },
+                        ],
+                        "evidence_paths": ["README.md"],
+                        "depends_on": [],
+                    }
+                ]
+            }
         else:
             tools = crew.agents[0].tools
             assert tools == []
             assert "# Governed repository\\n" in task.description
-            if output_model is InitializationResult:
+            if output_fields == {"summary", "cited_paths", "findings"}:
                 assert (
                     "MISHKAN has already executed every accepted call exactly once"
                     in task.description
@@ -134,35 +123,31 @@ def test_production_crewai_task_uses_accepted_gateway_binding_and_durable_eviden
                 if execution_attempts > 1:
                     assert "A previous independent review rejected" in task.description
                     assert "State the repository heading exactly" in task.description
-                value = InitializationResult(
-                    repository_revision=task.description.split("Repository revision: ", 1)[
-                        1
-                    ].splitlines()[0],
-                    task_id="inspect-governed-readme",
-                    summary="The repository overview was inspected through its governed binding.",
-                    cited_paths=("README.md",),
-                    findings=("The README identifies a governed repository.",),
-                )
+                value = {
+                    "summary": (
+                        "The repository overview was inspected through its governed binding."
+                    ),
+                    "cited_paths": ["README.md"],
+                    "findings": ["The README identifies a governed repository."],
+                }
             else:
-                assert output_model is ReviewDecision
+                assert output_fields == {"verdict", "summary", "issues"}
                 review_attempts += 1
                 assert "MISHKAN independently executed" in task.description
-                value = ReviewDecision(
-                    task_id="inspect-governed-readme",
-                    verdict="rejected" if review_attempts == 1 else "accepted",
-                    summary=(
+                value = {
+                    "verdict": "rejected" if review_attempts == 1 else "accepted",
+                    "summary": (
                         "The first result needs a more exact evidence statement."
                         if review_attempts == 1
                         else "Independent evidence review passed through its own binding."
                     ),
-                    checked_citations=("README.md",),
-                    issues=(
-                        ("State the repository heading exactly from README.md.",)
+                    "issues": (
+                        ["State the repository heading exactly from README.md."]
                         if review_attempts == 1
-                        else ()
+                        else []
                     ),
-                )
-        return SimpleNamespace(pydantic=value, raw=value.model_dump_json())
+                }
+        return SimpleNamespace(pydantic=None, raw=json.dumps(value))
 
     monkeypatch.setattr(Crew, "kickoff", kickoff)
     monkeypatch.setattr(
@@ -287,70 +272,63 @@ def test_production_path_accepts_different_exact_native_commands_for_different_r
                 },
             }
         )
-        value: PlanCandidate | InitializationResult | ReviewDecision
-        if issubclass(output_model, PlanCandidate):
+        output_fields = set(output_model.model_fields)
+        if output_fields == {"tasks"}:
             assert output_model.model_json_schema()["properties"]["tasks"]["maxItems"] == 1
-            revision = task.description.split("Repository revision: ", 1)[1].splitlines()[0]
-            value = PlanCandidate(
-                schema_version="1.1",
-                objective="Initialize project from native evidence",
-                outcome_id="mishkan.init",
-                repository_revision=revision,
-                tasks=(
-                    PlanTask(
-                        task_id=task_id,
-                        title=(
+            value = {
+                "tasks": [
+                    {
+                        "task_id": task_id,
+                        "title": (
                             "Inspect Python project manifest"
                             if is_python
                             else "Inspect Go module manifest"
                         ),
-                        purpose="Combine bounded file evidence with a repository-specific command.",
-                        assigned_role="Repository_Investigator",
-                        tools=("repository.read_file", execution_tool),
-                        tool_calls=(
-                            PlannedToolCall(
-                                call_id=f"read-{manifest.replace('.', '-')}",
-                                tool_id="repository.read_file",
-                                arguments={"path": manifest},
-                            ),
-                            PlannedToolCall(
-                                call_id=f"probe-{manifest.replace('.', '-')}",
-                                tool_id=execution_tool,
-                                arguments=execution_arguments,
-                            ),
+                        "purpose": (
+                            "Combine bounded file evidence with a repository-specific command."
                         ),
-                        evidence_paths=(manifest,),
-                    ),
-                ),
-            )
+                        "assigned_role": "Repository_Investigator",
+                        "tool_calls": [
+                            {
+                                "call_id": f"read-{manifest.replace('.', '-')}",
+                                "tool_id": "repository.read_file",
+                                "arguments": {"path": manifest},
+                            },
+                            {
+                                "call_id": f"probe-{manifest.replace('.', '-')}",
+                                "tool_id": execution_tool,
+                                "arguments": execution_arguments,
+                            },
+                        ],
+                        "evidence_paths": [manifest],
+                        "depends_on": [],
+                    }
+                ]
+            }
         else:
             tools = crew.agents[0].tools
             assert tools == []
             assert f'"path": "{manifest}"' in task.description
-            if output_model is InitializationResult:
+            if output_fields == {"summary", "cited_paths", "findings"}:
                 assert (
                     "MISHKAN has already executed every accepted call exactly once"
                     in task.description
                 )
                 assert manifest in task.description
-                revision = task.description.split("Repository revision: ", 1)[1].splitlines()[0]
-                value = InitializationResult(
-                    repository_revision=revision,
-                    task_id=task_id,
-                    summary=f"Inspected {manifest} through exact file and process calls.",
-                    cited_paths=(manifest,),
-                    findings=(f"The repository declares {manifest}.",),
-                )
+                value = {
+                    "summary": f"Inspected {manifest} through exact file and process calls.",
+                    "cited_paths": [manifest],
+                    "findings": [f"The repository declares {manifest}."],
+                }
             else:
-                assert output_model is ReviewDecision
+                assert output_fields == {"verdict", "summary", "issues"}
                 assert "MISHKAN independently executed" in task.description
-                value = ReviewDecision(
-                    task_id=task_id,
-                    verdict="accepted",
-                    summary=f"The independent read supports the {manifest} finding.",
-                    checked_citations=(manifest,),
-                )
-        return SimpleNamespace(pydantic=value, raw=value.model_dump_json())
+                value = {
+                    "verdict": "accepted",
+                    "summary": f"The independent read supports the {manifest} finding.",
+                    "issues": [],
+                }
+        return SimpleNamespace(pydantic=None, raw=json.dumps(value))
 
     monkeypatch.setattr(Crew, "kickoff", kickoff)
     monkeypatch.setattr(

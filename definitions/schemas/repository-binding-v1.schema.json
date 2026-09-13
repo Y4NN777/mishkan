@@ -1,0 +1,57 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "base_revision": {
+      "minLength": 7,
+      "title": "Base Revision",
+      "type": "string"
+    },
+    "context_kind": {
+      "const": "repository",
+      "default": "repository",
+      "title": "Context Kind",
+      "type": "string"
+    },
+    "remote_url": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Remote Url"
+    },
+    "repository_id": {
+      "minLength": 12,
+      "title": "Repository Id",
+      "type": "string"
+    },
+    "root": {
+      "format": "path",
+      "title": "Root",
+      "type": "string"
+    },
+    "working_tree_dirty": {
+      "title": "Working Tree Dirty",
+      "type": "boolean"
+    },
+    "working_tree_fingerprint": {
+      "maxLength": 64,
+      "minLength": 64,
+      "title": "Working Tree Fingerprint",
+      "type": "string"
+    }
+  },
+  "required": [
+    "repository_id",
+    "root",
+    "base_revision",
+    "working_tree_dirty",
+    "working_tree_fingerprint"
+  ],
+  "title": "RepositoryBinding",
+  "type": "object"
+}

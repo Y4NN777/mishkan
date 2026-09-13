@@ -1,0 +1,58 @@
+{
+  "additionalProperties": false,
+  "description": "Exact immutable identity of optional mission guidance used by a plan.",
+  "properties": {
+    "catalogue_id": {
+      "pattern": "^[a-z][a-z0-9_.-]{1,127}$",
+      "title": "Catalogue Id",
+      "type": "string"
+    },
+    "catalogue_revision": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Catalogue Revision",
+      "type": "string"
+    },
+    "definition_fingerprint": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Definition Fingerprint",
+      "type": "string"
+    },
+    "provenance": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Provenance",
+      "type": "array"
+    },
+    "source": {
+      "maxLength": 2048,
+      "minLength": 1,
+      "title": "Source",
+      "type": "string"
+    },
+    "template_id": {
+      "pattern": "^[a-z][a-z0-9_.-]{1,127}$",
+      "title": "Template Id",
+      "type": "string"
+    },
+    "version": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "template_id",
+    "version",
+    "source",
+    "provenance",
+    "catalogue_id",
+    "catalogue_revision",
+    "definition_fingerprint"
+  ],
+  "title": "MissionTemplateReference",
+  "type": "object"
+}

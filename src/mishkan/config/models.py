@@ -16,6 +16,7 @@ from pydantic import (
 )
 
 from mishkan.domain.time import validate_timezone
+from mishkan.notifications import NotificationConfig
 from mishkan.skills.models import SkillBounds, SkillBundleDefinition, SkillSourceDefinition
 from mishkan.telemetry.models import TelemetryDisclosure, TelemetryExporterKind
 
@@ -85,6 +86,9 @@ class CrewAIRuntimeConfig(StrictConfigModel):
     plan_validation_retries: int = Field(default=2, ge=0, le=10)
     review_retries: int = Field(default=2, ge=0, le=10)
     structured_output_retries: int = Field(default=2, ge=0, le=10)
+    mission_pm_model_route: str = Field(default="planning", min_length=1)
+    mission_cto_model_route: str = Field(default="planning", min_length=1)
+    mission_environment_model_route: str = Field(default="planning", min_length=1)
 
 
 class DaemonConfig(StrictConfigModel):
@@ -480,10 +484,40 @@ class McpConnectionConfig(StrictConfigModel):
 
 
 SUPPORTED_MCP_FACADE_OPERATIONS = frozenset(
-    {"system.health", "system.snapshot", "events.list", "run.get", "command.submit"}
+    {
+        "system.health",
+        "system.snapshot",
+        "events.list",
+        "run.get",
+        "organization.get",
+        "organization.inspect",
+        "organization.branch.inspect",
+        "organization.competence.get",
+        "organization.evidence.list",
+        "organization.promotions.list",
+        "mission.list",
+        "mission.get",
+        "mission.inspect",
+        "mission.run-reports.list",
+        "mission.templates.list",
+        "conversation.list",
+        "conversation.get",
+        "advisory.candidates.list",
+        "notification.list",
+        "command.submit",
+    }
 )
 SUPPORTED_MCP_FACADE_RESOURCES = frozenset(
-    {"mishkan://snapshot", "mishkan://runs", "mishkan://events"}
+    {
+        "mishkan://snapshot",
+        "mishkan://runs",
+        "mishkan://events",
+        "mishkan://organization",
+        "mishkan://missions",
+        "mishkan://conversations",
+        "mishkan://advisory/candidates",
+        "mishkan://notifications",
+    }
 )
 
 
@@ -664,6 +698,10 @@ class MishkanConfig(StrictConfigModel):
         default=("package://mishkan.resources.environment/technical-packs.yaml",),
         min_length=1,
     )
+    mission_template_sources: tuple[str, ...] = (
+        "package://mishkan.resources.organization/mission-templates.yaml",
+    )
+    notifications: NotificationConfig = Field(default_factory=NotificationConfig)
     telemetry: TelemetryConfig = Field(default_factory=TelemetryConfig)
 
     @field_validator("timezone")
@@ -754,8 +792,14 @@ class MishkanConfig(StrictConfigModel):
             raise ValueError(f"model routes reference unknown providers: {missing_providers}")
 
         missing_routes = sorted(
-            {route for route in self.agent_routes.values() if route not in self.model_routes}
+            {
+                *self.agent_routes.values(),
+                self.crewai.mission_pm_model_route,
+                self.crewai.mission_cto_model_route,
+                self.crewai.mission_environment_model_route,
+            }
+            - set(self.model_routes)
         )
         if missing_routes:
-            raise ValueError(f"agent overrides reference unknown routes: {missing_routes}")
+            raise ValueError(f"CrewAI routing references unknown model routes: {missing_routes}")
         return self

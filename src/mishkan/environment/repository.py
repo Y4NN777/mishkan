@@ -114,6 +114,19 @@ class SQLiteEnvironmentRepository:
                     ErrorCode.REVISION_MISMATCH,
                     "environment observation changed before binding persistence",
                 )
+            same_request = session.scalar(
+                select(EnvironmentBindingRow).where(
+                    EnvironmentBindingRow.request_id == str(record.request.request_id)
+                )
+            )
+            if same_request is not None:
+                existing_record = EnvironmentBinding.model_validate_json(same_request.payload)
+                if existing_record.request != record.request:
+                    raise MishkanError(
+                        ErrorCode.DUPLICATE_RESULT,
+                        "environment binding request identity contains different content",
+                    )
+                return existing_record
             existing = session.get(EnvironmentBindingRow, str(record.binding_id))
             if existing is not None:
                 return self._idempotent(existing.payload, payload, record)
@@ -168,6 +181,30 @@ class SQLiteEnvironmentRepository:
                     "reason": record.reason,
                 }
             )
+
+    def binding_for_request(self, request_id: str) -> EnvironmentBinding | None:
+        with Session(self._engine) as session:
+            row = session.scalar(
+                select(EnvironmentBindingRow).where(EnvironmentBindingRow.request_id == request_id)
+            )
+            if row is None:
+                return None
+        return self.binding(row.id)
+
+    def verifications_for_binding(
+        self,
+        binding_id: str,
+        *,
+        limit: int = 1_000,
+    ) -> tuple[EnvironmentVerification, ...]:
+        with Session(self._engine) as session:
+            rows = session.scalars(
+                select(EnvironmentVerificationRow)
+                .where(EnvironmentVerificationRow.binding_id == binding_id)
+                .order_by(EnvironmentVerificationRow.recorded_at)
+                .limit(limit)
+            )
+            return tuple(EnvironmentVerification.model_validate_json(row.payload) for row in rows)
 
     def invalidate(self, record: EnvironmentInvalidation) -> EnvironmentInvalidation:
         payload = self._json(record)

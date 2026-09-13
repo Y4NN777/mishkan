@@ -1,0 +1,29 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "unit": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Unit",
+      "type": "string"
+    },
+    "value": {
+      "minimum": 0,
+      "title": "Value",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "name",
+    "value",
+    "unit"
+  ],
+  "title": "MissionResourceLimit",
+  "type": "object"
+}

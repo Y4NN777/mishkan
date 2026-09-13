@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.planning.models import InitializationResult, PlanTask, ReviewDecision
@@ -69,3 +70,25 @@ def test_rejected_review_prevents_acceptance() -> None:
     with pytest.raises(MishkanError) as caught:
         ResultValidator().accept_review(review, _result())
     assert caught.value.envelope.code is ErrorCode.OUTPUT_CONTRACT
+
+
+def test_attributed_review_requires_distinct_producer_and_evaluator() -> None:
+    with pytest.raises(ValidationError, match="cannot evaluate"):
+        ReviewDecision(
+            schema_version="1.1",
+            task_id="inspect-readme",
+            producer_identity="Repository_Investigator",
+            evaluator_identity="Repository_Investigator",
+            verdict="accepted",
+            summary="The same identity attempted to accept its own result.",
+            checked_citations=("README.md",),
+        )
+
+    with pytest.raises(ValidationError, match="requires producer and evaluator"):
+        ReviewDecision(
+            schema_version="1.1",
+            task_id="inspect-readme",
+            verdict="accepted",
+            summary="The review omitted its trusted identity lineage.",
+            checked_citations=("README.md",),
+        )

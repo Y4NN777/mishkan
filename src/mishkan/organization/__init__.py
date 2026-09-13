@@ -1,6 +1,44 @@
 """Versioned organization and outcome definition loading."""
 
-from mishkan.organization.loader import load_initialization_definitions
-from mishkan.organization.models import OrganizationDefinition, OutcomeDefinition
+from mishkan.organization.evolution import (
+    LearningScopeLevel,
+    ProfessionalCompetenceState,
+    ProfessionalEvidenceKind,
+    ProfessionalEvidenceOutcome,
+    ProfessionalEvidenceRecord,
+    ProfessionalLearningScope,
+    ProfessionalPromotionDecision,
+    ProfessionalPromotionDisposition,
+    ProfessionalPromotionRequest,
+)
+from mishkan.organization.loader import load_canonical_organization, load_initialization_definitions
+from mishkan.organization.models import (
+    BranchDefinition,
+    IndependenceClass,
+    OrganizationDefinition,
+    OrganizationRosterDefinition,
+    OutcomeDefinition,
+    PoolDefinition,
+    ProfessionalIdentityDefinition,
+)
 
-__all__ = ["OrganizationDefinition", "OutcomeDefinition", "load_initialization_definitions"]
+__all__ = [
+    "BranchDefinition",
+    "IndependenceClass",
+    "LearningScopeLevel",
+    "OrganizationDefinition",
+    "OrganizationRosterDefinition",
+    "OutcomeDefinition",
+    "PoolDefinition",
+    "ProfessionalCompetenceState",
+    "ProfessionalEvidenceKind",
+    "ProfessionalEvidenceOutcome",
+    "ProfessionalEvidenceRecord",
+    "ProfessionalIdentityDefinition",
+    "ProfessionalLearningScope",
+    "ProfessionalPromotionDecision",
+    "ProfessionalPromotionDisposition",
+    "ProfessionalPromotionRequest",
+    "load_canonical_organization",
+    "load_initialization_definitions",
+]

@@ -1,0 +1,200 @@
+{
+  "$defs": {
+    "BranchDefinition": {
+      "additionalProperties": false,
+      "properties": {
+        "branch_id": {
+          "pattern": "^[a-z][a-z0-9-]{1,63}$",
+          "title": "Branch Id",
+          "type": "string"
+        },
+        "executive_sponsor": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 2,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Executive Sponsor"
+        },
+        "independent": {
+          "title": "Independent",
+          "type": "boolean"
+        },
+        "name": {
+          "maxLength": 160,
+          "minLength": 3,
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "branch_id",
+        "name",
+        "independent"
+      ],
+      "title": "BranchDefinition",
+      "type": "object"
+    },
+    "IndependenceClass": {
+      "enum": [
+        "executive",
+        "production",
+        "independent_assurance",
+        "research",
+        "documentation"
+      ],
+      "title": "IndependenceClass",
+      "type": "string"
+    },
+    "PoolDefinition": {
+      "additionalProperties": false,
+      "properties": {
+        "members": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Members",
+          "type": "array"
+        },
+        "name": {
+          "maxLength": 160,
+          "minLength": 3,
+          "title": "Name",
+          "type": "string"
+        },
+        "pool_id": {
+          "pattern": "^[a-z][a-z0-9-]{1,63}$",
+          "title": "Pool Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "pool_id",
+        "name",
+        "members"
+      ],
+      "title": "PoolDefinition",
+      "type": "object"
+    },
+    "ProfessionalIdentityDefinition": {
+      "additionalProperties": false,
+      "properties": {
+        "authority_limits": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Authority Limits",
+          "type": "array"
+        },
+        "branch_id": {
+          "pattern": "^[a-z][a-z0-9-]{1,63}$",
+          "title": "Branch Id",
+          "type": "string"
+        },
+        "identity_id": {
+          "pattern": "^[A-Z][A-Za-z0-9_]{1,127}$",
+          "title": "Identity Id",
+          "type": "string"
+        },
+        "independence_class": {
+          "$ref": "#/$defs/IndependenceClass"
+        },
+        "mission_lead_eligible": {
+          "default": true,
+          "title": "Mission Lead Eligible",
+          "type": "boolean"
+        },
+        "pool_memberships": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Pool Memberships",
+          "type": "array"
+        },
+        "profile_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Profile Version",
+          "type": "string"
+        },
+        "responsibility": {
+          "maxLength": 500,
+          "minLength": 3,
+          "title": "Responsibility",
+          "type": "string"
+        }
+      },
+      "required": [
+        "identity_id",
+        "branch_id",
+        "responsibility",
+        "independence_class",
+        "authority_limits"
+      ],
+      "title": "ProfessionalIdentityDefinition",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Persistent professional identities; never a static mission crew or tool matrix.",
+  "properties": {
+    "branches": {
+      "items": {
+        "$ref": "#/$defs/BranchDefinition"
+      },
+      "minItems": 1,
+      "title": "Branches",
+      "type": "array"
+    },
+    "identities": {
+      "items": {
+        "$ref": "#/$defs/ProfessionalIdentityDefinition"
+      },
+      "minItems": 1,
+      "title": "Identities",
+      "type": "array"
+    },
+    "organization_id": {
+      "pattern": "^[a-z][a-z0-9-]{2,127}$",
+      "title": "Organization Id",
+      "type": "string"
+    },
+    "organization_version": {
+      "const": "1",
+      "default": "1",
+      "title": "Organization Version",
+      "type": "string"
+    },
+    "pools": {
+      "items": {
+        "$ref": "#/$defs/PoolDefinition"
+      },
+      "minItems": 1,
+      "title": "Pools",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "organization_id",
+    "branches",
+    "pools",
+    "identities"
+  ],
+  "title": "OrganizationRosterDefinition",
+  "type": "object"
+}

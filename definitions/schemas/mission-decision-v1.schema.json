@@ -1,0 +1,734 @@
+{
+  "$defs": {
+    "DecisionAlternative": {
+      "additionalProperties": false,
+      "properties": {
+        "assessments": {
+          "items": {
+            "$ref": "#/$defs/DecisionCriterionAssessment"
+          },
+          "minItems": 1,
+          "title": "Assessments",
+          "type": "array"
+        },
+        "credible": {
+          "title": "Credible",
+          "type": "boolean"
+        },
+        "description": {
+          "maxLength": 4096,
+          "minLength": 3,
+          "title": "Description",
+          "type": "string"
+        },
+        "option_id": {
+          "pattern": "^[a-z][a-z0-9-]{1,63}$",
+          "title": "Option Id",
+          "type": "string"
+        },
+        "rejection_reason": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "minLength": 3,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rejection Reason"
+        }
+      },
+      "required": [
+        "option_id",
+        "description",
+        "credible",
+        "assessments"
+      ],
+      "title": "DecisionAlternative",
+      "type": "object"
+    },
+    "DecisionContext": {
+      "additionalProperties": false,
+      "properties": {
+        "constraints": {
+          "items": {
+            "$ref": "#/$defs/DecisionContextElement"
+          },
+          "minItems": 1,
+          "title": "Constraints",
+          "type": "array"
+        },
+        "declared_preferences": {
+          "items": {
+            "$ref": "#/$defs/DecisionContextElement"
+          },
+          "minItems": 1,
+          "title": "Declared Preferences",
+          "type": "array"
+        },
+        "effective_policy_reference": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Effective Policy Reference",
+          "type": "string"
+        },
+        "material_unknowns": {
+          "items": {
+            "$ref": "#/$defs/DecisionContextElement"
+          },
+          "minItems": 1,
+          "title": "Material Unknowns",
+          "type": "array"
+        },
+        "objective_reference": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Objective Reference",
+          "type": "string"
+        },
+        "question": {
+          "maxLength": 8192,
+          "minLength": 3,
+          "title": "Question",
+          "type": "string"
+        },
+        "repository_evidence": {
+          "items": {
+            "$ref": "#/$defs/DecisionContextElement"
+          },
+          "minItems": 1,
+          "title": "Repository Evidence",
+          "type": "array"
+        },
+        "requirements": {
+          "items": {
+            "$ref": "#/$defs/DecisionContextElement"
+          },
+          "minItems": 1,
+          "title": "Requirements",
+          "type": "array"
+        },
+        "risks": {
+          "items": {
+            "$ref": "#/$defs/DecisionContextElement"
+          },
+          "minItems": 1,
+          "title": "Risks",
+          "type": "array"
+        }
+      },
+      "required": [
+        "question",
+        "objective_reference",
+        "effective_policy_reference",
+        "requirements",
+        "repository_evidence",
+        "constraints",
+        "declared_preferences",
+        "risks",
+        "material_unknowns"
+      ],
+      "title": "DecisionContext",
+      "type": "object"
+    },
+    "DecisionContextElement": {
+      "additionalProperties": false,
+      "properties": {
+        "provenance_reference": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Provenance Reference",
+          "type": "string"
+        },
+        "statement": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Statement",
+          "type": "string"
+        }
+      },
+      "required": [
+        "statement",
+        "provenance_reference"
+      ],
+      "title": "DecisionContextElement",
+      "type": "object"
+    },
+    "DecisionCriterion": {
+      "additionalProperties": false,
+      "properties": {
+        "criterion_id": {
+          "pattern": "^[a-z][a-z0-9-]{1,63}$",
+          "title": "Criterion Id",
+          "type": "string"
+        },
+        "description": {
+          "maxLength": 4096,
+          "minLength": 3,
+          "title": "Description",
+          "type": "string"
+        },
+        "provenance_references": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Provenance References",
+          "type": "array"
+        },
+        "weight": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Weight"
+        }
+      },
+      "required": [
+        "criterion_id",
+        "description",
+        "provenance_references"
+      ],
+      "title": "DecisionCriterion",
+      "type": "object"
+    },
+    "DecisionCriterionAssessment": {
+      "additionalProperties": false,
+      "properties": {
+        "assessment": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Assessment",
+          "type": "string"
+        },
+        "criterion_id": {
+          "pattern": "^[a-z][a-z0-9-]{1,63}$",
+          "title": "Criterion Id",
+          "type": "string"
+        },
+        "evidence_references": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Evidence References",
+          "type": "array"
+        }
+      },
+      "required": [
+        "criterion_id",
+        "assessment",
+        "evidence_references"
+      ],
+      "title": "DecisionCriterionAssessment",
+      "type": "object"
+    },
+    "DecisionEvidenceClaim": {
+      "additionalProperties": false,
+      "properties": {
+        "claim": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Claim",
+          "type": "string"
+        },
+        "classification": {
+          "$ref": "#/$defs/DecisionEvidenceClass"
+        },
+        "source_reference": {
+          "anyOf": [
+            {
+              "maxLength": 1024,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Reference"
+        }
+      },
+      "required": [
+        "claim",
+        "classification"
+      ],
+      "title": "DecisionEvidenceClaim",
+      "type": "object"
+    },
+    "DecisionEvidenceClass": {
+      "enum": [
+        "verified",
+        "assumption",
+        "engineer_preference",
+        "inference",
+        "unresolved_unknown"
+      ],
+      "title": "DecisionEvidenceClass",
+      "type": "string"
+    },
+    "DecisionExplanationDepth": {
+      "enum": [
+        "concise",
+        "standard",
+        "deep"
+      ],
+      "title": "DecisionExplanationDepth",
+      "type": "string"
+    },
+    "DecisionExplanationPreference": {
+      "additionalProperties": false,
+      "properties": {
+        "depth": {
+          "$ref": "#/$defs/DecisionExplanationDepth",
+          "default": "standard"
+        },
+        "focus_areas": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Focus Areas",
+          "type": "array"
+        },
+        "request_reference": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Request Reference",
+          "type": "string"
+        },
+        "requested_by": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Requested By",
+          "type": "string"
+        }
+      },
+      "required": [
+        "requested_by",
+        "request_reference"
+      ],
+      "title": "DecisionExplanationPreference",
+      "type": "object"
+    },
+    "DecisionRecommendation": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "confidence_basis": {
+          "maxLength": 4096,
+          "minLength": 3,
+          "title": "Confidence Basis",
+          "type": "string"
+        },
+        "evidence_insufficient": {
+          "default": false,
+          "title": "Evidence Insufficient",
+          "type": "boolean"
+        },
+        "expected_consequences": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Expected Consequences",
+          "type": "array"
+        },
+        "rationale": {
+          "maxLength": 8192,
+          "minLength": 3,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "recommended_option_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9-]{1,63}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recommended Option Id"
+        },
+        "reversal_or_migration": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Reversal Or Migration",
+          "type": "array"
+        },
+        "risks": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Risks",
+          "type": "array"
+        },
+        "tradeoffs": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Tradeoffs",
+          "type": "array"
+        },
+        "unresolved_questions": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Unresolved Questions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "rationale",
+        "tradeoffs",
+        "risks",
+        "confidence",
+        "confidence_basis",
+        "unresolved_questions",
+        "expected_consequences",
+        "reversal_or_migration"
+      ],
+      "title": "DecisionRecommendation",
+      "type": "object"
+    },
+    "DecisionStatus": {
+      "enum": [
+        "staged",
+        "accepted",
+        "rejected",
+        "inconclusive"
+      ],
+      "title": "DecisionStatus",
+      "type": "string"
+    },
+    "DecisionValidation": {
+      "additionalProperties": false,
+      "properties": {
+        "evaluator_identity": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Evaluator Identity"
+        },
+        "evidence_references": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence References",
+          "type": "array"
+        },
+        "findings": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Findings",
+          "type": "array"
+        },
+        "planned_evidence": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Planned Evidence",
+          "type": "array"
+        },
+        "status": {
+          "$ref": "#/$defs/DecisionValidationStatus"
+        },
+        "validation_type": {
+          "maxLength": 256,
+          "minLength": 2,
+          "title": "Validation Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "validation_type",
+        "planned_evidence",
+        "status",
+        "findings"
+      ],
+      "title": "DecisionValidation",
+      "type": "object"
+    },
+    "DecisionValidationStatus": {
+      "enum": [
+        "pending",
+        "passed",
+        "failed"
+      ],
+      "title": "DecisionValidationStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "actor_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Actor Id",
+      "type": "string"
+    },
+    "alternatives": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/DecisionAlternative"
+      },
+      "title": "Alternatives",
+      "type": "array"
+    },
+    "alternatives_search": {
+      "anyOf": [
+        {
+          "maxLength": 8192,
+          "minLength": 3,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Alternatives Search"
+    },
+    "authority_reference": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Authority Reference",
+      "type": "string"
+    },
+    "changes_durable_authority": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Changes Durable Authority"
+    },
+    "context": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DecisionContext"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "conversation_id": {
+      "format": "uuid",
+      "title": "Conversation Id",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "criteria": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/DecisionCriterion"
+      },
+      "title": "Criteria",
+      "type": "array"
+    },
+    "deciding_identity": {
+      "anyOf": [
+        {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Deciding Identity"
+    },
+    "decision_id": {
+      "format": "uuid",
+      "title": "Decision Id",
+      "type": "string"
+    },
+    "decision_status": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DecisionStatus"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "disposition": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Disposition",
+      "type": "string"
+    },
+    "evidence": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/DecisionEvidenceClaim"
+      },
+      "title": "Evidence",
+      "type": "array"
+    },
+    "evidence_references": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Evidence References",
+      "type": "array"
+    },
+    "explanation_preference": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DecisionExplanationPreference"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "mission_id": {
+      "format": "uuid",
+      "title": "Mission Id",
+      "type": "string"
+    },
+    "producer_identity": {
+      "anyOf": [
+        {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Producer Identity"
+    },
+    "reason": {
+      "maxLength": 8192,
+      "minLength": 3,
+      "title": "Reason",
+      "type": "string"
+    },
+    "recommendation": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DecisionRecommendation"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "schema_version": {
+      "default": "1.0",
+      "enum": [
+        "1.0",
+        "1.1"
+      ],
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "scope": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Scope",
+      "type": "array"
+    },
+    "subject": {
+      "maxLength": 2048,
+      "minLength": 3,
+      "title": "Subject",
+      "type": "string"
+    },
+    "supersedes_decision_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Supersedes Decision Id"
+    },
+    "validation": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DecisionValidation"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "mission_id",
+    "conversation_id",
+    "actor_id",
+    "subject",
+    "disposition",
+    "reason",
+    "scope",
+    "evidence_references",
+    "authority_reference"
+  ],
+  "title": "MissionDecision",
+  "type": "object"
+}

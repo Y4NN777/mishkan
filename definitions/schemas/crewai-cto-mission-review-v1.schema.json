@@ -1,0 +1,261 @@
+{
+  "$defs": {
+    "CrewAssignmentKind": {
+      "enum": [
+        "production",
+        "contributor",
+        "evaluation",
+        "reporting",
+        "audit"
+      ],
+      "title": "CrewAssignmentKind",
+      "type": "string"
+    },
+    "CrewSelectionEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "availability_references": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Availability References",
+          "type": "array"
+        },
+        "competence_references": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Competence References",
+          "type": "array"
+        },
+        "conflict_assessment": {
+          "maxLength": 2048,
+          "minLength": 3,
+          "title": "Conflict Assessment",
+          "type": "string"
+        },
+        "independence_references": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Independence References",
+          "type": "array"
+        },
+        "project_references": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Project References",
+          "type": "array"
+        },
+        "risk_coverage": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Risk Coverage",
+          "type": "array"
+        }
+      },
+      "required": [
+        "project_references",
+        "competence_references",
+        "availability_references",
+        "conflict_assessment",
+        "risk_coverage",
+        "independence_references"
+      ],
+      "title": "CrewSelectionEvidence",
+      "type": "object"
+    },
+    "EscalationOption": {
+      "additionalProperties": false,
+      "properties": {
+        "consequences": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Consequences",
+          "type": "array"
+        },
+        "description": {
+          "maxLength": 4096,
+          "minLength": 3,
+          "title": "Description",
+          "type": "string"
+        },
+        "option_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Option Id",
+          "type": "string"
+        },
+        "risks": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Risks",
+          "type": "array"
+        }
+      },
+      "required": [
+        "option_id",
+        "description",
+        "consequences",
+        "risks"
+      ],
+      "title": "EscalationOption",
+      "type": "object"
+    },
+    "MissionCrewMember": {
+      "additionalProperties": false,
+      "properties": {
+        "assignment_kind": {
+          "$ref": "#/$defs/CrewAssignmentKind"
+        },
+        "identity_id": {
+          "maxLength": 128,
+          "minLength": 2,
+          "title": "Identity Id",
+          "type": "string"
+        },
+        "responsibility": {
+          "maxLength": 2048,
+          "minLength": 3,
+          "title": "Responsibility",
+          "type": "string"
+        },
+        "selection_evidence": {
+          "$ref": "#/$defs/CrewSelectionEvidence"
+        }
+      },
+      "required": [
+        "identity_id",
+        "assignment_kind",
+        "responsibility",
+        "selection_evidence"
+      ],
+      "title": "MissionCrewMember",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "alternatives": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/EscalationOption"
+      },
+      "title": "Alternatives",
+      "type": "array"
+    },
+    "approved_members": {
+      "items": {
+        "$ref": "#/$defs/MissionCrewMember"
+      },
+      "minItems": 2,
+      "title": "Approved Members",
+      "type": "array"
+    },
+    "coverage": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Coverage",
+      "type": "array"
+    },
+    "cto_recommended_option_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Cto Recommended Option Id"
+    },
+    "disposition": {
+      "enum": [
+        "confirmed",
+        "rejected"
+      ],
+      "title": "Disposition",
+      "type": "string"
+    },
+    "disputed_scope": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Disputed Scope",
+      "type": "array"
+    },
+    "evidence_references": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Evidence References",
+      "type": "array"
+    },
+    "independent_work_continuing": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Independent Work Continuing",
+      "type": "array"
+    },
+    "mission_lead_id": {
+      "maxLength": 128,
+      "minLength": 2,
+      "title": "Mission Lead Id",
+      "type": "string"
+    },
+    "pm_recommended_option_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Pm Recommended Option Id"
+    },
+    "rationale": {
+      "maxLength": 4096,
+      "minLength": 3,
+      "title": "Rationale",
+      "type": "string"
+    },
+    "unresolved_findings": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Unresolved Findings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "disposition",
+    "rationale",
+    "evidence_references",
+    "coverage",
+    "mission_lead_id",
+    "approved_members",
+    "unresolved_findings"
+  ],
+  "title": "CTOMissionReview",
+  "type": "object"
+}

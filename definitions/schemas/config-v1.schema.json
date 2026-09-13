@@ -263,6 +263,24 @@
           "title": "Max Agent Iterations",
           "type": "integer"
         },
+        "mission_cto_model_route": {
+          "default": "planning",
+          "minLength": 1,
+          "title": "Mission Cto Model Route",
+          "type": "string"
+        },
+        "mission_environment_model_route": {
+          "default": "planning",
+          "minLength": 1,
+          "title": "Mission Environment Model Route",
+          "type": "string"
+        },
+        "mission_pm_model_route": {
+          "default": "planning",
+          "minLength": 1,
+          "title": "Mission Pm Model Route",
+          "type": "string"
+        },
         "model_max_output_tokens": {
           "default": 2048,
           "maximum": 131072,
@@ -885,6 +903,94 @@
       ],
       "title": "NetworkProfileConfig",
       "type": "object"
+    },
+    "NotificationConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "default_delivery": {
+          "$ref": "#/$defs/NotificationDelivery",
+          "default": "feed"
+        },
+        "default_severity": {
+          "$ref": "#/$defs/NotificationSeverity",
+          "default": "information"
+        },
+        "page_limit": {
+          "default": 100,
+          "maximum": 1000,
+          "minimum": 1,
+          "title": "Page Limit",
+          "type": "integer"
+        },
+        "rules": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/NotificationRuleConfig"
+          },
+          "title": "Rules",
+          "type": "array"
+        }
+      },
+      "title": "NotificationConfig",
+      "type": "object"
+    },
+    "NotificationDelivery": {
+      "enum": [
+        "feed",
+        "silent"
+      ],
+      "title": "NotificationDelivery",
+      "type": "string"
+    },
+    "NotificationRuleConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "delivery": {
+          "$ref": "#/$defs/NotificationDelivery"
+        },
+        "event_types": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Event Types",
+          "type": "array"
+        },
+        "rule_id": {
+          "pattern": "^[a-z][a-z0-9_.-]{1,127}$",
+          "title": "Rule Id",
+          "type": "string"
+        },
+        "severity": {
+          "$ref": "#/$defs/NotificationSeverity"
+        },
+        "sources": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Sources",
+          "type": "array"
+        }
+      },
+      "required": [
+        "rule_id",
+        "event_types",
+        "severity",
+        "delivery"
+      ],
+      "title": "NotificationRuleConfig",
+      "type": "object"
+    },
+    "NotificationSeverity": {
+      "enum": [
+        "information",
+        "attention",
+        "action_required",
+        "urgent"
+      ],
+      "title": "NotificationSeverity",
+      "type": "string"
     },
     "OperatingMode": {
       "enum": [
@@ -2042,6 +2148,16 @@
       ],
       "default": null
     },
+    "mission_template_sources": {
+      "default": [
+        "package://mishkan.resources.organization/mission-templates.yaml"
+      ],
+      "items": {
+        "type": "string"
+      },
+      "title": "Mission Template Sources",
+      "type": "array"
+    },
     "mode": {
       "$ref": "#/$defs/OperatingMode"
     },
@@ -2052,6 +2168,9 @@
       "minProperties": 1,
       "title": "Model Routes",
       "type": "object"
+    },
+    "notifications": {
+      "$ref": "#/$defs/NotificationConfig"
     },
     "persistence": {
       "anyOf": [

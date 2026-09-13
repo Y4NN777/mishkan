@@ -1,0 +1,117 @@
+{
+  "$defs": {
+    "CrewAssignmentKind": {
+      "enum": [
+        "production",
+        "contributor",
+        "evaluation",
+        "reporting",
+        "audit"
+      ],
+      "title": "CrewAssignmentKind",
+      "type": "string"
+    },
+    "MissionRunAcceptance": {
+      "enum": [
+        "pending",
+        "accepted",
+        "rejected"
+      ],
+      "title": "MissionRunAcceptance",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "accepted": {
+      "title": "Accepted",
+      "type": "boolean"
+    },
+    "assignment_kind": {
+      "$ref": "#/$defs/CrewAssignmentKind"
+    },
+    "assignment_revision": {
+      "minimum": 1,
+      "title": "Assignment Revision",
+      "type": "integer"
+    },
+    "environment_ready": {
+      "title": "Environment Ready",
+      "type": "boolean"
+    },
+    "execution_run_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Execution Run Id"
+    },
+    "execution_task_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Execution Task Id"
+    },
+    "mission_run_acceptance": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/MissionRunAcceptance"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "run_state": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Run State"
+    },
+    "run_task_state": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Run Task State"
+    },
+    "task_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Task Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "task_id",
+    "assignment_revision",
+    "assignment_kind",
+    "environment_ready",
+    "accepted"
+  ],
+  "title": "MissionTaskAcceptanceStatus",
+  "type": "object"
+}

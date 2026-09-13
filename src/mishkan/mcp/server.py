@@ -21,7 +21,21 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from mishkan.application import ApplicationCommand
 from mishkan.daemon.auth import TokenFile
 from mishkan.domain.errors import ErrorCode, MishkanError
-from mishkan.mcp.facade import EventQuery, McpFacadePort, McpFacadeRouter, RunQuery
+from mishkan.mcp.facade import (
+    ConversationListQuery,
+    ConversationQuery,
+    EventQuery,
+    LimitQuery,
+    McpFacadePort,
+    McpFacadeRouter,
+    MissionQuery,
+    MissionTemplateQuery,
+    NotificationQuery,
+    OrganizationBranchQuery,
+    ProfessionalCompetenceQuery,
+    ProfessionalHistoryQuery,
+    RunQuery,
+)
 
 _principal: ContextVar[str | None] = ContextVar("mishkan_mcp_principal", default=None)
 
@@ -128,6 +142,21 @@ class McpProtocolFacade:
                 "system.snapshot": "Read a bounded, cursor-consistent daemon snapshot.",
                 "events.list": "Read a bounded page of durable application events.",
                 "run.get": "Read one durable run projection by identifier.",
+                "organization.get": "Read the canonical organization roster.",
+                "organization.inspect": "Inspect bounded organization and branch status.",
+                "organization.branch.inspect": "Drill into one organization branch.",
+                "organization.competence.get": "Read attributable competence evidence.",
+                "organization.evidence.list": "List immutable professional evidence records.",
+                "organization.promotions.list": "List professional promotion decisions.",
+                "mission.list": "List bounded durable mission projections.",
+                "mission.get": "Read one durable mission projection.",
+                "mission.inspect": "Inspect one mission and its bounded related records.",
+                "mission.run-reports.list": "List attributable multi-task run reports.",
+                "mission.templates.list": "List optional contextual mission guidance.",
+                "conversation.list": "List bounded durable conversation channels.",
+                "conversation.get": "Read one channel and its bounded message history.",
+                "advisory.candidates.list": "List candidates without granting activation.",
+                "notification.list": "Read configurable notification projections over events.",
                 "command.submit": "Submit one governed, idempotent application command.",
             }
             return [
@@ -166,6 +195,11 @@ class McpProtocolFacade:
                 "mishkan://snapshot": "MISHKAN snapshot",
                 "mishkan://runs": "MISHKAN runs",
                 "mishkan://events": "MISHKAN events",
+                "mishkan://organization": "MISHKAN organization",
+                "mishkan://missions": "MISHKAN missions",
+                "mishkan://conversations": "MISHKAN conversations",
+                "mishkan://advisory/candidates": "MISHKAN advisory candidates",
+                "mishkan://notifications": "MISHKAN notifications",
             }
             return [
                 types.Resource(
@@ -206,5 +240,20 @@ class McpProtocolFacade:
             "system.snapshot": empty,
             "events.list": EventQuery.model_json_schema(),
             "run.get": RunQuery.model_json_schema(),
+            "organization.get": empty,
+            "organization.inspect": LimitQuery.model_json_schema(),
+            "organization.branch.inspect": OrganizationBranchQuery.model_json_schema(),
+            "organization.competence.get": ProfessionalCompetenceQuery.model_json_schema(),
+            "organization.evidence.list": ProfessionalHistoryQuery.model_json_schema(),
+            "organization.promotions.list": ProfessionalHistoryQuery.model_json_schema(),
+            "mission.list": LimitQuery.model_json_schema(),
+            "mission.get": MissionQuery.model_json_schema(),
+            "mission.inspect": MissionQuery.model_json_schema(),
+            "mission.run-reports.list": MissionQuery.model_json_schema(),
+            "mission.templates.list": MissionTemplateQuery.model_json_schema(),
+            "conversation.list": ConversationListQuery.model_json_schema(),
+            "conversation.get": ConversationQuery.model_json_schema(),
+            "advisory.candidates.list": empty,
+            "notification.list": NotificationQuery.model_json_schema(),
             "command.submit": ApplicationCommand.model_json_schema(),
         }

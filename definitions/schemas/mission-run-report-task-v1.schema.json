@@ -1,0 +1,97 @@
+{
+  "$defs": {
+    "CrewAssignmentKind": {
+      "enum": [
+        "production",
+        "contributor",
+        "evaluation",
+        "reporting",
+        "audit"
+      ],
+      "title": "CrewAssignmentKind",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "acceptance_references": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Acceptance References",
+      "type": "array"
+    },
+    "accountable_owner": {
+      "maxLength": 128,
+      "minLength": 2,
+      "title": "Accountable Owner",
+      "type": "string"
+    },
+    "assignment_kind": {
+      "$ref": "#/$defs/CrewAssignmentKind"
+    },
+    "evidence_references": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Evidence References",
+      "type": "array"
+    },
+    "execution_task_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Execution Task Id",
+      "type": "string"
+    },
+    "failures": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Failures",
+      "type": "array"
+    },
+    "mission_task_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Mission Task Id",
+      "type": "string"
+    },
+    "outcome_summary": {
+      "maxLength": 8192,
+      "minLength": 3,
+      "title": "Outcome Summary",
+      "type": "string"
+    },
+    "residual_risks": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Residual Risks",
+      "type": "array"
+    },
+    "result_references": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Result References",
+      "type": "array"
+    }
+  },
+  "required": [
+    "mission_task_id",
+    "execution_task_id",
+    "accountable_owner",
+    "assignment_kind",
+    "result_references",
+    "acceptance_references",
+    "outcome_summary",
+    "evidence_references"
+  ],
+  "title": "MissionRunReportTask",
+  "type": "object"
+}

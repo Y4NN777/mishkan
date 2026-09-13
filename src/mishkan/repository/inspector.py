@@ -8,7 +8,12 @@ import subprocess
 from pathlib import Path
 
 from mishkan.domain.errors import ErrorCode, MishkanError
-from mishkan.repository.models import DiscoveryFact, DiscoverySnapshot, RepositoryBinding
+from mishkan.repository.models import (
+    DiscoveryFact,
+    DiscoverySnapshot,
+    ProspectiveWorkspaceBinding,
+    RepositoryBinding,
+)
 from mishkan.repository.profile import DiscoveryProfile, load_discovery_profile
 
 
@@ -145,3 +150,95 @@ class RepositoryInspector:
                 details={"path": str(cwd), "operation": "git " + " ".join(arguments)},
             ) from exc
         return completed.stdout
+
+
+class ProspectiveWorkspaceInspector:
+    """Discover a workspace before a repository identity or Git base exists."""
+
+    def __init__(self, profile: DiscoveryProfile | None = None) -> None:
+        self._profile = profile or load_discovery_profile()
+
+    def inspect(self, requested_path: Path, *, workspace_id: str) -> DiscoverySnapshot:
+        root = requested_path.expanduser().resolve()
+        if not root.is_dir():
+            raise MishkanError(
+                ErrorCode.PROJECT,
+                "prospective workspace must be an existing directory",
+                details={"path": str(root)},
+            )
+        files = tuple(
+            sorted(
+                path.relative_to(root)
+                for path in root.rglob("*")
+                if path.is_file()
+                and not path.is_symlink()
+                and not set(path.relative_to(root).parts).intersection(
+                    self._profile.excluded_directories
+                )
+            )
+        )
+        entries = []
+        for path in files:
+            stat = (root / path).stat()
+            entries.append((path.as_posix(), stat.st_size, stat.st_mtime_ns))
+        workspace_fingerprint = hashlib.sha256(
+            json.dumps(entries, separators=(",", ":")).encode()
+        ).hexdigest()
+        discovery_revision = hashlib.sha256(
+            json.dumps(
+                {
+                    "workspace_id": workspace_id,
+                    "workspace_fingerprint": workspace_fingerprint,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest()
+        binding = ProspectiveWorkspaceBinding(
+            workspace_id=workspace_id,
+            root=root,
+            discovery_revision=discovery_revision,
+            workspace_fingerprint=workspace_fingerprint,
+        )
+        facts: list[DiscoveryFact] = []
+        for kind, candidates in sorted(self._profile.manifests.items()):
+            matches = tuple(path for path in files if path.name in candidates)
+            if matches:
+                facts.append(DiscoveryFact(kind=kind, value=matches[0].name, citations=matches))
+        language_paths: dict[str, list[Path]] = {}
+        for path in files:
+            language = self._profile.languages.get(path.suffix.lower())
+            if language:
+                language_paths.setdefault(language, []).append(path)
+        for language, paths in sorted(language_paths.items()):
+            facts.append(
+                DiscoveryFact(
+                    kind="language",
+                    value=language,
+                    citations=tuple(paths[: self._profile.evidence_limit]),
+                )
+            )
+        unknowns = []
+        if not any(fact.kind == "readme" for fact in facts):
+            unknowns.append("project documentation")
+        if not any(fact.kind == "tests" for fact in facts):
+            unknowns.append("test framework")
+        fingerprint = hashlib.sha256(
+            json.dumps(
+                {
+                    "context_kind": binding.context_kind,
+                    "workspace_id": binding.workspace_id,
+                    "discovery_revision": binding.discovery_revision,
+                    "facts": [fact.model_dump(mode="json") for fact in facts],
+                    "unknowns": unknowns,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest()
+        return DiscoverySnapshot(
+            binding=binding,
+            facts=tuple(facts),
+            unknowns=tuple(unknowns),
+            fingerprint=fingerprint,
+        )
