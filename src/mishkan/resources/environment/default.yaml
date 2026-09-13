@@ -1,6 +1,6 @@
 schema_version: "1.0"
 profile_id: engineering-default
-revision: "1"
+revision: "2"
 descriptor_paths:
   devcontainer:
     - .devcontainer/devcontainer.json
@@ -174,21 +174,25 @@ engines:
     project_markers: ["*.container", "*.pod"]
 adapters:
   - adapter_id: devcontainer.cli
-    revision: "1"
+    revision: "2"
     engine_id: devcontainer-cli
     descriptor_formats: [devcontainer]
     operations:
       validate:
         mode: job
-        path_engine_ids: [node, posix-shell]
+        path_engine_ids: [node, posix-shell, docker]
         arguments: [read-configuration, --workspace-folder, .]
       materialize:
         mode: job
-        path_engine_ids: [node, posix-shell]
+        path_engine_ids: [node, posix-shell, docker]
         arguments: [up, --workspace-folder, .]
         declared_effects: [environment.materialize, container.create]
         readiness: output_contains
         readiness_value: outcome
+      readiness:
+        mode: job
+        path_engine_ids: [node, posix-shell, docker]
+        arguments: [exec, --workspace-folder, ., /bin/true]
   - adapter_id: podman.cli
     revision: "1"
     engine_id: podman

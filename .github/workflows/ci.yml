@@ -76,3 +76,43 @@ jobs:
 
       - name: Build distributions
         run: uv build
+
+  i05-environments:
+    name: I05 real environment adapters / Linux
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+          cache-suffix: i05-environments
+
+      - name: Install Python and locked project
+        run: |
+          uv python install 3.11
+          uv sync --locked --dev --python 3.11
+
+      - name: Install Podman and the pinned Dev Container CLI gate dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes podman
+          npm install --prefix "$RUNNER_TEMP/devcontainer" @devcontainers/cli@0.89.0 --no-audit --no-fund
+          echo "$RUNNER_TEMP/devcontainer/node_modules/.bin" >> "$GITHUB_PATH"
+
+      - name: Record external engine versions
+        run: |
+          docker version
+          docker compose version
+          podman version
+          devcontainer --version
+
+      - name: Exercise governed Docker, Compose, Podman, and Dev Container lifecycles
+        run: >-
+          uv run --python 3.11 pytest -vv
+          tests/acceptance/skills_engineering/test_governed_docker_compose.py
+          tests/acceptance/skills_engineering/test_governed_devcontainer.py
+          tests/acceptance/skills_engineering/test_governed_podman.py
