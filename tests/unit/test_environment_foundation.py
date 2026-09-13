@@ -117,3 +117,56 @@ def test_resolver_honors_exact_outcome_authority_and_context(tmp_path: Path) -> 
     assert stale.state is EnvironmentBindingState.STALE
     assert stale.missing_conditions == ("observation-fingerprint",)
     assert os.path.exists(podman)
+
+
+def test_resolver_never_substitutes_an_unrequested_engine_after_incompatibility(
+    tmp_path: Path,
+) -> None:
+    binaries = tmp_path / "bin"
+    binaries.mkdir()
+    for name in ("podman", "docker"):
+        executable = binaries / name
+        executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        executable.chmod(0o755)
+    profile = _profile(tmp_path)
+    observation = EnvironmentObserver(profile).observe(
+        tmp_path,
+        request=EnvironmentObservationRequest(
+            actor_identity="engineer:test",
+            context_id="repository:example",
+            execution_location="local:test",
+            repository_id="repo-example",
+            repository_revision="abc1234",
+        ),
+        path_value=str(binaries),
+    )
+    request = EnvironmentBindingRequest(
+        mission_id="mission-1",
+        plan_fingerprint="a" * 64,
+        owner_identity="Platform_Engineer",
+        context_id=observation.context_id,
+        observation_id=observation.observation_id,
+        observation_revision=observation.revision,
+        observation_fingerprint=observation.fingerprint,
+        requested_outcome=EnvironmentOutcome.HOST_NATIVE,
+        target_platform=observation.platform,
+        target_architecture=observation.architecture,
+        execution_location=observation.execution_location,
+        required_semantics=("compose.lifecycle",),
+        required_engine_ids=("podman",),
+        authorized_engine_ids=("podman", "docker"),
+        affected_task_ids=("task-build",),
+        verification_checks=("startup",),
+        policy_fingerprint="b" * 64,
+        rationale="Use only the exact agent-requested Podman engine.",
+    )
+
+    binding = EnvironmentResolver(freshness_seconds=profile.freshness_seconds).resolve(
+        request,
+        observation,
+    )
+
+    assert binding.state is EnvironmentBindingState.INCOMPATIBLE
+    assert binding.selected_engine_ids == ()
+    assert binding.selected_adapter_ids == ()
+    assert "engine:podman" in binding.missing_conditions
