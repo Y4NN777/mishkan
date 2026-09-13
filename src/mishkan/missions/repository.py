@@ -19,6 +19,7 @@ from mishkan.missions.environment import (
     MissionEnvironmentPlanAcceptance,
 )
 from mishkan.missions.models import (
+    AssignmentChangeKind,
     CrewAssignmentKind,
     MissionBrief,
     MissionBriefStatus,
@@ -456,18 +457,16 @@ class SQLiteMissionRepository:
                         "conflicting_identity_ids": conflicting_contributors,
                     },
                 )
-            expected_revision = 1 + (
-                session.scalar(
-                    select(MissionAssignmentRow.assignment_revision)
-                    .where(
-                        MissionAssignmentRow.mission_id == str(assignment.mission_id),
-                        MissionAssignmentRow.task_id == assignment.task_id,
-                    )
-                    .order_by(MissionAssignmentRow.assignment_revision.desc())
-                    .limit(1)
+            prior_row = session.scalar(
+                select(MissionAssignmentRow)
+                .where(
+                    MissionAssignmentRow.mission_id == str(assignment.mission_id),
+                    MissionAssignmentRow.task_id == assignment.task_id,
                 )
-                or 0
+                .order_by(MissionAssignmentRow.assignment_revision.desc())
+                .limit(1)
             )
+            expected_revision = 1 + (prior_row.assignment_revision if prior_row is not None else 0)
             if assignment.assignment_revision != expected_revision:
                 raise MishkanError(
                     ErrorCode.REVISION_MISMATCH,
@@ -477,6 +476,9 @@ class SQLiteMissionRepository:
                         "received": assignment.assignment_revision,
                     },
                 )
+            if prior_row is not None:
+                prior = MissionTaskAssignment.model_validate_json(prior_row.payload)
+                self._require_assignment_change_governance(assignment, prior, crew)
             session.add(
                 MissionAssignmentRow(
                     id=str(assignment.assignment_id),
@@ -499,9 +501,111 @@ class SQLiteMissionRepository:
                     "assignment_revision": assignment.assignment_revision,
                     "accountable_owner": assignment.accountable_owner,
                     "crew_version": assignment.crew_version,
+                    "change_kind": (
+                        assignment.change.change_kind.value
+                        if assignment.change is not None
+                        else None
+                    ),
+                    "prior_assignment_id": (
+                        str(assignment.change.prior_assignment_id)
+                        if assignment.change is not None
+                        else None
+                    ),
                 },
             )
         return assignment
+
+    @staticmethod
+    def _require_assignment_change_governance(
+        assignment: MissionTaskAssignment,
+        prior: MissionTaskAssignment,
+        crew: MissionCrewRevision,
+    ) -> None:
+        change = assignment.change
+        if change is None:
+            raise MishkanError(
+                ErrorCode.MISSION,
+                "revised assignment is missing its governed change lineage",
+            )
+        if (
+            change.prior_assignment_id != prior.assignment_id
+            or change.prior_assignment_revision != prior.assignment_revision
+        ):
+            raise MishkanError(
+                ErrorCode.REVISION_MISMATCH,
+                "assignment change does not reference the exact prior assignment",
+            )
+        if change.requested_by_identity != crew.mission_lead_id:
+            raise MishkanError(
+                ErrorCode.AUTHORITY_NOT_GRANTED,
+                "only the current Mission Lead may request an assignment change",
+            )
+        contract_fields = (
+            "task_id",
+            "assignment_kind",
+            "expected_result",
+            "completion_criteria",
+            "dependencies",
+            "execution_run_id",
+            "execution_task_id",
+            "environment_context_ids",
+            "authority_scope",
+            "exact_tools",
+            "path_scopes",
+            "limits",
+            "required_evidence",
+            "requires_independent_evaluation",
+        )
+        contract_changed = any(
+            getattr(prior, field) != getattr(assignment, field) for field in contract_fields
+        )
+        if contract_changed and change.change_kind is not AssignmentChangeKind.REPLANNED:
+            raise MishkanError(
+                ErrorCode.PLAN,
+                "assignment change outside the accepted task contract requires replanning",
+            )
+        owner_or_composition_changed = (
+            prior.accountable_owner != assignment.accountable_owner
+            or prior.crew_version != assignment.crew_version
+        )
+        if owner_or_composition_changed:
+            if change.change_kind is AssignmentChangeKind.IN_PLAN_LOCAL:
+                raise MishkanError(
+                    ErrorCode.AUTHORITY_NOT_GRANTED,
+                    "local Mission Lead authority cannot change formal ownership or composition",
+                )
+            cto = change.cto_coverage_confirmation
+            pm = change.pm_reassignment_confirmation
+            if cto is None or pm is None:
+                raise MishkanError(
+                    ErrorCode.AUTHORITY_NOT_GRANTED,
+                    "formal reassignment requires CTO coverage then PM confirmation",
+                )
+            coverage = {item.lower() for item in cto.coverage}
+            if not all(
+                any(required in item for item in coverage)
+                for required in ("technical", "security", "quality")
+            ):
+                raise MishkanError(
+                    ErrorCode.ROLE_CONFLICT,
+                    "CTO reassignment confirmation omits technical, security, or quality coverage",
+                )
+            if cto.confirmed_at > pm.confirmed_at:
+                raise MishkanError(
+                    ErrorCode.AUTHORITY_NOT_GRANTED,
+                    "PM reassignment confirmation must follow CTO coverage confirmation",
+                )
+        elif change.change_kind is AssignmentChangeKind.FORMAL_REASSIGNMENT:
+            raise MishkanError(
+                ErrorCode.MISSION,
+                "formal reassignment must change accountable ownership or crew composition",
+            )
+        if (
+            not contract_changed
+            and not owner_or_composition_changed
+            and (prior.contributors == assignment.contributors)
+        ):
+            raise MishkanError(ErrorCode.MISSION, "assignment revision does not change anything")
 
     def transition(
         self,

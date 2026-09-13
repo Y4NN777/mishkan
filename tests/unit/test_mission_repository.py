@@ -5,9 +5,11 @@ import pytest
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.identity import new_id
 from mishkan.missions import (
+    AssignmentChangeKind,
     CrewAssignmentKind,
     CrewSelectionEvidence,
     ExecutiveConfirmation,
+    MissionAssignmentChange,
     MissionBrief,
     MissionBriefStatus,
     MissionCrewMember,
@@ -444,3 +446,192 @@ def test_assignment_rejects_cross_responsibility_production_and_evaluation(
         repository.record_assignment(assignment)
 
     assert error.value.envelope.code is ErrorCode.ROLE_CONFLICT
+
+
+def _assignment_change_fixture(
+    tmp_path: Path,
+) -> tuple[
+    SQLiteMissionRepository,
+    MissionRecord,
+    MissionCrewRevision,
+    MissionTaskAssignment,
+]:
+    _, repository, mission = _setup(tmp_path)
+    brief = _brief(mission).model_copy(
+        update={
+            "proposed_crew": (
+                *_brief(mission).proposed_crew,
+                "Android_Engineer",
+            )
+        }
+    )
+    repository.record_brief(brief, expected_revision=mission.revision)
+    current = repository.mission(str(mission.mission_id))
+    original_crew = _crew(brief)
+    crew = original_crew.model_copy(
+        update={
+            "members": (
+                *original_crew.members,
+                MissionCrewMember(
+                    identity_id="Android_Engineer",
+                    assignment_kind=CrewAssignmentKind.PRODUCTION,
+                    responsibility="Contribute production work within the accepted task contract",
+                    selection_evidence=_selection("Android_Engineer"),
+                ),
+            )
+        }
+    )
+    repository.record_crew(crew, expected_revision=current.revision)
+    assignment = MissionTaskAssignment(
+        mission_id=mission.mission_id,
+        crew_version=crew.version,
+        task_id="implement-recovery",
+        accountable_owner="Backend_Service_Engineer",
+        assignment_kind=CrewAssignmentKind.PRODUCTION,
+        expected_result="A verified recovery implementation",
+        completion_criteria=("independent recovery test passes",),
+        authority_scope=("repository:api",),
+        exact_tools=("file.read", "file.patch"),
+        path_scopes=("repository:api",),
+        limits=(MissionResourceLimit(name="wall_time", value=600, unit="seconds"),),
+        required_evidence=("artifact:result", "artifact:evaluation"),
+        requires_independent_evaluation=True,
+    )
+    repository.record_assignment(assignment)
+    return repository, mission, crew, assignment
+
+
+def _revise_assignment(
+    prior: MissionTaskAssignment,
+    change: MissionAssignmentChange,
+    **updates: object,
+) -> MissionTaskAssignment:
+    payload = prior.model_dump(mode="json")
+    payload.update(
+        {
+            "schema_version": "1.1",
+            "assignment_id": str(new_id()),
+            "assignment_revision": prior.assignment_revision + 1,
+            "change": change.model_dump(mode="json"),
+            **updates,
+        }
+    )
+    return MissionTaskAssignment.model_validate(payload)
+
+
+def test_assignment_changes_distinguish_local_formal_and_replanned_authority(
+    tmp_path: Path,
+) -> None:
+    repository, mission, crew, initial = _assignment_change_fixture(tmp_path)
+    plan_a = "a" * 64
+    local = _revise_assignment(
+        initial,
+        MissionAssignmentChange(
+            prior_assignment_id=initial.assignment_id,
+            prior_assignment_revision=initial.assignment_revision,
+            requested_by_identity=crew.mission_lead_id,
+            change_kind=AssignmentChangeKind.IN_PLAN_LOCAL,
+            rationale="Add one available contributor without changing the task contract",
+            context_references=("mission:current-crew",),
+            evidence_references=("evidence:android-availability",),
+            authority_reference="authority:mission-lead-local-assignment",
+            prior_plan_fingerprint=plan_a,
+            effective_plan_fingerprint=plan_a,
+        ),
+        contributors=("Android_Engineer",),
+    )
+    assert repository.record_assignment(local) == local
+
+    cto = _confirmation("CTO")
+    pm = _confirmation("PM")
+    formal = _revise_assignment(
+        local,
+        MissionAssignmentChange(
+            prior_assignment_id=local.assignment_id,
+            prior_assignment_revision=local.assignment_revision,
+            requested_by_identity=crew.mission_lead_id,
+            change_kind=AssignmentChangeKind.FORMAL_REASSIGNMENT,
+            rationale="Transfer accountability while preserving the accepted task contract",
+            context_references=("mission:current-crew", "task:implement-recovery"),
+            evidence_references=("evidence:coverage-review",),
+            authority_reference="authority:pm-formal-reassignment",
+            prior_plan_fingerprint=plan_a,
+            effective_plan_fingerprint=plan_a,
+            cto_coverage_confirmation=cto,
+            pm_reassignment_confirmation=pm,
+        ),
+        accountable_owner="Android_Engineer",
+        contributors=("Backend_Service_Engineer",),
+    )
+    assert repository.record_assignment(formal) == formal
+
+    replanned = _revise_assignment(
+        formal,
+        MissionAssignmentChange(
+            prior_assignment_id=formal.assignment_id,
+            prior_assignment_revision=formal.assignment_revision,
+            requested_by_identity=crew.mission_lead_id,
+            change_kind=AssignmentChangeKind.REPLANNED,
+            rationale="A changed bounded result was accepted by a new plan",
+            context_references=("mission:current-crew", "plan:new"),
+            evidence_references=("evidence:changed-requirement",),
+            authority_reference="authority:accepted-replan",
+            prior_plan_fingerprint=plan_a,
+            effective_plan_fingerprint="b" * 64,
+            replanning_evidence_references=("plan:b",),
+        ),
+        expected_result="A verified recovery implementation with device binding",
+    )
+    assert repository.record_assignment(replanned) == replanned
+    assert repository.assignments(str(mission.mission_id)) == (
+        initial,
+        local,
+        formal,
+        replanned,
+    )
+
+
+def test_assignment_change_refuses_non_lead_and_unplanned_contract_change(
+    tmp_path: Path,
+) -> None:
+    repository, _mission, _crew_record, initial = _assignment_change_fixture(tmp_path)
+    plan = "a" * 64
+    non_lead = _revise_assignment(
+        initial,
+        MissionAssignmentChange(
+            prior_assignment_id=initial.assignment_id,
+            prior_assignment_revision=initial.assignment_revision,
+            requested_by_identity="PM",
+            change_kind=AssignmentChangeKind.IN_PLAN_LOCAL,
+            rationale="An identity other than the Mission Lead requested this change",
+            context_references=("mission:current-crew",),
+            evidence_references=("evidence:request",),
+            authority_reference="authority:mission-lead-local-assignment",
+            prior_plan_fingerprint=plan,
+            effective_plan_fingerprint=plan,
+        ),
+        contributors=("Android_Engineer",),
+    )
+    with pytest.raises(MishkanError) as authority:
+        repository.record_assignment(non_lead)
+    assert authority.value.envelope.code is ErrorCode.AUTHORITY_NOT_GRANTED
+
+    unplanned = _revise_assignment(
+        initial,
+        MissionAssignmentChange(
+            prior_assignment_id=initial.assignment_id,
+            prior_assignment_revision=initial.assignment_revision,
+            requested_by_identity="Backend_Service_Engineer",
+            change_kind=AssignmentChangeKind.IN_PLAN_LOCAL,
+            rationale="Attempt to change the result without replanning",
+            context_references=("mission:current-crew",),
+            evidence_references=("evidence:request",),
+            authority_reference="authority:mission-lead-local-assignment",
+            prior_plan_fingerprint=plan,
+            effective_plan_fingerprint=plan,
+        ),
+        expected_result="A materially different unplanned result",
+    )
+    with pytest.raises(MishkanError) as replan:
+        repository.record_assignment(unplanned)
+    assert replan.value.envelope.code is ErrorCode.PLAN

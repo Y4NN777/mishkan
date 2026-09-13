@@ -1298,12 +1298,32 @@ class ApplicationCommandAuthority:
                 )
                 if normalized.target_id != str(mission_assignment.assignment_id):
                     raise ValueError("assignment target differs from its immutable identity")
+                if (
+                    mission_assignment.change is not None
+                    and mission_assignment.change.requested_by_identity != normalized.actor_id
+                ):
+                    raise MishkanError(
+                        ErrorCode.AUTHORITY_NOT_GRANTED,
+                        "assignment change requester must match the authenticated command actor",
+                    )
                 external_resources = (
                     f"mission:{mission_assignment.mission_id}",
                     f"identity:{mission_assignment.accountable_owner}",
                     *(f"identity:{item}" for item in mission_assignment.contributors),
                     *(f"tool:{item}" for item in mission_assignment.exact_tools),
                     *(f"path:{item}" for item in mission_assignment.path_scopes),
+                    *(
+                        (
+                            f"assignment:{mission_assignment.change.prior_assignment_id}",
+                            f"authority:{mission_assignment.change.authority_reference}",
+                            *(
+                                f"evidence:{item}"
+                                for item in mission_assignment.change.evidence_references
+                            ),
+                        )
+                        if mission_assignment.change is not None
+                        else ()
+                    ),
                 )
             elif normalized.command_type == "mission.task.claim":
                 mission_task_claim = MissionTaskClaimRequest.model_validate(

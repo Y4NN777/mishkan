@@ -60,6 +60,12 @@ class CrewAssignmentKind(StrEnum):
     AUDIT = "audit"
 
 
+class AssignmentChangeKind(StrEnum):
+    IN_PLAN_LOCAL = "in_plan_local"
+    FORMAL_REASSIGNMENT = "formal_reassignment"
+    REPLANNED = "replanned"
+
+
 class MissionOrigin(MissionModel):
     schema_version: Literal["1.0"] = "1.0"
     origin_id: UUID = Field(default_factory=new_id)
@@ -265,8 +271,55 @@ class MissionResourceLimit(MissionModel):
     unit: str = Field(min_length=1, max_length=64)
 
 
+class MissionAssignmentChange(MissionModel):
+    prior_assignment_id: UUID
+    prior_assignment_revision: int = Field(ge=1)
+    requested_by_identity: str = Field(min_length=2, max_length=128)
+    change_kind: AssignmentChangeKind
+    rationale: str = Field(min_length=3, max_length=8_192)
+    context_references: tuple[str, ...] = Field(min_length=1)
+    evidence_references: tuple[str, ...] = Field(min_length=1)
+    authority_reference: str = Field(min_length=1, max_length=1_024)
+    prior_plan_fingerprint: str = Field(min_length=64, max_length=64)
+    effective_plan_fingerprint: str = Field(min_length=64, max_length=64)
+    replanning_evidence_references: tuple[str, ...] = ()
+    cto_coverage_confirmation: ExecutiveConfirmation | None = None
+    pm_reassignment_confirmation: ExecutiveConfirmation | None = None
+
+    @model_validator(mode="after")
+    def plan_and_confirmation_lineage_is_explicit(self) -> MissionAssignmentChange:
+        confirmations = (
+            self.cto_coverage_confirmation,
+            self.pm_reassignment_confirmation,
+        )
+        if self.cto_coverage_confirmation is not None and (
+            self.cto_coverage_confirmation.identity_id != "CTO"
+        ):
+            raise ValueError("reassignment coverage confirmation must be attributable to CTO")
+        if self.pm_reassignment_confirmation is not None and (
+            self.pm_reassignment_confirmation.identity_id != "PM"
+        ):
+            raise ValueError("reassignment composition confirmation must be attributable to PM")
+        if any(item is not None and item.disposition != "confirmed" for item in confirmations):
+            raise ValueError("reassignment confirmations must be affirmative")
+        if self.change_kind is AssignmentChangeKind.IN_PLAN_LOCAL:
+            if self.prior_plan_fingerprint != self.effective_plan_fingerprint:
+                raise ValueError("in-plan assignment change cannot claim another plan")
+            if self.replanning_evidence_references:
+                raise ValueError("in-plan assignment change cannot claim replanning evidence")
+        elif self.change_kind is AssignmentChangeKind.FORMAL_REASSIGNMENT:
+            if self.prior_plan_fingerprint != self.effective_plan_fingerprint:
+                raise ValueError("formal in-plan reassignment must retain the accepted plan")
+        elif (
+            self.prior_plan_fingerprint == self.effective_plan_fingerprint
+            or not self.replanning_evidence_references
+        ):
+            raise ValueError("out-of-plan assignment change requires proven replanning")
+        return self
+
+
 class MissionTaskAssignment(MissionModel):
-    schema_version: Literal["1.0"] = "1.0"
+    schema_version: Literal["1.0", "1.1"] = "1.0"
     assignment_id: UUID = Field(default_factory=new_id)
     mission_id: UUID
     crew_version: int = Field(ge=1)
@@ -287,6 +340,7 @@ class MissionTaskAssignment(MissionModel):
     limits: tuple[MissionResourceLimit, ...] = Field(min_length=1)
     required_evidence: tuple[str, ...] = Field(min_length=1)
     requires_independent_evaluation: bool = False
+    change: MissionAssignmentChange | None = None
     created_at: datetime = Field(default_factory=utc_now)
 
     @field_validator("created_at")
@@ -312,6 +366,11 @@ class MissionTaskAssignment(MissionModel):
             CrewAssignmentKind.PRODUCTION
         ):
             raise ValueError("only production work can require independent evaluation")
+        if self.assignment_revision == 1:
+            if self.change is not None:
+                raise ValueError("initial task assignment cannot claim reassignment lineage")
+        elif self.schema_version != "1.1" or self.change is None:
+            raise ValueError("revised task assignment requires the versioned change contract")
         return self
 
 

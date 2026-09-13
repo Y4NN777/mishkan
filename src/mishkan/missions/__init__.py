@@ -21,9 +21,11 @@ from mishkan.missions.execution import (
     MissionTaskGateState,
 )
 from mishkan.missions.models import (
+    AssignmentChangeKind,
     CrewAssignmentKind,
     CrewSelectionEvidence,
     ExecutiveConfirmation,
+    MissionAssignmentChange,
     MissionBrief,
     MissionBriefStatus,
     MissionCrewMember,
@@ -53,12 +55,14 @@ from mishkan.missions.templates import (
 )
 
 __all__ = [
+    "AssignmentChangeKind",
     "CrewAIPlanningLineage",
     "CrewAssignmentKind",
     "CrewSelectionEvidence",
     "EnvironmentContextReadiness",
     "EnvironmentReadinessState",
     "ExecutiveConfirmation",
+    "MissionAssignmentChange",
     "MissionAssignmentGraphValidator",
     "MissionBrief",
     "MissionBriefStatus",
