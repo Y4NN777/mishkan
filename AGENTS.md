@@ -22,9 +22,12 @@ and `main`; I04 is integrated and closed. D-041 accepts Implementation Plan 1.6 
 on `feat/i05-skills-engineering-foundation`. D-042 accepts the complete I05 gate at `8605437` after
 the seven-job Linux/macOS Python 3.11–3.13 matrix and real governed Docker, Compose, Dev Container,
 and Podman lifecycles passed. I05 passed its seven-job integration matrix on `develop` at `65e8d42`
-and is promoted to `main` at `ef185b9`. D-043 authorizes I06 on
+and is promoted to `main` at `ef185b9`. D-043 authorized I06 on
 `feat/i06-organization-missions-communication`; its accepted scope is organization, missions,
-communication, governed intervention, and evidence-based professional evolution.
+communication, governed intervention, and evidence-based professional evolution. D-044 accepts
+the completed I06 gate at `2d1f78c` after the final conformance review, local branch-coverage gate,
+and seven-job Linux/macOS Python 3.11–3.13 matrix passed. I06 may be promoted to `develop`; I07 is
+not authorized until that integration gate passes and the engineer explicitly starts it.
 The rejected
 universal workflow, mandatory outcome catalogue, capability-family matrix, static role/tool matrix,
 competing runtime, and private operational deny-list must not return.
