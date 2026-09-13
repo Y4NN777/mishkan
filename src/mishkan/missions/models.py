@@ -191,13 +191,21 @@ class MissionBrief(MissionModel):
             assert self.cto_confirmation is not None
             pm_coverage = " ".join(self.pm_confirmation.coverage).lower()
             cto_coverage = " ".join(self.cto_confirmation.coverage).lower()
-            if "composition" not in pm_coverage:
-                raise ValueError("confirmed Mission Brief requires PM composition coverage")
             if any(
-                required not in cto_coverage for required in ("technical", "security", "quality")
+                required not in pm_coverage
+                for required in ("product", "developer-experience", "composition")
             ):
                 raise ValueError(
-                    "confirmed Mission Brief requires CTO technical, security, and quality coverage"
+                    "confirmed Mission Brief requires PM product, developer-experience, "
+                    "and composition coverage"
+                )
+            if any(
+                required not in cto_coverage
+                for required in ("technical", "platform", "security", "quality", "operability")
+            ):
+                raise ValueError(
+                    "confirmed Mission Brief requires CTO technical, platform, security, "
+                    "quality, and operability coverage"
                 )
         if self.status is MissionBriefStatus.REJECTED and not any(
             item.disposition == "rejected" for item in confirmations

@@ -97,7 +97,7 @@ def _cto(
         disposition=disposition,
         rationale="Technical, security, quality, and reporting coverage is explicit",
         evidence_references=("evidence:technical-review",),
-        coverage=("technical", "security", "quality", "operability"),
+        coverage=("technical", "platform", "security", "quality", "operability"),
         mission_lead_id="Backend_Service_Engineer",
         approved_members=(
             _member("Backend_Service_Engineer", CrewAssignmentKind.PRODUCTION),
@@ -252,8 +252,8 @@ def test_governance_rejects_evidence_references_absent_from_the_input(tmp_path: 
     assert error.value.envelope.details == {"references": ["evidence:technical-review"]}
 
 
-def test_confirmed_cto_review_requires_technical_security_and_quality_coverage() -> None:
-    with pytest.raises(ValueError, match="technical, security, and quality"):
+def test_confirmed_cto_review_requires_complete_i06_coverage() -> None:
+    with pytest.raises(ValueError, match="technical, platform, security"):
         CTOMissionReview.model_validate(
             _cto().model_dump() | {"coverage": ("technical", "quality")}
         )

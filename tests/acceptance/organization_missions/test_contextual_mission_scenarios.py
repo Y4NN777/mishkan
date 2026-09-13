@@ -271,7 +271,7 @@ def _governance(
         disposition="confirmed",
         rationale=f"Technical coverage confirmed for {scenario.scenario_id}",
         evidence_references=(f"fixture:{scenario.scenario_id}:technical",),
-        coverage=("technical", "security", "quality", "operability"),
+        coverage=("technical", "platform", "security", "quality", "operability"),
         mission_lead_id=scenario.producer,
         approved_members=(
             _member(scenario.producer, CrewAssignmentKind.PRODUCTION, scenario),

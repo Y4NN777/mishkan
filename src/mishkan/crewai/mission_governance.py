@@ -107,11 +107,20 @@ class CTOMissionReview(GovernanceOutput):
             normalized = " ".join(self.coverage).lower()
             missing = {
                 required
-                for required in ("technical", "security", "quality")
+                for required in (
+                    "technical",
+                    "platform",
+                    "security",
+                    "quality",
+                    "operability",
+                )
                 if required not in normalized
             }
             if missing:
-                raise ValueError("confirmed CTO review must cover technical, security, and quality")
+                raise ValueError(
+                    "confirmed CTO review must cover technical, platform, security, quality, "
+                    "and operability"
+                )
             return self
         option_ids = {item.option_id for item in self.alternatives}
         if (

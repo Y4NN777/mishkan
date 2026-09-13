@@ -114,9 +114,9 @@ def _confirmation(identity_id: str) -> ExecutiveConfirmation:
         rationale=f"{identity_id} confirms the mission coverage",
         evidence_references=(f"evidence:{identity_id.lower()}",),
         coverage=(
-            ("product", "composition")
+            ("product", "developer-experience", "composition")
             if identity_id == "PM"
-            else ("technical", "security", "quality")
+            else ("technical", "platform", "security", "quality", "operability")
         ),
     )
 
