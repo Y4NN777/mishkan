@@ -161,3 +161,39 @@ def test_conflicting_duplicate_result_is_refused(tmp_path: Path) -> None:
             _review(),
         )
     assert caught.value.envelope.code is ErrorCode.DUPLICATE_RESULT
+
+
+def test_attributed_review_must_name_the_exact_task_producer(tmp_path: Path) -> None:
+    discovery = _discovery(tmp_path)
+    database = tmp_path / "attributed-review.db"
+    SchemaManager(database).initialize()
+    repository = LocalRunRepository(database)
+    run = repository.start_or_resume(discovery, "Initialize this repository", "mishkan.init")
+    repository.accept_plan(run.run_id, _accepted_plan(discovery))
+    repository.start_run(run.run_id)
+    repository.claim_task(run.run_id, "read-readme")
+    repository.mark_validating(run.run_id, "read-readme")
+    result = InitializationResult(
+        repository_revision=discovery.binding.base_revision,
+        task_id="read-readme",
+        summary="The fixture identifies itself through its README.",
+        cited_paths=("README.md",),
+        findings=("The repository contains a project overview.",),
+    )
+
+    with pytest.raises(MishkanError, match="producer identity differs") as conflict:
+        repository.accept_result(
+            run.run_id,
+            result,
+            ReviewDecision(
+                schema_version="1.1",
+                task_id="read-readme",
+                producer_identity="Another_Producer",
+                evaluator_identity="Repository_Reviewer",
+                verdict="accepted",
+                summary="The review names the wrong producer.",
+                checked_citations=("README.md",),
+            ),
+        )
+
+    assert conflict.value.envelope.code is ErrorCode.ROLE_CONFLICT

@@ -231,8 +231,10 @@ class InitializationResult(PlanModel):
 
 
 class ReviewDecision(PlanModel):
-    schema_version: str = "1.0"
+    schema_version: Literal["1.0", "1.1"] = "1.0"
     task_id: str = Field(min_length=2)
+    producer_identity: str | None = Field(default=None, min_length=2, max_length=128)
+    evaluator_identity: str | None = Field(default=None, min_length=2, max_length=128)
     verdict: Literal["accepted", "rejected"]
     summary: str = Field(min_length=3, max_length=2_000)
     checked_citations: tuple[str, ...] = Field(
@@ -246,6 +248,19 @@ class ReviewDecision(PlanModel):
         default=(),
         description="Concrete evidence or contract defects; empty when the verdict is accepted.",
     )
+
+    @model_validator(mode="after")
+    def evaluation_lineage_is_explicit_and_separated(self) -> "ReviewDecision":
+        identities = (self.producer_identity, self.evaluator_identity)
+        if self.schema_version == "1.0":
+            if any(identity is not None for identity in identities):
+                raise ValueError("review 1.0 cannot carry partial 1.1 identity lineage")
+            return self
+        if any(identity is None for identity in identities):
+            raise ValueError("review 1.1 requires producer and evaluator identities")
+        if self.producer_identity == self.evaluator_identity:
+            raise ValueError("artifact producer cannot evaluate that artifact for acceptance")
+        return self
 
 
 class InitializationReport(PlanModel):

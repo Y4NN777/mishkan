@@ -340,7 +340,7 @@ another role's work.
         attempts = self._config.crewai.task_execution_retries + 1
         for attempt in range(attempts):
             try:
-                return self._kickoff_structured(
+                proposed = self._kickoff_structured(
                     route_name=role.model_route,
                     role=role,
                     description=description,
@@ -348,6 +348,14 @@ another role's work.
                     output_model=ReviewDecision,
                     tools=[],
                     retry_limit=0,
+                )
+                return ReviewDecision.model_validate(
+                    {
+                        **proposed.model_dump(),
+                        "schema_version": "1.1",
+                        "producer_identity": task_contract.assigned_role,
+                        "evaluator_identity": role.name,
+                    }
                 )
             except MishkanError:
                 if attempt + 1 >= attempts:

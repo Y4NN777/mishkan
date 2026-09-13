@@ -1044,7 +1044,11 @@ async def test_conversation_escalation_and_intervention_share_daemon_semantics(
 
 
 @pytest.mark.anyio
-async def test_mission_completion_requires_separated_accepted_task_chain(tmp_path: Path) -> None:
+@pytest.mark.parametrize("reporter_acceptance_conflict", [False, True])
+async def test_mission_completion_requires_separated_accepted_task_chain(
+    tmp_path: Path,
+    reporter_acceptance_conflict: bool,
+) -> None:
     config = _config(tmp_path)
     paths = DaemonBootstrap().setup(config)
     token = TokenFile(paths.token_file).read()
@@ -1332,7 +1336,19 @@ async def test_mission_completion_requires_separated_accepted_task_chain(tmp_pat
                     findings=(f"{assignment.task_id} contract satisfied",),
                 ),
                 ReviewDecision(
+                    schema_version="1.1",
                     task_id=assignment.task_id,
+                    producer_identity=assignment.accountable_owner,
+                    evaluator_identity=(
+                        "Technical_Change_Reporter"
+                        if reporter_acceptance_conflict
+                        and assignment.accountable_owner == "Backend_Service_Engineer"
+                        else (
+                            "Software_Technical_Evaluator"
+                            if assignment.accountable_owner == "Product_Functional_Evaluator"
+                            else "Product_Functional_Evaluator"
+                        )
+                    ),
                     verdict="accepted",
                     summary=f"Independent review accepted {assignment.task_id}",
                     checked_citations=("README.md",),
@@ -1469,6 +1485,17 @@ async def test_mission_completion_requires_separated_accepted_task_chain(tmp_pat
                 payload={"report": report.model_dump(mode="json")},
             ).model_dump(mode="json"),
         )
+        if reporter_acceptance_conflict:
+            assert report_response.status_code == 200
+            assert report_response.json()["status"] == "refused"
+            assert report_response.json()["error"]["code"] == "ERR-ROL-001"
+            conflict_reports = await client.get(
+                f"/v1/missions/{mission.mission_id}/run-reports",
+                headers=headers,
+            )
+            assert conflict_reports.status_code == 200
+            assert conflict_reports.json() == []
+            return
         reports_response = await client.get(
             f"/v1/missions/{mission.mission_id}/run-reports",
             headers=headers,

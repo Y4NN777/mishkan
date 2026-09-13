@@ -52,7 +52,7 @@ from mishkan.persistence.sqlite import (
     RunRow,
     create_local_engine,
 )
-from mishkan.planning.models import AcceptedPlan, PlanExecutionContext
+from mishkan.planning.models import AcceptedPlan, PlanExecutionContext, ReviewDecision
 from mishkan.tools.models import EffectClass
 
 RecordT = TypeVar("RecordT", bound=BaseModel)
@@ -871,7 +871,7 @@ class SQLiteMissionRepository:
                     MissionRunBinding.model_validate_json(prior.payload), binding
                 )
             self._require_run_binding_dependencies(session, binding)
-            self._require_run_binding_settlement(session, binding)
+            self._require_run_binding_settlement(session, binding, assignment)
             same_run_rows = session.scalars(
                 select(MissionRunBindingRow).where(
                     MissionRunBindingRow.mission_id == str(binding.mission_id),
@@ -1044,13 +1044,13 @@ class SQLiteMissionRepository:
                     select(ResultRow).where(ResultRow.run_id == report.run_id)
                 ).all()
             }
-            acceptances = {
-                row.task_key
+            acceptance_reviews = {
+                row.task_key: ReviewDecision.model_validate_json(row.review_payload)
                 for row in session.scalars(
                     select(AcceptanceRow).where(AcceptanceRow.run_id == report.run_id)
                 ).all()
             }
-            if accepted_results != expected_tasks or acceptances != expected_tasks:
+            if accepted_results != expected_tasks or set(acceptance_reviews) != expected_tasks:
                 raise MishkanError(
                     ErrorCode.MISSION,
                     "mission run report requires every task result to be durably accepted",
@@ -1085,6 +1085,13 @@ class SQLiteMissionRepository:
                     raise MishkanError(
                         ErrorCode.MISSION,
                         "mission run report omits accepted result evidence",
+                        details={"execution_task_id": item.execution_task_id},
+                    )
+                review = acceptance_reviews[item.execution_task_id]
+                if review.evaluator_identity == report.reporter_identity:
+                    raise MishkanError(
+                        ErrorCode.ROLE_CONFLICT,
+                        "task acceptance evaluator cannot report that same task",
                         details={"execution_task_id": item.execution_task_id},
                     )
             reporting = assignments[report.reporting_mission_task_id]
@@ -1470,6 +1477,7 @@ class SQLiteMissionRepository:
     def _require_run_binding_settlement(
         session: Session,
         binding: MissionRunBinding,
+        assignment: MissionTaskAssignment,
     ) -> None:
         if binding.acceptance is MissionRunAcceptance.PENDING:
             return
@@ -1501,6 +1509,16 @@ class SQLiteMissionRepository:
                 raise MishkanError(
                     ErrorCode.DECISION_VALIDATION,
                     "mission run acceptance is not backed by durable task acceptance",
+                )
+            review = ReviewDecision.model_validate_json(acceptance.review_payload)
+            if (
+                review.schema_version != "1.1"
+                or review.producer_identity != assignment.accountable_owner
+            ):
+                raise MishkanError(
+                    ErrorCode.ROLE_CONFLICT,
+                    "mission task acceptance lacks exact separated producer and evaluator lineage",
+                    details={"execution_task_id": binding.execution_task_id},
                 )
             return
         rejection = session.scalar(

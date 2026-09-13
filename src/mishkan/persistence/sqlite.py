@@ -1804,6 +1804,18 @@ class LocalRunRepository:
                     ErrorCode.OUTPUT_CONTRACT,
                     "rejected review cannot become a durable task acceptance",
                 )
+            if review.schema_version == "1.1":
+                contract = PlanTask.model_validate_json(task.contract)
+                if review.producer_identity != contract.assigned_role:
+                    raise MishkanError(
+                        ErrorCode.ROLE_CONFLICT,
+                        "review producer identity differs from the accepted task owner",
+                        details={
+                            "task_id": result.task_id,
+                            "expected": contract.assigned_role,
+                            "received": review.producer_identity,
+                        },
+                    )
 
             result_id = str(new_id())
             accepted_at = utc_now().isoformat()

@@ -792,6 +792,47 @@ def test_workspace_changing_production_requires_independent_evaluation(
     assert conflict.value.envelope.code is ErrorCode.ROLE_CONFLICT
 
 
+def test_mission_run_settlement_rejects_legacy_unattributed_review(tmp_path: Path) -> None:
+    missions, pending = _run_binding_fixture(tmp_path, tool_id="file.read")
+    missions.record_run_binding(pending)
+    runs = LocalRunRepository(tmp_path / "mishkan.db")
+    runs.start_run(pending.run_id)
+    runs.claim_task(pending.run_id, pending.execution_task_id)
+    runs.mark_validating(pending.run_id, pending.execution_task_id)
+    runs.accept_result(
+        pending.run_id,
+        InitializationResult(
+            repository_revision=pending.execution_context.repository_revision,
+            task_id=pending.execution_task_id,
+            summary="The mission result has repository evidence.",
+            cited_paths=("README.md",),
+            findings=("The exact repository README was observed.",),
+        ),
+        ReviewDecision(
+            task_id=pending.execution_task_id,
+            verdict="accepted",
+            summary="A legacy review omitted accountable identities.",
+            checked_citations=("README.md",),
+        ),
+    )
+    settled = pending.model_copy(
+        update={
+            "binding_id": new_id(),
+            "binding_revision": 2,
+            "result_references": (f"run-result:{pending.run_id}:{pending.execution_task_id}",),
+            "acceptance_references": (
+                f"run-acceptance:{pending.run_id}:{pending.execution_task_id}",
+            ),
+            "acceptance": MissionRunAcceptance.ACCEPTED,
+        }
+    )
+
+    with pytest.raises(MishkanError, match="separated producer and evaluator") as conflict:
+        missions.record_run_binding(settled)
+
+    assert conflict.value.envelope.code is ErrorCode.ROLE_CONFLICT
+
+
 def test_multi_repository_mission_binds_exact_runs_dependencies_and_acceptance(
     tmp_path: Path,
 ) -> None:
@@ -894,7 +935,10 @@ def test_multi_repository_mission_binds_exact_runs_dependencies_and_acceptance(
         first.run_id,
         result,
         ReviewDecision(
+            schema_version="1.1",
             task_id=first.execution_task_id,
+            producer_identity="Backend_Service_Engineer",
+            evaluator_identity="Product_Functional_Evaluator",
             verdict="accepted",
             summary="Independent review accepted the repository result.",
             checked_citations=("README.md",),
