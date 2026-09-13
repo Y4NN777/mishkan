@@ -106,9 +106,16 @@ class MissionEnvironmentReadinessService:
     def inspect(self, mission_id: str) -> MissionEnvironmentReadiness:
         mission = self._missions.mission(mission_id)
         assignments = self._latest(self._missions.assignments(mission_id))
-        acceptance = (
+        recorded_acceptance = (
             self._missions.environment_plan(mission_id)
             if mission.current_environment_plan_version is not None
+            else None
+        )
+        acceptance = (
+            recorded_acceptance
+            if recorded_acceptance is not None
+            and recorded_acceptance.plan.brief_version == mission.current_brief_version
+            and recorded_acceptance.plan.crew_version == mission.current_crew_version
             else None
         )
         contexts = (
@@ -133,7 +140,7 @@ class MissionEnvironmentReadinessService:
         return MissionEnvironmentReadiness(
             mission_id=mission.mission_id,
             mission_revision=mission.revision,
-            environment_plan_version=mission.current_environment_plan_version,
+            environment_plan_version=(acceptance.plan.version if acceptance is not None else None),
             tasks=tasks,
             ready_task_ids=tuple(item.task_id for item in tasks if item.environment_ready),
             blocked_task_ids=tuple(item.task_id for item in tasks if not item.environment_ready),

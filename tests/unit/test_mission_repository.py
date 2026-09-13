@@ -320,6 +320,84 @@ def test_assignment_rejects_identity_outside_current_contextual_crew(tmp_path: P
     assert error.value.envelope.code is ErrorCode.MISSION
 
 
+def test_active_transition_refuses_crew_and_assignments_from_an_older_brief(
+    tmp_path: Path,
+) -> None:
+    _, repository, mission = _setup(tmp_path)
+    brief = _brief(mission)
+    repository.record_brief(brief, expected_revision=mission.revision)
+    current = repository.mission(str(mission.mission_id))
+    crew = _crew(brief)
+    repository.record_crew(crew, expected_revision=current.revision)
+    assignment = MissionTaskAssignment(
+        mission_id=mission.mission_id,
+        crew_version=crew.version,
+        task_id="implement-recovery",
+        accountable_owner="Backend_Service_Engineer",
+        assignment_kind=CrewAssignmentKind.PRODUCTION,
+        expected_result="A verified recovery implementation",
+        completion_criteria=("result is reviewable",),
+        authority_scope=("repository:api",),
+        exact_tools=("file.read",),
+        path_scopes=("repository:api",),
+        limits=(MissionResourceLimit(name="wall_time", value=600, unit="seconds"),),
+        required_evidence=("artifact:result",),
+    )
+    repository.record_assignment(assignment)
+    current = repository.mission(str(mission.mission_id))
+    repository.transition(
+        MissionTransition(
+            mission_id=mission.mission_id,
+            from_state=MissionState.CLARIFYING,
+            to_state=MissionState.PLANNED,
+            actor_or_cause="PM+CTO",
+            reason="The initial mission plan is ready",
+            affected_scope=("mission:all",),
+            evidence_references=(f"assignment:{assignment.assignment_id}",),
+        ),
+        expected_revision=current.revision,
+    )
+    current = repository.mission(str(mission.mission_id))
+    revised_brief = brief.model_copy(
+        update={
+            "brief_id": new_id(),
+            "version": 2,
+            "problem": "New evidence changes the governed mission context",
+        }
+    )
+    repository.record_brief(revised_brief, expected_revision=current.revision)
+    current = repository.mission(str(mission.mission_id))
+    repository.transition(
+        MissionTransition(
+            mission_id=mission.mission_id,
+            from_state=MissionState.CLARIFYING,
+            to_state=MissionState.PLANNED,
+            actor_or_cause="PM+CTO",
+            reason="The revised Brief requires a matching crew revision",
+            affected_scope=("mission:all",),
+            evidence_references=(f"brief:{revised_brief.brief_id}",),
+        ),
+        expected_revision=current.revision,
+    )
+    current = repository.mission(str(mission.mission_id))
+
+    with pytest.raises(MishkanError) as stale:
+        repository.transition(
+            MissionTransition(
+                mission_id=mission.mission_id,
+                from_state=MissionState.PLANNED,
+                to_state=MissionState.ACTIVE,
+                actor_or_cause="Mission_Lead",
+                reason="Attempt to reuse obsolete mission lineage",
+                affected_scope=("mission:all",),
+                evidence_references=(f"crew:{crew.crew_id}",),
+            ),
+            expected_revision=current.revision,
+        )
+
+    assert stale.value.envelope.code is ErrorCode.REVISION_MISMATCH
+
+
 @pytest.mark.parametrize(
     ("owner", "kind", "contributors"),
     (

@@ -29,6 +29,7 @@ from mishkan.persistence.migration import SchemaManager
 from mishkan.persistence.sqlite import (
     ConversationChannelRow,
     ConversationMessageRow,
+    MissionAssignmentRow,
     MissionDecisionRow,
     MissionEscalationRow,
     MissionInterventionRow,
@@ -204,6 +205,7 @@ class SQLiteConversationRepository:
             self._require_mission_channel(
                 session, str(intervention.mission_id), str(intervention.conversation_id)
             )
+            self._validate_intervention_target(session, intervention)
             if intervention.escalation_id is not None:
                 escalation_row = session.get(MissionEscalationRow, str(intervention.escalation_id))
                 if escalation_row is None or escalation_row.mission_id != str(
@@ -387,6 +389,68 @@ class SQLiteConversationRepository:
         }:
             raise MishkanError(ErrorCode.MISSION, "only paused or blocked missions can resume")
         return requested
+
+    @staticmethod
+    def _validate_intervention_target(
+        session: Session,
+        intervention: MissionIntervention,
+    ) -> None:
+        mission_id = str(intervention.mission_id)
+        if intervention.target_kind is InterventionTargetKind.MISSION:
+            if intervention.target_id != mission_id:
+                raise MishkanError(
+                    ErrorCode.OUTPUT_CONTRACT,
+                    "mission intervention target differs from its mission identity",
+                )
+            return
+        if intervention.target_kind is InterventionTargetKind.ASSIGNMENT:
+            assignment = session.get(MissionAssignmentRow, intervention.target_id)
+            if assignment is None or assignment.mission_id != mission_id:
+                raise MishkanError(
+                    ErrorCode.MISSION,
+                    "intervention assignment is absent or belongs to another mission",
+                )
+            return
+        if intervention.target_kind is not InterventionTargetKind.TASK:
+            return
+        assignment = session.scalar(
+            select(MissionAssignmentRow)
+            .where(
+                MissionAssignmentRow.mission_id == mission_id,
+                MissionAssignmentRow.task_id == intervention.target_id,
+            )
+            .order_by(MissionAssignmentRow.assignment_revision.desc())
+            .limit(1)
+        )
+        if assignment is None:
+            raise MishkanError(ErrorCode.MISSION, "intervention task is not assigned")
+        if intervention.kind not in {
+            InterventionKind.SUSPEND,
+            InterventionKind.RESUME,
+            InterventionKind.STOP,
+        }:
+            return
+        prior_rows = session.scalars(
+            select(MissionInterventionRow)
+            .where(MissionInterventionRow.mission_id == mission_id)
+            .order_by(MissionInterventionRow.created_at)
+        ).all()
+        controls = [
+            record
+            for row in prior_rows
+            if (record := MissionIntervention.model_validate_json(row.payload)).target_kind
+            is InterventionTargetKind.TASK
+            and record.target_id == intervention.target_id
+            and record.kind
+            in {InterventionKind.SUSPEND, InterventionKind.RESUME, InterventionKind.STOP}
+        ]
+        latest = controls[-1].kind if controls else None
+        if latest is InterventionKind.STOP:
+            raise MishkanError(ErrorCode.MISSION, "stopped mission task cannot be controlled again")
+        if intervention.kind is InterventionKind.RESUME and latest is not InterventionKind.SUSPEND:
+            raise MishkanError(ErrorCode.MISSION, "only a suspended mission task can resume")
+        if intervention.kind is InterventionKind.SUSPEND and latest is InterventionKind.SUSPEND:
+            raise MishkanError(ErrorCode.MISSION, "mission task is already suspended")
 
     @staticmethod
     def _require_channel(session: Session, conversation_id: str) -> ConversationChannelRow:

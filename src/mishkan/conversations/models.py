@@ -209,28 +209,50 @@ class MissionIntervention(ConversationModel):
 
     @model_validator(mode="after")
     def kind_matches_target_and_state(self) -> MissionIntervention:
-        if self.kind is InterventionKind.ANSWER_ESCALATION and self.escalation_id is None:
-            raise ValueError("escalation answer requires the escalation identity")
-        if (
-            self.kind is InterventionKind.SUSPEND
-            and self.target_kind is InterventionTargetKind.MISSION
-            and self.resulting_mission_state is not MissionState.PAUSED
-        ):
-            raise ValueError("mission suspension must result in paused state")
-        if (
-            self.kind is InterventionKind.RESUME
-            and self.target_kind is InterventionTargetKind.MISSION
-            and self.resulting_mission_state is not MissionState.ACTIVE
-        ):
-            raise ValueError("mission resume must result in active state")
-        if (
-            self.kind is InterventionKind.STOP
-            and self.target_kind is InterventionTargetKind.MISSION
-            and self.resulting_mission_state is not MissionState.CANCELLED
-        ):
-            raise ValueError("mission stop must result in cancelled state")
-        if self.target_kind is not InterventionTargetKind.MISSION and (
-            self.resulting_mission_state is not None
-        ):
+        allowed_targets = {
+            InterventionKind.COMMENT: set(InterventionTargetKind),
+            InterventionKind.ANSWER_ESCALATION: {InterventionTargetKind.ESCALATION},
+            InterventionKind.ACCEPT_PROPOSAL: {InterventionTargetKind.PROPOSAL},
+            InterventionKind.REJECT_PROPOSAL: {InterventionTargetKind.PROPOSAL},
+            InterventionKind.SUSPEND: {
+                InterventionTargetKind.MISSION,
+                InterventionTargetKind.TASK,
+            },
+            InterventionKind.RESUME: {
+                InterventionTargetKind.MISSION,
+                InterventionTargetKind.TASK,
+            },
+            InterventionKind.REQUEST_REASSIGNMENT: {
+                InterventionTargetKind.TASK,
+                InterventionTargetKind.ASSIGNMENT,
+            },
+            InterventionKind.CONFIRM_REASSIGNMENT: {
+                InterventionTargetKind.TASK,
+                InterventionTargetKind.ASSIGNMENT,
+            },
+            InterventionKind.STOP: {
+                InterventionTargetKind.MISSION,
+                InterventionTargetKind.TASK,
+            },
+            InterventionKind.ACCEPT_RISK: {InterventionTargetKind.RISK},
+        }[self.kind]
+        if self.target_kind not in allowed_targets:
+            raise ValueError("intervention kind does not support the declared target")
+        if self.kind is InterventionKind.ANSWER_ESCALATION:
+            if self.escalation_id is None or self.target_id != str(self.escalation_id):
+                raise ValueError("escalation answer must target its exact escalation identity")
+        elif self.escalation_id is not None:
+            raise ValueError("only an escalation answer may carry an escalation identity")
+        mission_result = {
+            InterventionKind.SUSPEND: MissionState.PAUSED,
+            InterventionKind.RESUME: MissionState.ACTIVE,
+            InterventionKind.STOP: MissionState.CANCELLED,
+        }.get(self.kind)
+        if self.target_kind is InterventionTargetKind.MISSION:
+            if mission_result is None and self.resulting_mission_state is not None:
+                raise ValueError("non-lifecycle intervention cannot change mission state")
+            if mission_result is not None and self.resulting_mission_state is not mission_result:
+                raise ValueError("mission lifecycle intervention has an invalid resulting state")
+        elif self.resulting_mission_state is not None:
             raise ValueError("scoped intervention cannot silently change the whole mission state")
         return self

@@ -200,6 +200,19 @@ def test_claim_refuses_generated_but_unverified_environment() -> None:
     assert runs.claims == []
 
 
+def test_claim_refuses_assignment_from_an_obsolete_crew_revision() -> None:
+    service, mission, assignment, runs, _conversations = _fixture(environment_ready=True)
+    service._missions.assignments_ = (  # type: ignore[attr-defined]
+        assignment.model_copy(update={"crew_version": 2}),
+    )
+
+    eligibility = service.inspect(str(mission.mission_id), assignment.task_id)
+
+    assert not eligibility.eligible
+    assert "current Mission Crew" in " ".join(eligibility.blockers)
+    assert runs.claims == []
+
+
 def test_claim_starts_exact_bound_run_task_after_all_gates_pass() -> None:
     service, mission, assignment, runs, _conversations = _fixture(environment_ready=True)
 

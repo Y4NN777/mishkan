@@ -545,17 +545,39 @@ class SQLiteMissionRepository:
                     "mission cannot advance without a current Brief and Mission Crew",
                 )
             if transition.to_state is MissionState.ACTIVE:
+                assert mission.current_crew_version is not None
+                current_crew = self._crew_row(
+                    session,
+                    str(mission.mission_id),
+                    mission.current_crew_version,
+                )
+                if current_crew.brief_version != mission.current_brief_version:
+                    raise MishkanError(
+                        ErrorCode.REVISION_MISMATCH,
+                        "current Mission Crew does not reference the current Mission Brief",
+                    )
                 assignment_rows = session.scalars(
                     select(MissionAssignmentRow).where(
                         MissionAssignmentRow.mission_id == str(mission.mission_id)
                     )
                 ).all()
-                MissionAssignmentGraphValidator.validate(
-                    tuple(
-                        MissionTaskAssignment.model_validate_json(row.payload)
-                        for row in assignment_rows
-                    )
+                assignments = tuple(
+                    MissionTaskAssignment.model_validate_json(row.payload)
+                    for row in assignment_rows
                 )
+                latest = MissionAssignmentGraphValidator.latest(assignments)
+                stale = sorted(
+                    assignment.task_id
+                    for assignment in latest.values()
+                    if assignment.crew_version != mission.current_crew_version
+                )
+                if stale:
+                    raise MishkanError(
+                        ErrorCode.REVISION_MISMATCH,
+                        "mission task assignments do not reference the current Mission Crew",
+                        details={"task_ids": stale},
+                    )
+                MissionAssignmentGraphValidator.validate(assignments)
             updated = mission.model_copy(
                 update={
                     "state": transition.to_state,

@@ -246,3 +246,20 @@ def test_stale_binding_pauses_only_its_declared_dependent_task() -> None:
     assert readiness.blocked_task_ids == ("build-project",)
     assert readiness.ready_task_ids == ("plan-environment",)
     assert readiness.tasks[0].state is EnvironmentReadinessState.STALE
+
+
+def test_environment_plan_from_an_older_brief_or_crew_blocks_dependent_tasks() -> None:
+    missions, environments, _acceptance, binding = _fixture()
+    environments.binding = binding
+    missions.mission_record = missions.mission_record.model_copy(
+        update={"current_brief_version": 2}
+    )
+
+    readiness = MissionEnvironmentReadinessService(missions, environments).inspect(
+        str(missions.mission_record.mission_id)
+    )
+
+    assert readiness.environment_plan_version is None
+    assert readiness.blocked_task_ids == ("build-project",)
+    assert readiness.ready_task_ids == ("plan-environment",)
+    assert readiness.tasks[0].state is EnvironmentReadinessState.AWAITING_PLAN

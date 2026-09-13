@@ -186,6 +186,9 @@ class MissionTaskClaimService:
                 else MissionTaskGateState.BLOCKED
             )
             blockers.append(f"mission state {mission.state.value} does not release task execution")
+        if assignment.crew_version != mission.current_crew_version:
+            state = MissionTaskGateState.BLOCKED
+            blockers.append("task assignment does not reference the current Mission Crew")
 
         scoped = self._latest_scoped_intervention(mission_id, assignment)
         if scoped is not None and scoped.kind.value in {"suspend", "stop"}:
@@ -362,6 +365,10 @@ class MissionTaskClaimService:
                     blockers.append(f"task {assignment.task_id} bound run is not complete")
             if not environment_ready:
                 blockers.append(f"task {assignment.task_id} environment is not currently ready")
+            if assignment.crew_version != mission.current_crew_version:
+                blockers.append(
+                    f"task {assignment.task_id} assignment does not reference the current crew"
+                )
             task_statuses.append(
                 MissionTaskAcceptanceStatus(
                     task_id=assignment.task_id,
@@ -376,6 +383,7 @@ class MissionTaskClaimService:
                         task_state == TaskState.ACCEPTED.value
                         and run_state == RunState.COMPLETED.value
                         and environment_ready
+                        and assignment.crew_version == mission.current_crew_version
                     ),
                 )
             )

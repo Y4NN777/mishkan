@@ -19,14 +19,20 @@ from mishkan.conversations import (
 from mishkan.domain.errors import ErrorCode, MishkanError
 from mishkan.domain.identity import new_id
 from mishkan.missions import (
+    CrewAssignmentKind,
+    CrewSelectionEvidence,
     ExecutiveConfirmation,
     MissionBrief,
     MissionBriefStatus,
+    MissionCrewMember,
+    MissionCrewRevision,
     MissionEnvironmentIntent,
     MissionOrigin,
     MissionOriginKind,
     MissionRecord,
+    MissionResourceLimit,
     MissionState,
+    MissionTaskAssignment,
     SQLiteMissionRepository,
 )
 from mishkan.organization import load_canonical_organization
@@ -144,6 +150,79 @@ def _escalation(mission: MissionRecord, channel: ConversationChannel) -> Mission
     )
 
 
+def _add_governed_task(
+    missions: SQLiteMissionRepository,
+    mission: MissionRecord,
+) -> tuple[MissionRecord, MissionTaskAssignment]:
+    original = missions.brief(str(mission.mission_id))
+    revised = original.model_copy(
+        update={
+            "brief_id": new_id(),
+            "version": 2,
+            "proposed_crew": (
+                "Backend_Service_Engineer",
+                "Product_Functional_Evaluator",
+                "Technical_Change_Reporter",
+            ),
+            "pm_confirmation": _confirmation("PM"),
+            "cto_confirmation": _confirmation("CTO"),
+        }
+    )
+    missions.record_brief(revised, expected_revision=mission.revision)
+    assert revised.pm_confirmation is not None
+    assert revised.cto_confirmation is not None
+
+    def member(identity_id: str, kind: CrewAssignmentKind) -> MissionCrewMember:
+        return MissionCrewMember(
+            identity_id=identity_id,
+            assignment_kind=kind,
+            responsibility=f"Own {kind.value} responsibility for the governed task",
+            selection_evidence=CrewSelectionEvidence(
+                project_references=("project:conversation-test",),
+                competence_references=(f"profile:{identity_id}:competence",),
+                availability_references=(f"profile:{identity_id}:availability",),
+                conflict_assessment="No responsibility conflict is present",
+                risk_coverage=("mission control",),
+                independence_references=(f"profile:{identity_id}:independence",),
+            ),
+        )
+
+    crew = MissionCrewRevision(
+        mission_id=mission.mission_id,
+        version=1,
+        organization_id=mission.organization_id,
+        organization_version=mission.organization_version,
+        brief_version=revised.version,
+        mission_lead_id="Backend_Service_Engineer",
+        members=(
+            member("Backend_Service_Engineer", CrewAssignmentKind.PRODUCTION),
+            member("Product_Functional_Evaluator", CrewAssignmentKind.EVALUATION),
+            member("Technical_Change_Reporter", CrewAssignmentKind.REPORTING),
+        ),
+        pm_composition_confirmation_id=revised.pm_confirmation.confirmation_id,
+        cto_coverage_confirmation_id=revised.cto_confirmation.confirmation_id,
+        revision_reason="Create an explicitly governed task-control fixture",
+    )
+    current = missions.mission(str(mission.mission_id))
+    missions.record_crew(crew, expected_revision=current.revision)
+    assignment = MissionTaskAssignment(
+        mission_id=mission.mission_id,
+        crew_version=crew.version,
+        task_id="blocked-task",
+        accountable_owner="Backend_Service_Engineer",
+        assignment_kind=CrewAssignmentKind.PRODUCTION,
+        expected_result="A bounded task result",
+        completion_criteria=("result is reviewable",),
+        authority_scope=("task:blocked-task",),
+        exact_tools=("file.read",),
+        path_scopes=("repository:test",),
+        limits=(MissionResourceLimit(name="wall_time", value=600, unit="seconds"),),
+        required_evidence=("artifact:result",),
+    )
+    missions.record_assignment(assignment)
+    return missions.mission(str(mission.mission_id)), assignment
+
+
 def test_channel_contracts_keep_direct_and_executive_authority_explicit() -> None:
     with pytest.raises(ValidationError):
         ConversationChannel(
@@ -151,6 +230,24 @@ def test_channel_contracts_keep_direct_and_executive_authority_explicit() -> Non
             title="Incomplete executive channel",
             participants=("PM", "CTO"),
             created_by="PM",
+        )
+
+
+def test_intervention_contract_rejects_kind_target_and_state_mismatches() -> None:
+    with pytest.raises(ValidationError, match="does not support"):
+        MissionIntervention(
+            mission_id=new_id(),
+            conversation_id=new_id(),
+            actor_id="CEO",
+            kind=InterventionKind.ACCEPT_RISK,
+            target_kind=InterventionTargetKind.MISSION,
+            target_id="mission:one",
+            reason="Attempt an invalid target combination",
+            scope=("mission:one",),
+            confirmation="Confirm the malformed request",
+            authority_reference="authority:ceo",
+            evidence_references=("evidence:risk",),
+            effect="Would incorrectly change mission governance",
         )
     with pytest.raises(ValidationError):
         ConversationChannel(
@@ -261,6 +358,60 @@ def test_mission_pause_and_resume_are_explicit_revision_checked_interventions(
     with pytest.raises(MishkanError) as stale:
         conversations.apply_intervention(stale_stop, expected_revision=paused.revision)
     assert stale.value.envelope.code is ErrorCode.REVISION_MISMATCH
+
+
+def test_stopped_task_cannot_be_resumed_and_unrelated_work_is_unchanged(
+    tmp_path: Path,
+) -> None:
+    missions, conversations, mission = _setup(tmp_path)
+    mission, assignment = _add_governed_task(missions, mission)
+    channel = conversations.create_channel(_mission_channel(mission))
+    suspend = MissionIntervention(
+        mission_id=mission.mission_id,
+        conversation_id=channel.conversation_id,
+        actor_id="CEO",
+        kind=InterventionKind.SUSPEND,
+        target_kind=InterventionTargetKind.TASK,
+        target_id=assignment.task_id,
+        reason="Pause only this bounded task",
+        scope=(f"task:{assignment.task_id}",),
+        confirmation="Suspend this task without changing the mission state",
+        authority_reference="authority:ceo",
+        evidence_references=("evidence:task-risk",),
+        effect="Prevent new execution claims for this task",
+    )
+    conversations.apply_intervention(suspend, expected_revision=mission.revision)
+    current = missions.mission(str(mission.mission_id))
+    resume = suspend.model_copy(
+        update={
+            "intervention_id": new_id(),
+            "kind": InterventionKind.RESUME,
+            "reason": "The bounded blocker has been resolved",
+            "confirmation": "Resume only the suspended task",
+            "effect": "Allow this task to become eligible again",
+            "evidence_references": ("evidence:task-resolution",),
+        }
+    )
+    conversations.apply_intervention(resume, expected_revision=current.revision)
+    current = missions.mission(str(mission.mission_id))
+    stop = resume.model_copy(
+        update={
+            "intervention_id": new_id(),
+            "kind": InterventionKind.STOP,
+            "reason": "The task must terminate permanently",
+            "confirmation": "Stop only this task",
+            "effect": "Prevent any later claim or resume for this task",
+            "evidence_references": ("evidence:stop-decision",),
+        }
+    )
+    conversations.apply_intervention(stop, expected_revision=current.revision)
+    current = missions.mission(str(mission.mission_id))
+    invalid_resume = resume.model_copy(update={"intervention_id": new_id()})
+
+    with pytest.raises(MishkanError, match="stopped mission task"):
+        conversations.apply_intervention(invalid_resume, expected_revision=current.revision)
+
+    assert missions.mission(str(mission.mission_id)).state is mission.state
 
 
 def test_mission_decisions_are_queryable_after_restart(tmp_path: Path) -> None:
