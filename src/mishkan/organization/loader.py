@@ -50,13 +50,11 @@ def load_canonical_organization(source: Path | None = None) -> OrganizationRoste
     organization = _load(source, "organization-v1.yaml", OrganizationRosterDefinition)
     SchemaRegistry.require_supported("mishkan.organization-roster", organization.schema_version)
     bundled = _load(None, "organization-v1.yaml", OrganizationRosterDefinition)
-    expected = {identity.identity_id for identity in bundled.identities}
-    received = {identity.identity_id for identity in organization.identities}
-    if organization.organization_version == "1" and received != expected:
+    if organization.organization_version == "1" and organization.fingerprint != bundled.fingerprint:
+        expected = {identity.identity_id for identity in bundled.identities}
+        received = {identity.identity_id for identity in organization.identities}
         raise ValueError(
-            "organization version 1 must contain the exact canonical identity roster; "
+            "organization version 1 must match the complete canonical definition; "
             f"missing={sorted(expected - received)}, extra={sorted(received - expected)}"
         )
-    if organization.organization_version == "1" and len(organization.identities) != 59:
-        raise ValueError("organization version 1 must contain exactly 59 identities")
     return organization

@@ -101,7 +101,18 @@ def test_version_one_source_cannot_replace_a_canonical_identity(tmp_path: Path) 
     source = tmp_path / "organization.yaml"
     source.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
 
-    with pytest.raises(ValueError, match="exact canonical identity roster"):
+    with pytest.raises(ValueError, match="complete canonical definition"):
+        load_canonical_organization(source)
+
+
+def test_version_one_source_cannot_rewrite_a_canonical_profile(tmp_path: Path) -> None:
+    organization = load_canonical_organization()
+    document = organization.model_dump(mode="json")
+    document["identities"][0]["authority_limits"] = ["silent-expanded-authority"]
+    source = tmp_path / "organization.yaml"
+    source.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="complete canonical definition"):
         load_canonical_organization(source)
 
 
