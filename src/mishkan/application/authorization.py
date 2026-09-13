@@ -62,6 +62,11 @@ from mishkan.missions.environment import (
     MissionEnvironmentPlan,
     MissionEnvironmentPlanningRequest,
 )
+from mishkan.organization import (
+    ProfessionalEvidenceRecord,
+    ProfessionalPromotionDisposition,
+    ProfessionalPromotionRequest,
+)
 from mishkan.policy import (
     AuthorizationDecision,
     AuthorizationRequest,
@@ -327,6 +332,16 @@ COMMAND_SEMANTICS = MappingProxyType(
             "coordination",
             ("mission.environment.resolve",),
         ),
+        "organization.evidence.record": CommandSemantics(
+            "application.organization.evolution",
+            "coordination",
+            ("organization.evidence.record",),
+        ),
+        "organization.promotion.decide": CommandSemantics(
+            "application.organization.evolution",
+            "coordination",
+            ("organization.promotion.decide",),
+        ),
         **{
             f"registry.entry.{action.value}": CommandSemantics(
                 "application.registry.lifecycle",
@@ -411,6 +426,8 @@ _COMMAND_TARGETS = MappingProxyType(
         "mission.environment.propose": ("mission_environment_planning_request", "uuid"),
         "mission.environment.accept": ("mission", "uuid"),
         "mission.environment.resolve": ("mission_environment_plan", "uuid"),
+        "organization.evidence.record": ("professional_evidence", "uuid"),
+        "organization.promotion.decide": ("professional_promotion_request", "uuid"),
         **{
             f"registry.entry.{action.value}": ("registry_entry", "required")
             for action in RegistryLifecycleAction
@@ -521,6 +538,11 @@ _COMMAND_PAYLOAD_FIELDS = MappingProxyType(
         "mission.environment.propose": (frozenset({"request"}), frozenset()),
         "mission.environment.accept": (frozenset({"plan"}), frozenset()),
         "mission.environment.resolve": (frozenset({"context_id"}), frozenset()),
+        "organization.evidence.record": (frozenset({"evidence"}), frozenset()),
+        "organization.promotion.decide": (
+            frozenset({"request", "disposition", "reason"}),
+            frozenset(),
+        ),
         "registry.entry.add": (frozenset({"entry_kind", "definition"}), frozenset()),
         "registry.entry.enable": (frozenset({"entry_kind"}), frozenset()),
         "registry.entry.disable": (frozenset({"entry_kind"}), frozenset()),
@@ -571,6 +593,9 @@ class AuthorizedApplicationCommand:
     mission_governance_request: MissionGovernanceRequest | None = None
     mission_environment_planning_request: MissionEnvironmentPlanningRequest | None = None
     mission_environment_plan: MissionEnvironmentPlan | None = None
+    professional_evidence: ProfessionalEvidenceRecord | None = None
+    professional_promotion_request: ProfessionalPromotionRequest | None = None
+    professional_promotion_disposition: ProfessionalPromotionDisposition | None = None
 
 
 class ApplicationCommandAuthority:
@@ -651,6 +676,9 @@ class ApplicationCommandAuthority:
         mission_governance_request: MissionGovernanceRequest | None = None
         mission_environment_planning_request: MissionEnvironmentPlanningRequest | None = None
         mission_environment_plan: MissionEnvironmentPlan | None = None
+        professional_evidence: ProfessionalEvidenceRecord | None = None
+        professional_promotion_request: ProfessionalPromotionRequest | None = None
+        professional_promotion_disposition: ProfessionalPromotionDisposition | None = None
 
         try:
             if normalized.command_type == "run.initialize":
@@ -1291,6 +1319,42 @@ class ApplicationCommandAuthority:
                     f"mission-environment-plan:{normalized.target_id}",
                     f"environment-context:{context_id}",
                 )
+            elif normalized.command_type == "organization.evidence.record":
+                professional_evidence = ProfessionalEvidenceRecord.model_validate(
+                    normalized.payload["evidence"]
+                )
+                if normalized.target_id != str(professional_evidence.evidence_id):
+                    raise ValueError("professional evidence target differs from its identity")
+                external_resources = (
+                    f"identity:{professional_evidence.identity_id}",
+                    f"identity:{professional_evidence.evaluator_identity}",
+                    f"professional-subject:{professional_evidence.subject}",
+                    *(
+                        f"evidence:{reference}"
+                        for reference in professional_evidence.source_references
+                    ),
+                    *(
+                        f"evaluation:{reference}"
+                        for reference in professional_evidence.evaluation_references
+                    ),
+                )
+            elif normalized.command_type == "organization.promotion.decide":
+                professional_promotion_request = ProfessionalPromotionRequest.model_validate(
+                    normalized.payload["request"]
+                )
+                professional_promotion_disposition = ProfessionalPromotionDisposition(
+                    normalized.payload["disposition"]
+                )
+                if normalized.target_id != str(professional_promotion_request.request_id):
+                    raise ValueError("professional promotion target differs from its request")
+                external_resources = (
+                    f"identity:{professional_promotion_request.identity_id}",
+                    f"professional-subject:{professional_promotion_request.subject}",
+                    *(
+                        f"professional-evidence:{evidence_id}"
+                        for evidence_id in professional_promotion_request.supporting_evidence_ids
+                    ),
+                )
             elif normalized.target_id is not None:
                 external_resources = (f"{normalized.target_type}:{normalized.target_id}",)
         except (KeyError, TypeError, ValueError, ValidationError) as exc:
@@ -1361,6 +1425,9 @@ class ApplicationCommandAuthority:
             mission_governance_request=mission_governance_request,
             mission_environment_planning_request=mission_environment_planning_request,
             mission_environment_plan=mission_environment_plan,
+            professional_evidence=professional_evidence,
+            professional_promotion_request=professional_promotion_request,
+            professional_promotion_disposition=professional_promotion_disposition,
         )
 
     @staticmethod

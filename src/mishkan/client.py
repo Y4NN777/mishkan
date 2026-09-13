@@ -88,7 +88,15 @@ from mishkan.missions.environment import (
     MissionEnvironmentPlanAcceptance,
     MissionEnvironmentPlanningRequest,
 )
-from mishkan.organization import OrganizationRosterDefinition
+from mishkan.organization import (
+    OrganizationRosterDefinition,
+    ProfessionalCompetenceState,
+    ProfessionalEvidenceKind,
+    ProfessionalEvidenceRecord,
+    ProfessionalPromotionDecision,
+    ProfessionalPromotionDisposition,
+    ProfessionalPromotionRequest,
+)
 from mishkan.skills.models import (
     SkillCurationProposal,
     SkillInvocationEvidence,
@@ -208,6 +216,59 @@ class Mishkan:
         response = self._client.get("/v1/organization", headers=self._headers())
         response.raise_for_status()
         return OrganizationRosterDefinition.model_validate(response.json())
+
+    def record_professional_evidence(
+        self,
+        evidence: ProfessionalEvidenceRecord,
+    ) -> ProfessionalEvidenceRecord:
+        result = self.command(
+            ApplicationCommand(
+                command_type="organization.evidence.record",
+                actor_id=self.principal_id,
+                target_type="professional_evidence",
+                target_id=str(evidence.evidence_id),
+                payload={"evidence": evidence.model_dump(mode="json")},
+            )
+        )
+        return ProfessionalEvidenceRecord.model_validate(result.payload)
+
+    def decide_professional_promotion(
+        self,
+        request: ProfessionalPromotionRequest,
+        *,
+        disposition: ProfessionalPromotionDisposition,
+        reason: str,
+    ) -> ProfessionalPromotionDecision:
+        result = self.command(
+            ApplicationCommand(
+                command_type="organization.promotion.decide",
+                actor_id=self.principal_id,
+                target_type="professional_promotion_request",
+                target_id=str(request.request_id),
+                payload={
+                    "request": request.model_dump(mode="json"),
+                    "disposition": disposition.value,
+                    "reason": reason,
+                },
+            )
+        )
+        return ProfessionalPromotionDecision.model_validate(result.payload)
+
+    def professional_competence(
+        self,
+        identity_id: str,
+        *,
+        kind: ProfessionalEvidenceKind,
+        subject: str,
+    ) -> ProfessionalCompetenceState:
+        identity = quote(identity_id, safe="")
+        response = self._client.get(
+            f"/v1/organization/profiles/{identity}/competence",
+            headers=self._headers(),
+            params={"kind": kind.value, "subject": subject},
+        )
+        response.raise_for_status()
+        return ProfessionalCompetenceState.model_validate(response.json())
 
     def create_mission(self, record: MissionRecord) -> MissionRecord:
         result = self.command(

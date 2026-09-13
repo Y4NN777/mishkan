@@ -1,6 +1,6 @@
 schema_version: "1.0"
 source_id: bundled.local
-revision: "26"
+revision: "27"
 adoption_authority: MISHKAN release
 priority: 0
 rules:
@@ -179,6 +179,8 @@ rules:
         - mission.environment.propose
         - mission.environment.accept
         - mission.environment.resolve
+        - organization.evidence.record
+        - organization.promotion.decide
       roles: [application-client]
       capabilities:
         - application.system.checkpoint
@@ -220,6 +222,7 @@ rules:
         - application.mission.brief
         - application.mission.crew
         - application.mission.environment
+        - application.organization.evolution
         - application.conversation.lifecycle
         - application.conversation.message
         - application.mission.decision

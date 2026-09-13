@@ -1,0 +1,154 @@
+{
+  "$defs": {
+    "LearningScopeLevel": {
+      "enum": [
+        "mission",
+        "project",
+        "agent",
+        "branch",
+        "organization"
+      ],
+      "title": "LearningScopeLevel",
+      "type": "string"
+    },
+    "ProfessionalEvidenceKind": {
+      "enum": [
+        "project_knowledge",
+        "tool_mastery",
+        "skill_association",
+        "demonstrated_competence"
+      ],
+      "title": "ProfessionalEvidenceKind",
+      "type": "string"
+    },
+    "ProfessionalEvidenceOutcome": {
+      "enum": [
+        "demonstrated",
+        "partial",
+        "failed",
+        "contradicted"
+      ],
+      "title": "ProfessionalEvidenceOutcome",
+      "type": "string"
+    },
+    "ProfessionalLearningScope": {
+      "additionalProperties": false,
+      "properties": {
+        "level": {
+          "$ref": "#/$defs/LearningScopeLevel"
+        },
+        "scope_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Scope Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "level",
+        "scope_id"
+      ],
+      "title": "ProfessionalLearningScope",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "critical": {
+      "title": "Critical",
+      "type": "boolean"
+    },
+    "evaluation_references": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Evaluation References",
+      "type": "array"
+    },
+    "evaluator_identity": {
+      "maxLength": 128,
+      "minLength": 2,
+      "title": "Evaluator Identity",
+      "type": "string"
+    },
+    "evidence_id": {
+      "format": "uuid",
+      "title": "Evidence Id",
+      "type": "string"
+    },
+    "fresh_until": {
+      "format": "date-time",
+      "title": "Fresh Until",
+      "type": "string"
+    },
+    "identity_id": {
+      "maxLength": 128,
+      "minLength": 2,
+      "title": "Identity Id",
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/ProfessionalEvidenceKind"
+    },
+    "observed_at": {
+      "format": "date-time",
+      "title": "Observed At",
+      "type": "string"
+    },
+    "outcome": {
+      "$ref": "#/$defs/ProfessionalEvidenceOutcome"
+    },
+    "rationale": {
+      "maxLength": 8192,
+      "minLength": 3,
+      "title": "Rationale",
+      "type": "string"
+    },
+    "recorded_by": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Recorded By",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "scope": {
+      "$ref": "#/$defs/ProfessionalLearningScope"
+    },
+    "source_references": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Source References",
+      "type": "array"
+    },
+    "subject": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Subject",
+      "type": "string"
+    }
+  },
+  "required": [
+    "identity_id",
+    "kind",
+    "subject",
+    "scope",
+    "outcome",
+    "critical",
+    "source_references",
+    "evaluation_references",
+    "evaluator_identity",
+    "recorded_by",
+    "fresh_until",
+    "rationale"
+  ],
+  "title": "ProfessionalEvidenceRecord",
+  "type": "object"
+}

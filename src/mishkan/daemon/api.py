@@ -130,7 +130,13 @@ from mishkan.missions.environment import (
     MissionEnvironmentPlanAcceptance,
     MissionEnvironmentPlanValidator,
 )
-from mishkan.organization import load_canonical_organization
+from mishkan.organization import (
+    ProfessionalCompetenceState,
+    ProfessionalEvidenceKind,
+    ProfessionalPromotionDecision,
+    load_canonical_organization,
+)
+from mishkan.organization.evolution_repository import SQLiteProfessionalEvolutionRepository
 from mishkan.persistence import LocalRunRepository, SchemaManager, SQLiteApplicationRepository
 from mishkan.policy import Decision
 from mishkan.policy.models import EffectivePolicy
@@ -564,6 +570,10 @@ def create_app(
         paths.database,
         busy_timeout_ms=persistence.busy_timeout_ms,
     )
+    professional_evolution = SQLiteProfessionalEvolutionRepository(
+        paths.database,
+        busy_timeout_ms=persistence.busy_timeout_ms,
+    )
     mission_governance = mission_governance_runner or CrewAIMissionGovernanceRunner(config)
     mission_environment_planning = (
         mission_environment_runner or CrewAIMissionEnvironmentPlanningRunner(config)
@@ -869,6 +879,7 @@ def create_app(
                                 mission_governance,
                                 mission_environment_planning,
                                 environment_profile,
+                                professional_evolution,
                             )
                         except MishkanError as error:
                             result = repository.fail_reserved(
@@ -1053,6 +1064,23 @@ def create_app(
     ) -> dict[str, object]:
         roster = load_canonical_organization()
         return roster.model_dump(mode="json")
+
+    @app.get(
+        "/v1/organization/profiles/{identity_id}/competence",
+        response_model=ProfessionalCompetenceState,
+    )
+    async def professional_competence_get(
+        identity_id: str,
+        kind: ProfessionalEvidenceKind,
+        subject: Annotated[str, Query(min_length=1, max_length=512)],
+        _principal: TokenRecord = authenticated,
+    ) -> ProfessionalCompetenceState:
+        return await _thread_call(
+            professional_evolution.competence_state,
+            identity_id,
+            kind=kind,
+            subject=subject,
+        )
 
     @app.get("/v1/missions", response_model=None)
     async def mission_list(
@@ -1776,6 +1804,7 @@ def _dispatch(
     mission_governance: MissionGovernanceRunner,
     mission_environment_planning: MissionEnvironmentPlanningRunner,
     environment_profile: EnvironmentProfile | None,
+    professional_evolution: SQLiteProfessionalEvolutionRepository,
 ) -> tuple[str, dict[str, object]]:
     payload = command.payload
     if command.command_type == "system.checkpoint" and command.target_type == "system":
@@ -2044,6 +2073,39 @@ def _dispatch(
         return (
             f"mission.environment_binding_{recorded_binding.state.value}",
             recorded_binding.model_dump(mode="json"),
+        )
+    if command.command_type == "organization.evidence.record":
+        professional_evidence = authorized.professional_evidence
+        if professional_evidence is None:
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT,
+                "authorized professional evidence record is absent",
+            )
+        recorded_professional_evidence = professional_evolution.record_evidence(
+            professional_evidence
+        )
+        return (
+            "organization.professional_evidence_recorded",
+            recorded_professional_evidence.model_dump(mode="json"),
+        )
+    if command.command_type == "organization.promotion.decide":
+        promotion_request = authorized.professional_promotion_request
+        promotion_disposition = authorized.professional_promotion_disposition
+        if promotion_request is None or promotion_disposition is None:
+            raise MishkanError(
+                ErrorCode.OUTPUT_CONTRACT,
+                "authorized professional promotion decision is incomplete",
+            )
+        promotion_decision: ProfessionalPromotionDecision = professional_evolution.decide_promotion(
+            promotion_request,
+            disposition=promotion_disposition,
+            decided_by=command.actor_id,
+            policy_fingerprint=authorized.decision.policy_fingerprint,
+            reason=str(payload["reason"]),
+        )
+        return (
+            f"organization.professional_promotion_{promotion_decision.disposition.value}",
+            promotion_decision.model_dump(mode="json"),
         )
     if command.command_type == "artifact.upload.open":
         upload = artifacts.open_upload(

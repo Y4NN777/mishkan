@@ -120,6 +120,12 @@ from mishkan.missions.models import (
     MissionTransition,
 )
 from mishkan.missions.templates import MissionTemplateCatalogue, MissionTemplateDefinition
+from mishkan.organization.evolution import (
+    ProfessionalCompetenceState,
+    ProfessionalEvidenceRecord,
+    ProfessionalPromotionDecision,
+    ProfessionalPromotionRequest,
+)
 from mishkan.organization.models import OrganizationRosterDefinition
 from mishkan.runtime import TaskReviewRejection
 from mishkan.skills.models import (
@@ -263,6 +269,10 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "mission-template-definition-v1.schema.json": MissionTemplateDefinition,
     "mission-transition-v1.schema.json": MissionTransition,
     "organization-roster-v1.schema.json": OrganizationRosterDefinition,
+    "professional-competence-state-v1.schema.json": ProfessionalCompetenceState,
+    "professional-evidence-record-v1.schema.json": ProfessionalEvidenceRecord,
+    "professional-promotion-decision-v1.schema.json": ProfessionalPromotionDecision,
+    "professional-promotion-request-v1.schema.json": ProfessionalPromotionRequest,
     "langsmith-feedback-import-request-v1.schema.json": LangSmithFeedbackImportRequest,
     "run-initialization-request-v1.schema.json": RunInitializationRequest,
     "skill-bundle-definition-v1.schema.json": SkillBundleDefinition,
