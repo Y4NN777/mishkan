@@ -99,6 +99,9 @@ async def test_remote_facade_forwards_queries_commands_and_resources(tmp_path: P
         {"mission_id": str(mission.mission_id), "limit": 10},
         principal_id=token.principal_id,
     )
+    notifications = await facade.read_resource(
+        "mishkan://notifications", principal_id=token.principal_id
+    )
     events = await facade.read_resource("mishkan://events", principal_id=token.principal_id)
 
     assert health == {"status": "ready", "schema": "professional_evolution_v1"}
@@ -106,6 +109,8 @@ async def test_remote_facade_forwards_queries_commands_and_resources(tmp_path: P
     assert missions == {"missions": []}
     assert conversations == {"conversations": []}
     assert advisory["activation_authorized"] is False
+    assert notifications["notifications"]
+    assert notifications["notifications"][0]["event_type"] == "system.checkpoint_recorded"
     assert result["status"] == "accepted"
     assert mission_result["status"] == "accepted"
     assert mission_projection["mission_id"] == str(mission.mission_id)

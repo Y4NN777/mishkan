@@ -1,0 +1,158 @@
+{
+  "$defs": {
+    "NotificationDelivery": {
+      "enum": [
+        "feed",
+        "silent"
+      ],
+      "title": "NotificationDelivery",
+      "type": "string"
+    },
+    "NotificationRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "action_reference": {
+          "anyOf": [
+            {
+              "maxLength": 1024,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Action Reference"
+        },
+        "delivery": {
+          "$ref": "#/$defs/NotificationDelivery"
+        },
+        "entity_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Entity Id",
+          "type": "string"
+        },
+        "entity_type": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Entity Type",
+          "type": "string"
+        },
+        "event_cursor": {
+          "minimum": 1,
+          "title": "Event Cursor",
+          "type": "integer"
+        },
+        "event_id": {
+          "format": "uuid",
+          "title": "Event Id",
+          "type": "string"
+        },
+        "event_type": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Event Type",
+          "type": "string"
+        },
+        "notification_id": {
+          "format": "uuid",
+          "title": "Notification Id",
+          "type": "string"
+        },
+        "rule_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rule Id"
+        },
+        "schema_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "severity": {
+          "$ref": "#/$defs/NotificationSeverity"
+        },
+        "summary": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "notification_id",
+        "event_id",
+        "event_cursor",
+        "event_type",
+        "entity_type",
+        "entity_id",
+        "severity",
+        "delivery",
+        "summary"
+      ],
+      "title": "NotificationRecord",
+      "type": "object"
+    },
+    "NotificationSeverity": {
+      "enum": [
+        "information",
+        "attention",
+        "action_required",
+        "urgent"
+      ],
+      "title": "NotificationSeverity",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "after_cursor": {
+      "minimum": 0,
+      "title": "After Cursor",
+      "type": "integer"
+    },
+    "next_cursor": {
+      "minimum": 0,
+      "title": "Next Cursor",
+      "type": "integer"
+    },
+    "notifications": {
+      "items": {
+        "$ref": "#/$defs/NotificationRecord"
+      },
+      "title": "Notifications",
+      "type": "array"
+    },
+    "retained_from_cursor": {
+      "minimum": 0,
+      "title": "Retained From Cursor",
+      "type": "integer"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "after_cursor",
+    "next_cursor",
+    "retained_from_cursor",
+    "notifications"
+  ],
+  "title": "NotificationPage",
+  "type": "object"
+}

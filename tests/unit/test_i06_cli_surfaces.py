@@ -8,6 +8,7 @@ import pytest
 from typer.testing import CliRunner
 
 import mishkan.cli.app as cli
+from mishkan.notifications import NotificationDelivery, NotificationSeverity
 from mishkan.organization import ProfessionalEvidenceKind
 
 
@@ -124,6 +125,22 @@ class _Client:
     def community_candidates(self) -> tuple[_Payload, ...]:
         return (_Payload("candidate"),)
 
+    def notifications(
+        self,
+        *,
+        after: int,
+        limit: int | None,
+        severities: tuple[NotificationSeverity, ...],
+        deliveries: tuple[NotificationDelivery, ...],
+    ) -> _Payload:
+        assert (after, limit, severities, deliveries) == (
+            2,
+            3,
+            (NotificationSeverity.URGENT,),
+            (NotificationDelivery.FEED,),
+        )
+        return _Payload("notifications")
+
 
 runner = CliRunner()
 
@@ -211,6 +228,21 @@ def client(monkeypatch: pytest.MonkeyPatch) -> _Client:
                 "count": 1,
                 "activation_authorized": False,
             },
+        ),
+        (
+            (
+                "events",
+                "notifications",
+                "--after",
+                "2",
+                "--limit",
+                "3",
+                "--severity",
+                "urgent",
+                "--delivery",
+                "feed",
+            ),
+            {"kind": "notifications"},
         ),
     ],
 )

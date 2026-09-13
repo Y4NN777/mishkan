@@ -30,6 +30,7 @@ from mishkan.mcp.facade import (
     McpFacadeRouter,
     MissionQuery,
     MissionTemplateQuery,
+    NotificationQuery,
     ProfessionalCompetenceQuery,
     RunQuery,
 )
@@ -148,6 +149,7 @@ class McpProtocolFacade:
                 "conversation.list": "List bounded durable conversation channels.",
                 "conversation.get": "Read one channel and its bounded message history.",
                 "advisory.candidates.list": "List candidates without granting activation.",
+                "notification.list": "Read configurable notification projections over events.",
                 "command.submit": "Submit one governed, idempotent application command.",
             }
             return [
@@ -190,6 +192,7 @@ class McpProtocolFacade:
                 "mishkan://missions": "MISHKAN missions",
                 "mishkan://conversations": "MISHKAN conversations",
                 "mishkan://advisory/candidates": "MISHKAN advisory candidates",
+                "mishkan://notifications": "MISHKAN notifications",
             }
             return [
                 types.Resource(
@@ -239,5 +242,6 @@ class McpProtocolFacade:
             "conversation.list": ConversationListQuery.model_json_schema(),
             "conversation.get": ConversationQuery.model_json_schema(),
             "advisory.candidates.list": empty,
+            "notification.list": NotificationQuery.model_json_schema(),
             "command.submit": ApplicationCommand.model_json_schema(),
         }

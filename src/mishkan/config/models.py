@@ -16,6 +16,7 @@ from pydantic import (
 )
 
 from mishkan.domain.time import validate_timezone
+from mishkan.notifications import NotificationConfig
 from mishkan.skills.models import SkillBounds, SkillBundleDefinition, SkillSourceDefinition
 from mishkan.telemetry.models import TelemetryDisclosure, TelemetryExporterKind
 
@@ -497,6 +498,7 @@ SUPPORTED_MCP_FACADE_OPERATIONS = frozenset(
         "conversation.list",
         "conversation.get",
         "advisory.candidates.list",
+        "notification.list",
         "command.submit",
     }
 )
@@ -509,6 +511,7 @@ SUPPORTED_MCP_FACADE_RESOURCES = frozenset(
         "mishkan://missions",
         "mishkan://conversations",
         "mishkan://advisory/candidates",
+        "mishkan://notifications",
     }
 )
 
@@ -693,6 +696,7 @@ class MishkanConfig(StrictConfigModel):
     mission_template_sources: tuple[str, ...] = (
         "package://mishkan.resources.organization/mission-templates.yaml",
     )
+    notifications: NotificationConfig = Field(default_factory=NotificationConfig)
     telemetry: TelemetryConfig = Field(default_factory=TelemetryConfig)
 
     @field_validator("timezone")

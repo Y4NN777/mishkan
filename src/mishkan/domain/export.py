@@ -122,6 +122,7 @@ from mishkan.missions.models import (
 )
 from mishkan.missions.readiness import MissionEnvironmentReadiness
 from mishkan.missions.templates import MissionTemplateCatalogue, MissionTemplateDefinition
+from mishkan.notifications import NotificationConfig, NotificationPage, NotificationRecord
 from mishkan.organization.evolution import (
     ProfessionalCompetenceState,
     ProfessionalEvidenceRecord,
@@ -272,6 +273,9 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "mission-template-catalogue-v1.schema.json": MissionTemplateCatalogue,
     "mission-template-definition-v1.schema.json": MissionTemplateDefinition,
     "mission-transition-v1.schema.json": MissionTransition,
+    "notification-config-v1.schema.json": NotificationConfig,
+    "notification-page-v1.schema.json": NotificationPage,
+    "notification-record-v1.schema.json": NotificationRecord,
     "organization-roster-v1.schema.json": OrganizationRosterDefinition,
     "professional-competence-state-v1.schema.json": ProfessionalCompetenceState,
     "professional-evidence-record-v1.schema.json": ProfessionalEvidenceRecord,

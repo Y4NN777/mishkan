@@ -90,6 +90,7 @@ from mishkan.missions.environment import (
     MissionEnvironmentPlanAcceptance,
     MissionEnvironmentPlanningRequest,
 )
+from mishkan.notifications import NotificationDelivery, NotificationPage, NotificationSeverity
 from mishkan.organization import (
     OrganizationRosterDefinition,
     ProfessionalCompetenceState,
@@ -730,6 +731,27 @@ class Mishkan:
         response = self._client.get("/v1/events", headers=self._headers(), params=params)
         response.raise_for_status()
         return EventPage.model_validate(response.json())
+
+    def notifications(
+        self,
+        *,
+        after: int = 0,
+        limit: int | None = None,
+        severities: tuple[NotificationSeverity, ...] = (),
+        deliveries: tuple[NotificationDelivery, ...] = (),
+    ) -> NotificationPage:
+        params: list[tuple[str, str | int | float | bool | None]] = [("after", after)]
+        if limit is not None:
+            params.append(("limit", limit))
+        params.extend(("severity", item.value) for item in severities)
+        params.extend(("delivery", item.value) for item in deliveries)
+        response = self._client.get(
+            "/v1/notifications",
+            headers=self._headers(),
+            params=params,
+        )
+        response.raise_for_status()
+        return NotificationPage.model_validate(response.json())
 
     def stream_events(
         self,

@@ -18,6 +18,7 @@ from mishkan.mcp.facade import (
     LimitQuery,
     MissionQuery,
     MissionTemplateQuery,
+    NotificationQuery,
     ProfessionalCompetenceQuery,
     RunQuery,
 )
@@ -149,6 +150,23 @@ class DaemonMcpFacade:
         if operation == "advisory.candidates.list":
             self._require_empty(arguments)
             return await self._request_object("GET", "/v1/context/community-candidates")
+        if operation == "notification.list":
+            query = self._validate(NotificationQuery, arguments)
+            notification_params: list[tuple[str, str | int]] = [
+                ("after", query.after),
+                ("limit", query.limit),
+            ]
+            notification_params.extend(
+                ("severity", severity.value) for severity in query.severities
+            )
+            notification_params.extend(
+                ("delivery", delivery.value) for delivery in query.deliveries
+            )
+            return await self._request_object(
+                "GET",
+                "/v1/notifications",
+                params=notification_params,
+            )
         command = self._validate(ApplicationCommand, arguments)
         if command.actor_id != principal_id:
             raise MishkanError(
@@ -175,9 +193,14 @@ class DaemonMcpFacade:
             "mishkan://missions": "mission.list",
             "mishkan://conversations": "conversation.list",
             "mishkan://advisory/candidates": "advisory.candidates.list",
+            "mishkan://notifications": "notification.list",
         }
         operation = operation_by_uri[uri]
-        arguments = {"limit": 100} if operation in {"mission.list", "conversation.list"} else {}
+        arguments = (
+            {"limit": 100}
+            if operation in {"mission.list", "conversation.list", "notification.list"}
+            else {}
+        )
         return await self.invoke(operation, arguments, principal_id=principal_id)
 
     async def _request(

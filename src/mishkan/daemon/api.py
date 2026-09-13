@@ -132,6 +132,12 @@ from mishkan.missions.environment import (
     MissionEnvironmentPlanAcceptance,
     MissionEnvironmentPlanValidator,
 )
+from mishkan.notifications import (
+    NotificationDelivery,
+    NotificationPage,
+    NotificationService,
+    NotificationSeverity,
+)
 from mishkan.organization import (
     ProfessionalCompetenceState,
     ProfessionalEvidenceKind,
@@ -587,6 +593,7 @@ def create_app(
         mission_repository,
         environment_repository,
     )
+    notification_service = NotificationService(config.notifications)
     telemetry_tasks: set[asyncio.Task[object]] = set()
 
     def project_telemetry(
@@ -969,6 +976,7 @@ def create_app(
             mission_templates=mission_templates,
             advisory=community_recommendations,
             readiness=mission_readiness,
+            notifications=notification_service,
         )
         mcp_http = McpHttpFacade(
             router,
@@ -1329,6 +1337,25 @@ def create_app(
             occurred_after=occurred_after,
             occurred_before=occurred_before,
             security_relevant=security_relevant,
+        )
+
+    @app.get("/v1/notifications", response_model=NotificationPage)
+    async def notifications(
+        _principal: TokenRecord = authenticated,
+        after: Annotated[int, Query(ge=0)] = 0,
+        limit: Annotated[int | None, Query(ge=1, le=1_000)] = None,
+        severity: Annotated[list[NotificationSeverity] | None, Query()] = None,
+        delivery: Annotated[list[NotificationDelivery] | None, Query()] = None,
+    ) -> NotificationPage:
+        event_page = await _thread_call(
+            repository.events,
+            after_cursor=after,
+            limit=limit or config.notifications.page_limit,
+        )
+        return notification_service.project(
+            event_page,
+            severities=frozenset(severity or ()),
+            deliveries=frozenset(delivery or ()),
         )
 
     @app.get("/v1/events/holds")

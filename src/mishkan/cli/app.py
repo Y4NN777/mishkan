@@ -981,6 +981,36 @@ def list_events(
     _emit(page.model_dump(mode="json"), as_json=state.json_output)
 
 
+@events_app.command("notifications")
+def list_notifications(
+    ctx: typer.Context,
+    after: Annotated[int, typer.Option(min=0)] = 0,
+    limit: Annotated[int | None, typer.Option(min=1, max=1_000)] = None,
+    severity: Annotated[list[str] | None, typer.Option("--severity")] = None,
+    delivery: Annotated[list[str] | None, typer.Option("--delivery")] = None,
+) -> None:
+    """Project configured severity and delivery without hiding source events."""
+    from mishkan.notifications import NotificationDelivery, NotificationSeverity
+
+    try:
+        severities = tuple(NotificationSeverity(item) for item in (severity or ()))
+        deliveries = tuple(NotificationDelivery(item) for item in (delivery or ()))
+    except ValueError as exc:
+        raise typer.BadParameter("notification severity or delivery is invalid") from exc
+    try:
+        with _daemon_client(ctx) as client:
+            page = client.notifications(
+                after=after,
+                limit=limit,
+                severities=severities,
+                deliveries=deliveries,
+            )
+    except MishkanError as error:
+        _emit_error(error, as_json=_state(ctx).json_output)
+        raise typer.Exit(code=2) from error
+    _emit(page.model_dump(mode="json"), as_json=_state(ctx).json_output)
+
+
 @events_app.command("tail")
 def tail_events(
     ctx: typer.Context,

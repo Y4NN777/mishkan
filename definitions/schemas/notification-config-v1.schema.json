@@ -1,0 +1,82 @@
+{
+  "$defs": {
+    "NotificationDelivery": {
+      "enum": [
+        "feed",
+        "silent"
+      ],
+      "title": "NotificationDelivery",
+      "type": "string"
+    },
+    "NotificationRuleConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "delivery": {
+          "$ref": "#/$defs/NotificationDelivery"
+        },
+        "event_types": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Event Types",
+          "type": "array"
+        },
+        "rule_id": {
+          "pattern": "^[a-z][a-z0-9_.-]{1,127}$",
+          "title": "Rule Id",
+          "type": "string"
+        },
+        "severity": {
+          "$ref": "#/$defs/NotificationSeverity"
+        }
+      },
+      "required": [
+        "rule_id",
+        "event_types",
+        "severity",
+        "delivery"
+      ],
+      "title": "NotificationRuleConfig",
+      "type": "object"
+    },
+    "NotificationSeverity": {
+      "enum": [
+        "information",
+        "attention",
+        "action_required",
+        "urgent"
+      ],
+      "title": "NotificationSeverity",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "default_delivery": {
+      "$ref": "#/$defs/NotificationDelivery",
+      "default": "feed"
+    },
+    "default_severity": {
+      "$ref": "#/$defs/NotificationSeverity",
+      "default": "information"
+    },
+    "page_limit": {
+      "default": 100,
+      "maximum": 1000,
+      "minimum": 1,
+      "title": "Page Limit",
+      "type": "integer"
+    },
+    "rules": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/NotificationRuleConfig"
+      },
+      "title": "Rules",
+      "type": "array"
+    }
+  },
+  "title": "NotificationConfig",
+  "type": "object"
+}

@@ -18,6 +18,7 @@ from mishkan.missions import (
     MissionTemplateService,
     SQLiteMissionRepository,
 )
+from mishkan.notifications import NotificationDelivery, NotificationService, NotificationSeverity
 from mishkan.organization import (
     OrganizationRosterDefinition,
     ProfessionalEvidenceKind,
@@ -90,6 +91,13 @@ class ConversationQuery(FacadeModel):
     limit: int = Field(default=100, ge=1, le=1_000)
 
 
+class NotificationQuery(FacadeModel):
+    after: int = Field(default=0, ge=0)
+    limit: int = Field(default=100, ge=1, le=1_000)
+    severities: tuple[NotificationSeverity, ...] = ()
+    deliveries: tuple[NotificationDelivery, ...] = ()
+
+
 class McpFacadeRouter:
     """Expose only allowlisted operations that have an executable daemon handler."""
 
@@ -110,6 +118,7 @@ class McpFacadeRouter:
         mission_templates: MissionTemplateService | None = None,
         advisory: ContextualRecommendationService | None = None,
         readiness: MissionEnvironmentReadinessService | None = None,
+        notifications: NotificationService | None = None,
     ) -> None:
         profile = config.exposure_profiles[config.facade.exposure_profile]
         self.operations = profile.operations
@@ -125,6 +134,7 @@ class McpFacadeRouter:
         self._mission_templates = mission_templates
         self._advisory = advisory
         self._readiness = readiness
+        self._notifications = notifications
 
     async def invoke(
         self,
@@ -232,6 +242,18 @@ class McpFacadeRouter:
                 "count": len(candidates),
                 "activation_authorized": False,
             }
+        if operation == "notification.list":
+            query = self._validate(NotificationQuery, arguments)
+            notifications = self._require_dependency(self._notifications, "notifications")
+            events = self._repository.events(
+                after_cursor=query.after,
+                limit=query.limit,
+            )
+            return notifications.project(
+                events,
+                severities=frozenset(query.severities),
+                deliveries=frozenset(query.deliveries),
+            ).model_dump(mode="json")
         command = self._validate(ApplicationCommand, arguments)
         if command.actor_id != principal_id:
             raise MishkanError(
@@ -254,11 +276,12 @@ class McpFacadeRouter:
             "mishkan://missions": "mission.list",
             "mishkan://conversations": "conversation.list",
             "mishkan://advisory/candidates": "advisory.candidates.list",
+            "mishkan://notifications": "notification.list",
         }
         operation = operation_by_uri[uri]
         arguments = (
             {"limit": self._event_page_limit}
-            if operation in {"mission.list", "conversation.list"}
+            if operation in {"mission.list", "conversation.list", "notification.list"}
             else {}
         )
         return await self.invoke(operation, arguments, principal_id=principal_id)
